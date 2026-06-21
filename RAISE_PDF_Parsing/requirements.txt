@@ -1,0 +1,8 @@
+pymupdf
+pdfplumber
+pydantic
+typer
+rich
+pytest
+ruff
+black
