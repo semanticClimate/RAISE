@@ -12,10 +12,10 @@ Main repository:
 https://github.com/semanticClimate/RAISE.git
 ```
 
-Suggested branch:
+Branch:
 
 ```text
-personB-pdf-parsing
+Harsh-semantification
 ```
 
 Suggested module folder:
@@ -197,14 +197,15 @@ pytest
 ## Colab Demo
 
 ```text
-notebooks/RAISE_PDF_Parsing_Colab.ipynb
+../RAISE_PDF_Parsing_Colab.ipynb
 ```
 
-The notebook uploads a PDF, runs Stage 1 + Stage 2, prints the filtering
-summary, previews `target_blocks.json`, and downloads `report_blocks.json`,
-`target_blocks.json`, and `filtering_report.json` -- the last of those three
-is the file to hand straight to the `RAISE_HTML5_Semantification` Colab
-notebook.
+The repository root notebook is the GitHub/Colab-facing demo. A copy is also
+kept under `notebooks/` for module-local editing. The notebook uploads a PDF,
+runs Stage 1 + Stage 2, prints the filtering summary, previews
+`target_blocks.json`, and downloads `report_blocks.json`,
+`target_blocks.json`, and `filtering_report.json` -- the last of those three is
+the file to hand straight to the `RAISE_HTML5_Semantification` Colab notebook.
 
 ## Limitations
 
