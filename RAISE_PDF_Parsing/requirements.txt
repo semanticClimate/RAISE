@@ -3,6 +3,7 @@ pdfplumber
 pydantic
 typer
 rich
+jsonschema
 pytest
 ruff
 black

@@ -201,11 +201,26 @@ pytest
 ```
 
 The repository root notebook is the GitHub/Colab-facing demo. A copy is also
-kept under `notebooks/` for module-local editing. The notebook uploads a PDF,
-runs Stage 1 + Stage 2, prints the filtering summary, previews
+kept under `notebooks/` for module-local editing. The notebook uploads a PDF
+and can optionally upload a per-block content schema, runs Stage 1 + Stage 2,
+prints the filtering summary, previews
 `target_blocks.json`, and downloads `report_blocks.json`,
 `target_blocks.json`, and `filtering_report.json` -- the last of those three is
 the file to hand straight to the `RAISE_HTML5_Semantification` Colab notebook.
+
+For local Jupyter/JupyterLab usage with a browser upload widget, use:
+
+```text
+notebooks/RAISE_PDF_Parsing_Local_Upload.ipynb
+```
+
+That notebook also accepts an optional custom JSON Schema, either by local
+path or browser upload. The schema is applied to each Stage 2 block: matching
+blocks are kept and failures are recorded in
+`data/03_filtered/schema_filtering_report.json`. This makes schema-based
+content selection auditable. For example, a schema can retain only headings
+and tables with `properties.block_type_guess.enum`, or match research terms
+with `properties.text.pattern`.
 
 ## Limitations
 
