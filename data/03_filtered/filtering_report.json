@@ -1,0 +1,67 @@
+{
+  "input_block_count": 46,
+  "output_block_count": 15,
+  "input_page_count": 7,
+  "retained_pages": [
+    1,
+    2,
+    7
+  ],
+  "excluded_pages": [
+    {
+      "page_number": 3,
+      "reason": "Page matches 7 financial/audit-statement keywords.",
+      "category": "financial_audit",
+      "score": 7.0,
+      "matched_signals": [
+        "balance sheet",
+        "statement of accounts",
+        "auditor's report",
+        "receipts and payments",
+        "trial balance",
+        "depreciation schedule",
+        "schedule of fixed assets"
+      ]
+    },
+    {
+      "page_number": 4,
+      "reason": "Page is dominated by images with very little text (image_area_ratio=0.3864, words=14).",
+      "category": "photo_gallery",
+      "score": 0.3864,
+      "matched_signals": [
+        "image_area_ratio=0.3864",
+        "word_count=14"
+      ]
+    },
+    {
+      "page_number": 5,
+      "reason": "Page contains 6 name/designation rows, matching a staff directory or contact-list pattern.",
+      "category": "directory",
+      "score": 6.0,
+      "matched_signals": [
+        "directory_row_matches=6"
+      ]
+    },
+    {
+      "page_number": 6,
+      "reason": "Page matches 5 non-research administrative keywords.",
+      "category": "admin_notice",
+      "score": 5.0,
+      "matched_signals": [
+        "minutes of the meeting",
+        "circular no",
+        "tender notice",
+        "board of governors",
+        "attendance register"
+      ]
+    }
+  ],
+  "removed_boilerplate_block_count": 6,
+  "boilerplate_examples": [
+    "Sample University Annual Report 2024-25",
+    "Confidential - Internal Circulation Only\nPage 1",
+    "Confidential - Internal Circulation Only\nPage 2",
+    "Confidential - Internal Circulation Only\nPage 7"
+  ],
+  "rules_version": "1.0.0"
+}

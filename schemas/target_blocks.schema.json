@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raise.example/schemas/target_blocks.schema.json",
+  "title": "RAISE Stage 2 Output: target_blocks.json",
+  "description": "Filtered, research-assessment-only blocks handed to Stage 3 (RAISE_HTML5_Semantification). Owner: Person B (filtering rules reviewed by Person A). This is the authoritative contract referenced in RAISE_HTML5_Semantification/docs/SCHEMA_INTEGRATION.md.",
+  "type": "object",
+  "required": ["source_file", "blocks"],
+  "additionalProperties": true,
+  "properties": {
+    "source_file": { "type": "string" },
+    "stage": { "type": "string", "const": "target_blocks" },
+    "schema_version": { "type": "string" },
+    "blocks": {
+      "type": "array",
+      "items": { "$ref": "report_blocks.schema.json#/$defs/block" }
+    },
+    "filtering_metadata": { "$ref": "#/$defs/filtering_metadata" }
+  },
+  "$defs": {
+    "exclusion_record": {
+      "type": "object",
+      "required": ["page_number", "reason", "category"],
+      "properties": {
+        "page_number": { "type": "integer", "minimum": 1 },
+        "reason": { "type": "string" },
+        "category": {
+          "type": "string",
+          "enum": ["financial_audit", "photo_gallery", "directory", "admin_notice"]
+        },
+        "score": { "type": "number" },
+        "matched_signals": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "filtering_metadata": {
+      "type": "object",
+      "required": ["input_block_count", "output_block_count", "retained_pages"],
+      "properties": {
+        "input_block_count": { "type": "integer", "minimum": 0 },
+        "output_block_count": { "type": "integer", "minimum": 0 },
+        "input_page_count": { "type": "integer", "minimum": 0 },
+        "retained_pages": { "type": "array", "items": { "type": "integer" } },
+        "excluded_pages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/exclusion_record" }
+        },
+        "removed_boilerplate_block_count": { "type": "integer", "minimum": 0 },
+        "boilerplate_examples": { "type": "array", "items": { "type": "string" } },
+        "rules_version": { "type": "string" }
+      }
+    }
+  }
+}

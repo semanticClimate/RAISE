@@ -1,0 +1,455 @@
+{
+  "source_file": "sample_annual_report.pdf",
+  "stage": "target_blocks",
+  "schema_version": "1.0.0",
+  "blocks": [
+    {
+      "block_id": "p1-b002",
+      "page_number": 1,
+      "text": "RESEARCH ACTIVITIES",
+      "bbox": [
+        72.0,
+        90.74,
+        277.02,
+        115.53
+      ],
+      "font_size": 18.0,
+      "font_name": "Helvetica-Bold",
+      "is_bold": true,
+      "is_italic": false,
+      "reading_order": 2,
+      "block_type_guess": "heading",
+      "confidence": 0.995,
+      "section_hint": "Research",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 2,
+      "column_index": 0
+    },
+    {
+      "block_id": "p1-b003",
+      "page_number": 1,
+      "text": "The Department of Computer Science continued funded research in renewable",
+      "bbox": [
+        72.0,
+        138.42,
+        417.49,
+        153.09
+      ],
+      "font_size": 11.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 3,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Research",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 10,
+      "column_index": 0
+    },
+    {
+      "block_id": "p1-b004",
+      "page_number": 1,
+      "text": "energy systems and high-performance computing throughout the reporting year.",
+      "bbox": [
+        72.0,
+        156.42,
+        424.24,
+        171.09
+      ],
+      "font_size": 11.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 4,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Research",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 10,
+      "column_index": 0
+    },
+    {
+      "block_id": "p1-b005",
+      "page_number": 1,
+      "text": "- Publications increased by 18 percent over last year",
+      "bbox": [
+        72.0,
+        188.42,
+        301.72,
+        203.09
+      ],
+      "font_size": 11.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 5,
+      "block_type_guess": "list_item",
+      "confidence": 0.925,
+      "section_hint": "Research",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 8,
+      "column_index": 0
+    },
+    {
+      "block_id": "p1-b006",
+      "page_number": 1,
+      "text": "- Three new research grants were awarded",
+      "bbox": [
+        72.0,
+        206.42,
+        258.3,
+        221.09
+      ],
+      "font_size": 11.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 6,
+      "block_type_guess": "list_item",
+      "confidence": 0.925,
+      "section_hint": "Research",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 6,
+      "column_index": 0
+    },
+    {
+      "block_id": "p1-b007",
+      "page_number": 1,
+      "text": "- Two patents were filed by faculty members",
+      "bbox": [
+        72.0,
+        224.42,
+        269.65,
+        239.09
+      ],
+      "font_size": 11.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 7,
+      "block_type_guess": "list_item",
+      "confidence": 0.925,
+      "section_hint": "Research",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 7,
+      "column_index": 0
+    },
+    {
+      "block_id": "p2-b002",
+      "page_number": 2,
+      "text": "PUBLICATIONS BY DEPARTMENT",
+      "bbox": [
+        72.0,
+        92.88,
+        334.22,
+        114.91
+      ],
+      "font_size": 16.0,
+      "font_name": "Helvetica-Bold",
+      "is_bold": true,
+      "is_italic": false,
+      "reading_order": 10,
+      "block_type_guess": "heading",
+      "confidence": 0.995,
+      "section_hint": "Publications",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 3,
+      "column_index": 0
+    },
+    {
+      "block_id": "p2-b003",
+      "page_number": 2,
+      "text": "Department | Journal Articles | Conference Papers\nEngineering | 12 | 9\nComputer Science | 20 | 14\nPhysics | 8 | 5",
+      "bbox": [
+        72.0,
+        150.0,
+        520.0,
+        270.0
+      ],
+      "font_size": null,
+      "font_name": null,
+      "is_bold": null,
+      "is_italic": null,
+      "reading_order": 11,
+      "block_type_guess": "table",
+      "confidence": 0.9,
+      "section_hint": "Publications",
+      "source_file": "sample_annual_report.pdf",
+      "rows": [
+        [
+          "Department",
+          "Journal Articles",
+          "Conference Papers"
+        ],
+        [
+          "Engineering",
+          "12",
+          "9"
+        ],
+        [
+          "Computer Science",
+          "20",
+          "14"
+        ],
+        [
+          "Physics",
+          "8",
+          "5"
+        ]
+      ],
+      "line_count": 4,
+      "word_count": 15,
+      "column_index": 0
+    },
+    {
+      "block_id": "p7-b002",
+      "page_number": 7,
+      "text": "FACULTY ACHIEVEMENTS",
+      "bbox": [
+        72.0,
+        92.88,
+        278.22,
+        114.91
+      ],
+      "font_size": 16.0,
+      "font_name": "Helvetica-Bold",
+      "is_bold": true,
+      "is_italic": false,
+      "reading_order": 39,
+      "block_type_guess": "heading",
+      "confidence": 0.995,
+      "section_hint": "Faculty",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 2,
+      "column_index": 0
+    },
+    {
+      "block_id": "p7-b003",
+      "page_number": 7,
+      "text": "Left column line one about awards.",
+      "bbox": [
+        72.0,
+        139.47,
+        213.64,
+        152.81
+      ],
+      "font_size": 10.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 40,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Faculty",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 6,
+      "column_index": 0
+    },
+    {
+      "block_id": "p7-b004",
+      "page_number": 7,
+      "text": "Left column line two about honours.",
+      "bbox": [
+        72.0,
+        159.47,
+        218.1,
+        172.81
+      ],
+      "font_size": 10.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 41,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Faculty",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 6,
+      "column_index": 0
+    },
+    {
+      "block_id": "p7-b005",
+      "page_number": 7,
+      "text": "Left column line three about grants.",
+      "bbox": [
+        72.0,
+        179.47,
+        215.31,
+        192.81
+      ],
+      "font_size": 10.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 42,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Faculty",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 6,
+      "column_index": 0
+    },
+    {
+      "block_id": "p7-b006",
+      "page_number": 7,
+      "text": "Right column line one about outreach.",
+      "bbox": [
+        320.0,
+        139.47,
+        473.32,
+        152.81
+      ],
+      "font_size": 10.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 43,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Faculty",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 6,
+      "column_index": 1
+    },
+    {
+      "block_id": "p7-b007",
+      "page_number": 7,
+      "text": "Right column line two about workshops.",
+      "bbox": [
+        320.0,
+        159.47,
+        482.78,
+        172.81
+      ],
+      "font_size": 10.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 44,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Faculty",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 6,
+      "column_index": 1
+    },
+    {
+      "block_id": "p7-b008",
+      "page_number": 7,
+      "text": "Right column line three about MoUs signed.",
+      "bbox": [
+        320.0,
+        179.47,
+        498.05,
+        192.81
+      ],
+      "font_size": 10.0,
+      "font_name": "Times-Roman",
+      "is_bold": false,
+      "is_italic": false,
+      "reading_order": 45,
+      "block_type_guess": "paragraph",
+      "confidence": 0.95,
+      "section_hint": "Faculty",
+      "source_file": "sample_annual_report.pdf",
+      "rows": null,
+      "line_count": 1,
+      "word_count": 7,
+      "column_index": 1
+    }
+  ],
+  "filtering_metadata": {
+    "input_block_count": 46,
+    "output_block_count": 15,
+    "input_page_count": 7,
+    "retained_pages": [
+      1,
+      2,
+      7
+    ],
+    "excluded_pages": [
+      {
+        "page_number": 3,
+        "reason": "Page matches 7 financial/audit-statement keywords.",
+        "category": "financial_audit",
+        "score": 7.0,
+        "matched_signals": [
+          "balance sheet",
+          "statement of accounts",
+          "auditor's report",
+          "receipts and payments",
+          "trial balance",
+          "depreciation schedule",
+          "schedule of fixed assets"
+        ]
+      },
+      {
+        "page_number": 4,
+        "reason": "Page is dominated by images with very little text (image_area_ratio=0.3864, words=14).",
+        "category": "photo_gallery",
+        "score": 0.3864,
+        "matched_signals": [
+          "image_area_ratio=0.3864",
+          "word_count=14"
+        ]
+      },
+      {
+        "page_number": 5,
+        "reason": "Page contains 6 name/designation rows, matching a staff directory or contact-list pattern.",
+        "category": "directory",
+        "score": 6.0,
+        "matched_signals": [
+          "directory_row_matches=6"
+        ]
+      },
+      {
+        "page_number": 6,
+        "reason": "Page matches 5 non-research administrative keywords.",
+        "category": "admin_notice",
+        "score": 5.0,
+        "matched_signals": [
+          "minutes of the meeting",
+          "circular no",
+          "tender notice",
+          "board of governors",
+          "attendance register"
+        ]
+      }
+    ],
+    "removed_boilerplate_block_count": 6,
+    "boilerplate_examples": [
+      "Sample University Annual Report 2024-25",
+      "Confidential - Internal Circulation Only\nPage 1",
+      "Confidential - Internal Circulation Only\nPage 2",
+      "Confidential - Internal Circulation Only\nPage 7"
+    ],
+    "rules_version": "1.0.0"
+  }
+}
