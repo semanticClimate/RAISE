@@ -12,16 +12,16 @@ Main repository:
 https://github.com/semanticClimate/RAISE.git
 ```
 
-Suggested branch:
+Branch:
 
 ```text
-personB-pdf-parsing
+Harsh-semantification
 ```
 
-Suggested module folder:
+Package location:
 
 ```text
-RAISE_PDF_Parsing
+repository root
 ```
 
 This module is the very first stage of the pipeline. It receives a raw
