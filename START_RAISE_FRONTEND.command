@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# ==============================================================================
+#  RAISE — Single-Click macOS Startup for Frontend
+#  Double-clickable directly in Finder on macOS (Apple Silicon & Intel)
+# ==============================================================================
+
+# Ensure terminal directory is anchored to the script location
+cd "$(dirname "$0")" || exit 1
+
+clear
+echo "============================================================================"
+echo "                              RAISE FRONTEND"
+echo "============================================================================"
+echo ""
+
+# ------------------------------------------------------------------------------
+# [1/3] Detect or Automatically Download Node.js & npm for macOS
+# ------------------------------------------------------------------------------
+echo "[1/3] Checking environment & Node.js installation..."
+
+# Detect Mac hardware architecture (Apple Silicon M1/M2/M3/M4 = arm64; Intel = x64)
+RAW_ARCH=$(uname -m)
+if [ "$RAW_ARCH" = "arm64" ]; then
+    MAC_ARCH="arm64"
+else
+    MAC_ARCH="x64"
+fi
+
+NODE_VER="v26.10.0"
+NODE_FOLDER="node-${NODE_VER}-darwin-${MAC_ARCH}"
+PORTABLE_BIN="$(pwd)/.node/${NODE_FOLDER}/bin"
+
+# 1. Check if portable Node.js is Available in .node/
+if [ -x "${PORTABLE_BIN}/node" ]; then
+    export PATH="${PORTABLE_BIN}:$PATH"
+    NODE_CMD="${PORTABLE_BIN}/node"
+    NPM_CMD="${PORTABLE_BIN}/npm"
+    echo "      [SUCCESS] Local portable Node.js Available in .node folder."
+# 2. Check if system Node.js is Available
+elif command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    NODE_CMD="node"
+    NPM_CMD="npm"
+    echo "      [SUCCESS] System Node.js Available in PATH: $(node -v)."
+# 3. Neither found: Auto-download portable Node.js LTS for macOS
+else
+    echo ""
+    echo "============================================================================"
+    echo " [NOTICE] Node.js is NOT installed on this Mac."
+    echo " Automatically downloading portable Node.js LTS (${NODE_VER} for ${MAC_ARCH})..."
+    echo " (One-time download so you DO NOT have to install Homebrew, sudo, or anything!)"
+    echo "============================================================================"
+    echo ""
+
+    mkdir -p .node
+    TAR_FILE="/tmp/${NODE_FOLDER}.tar.gz"
+    DOWNLOAD_URL="https://nodejs.org/dist/${NODE_VER}/${NODE_FOLDER}.tar.gz"
+
+    echo "[DOWNLOADING] Fetching Node.js LTS from nodejs.org..."
+    if command -v curl >/dev/null 2>&1; then
+        curl -# -fLo "$TAR_FILE" "$DOWNLOAD_URL"
+    else
+        echo "[ERROR] curl is not installed. Please install Node.js manually: https://nodejs.org/"
+        read -p "Press Enter to exit..."
+        exit 1
+    fi
+
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Failed to download Node.js archive. Check your internet connection."
+        read -p "Press Enter to exit..."
+        exit 1
+    fi
+
+    echo ""
+    echo "[EXTRACTING] Unpacking portable Node.js into .node folder..."
+    tar -xzf "$TAR_FILE" -C .node
+    rm -f "$TAR_FILE"
+
+    if [ ! -x "${PORTABLE_BIN}/node" ]; then
+        echo "[ERROR] Extraction failed. Node binary not found at ${PORTABLE_BIN}/node."
+        read -p "Press Enter to exit..."
+        exit 1
+    fi
+
+    export PATH="${PORTABLE_BIN}:$PATH"
+    NODE_CMD="${PORTABLE_BIN}/node"
+    NPM_CMD="${PORTABLE_BIN}/npm"
+    echo "      [SUCCESS] Portable Node.js runtime is extracted and ready!"
+fi
+
+
+
+echo ""
+echo "      - Node.js version: $("$NODE_CMD" -v 2>/dev/null)"
+echo "      - npm version:     $("$NPM_CMD" -v 2>/dev/null)"
+echo "      - Architecture:    ${MAC_ARCH} (macOS)"
+echo "      - Engine status:   READY"
+echo ""
+
+# Safely approve ONLY esbuild for install-scripts if supported
+"$NPM_CMD" install-scripts approve esbuild --no-allow-scripts-pin >/dev/null 2>&1 || true
+
+# ------------------------------------------------------------------------------
+# [2/3] Check & Install Project Dependencies (node_modules)
+# ------------------------------------------------------------------------------
+echo "[2/3] Checking project dependencies (node_modules)..."
+
+if [ -d "node_modules" ]; then
+    echo "      [SUCCESS] Dependencies (node_modules) Available."
+else
+    echo "      [DOWNLOADING] node_modules directory NOT found."
+    echo "                    Installing all required npm packages..."
+    echo "                    (Downloading React 19, Vite, Tailwind, and UI components)"
+    echo ""
+    "$NPM_CMD" install --no-fund --no-audit
+    INSTALL_CODE=$?
+    if [ $INSTALL_CODE -ne 0 ]; then
+        echo ""
+        echo "============================================================================"
+        echo " [ERROR] npm install failed with exit code $INSTALL_CODE."
+        echo " Please verify your internet connection and retry."
+        echo "============================================================================"
+        echo ""
+        read -p "Press Enter to exit..."
+        exit 1
+    fi
+    echo ""
+    echo "      [SUCCESS] Dependencies installed successfully!"
+fi
+
+echo ""
+
+# ------------------------------------------------------------------------------
+# [3/3] Launch Vite Development Server
+# ------------------------------------------------------------------------------
+echo "[3/3] Starting RAISE Frontend Development Server (Vite)..."
+echo ""
+echo "============================================================================"
+echo "  Vite server is launching..."
+echo "  Local Address: http://localhost:5173/"
+echo ""
+echo "  [!] KEEP THIS TERMINAL WINDOW OPEN while using the application."
+echo "  Press Ctrl+C to stop the server when finished."
+echo "============================================================================"
+echo ""
+
+"$NPM_CMD" run dev
+
+echo ""
+echo "============================================================================"
+echo "  Vite development server has stopped."
+echo "============================================================================"
+echo ""
+read -p "Press Enter to close this window..."
