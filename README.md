@@ -1,7 +1,7 @@
 # 🏛️ RAISE: Research Assessment Intelligence & Semantic Extraction
 
 > **Multi-Hop Knowledge Graph & Hybrid Retrieval-Augmented Generation (GraphRAG) Platform**  
-> Engineered for institutional annual reports, academic literature, patent corpora, and complex technical audits with strict page-level citation provenance and zero-hallucination guarantees.
+> Designed for institutional annual reports, academic literature, and technical documents with source citations and evidence grounding.
 
 ---
 
@@ -10,24 +10,24 @@
 Institutional annual reports, university research audits, patent libraries, and regulatory filings are dense, multi-hundred-page documents packed with hierarchical sections, multi-column layouts, financial schedules, and cross-referenced appendices.
 
 ### The Breakdown of Traditional Retrieval & Standard RAG
-When applied to complex institutional documents, conventional search engines and naive retrieval-augmented generation systems routinely fail due to four core architectural bottlenecks:
+When applied to complex institutional documents, conventional search engines and naive retrieval-augmented generation systems can face four common limitations:
 
-1. **Destructive Semantic Fragmentation**: Arbitrary character-based chunking slices through table geometries, footnotes, and headings, isolating figures from the textual context needed to interpret them.
-2. **The Multi-Hop Blind Spot**: Critical answers often require connecting isolated facts scattered across chapters (e.g., matching a funding grant on page 14 with an equipment expenditure audit on page 182 and an investigator list on page 240). Vector similarity search alone cannot traverse these entity-relationship paths.
-3. **Keyword & Acronym Fragility**: Dense vector embeddings often compress or distort exact project identifiers, alphanumeric grant codes, and monetary figures, leading to irrelevant semantic neighbors instead of the exact target records.
-4. **Hallucination in High-Stakes Assessments**: Standard generative models frequently fill evidentiary gaps with plausible-sounding but completely fabricated statements, which is intolerable in institutional governance, legal audits, and academic assessments.
+1. **Semantic Fragmentation**: Fixed-size character chunking can slice through table geometries, footnotes, and headings, separating figures from their textual context.
+2. **Multi-Hop Information**: Critical answers often require connecting isolated facts scattered across chapters (e.g., matching a funding grant on page 14 with an equipment expenditure audit on page 182 and an investigator list on page 240). Vector similarity search alone struggles to traverse these multi-step relational paths.
+3. **Keyword & Identifier Mismatches**: Dense vector embeddings can sometimes compress or alter specific project identifiers, alphanumeric grant codes, and monetary figures, matching semantic neighbors rather than exact records.
+4. **Accuracy Challenges**: Generative models can introduce inaccuracies when supporting context is missing or ambiguous, posing challenges for academic and institutional research.
 
 ---
 
-### What the RAISE Pipeline Solves
+### What the RAISE Pipeline Aims to Solve
 
-RAISE introduces a verifiable, multi-engine architecture designed specifically to eliminate these points of failure:
+RAISE explores a multi-engine architecture designed to address these points of failure:
 
-- **Structural & Table Integrity**: Preserves reading geometry, hierarchy, and tabular data using **Graph-Guided Adaptive Hierarchical Chunking (GGAHC)**, ensuring that numbers and their corresponding headers remain inseparable.
-- **Tri-Substrate Knowledge Synthesis**: Simultaneously coordinates **high-dimensional dense vectors** (conceptual semantics), **lexical inverted indexes** (exact grant codes and names), and a **multi-hop knowledge graph** (entity and relationship traversal) to resolve complex cross-document dependencies.
-- **Continuous Conversational Context**: Couples a **sub-millisecond in-memory cache** with **long-term session memory** to maintain multi-turn dialogue state without losing track of previous context.
-- **Automated Grounding Verification & Retry**: Evaluates generated text with **sentence-level neural entailment** and **arithmetic checks**. If statements lack complete grounding, the engine automatically reformulates the search parameters and triggers a targeted re-retrieval pass before deciding to safely abstain.
-- **Strict Citation Provenance**: Every generated claim is cryptographically linked to exact source document names, page coordinates, and paragraph numbers, delivering complete epistemic traceability.
+- **Structural & Table Integrity**: Preserves reading geometry, hierarchy, and tabular data using **Graph-Guided Adaptive Hierarchical Chunking (GGAHC)**, helping keep numbers and their corresponding headers associated.
+- **Tri-Substrate Knowledge Synthesis**: Coordinates **dense vectors** (conceptual semantics), **lexical inverted indexes** (exact grant codes and names), and a **knowledge graph** (entity and relationship traversal) to help resolve cross-document dependencies.
+- **Continuous Conversational Context**: Couples an **in-memory cache** with **session memory** to maintain multi-turn dialogue context across interactions.
+- **Grounding Verification & Retry**: Evaluates generated text against retrieved evidence. When statements lack sufficient supporting context, the system can reformulate search parameters and trigger a targeted re-retrieval pass before abstaining.
+- **Page-Level Citation Provenance**: Generated statements are linked to source document names, page coordinates, and paragraph references to support manual verification and transparent auditability.
 
 ---
 
@@ -69,7 +69,7 @@ flowchart TD
 
     %% 7. Final Response Outcomes (Positioned at Bottom)
     FinalAnswer(["💬 Natural Language Answer with Citations [1], [2]"]):::resultNode
-    SafeAbstain(["⚠️ Controlled Safe Abstention<br/>(Refusal to Hallucinate)"]):::abstainNode
+    SafeAbstain(["⚠️ Controlled Safe Abstention<br/>(Insufficient Evidence)"]):::abstainNode
 
     %% Edge Connections - Document Flow
     UploadDocs --> DocParser
@@ -121,21 +121,21 @@ flowchart TD
 | **2. Retrieval** | **Tri-Substrate Knowledge Base** | Concurrent search across **Dense Vectors** (semantic match), **Lexical Index** (exact IDs/codes), and **Knowledge Graph** (entity paths). |
 | **3. Memory** | **Dual-Tier Context Layer** | Couples **Sub-Millisecond Cache** (fast query reuse) with **Long-Term Session Memory** (multi-turn thread tracking). |
 | **4. Fusion** | **RRF & Cross-Attention Re-Ranker** | Combines multi-substrate candidate ranks via Reciprocal Rank Fusion, then re-scores with deep cross-attention. |
-| **5. Synthesis** | **Generative LLM Reasoning Core** | Performs multi-hop logical deduction, synthesizing draft responses strictly bounded by retrieved evidence. |
-| **6. Quality Gate** | **Entailment Audit & Retry Loop** | Verifies claims with sentence-level neural entailment. Triggers automated query reformulation (up to 2 retries) if unverified. |
-| **7. Final Outcomes** | **Grounded Answers & Safe Refusal** | Emits natural language answers with exact page citations (`[1]`, `[2]`), or executes a controlled safe abstention on insufficient data. |
+| **5. Synthesis** | **Generative LLM Reasoning Core** | Performs multi-hop logical deduction, synthesizing draft responses grounded in retrieved context. |
+| **6. Quality Gate** | **Grounding Check & Retry Loop** | Checks claims against retrieved context; can trigger automated query reformulation (up to 2 retries) when evidence is insufficient. |
+| **7. Final Outcomes** | **Grounded Answers & Safe Refusal** | Emits natural language answers with page citations (`[1]`, `[2]`), or returns a safe refusal message when sufficient evidence cannot be retrieved. |
 
 ---
 
 ## 🔀 Repository Branch Architecture
 
-The repository [`semanticClimate/RAISE`](https://github.com/semanticClimate/RAISE) is organized into dedicated branches to decouple user-facing presentation, reasoning engines, and orchestration. Click on any branch to navigate directly to it:
+The repository [`semanticClimate/RAISE`](https://github.com/semanticClimate/RAISE) is organized into dedicated branches to decouple user-facing presentation, reasoning engines, and orchestration:
 
-| Branch | Direct Branch Link | Responsibilities & Scope |
+| Branch / Location | Direct Link | Architecture & Scope |
 | :--- | :--- | :--- |
-| **`main`** | [🌿 **Open `main` Branch**](https://github.com/semanticClimate/RAISE/tree/main) | • System entrypoint, master documentation & architecture<br/>• Full-stack orchestration configs & unified setup |
-| **`frontend`** | [🌿 **Open `frontend` Branch**](https://github.com/semanticClimate/RAISE/tree/frontend) | • React 19 + TypeScript + Vite web interface<br/>• Interactive knowledge graph visualizer (2D/3D)<br/>• Real-time streaming chat & citation inspector<br/>• Document library management & upload components |
-| **`backend`** | [🌿 **Open `backend` Branch**](https://github.com/semanticClimate/RAISE/tree/backend) | • Python FastAPI REST and SSE streaming server<br/>• 16-node cyclical LangGraph state machine<br/>• Rust CPU acceleration engine for fast chunking<br/>• Connectors for Knowledge Graph, Vector & Cache |
+| **`main` (Monorepo)** | [🌿 **Open `main` Branch**](https://github.com/semanticClimate/RAISE/tree/main) | • Unified full-stack monorepo containing `frontend/` and `backend/` subdirectories<br/>• System entrypoint, master documentation & architecture |
+| **`frontend` (Standalone)** | [🌿 **Open `frontend` Branch**](https://github.com/semanticClimate/RAISE/tree/frontend) | • Standalone React 19 + TypeScript + Vite workstation at root level<br/>• Single-click runners (`START_RAISE_FRONTEND.*`) with auto-download |
+| **`backend` (Standalone)** | [🌿 **Open `backend` Branch**](https://github.com/semanticClimate/RAISE/tree/backend) | • Standalone Python FastAPI REST and SSE streaming server at root level<br/>• 15-node cyclical LangGraph state machine & multi-substrate engines |
 
 > 📘 Detailed setup guides, dependency manifests, and component architectures for individual subsystems are maintained directly inside their respective [**`frontend` branch README**](https://github.com/semanticClimate/RAISE/tree/frontend) and [**`backend` branch README**](https://github.com/semanticClimate/RAISE/tree/backend).
 
@@ -191,7 +191,7 @@ The complete platform operates in a **Unified Single-Port Mode**:
 
 ## 🔬 Retrieval & Reasoning Pipeline Flow
 
-When an institutional researcher submits a query, RAISE executes a deterministic multi-stage workflow:
+When an institutional researcher submits a query, RAISE executes a structured multi-stage workflow:
 
 1. **Intake & Intent Decomposition**: Evaluates query complexity and determines whether single-hop lexical search or multi-hop graph traversal is required.
 2. **Scatter-Gather Parallel Retrieval**: Simultaneously queries:
@@ -200,17 +200,17 @@ When an institutional researcher submits a query, RAISE executes a deterministic
    - Property graph edges for interconnected institutional entities.
 3. **Reciprocal Rank Fusion**: Normalizes scores across all retrieval modes to generate a balanced candidate set.
 4. **Cross-Attention Re-Ranking**: Ranks candidate passages with deep cross-encoder scoring, prioritizing high-density tabular and structural evidence.
-5. **Generative Synthesis**: Formulates a reasoned response adhering strictly to the bounded retrieved evidence.
-6. **Entailment Quality Gate**: Conducts sentence-by-sentence premise verification and mathematical consistency checks.
+5. **Generative Synthesis**: Formulates a reasoned response grounded in the retrieved context and citation sources.
+6. **Entailment Quality Gate**: Evaluates generated text against retrieved evidence to verify consistency before final output.
 7. **Provenance Attribution**: Returns the final answer with clickable, verifiable citations linked to exact document pages.
 
 ---
 
 ## 🛡️ Security & Privacy Guardrails
 
-- **Zero Data Leakage**: Compatible with fully local inference engines and on-premise database instances, ensuring sensitive institutional documents never leave the local environment.
-- **Strict AST & Cypher Injection Shield**: Sanitizes and validates all incoming graph queries against abstract syntax trees to prevent unauthorized database modifications.
-- **Secure Reverse Proxy Compatibility**: Supports outbound tunnels and reverse proxies for secure web access without exposing open internal ports.
+- **Local & Private Deployment**: Compatible with local inference engines and on-premise database instances so institutional documents remain within your local infrastructure.
+- **Query Validation & Sanitization**: Validates graph queries against syntax trees to guard against malformed or unauthorized database operations.
+- **Reverse Proxy Compatibility**: Supports outbound tunnels and standard reverse proxies for controlled web access without opening unnecessary external ports.
 
 ---
 

@@ -1,0 +1,40 @@
+{
+  "name": "raise-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --open",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "analyze": "ANALYZE=true vite build"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.104.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.48.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@total-typescript/ts-reset": "^0.6.1",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "rollup-plugin-visualizer": "^7.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": true
+  }
+}
