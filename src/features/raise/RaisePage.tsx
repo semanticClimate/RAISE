@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStoredUsername, setStoredApiKey, setStoredUsername } from '../../app/config';
 import { AnswerMarkdown } from '../../components/chat/AnswerMarkdown';
 import {
@@ -12,8 +12,6 @@ import {
   QueryLifecycleTracker,
   ThoughtDuration,
 } from '../../components/chat/QueryLifecycleTracker';
-import { InlinePdfViewer } from '../../components/citations/InlinePdfViewer';
-import { LibraryPickerModal } from '../../components/library/LibraryPickerModal';
 import type { LibraryItem } from '../../components/settings/SettingsLibraryTab';
 import { applyStoredTunerConfigToDom } from '../../components/ui/GridGradientTuner';
 import { Modal } from '../../components/ui/Modal';
@@ -29,20 +27,31 @@ import { ensureMinimumDuration } from '../../utils/async';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
 import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { formatBytes } from '../../utils/formatters';
-import { isLegacyMockSession } from '../../utils/legacyMockCleanser';
+import { isLegacySession } from '../../utils/storageCleaner';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
 import { terminalLogger } from '../../utils/terminalLogger';
 import { formatSessionDate, generateUUID, truncateSessionTitle } from '../../utils/uuid';
-import { ControlCenterModal } from '../control-center/ControlCenterModal';
 import { useControlCenterStore } from '../control-center/store/useControlCenterStore';
 import { Header as MainHeader, UnconfiguredNotice } from '../header';
-import {
-  SettingsModal as MainSettingsModal,
-  settingsJunction,
-  useSettingsJunction,
-} from '../settings';
-import { SearchModal as MainSearchModal, Sidebar as MainSidebar } from '../sidebar';
+import { settingsJunction, useSettingsJunction } from '../settings/junction';
+import { Sidebar as MainSidebar } from '../sidebar/Sidebar';
 import { ActionTooltip } from './components/ActionTooltip';
+
+const InlinePdfViewer = lazy(() =>
+  import('../../components/citations/InlinePdfViewer').then((m) => ({ default: m.InlinePdfViewer }))
+);
+const LibraryPickerModal = lazy(() =>
+  import('../../components/library/LibraryPickerModal').then((m) => ({ default: m.LibraryPickerModal }))
+);
+const ControlCenterModal = lazy(() =>
+  import('../control-center/ControlCenterModal').then((m) => ({ default: m.ControlCenterModal }))
+);
+const MainSettingsModal = lazy(() =>
+  import('../settings/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
+const MainSearchModal = lazy(() =>
+  import('../sidebar/search/SearchModal').then((m) => ({ default: m.SearchModal }))
+);
 import { SourcesDrawer } from './components/SourcesDrawer';
 import { SuggestionBubbles } from './components/SuggestionBubbles';
 import { QueryBox } from './query-box';
@@ -134,6 +143,7 @@ export const RaisePage: React.FC = () => {
       else closeSettingsJunction();
     }
   };
+  const isControlCenterOpen = useControlCenterStore((s) => s.isOpen);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -404,7 +414,7 @@ export const RaisePage: React.FC = () => {
       if (cached) {
         const parsed = JSON.parse(cached) as ChatSession[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned = parsed.filter((s) => !isLegacyMockSession(s));
+          const cleaned = parsed.filter((s) => !isLegacySession(s));
           if (cleaned.length !== parsed.length) {
             try {
               localStorage.setItem('raise_recent_sessions_v2', JSON.stringify(cleaned));
@@ -520,7 +530,7 @@ export const RaisePage: React.FC = () => {
               }
 
               for (const local of prevLocal) {
-                if (!remoteMap.has(local.id) && !isLegacyMockSession(local)) {
+                if (!remoteMap.has(local.id) && !isLegacySession(local)) {
                   merged.push(local);
                 }
               }
@@ -1021,6 +1031,7 @@ export const RaisePage: React.FC = () => {
   const isUserAbortingRef = useRef<boolean>(false);
   const isUnmountedRef = useRef<boolean>(false);
   const latestStreamedTextRef = useRef<string>('');
+  const activeRequestIdRef = useRef<string | null>(null);
 
   // Clean unmount cancellation without showing error UI
   useEffect(() => {
@@ -1250,7 +1261,18 @@ export const RaisePage: React.FC = () => {
     isUserAbortingRef.current = true;
     terminalLogger.info('Query execution stopped by user.', {
       session_id: currentSessionId,
+      request_id: activeRequestIdRef.current,
     });
+    if (currentSessionId) {
+      chatService
+        .abortChat?.({
+          session_id: currentSessionId,
+          request_id: activeRequestIdRef.current || undefined,
+        })
+        ?.catch((err) => {
+          terminalLogger.error('Backend abort notification failed:', err);
+        });
+    }
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -1886,13 +1908,19 @@ export const RaisePage: React.FC = () => {
     chatService
       .getSessionDrawer?.(session.id)
       .then((res) => {
-        if (
+        const attachedNames =
           res?.data &&
-          Array.isArray(res.data.attached_docs) &&
-          res.data.attached_docs.length > 0
-        ) {
-          const attachedNames = res.data.attached_docs;
-          const enrichedDocs = Array.isArray(res.data.documents)
+          Array.isArray(res.data.drawer_documents) &&
+          res.data.drawer_documents.length > 0
+            ? res.data.drawer_documents
+            : res?.data &&
+              Array.isArray(res.data.attached_docs) &&
+              res.data.attached_docs.length > 0
+            ? res.data.attached_docs
+            : [];
+
+        if (attachedNames.length > 0) {
+          const enrichedDocs = Array.isArray(res?.data?.documents)
             ? res.data.documents
             : apiReadyDocs;
           const reconstructedSources: SourceDocument[] = attachedNames.map(
@@ -2191,10 +2219,13 @@ export const RaisePage: React.FC = () => {
     } = useFilterStore.getState();
     latestStreamedTextRef.current = '';
     isUserAbortingRef.current = false;
+    const reqId = generateUUID();
+    activeRequestIdRef.current = reqId;
 
     try {
       const queryTask = chatService.querySubgraph(
         {
+          request_id: reqId,
           query: q,
           hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
           top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
@@ -2375,6 +2406,7 @@ export const RaisePage: React.FC = () => {
       setIsLoading(false);
       setActiveExecutingQuery('');
       abortControllerRef.current = null;
+      activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
     }
@@ -2490,10 +2522,13 @@ export const RaisePage: React.FC = () => {
     } = useFilterStore.getState();
     latestStreamedTextRef.current = '';
     isUserAbortingRef.current = false;
+    const reqId = generateUUID();
+    activeRequestIdRef.current = reqId;
 
     try {
       const queryTask = chatService.querySubgraph(
         {
+          request_id: reqId,
           query: trimmed,
           hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
           top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
@@ -2702,6 +2737,7 @@ export const RaisePage: React.FC = () => {
       setRegeneratingIndex(null);
       setActiveExecutingQuery('');
       abortControllerRef.current = null;
+      activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
     }
@@ -2817,10 +2853,13 @@ export const RaisePage: React.FC = () => {
     } = useFilterStore.getState();
     latestStreamedTextRef.current = '';
     isUserAbortingRef.current = false;
+    const reqId = generateUUID();
+    activeRequestIdRef.current = reqId;
 
     try {
       const queryTask = chatService.querySubgraph(
         {
+          request_id: reqId,
           query: activeQuestion,
           hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
           top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
@@ -3034,6 +3073,7 @@ export const RaisePage: React.FC = () => {
       setRegeneratingIndex(null);
       setActiveExecutingQuery('');
       abortControllerRef.current = null;
+      activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
     }
@@ -3716,11 +3756,35 @@ export const RaisePage: React.FC = () => {
                   }
 
                   const executionTimeSec =
-                    activeResp?.durationSec ??
-                    msg.durationSec ??
-                    (typeof msg.response?.latency_sec === 'number'
+                    (typeof activeResp?.durationSec === 'number' && activeResp.durationSec > 0
+                      ? parseFloat(activeResp.durationSec.toFixed(1))
+                      : null) ??
+                    (typeof msg.durationSec === 'number' && msg.durationSec > 0
+                      ? parseFloat(msg.durationSec.toFixed(1))
+                      : null) ??
+                    (typeof activeResp?.response?.latency_sec === 'number' &&
+                    activeResp.response.latency_sec > 0
+                      ? parseFloat(activeResp.response.latency_sec.toFixed(1))
+                      : null) ??
+                    (typeof msg.response?.latency_sec === 'number' && msg.response.latency_sec > 0
                       ? parseFloat(msg.response.latency_sec.toFixed(1))
-                      : 2.1);
+                      : null) ??
+                    (typeof (activeResp?.response as any)?.execution_time === 'number' &&
+                    (activeResp?.response as any).execution_time > 0
+                      ? parseFloat((activeResp?.response as any).execution_time.toFixed(1))
+                      : null) ??
+                    (typeof (msg.response as any)?.execution_time === 'number' &&
+                    (msg.response as any).execution_time > 0
+                      ? parseFloat((msg.response as any).execution_time.toFixed(1))
+                      : null) ??
+                    (typeof (activeResp?.response as any)?.elapsed_ms === 'number' &&
+                    (activeResp?.response as any).elapsed_ms > 0
+                      ? parseFloat(((activeResp?.response as any).elapsed_ms / 1000).toFixed(1))
+                      : null) ??
+                    (typeof (msg.response as any)?.elapsed_ms === 'number' &&
+                    (msg.response as any).elapsed_ms > 0
+                      ? parseFloat(((msg.response as any).elapsed_ms / 1000).toFixed(1))
+                      : null);
 
                   return (
                     <div
@@ -3748,7 +3812,9 @@ export const RaisePage: React.FC = () => {
                       ) : (
                         !msg.error &&
                         !isStopped &&
-                        appMode === 'connected' && (
+                        appMode === 'connected' &&
+                        executionTimeSec !== null &&
+                        executionTimeSec > 0 && (
                           <ThoughtDuration executionTimeSec={executionTimeSec} />
                         )
                       )}
@@ -4291,26 +4357,34 @@ export const RaisePage: React.FC = () => {
       {/* ══════════════════════════════════════════════════════════════════════
           SETTINGS POPUP MODAL & GRID TUNER (MODULAR FEATURE VIA SETTINGS JUNCTION)
           ══════════════════════════════════════════════════════════════════════ */}
-      <MainSettingsModal
-        theme={theme}
-        setTheme={setTheme}
-        onSelectLibraryDocument={handleSelectLibraryDocument}
-        onDeleteSourceDoc={handleDeleteSourceDoc}
-        sessions={sessions}
-        onSessionsChange={setSessions}
-        onDeleteAllChats={handleDeleteAllChats}
-        selectedVoiceName={selectedVoiceName}
-        setSelectedVoiceName={setSelectedVoiceName}
-        availableVoices={availableVoices}
-        isPlayingSample={isVoiceSamplePlaying}
-        onPlaySample={handleTestVoiceSample}
-      />
+      {isSettingsOpen && (
+        <Suspense fallback={null}>
+          <MainSettingsModal
+            theme={theme}
+            setTheme={setTheme}
+            onSelectLibraryDocument={handleSelectLibraryDocument}
+            onDeleteSourceDoc={handleDeleteSourceDoc}
+            sessions={sessions}
+            onSessionsChange={setSessions}
+            onDeleteAllChats={handleDeleteAllChats}
+            selectedVoiceName={selectedVoiceName}
+            setSelectedVoiceName={setSelectedVoiceName}
+            availableVoices={availableVoices}
+            isPlayingSample={isVoiceSamplePlaying}
+            onPlaySample={handleTestVoiceSample}
+          />
+        </Suspense>
+      )}
 
       {/* Universal Mission Control Center Modal (Tauri 2.0 Rust / Cloud / Local) */}
-      <ControlCenterModal />
+      {isControlCenterOpen && (
+        <Suspense fallback={null}>
+          <ControlCenterModal />
+        </Suspense>
+      )}
 
       {/* Global PDF Document Modal */}
-      {selectedCitation && (
+      {selectedCitation && activeModal === 'pdf' && (
         <Modal
           isOpen={activeModal === 'pdf'}
           onClose={() => closeModal()}
@@ -4323,44 +4397,54 @@ export const RaisePage: React.FC = () => {
           maxWidth="full"
         >
           <div className="h-[75vh]">
-            <InlinePdfViewer citation={selectedCitation} />
+            <Suspense fallback={<div className="h-full flex items-center justify-center text-slate-400">Loading document viewer...</div>}>
+              <InlinePdfViewer citation={selectedCitation} />
+            </Suspense>
           </div>
         </Modal>
       )}
 
       {/* Search Chats Modal (Modular feature) */}
-      <MainSearchModal
-        isOpen={isSearchModalOpen}
-        onClose={() => {
-          setIsSearchModalOpen(false);
-          setActiveSessionMenuId(null);
-        }}
-        sessions={sortedSessions}
-        currentSessionId={currentSessionId}
-        pinnedSessionIds={pinnedSessionIds}
-        sourceDocs={sourceDocs}
-        activeSessionMenuId={activeSessionMenuId}
-        setActiveSessionMenuId={setActiveSessionMenuId}
-        renamingSessionId={renamingSessionId}
-        setRenamingSessionId={setRenamingSessionId}
-        newSessionTitle={newSessionTitle}
-        setNewSessionTitle={setNewSessionTitle}
-        handleSaveRename={handleSaveRename}
-        handleTogglePinSession={handleTogglePinSession}
-        handleDeleteSession={handleDeleteSession}
-        onSelectSession={handleSelectSession}
-        onNewChat={handleNewChat}
-      />
+      {isSearchModalOpen && (
+        <Suspense fallback={null}>
+          <MainSearchModal
+            isOpen={isSearchModalOpen}
+            onClose={() => {
+              setIsSearchModalOpen(false);
+              setActiveSessionMenuId(null);
+            }}
+            sessions={sortedSessions}
+            currentSessionId={currentSessionId}
+            pinnedSessionIds={pinnedSessionIds}
+            sourceDocs={sourceDocs}
+            activeSessionMenuId={activeSessionMenuId}
+            setActiveSessionMenuId={setActiveSessionMenuId}
+            renamingSessionId={renamingSessionId}
+            setRenamingSessionId={setRenamingSessionId}
+            newSessionTitle={newSessionTitle}
+            setNewSessionTitle={setNewSessionTitle}
+            handleSaveRename={handleSaveRename}
+            handleTogglePinSession={handleTogglePinSession}
+            handleDeleteSession={handleDeleteSession}
+            onSelectSession={handleSelectSession}
+            onNewChat={handleNewChat}
+          />
+        </Suspense>
+      )}
 
       {/* ─── KNOWLEDGE BASE LIBRARY PICKER MODAL (INSTANT GRAPHRAG PRE-INDEXED DOCS) ─── */}
-      <LibraryPickerModal
-        isOpen={isLibraryPickerOpen}
-        onClose={() => setIsLibraryPickerOpen(false)}
-        onSelectDocument={handleSelectLibraryDocument}
-        attachedDocNames={sourceDocs.filter((d) => d.selected).map((d) => d.name)}
-        onOpenUploadFromPC={() => fileInputRef.current?.click()}
-        onViewPdf={handleOpenPdfViewer}
-      />
+      {isLibraryPickerOpen && (
+        <Suspense fallback={null}>
+          <LibraryPickerModal
+            isOpen={isLibraryPickerOpen}
+            onClose={() => setIsLibraryPickerOpen(false)}
+            onSelectDocument={handleSelectLibraryDocument}
+            attachedDocNames={sourceDocs.filter((d) => d.selected).map((d) => d.name)}
+            onOpenUploadFromPC={() => fileInputRef.current?.click()}
+            onViewPdf={handleOpenPdfViewer}
+          />
+        </Suspense>
+      )}
 
       {/* ─── LITTLE ERROR POPUP TOAST (THEME AWARE & RESPONSIVE POSITIONING) ─── */}
       {errorPopup && (

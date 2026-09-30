@@ -1,5 +1,7 @@
 import type React from 'react';
+import { useState } from 'react';
 import { settingsJunction } from '../settings/junction';
+import { useBackendConnection } from '../../hooks/useBackendConnection';
 
 export interface UnconfiguredNoticeProps {
   isTunnelConfigured: boolean;
@@ -10,6 +12,9 @@ export const UnconfiguredNotice: React.FC<UnconfiguredNoticeProps> = ({
   isTunnelConfigured,
   onOpenSettings,
 }) => {
+  const { connect, scanLocalPorts, isConnecting } = useBackendConnection();
+  const [localNotice, setLocalNotice] = useState<string | null>(null);
+
   if (isTunnelConfigured) return null;
 
   const handleClick = () => {
@@ -17,6 +22,18 @@ export const UnconfiguredNotice: React.FC<UnconfiguredNoticeProps> = ({
       onOpenSettings();
     } else {
       settingsJunction.open('gateway');
+    }
+  };
+
+  const handleQuickLocalConnect = async () => {
+    setLocalNotice('Probing localhost:8000...');
+    const res = await connect('http://localhost:8000');
+    if (!res.success) {
+      const found = await scanLocalPorts();
+      if (!found) {
+        setLocalNotice('No local backend found on :8000. Open Settings to paste tunnel URL.');
+        setTimeout(() => setLocalNotice(null), 4000);
+      }
     }
   };
 
@@ -28,16 +45,30 @@ export const UnconfiguredNotice: React.FC<UnconfiguredNoticeProps> = ({
       >
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
         <p className="leading-tight truncate sm:whitespace-normal">
-          Please go to{' '}
-          <button
-            type="button"
-            aria-label="Open Settings"
-            onClick={handleClick}
-            className="font-semibold underline hover:text-amber-950 dark:hover:text-white cursor-pointer"
-          >
-            Settings
-          </button>{' '}
-          and paste your Pipeline Tunneling URL to connect.
+          {localNotice ? (
+            <span>{localNotice}</span>
+          ) : (
+            <>
+              Please go to{' '}
+              <button
+                type="button"
+                aria-label="Open Settings"
+                onClick={handleClick}
+                className="font-semibold underline hover:text-amber-950 dark:hover:text-white cursor-pointer"
+              >
+                Settings
+              </button>{' '}
+              and paste your Pipeline Tunneling URL to connect, or{' '}
+              <button
+                type="button"
+                onClick={handleQuickLocalConnect}
+                disabled={isConnecting}
+                className="font-semibold underline text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-white cursor-pointer ml-0.5"
+              >
+                {isConnecting ? 'Connecting...' : 'Connect Local (:8000)'}
+              </button>
+            </>
+          )}
         </p>
       </div>
     </div>

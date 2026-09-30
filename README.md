@@ -44,7 +44,7 @@ flowchart TD
     subgraph FinalOutcomes ["🎯 Verification Outcomes"]
         direction LR
         FinalAnswer(["💬 Natural Language Answer\nwith Citations [1], [2]"]):::resultNode
-        SafeAbstain(["⚠️ Controlled Safe Abstention\n(Refusal to Hallucinate)"]):::abstainNode
+        SafeAbstain(["⚠️ Controlled Safe Abstention\n(Insufficient Evidence)"]):::abstainNode
     end
 
     %% 7. Balanced Presentation Panels
@@ -128,41 +128,54 @@ Here is how each component of the interface functions:
   - **PDF Page Inspector**: Resolves inline citation badges (`[1]`, `[2]`) to exact bounding coordinates on document pages.
   - **Institutional Exporter**: Formats verified findings into ISO A4 PDF, Word (`.docx`), and Markdown reports with full provenance tables.
   - **Feedback & Branching**: Instant evaluation (`👍 / 👎`) and prior-turn query branching for iterative research exploration.
-  - **Zero-Hallucination Safe Abstention**: Explicit notification when evidence is absent from indexed sources without speculative answers.
+  - **Safe Abstention on Missing Evidence**: Explicit notification when evidence is absent from indexed sources without speculative answers.
+
+---
+
+## 📌 Important: Understanding Branches vs Folders
+
+To avoid confusion between repository branches and directories:
+
+* 🌿 **`frontend` (Standalone Git Branch)**:
+  This branch contains the standalone React 19 workstation at the **root level** (with `src/`, `public/`, `package.json`, and one-click startup scripts `START_RAISE_FRONTEND.*`).
+* 📁 **`frontend/` (Subfolder on `main` Branch)**:
+  The `main` branch is the monorepo that packages `frontend/` and `backend/` side-by-side, coordinated by root full-pipeline scripts (`START_RAISE.*`).
+* 🌿 **`backend` (Standalone Git Branch)**:
+  The Python FastAPI and GraphRAG pipeline live in their own standalone branch.
 
 ---
 
 ## 3. How to Run the Application
 
 ### Step 0: Get the Code
-Before launching, download or clone the repository to your local machine:
-- **Option A (Clone via Git)**:
+Choose how you would like to obtain the frontend:
+
+- **Option A (Direct ZIP Download — Recommended)**:
+  Click [📥 **Download frontend.zip**](https://github.com/semanticClimate/RAISE/archive/refs/heads/frontend.zip) to download this branch directly. Extract the `.zip` file on your computer and open the folder.
+
+- **Option B (Clone via Git)**:
   ```bash
   git clone -b frontend https://github.com/semanticClimate/RAISE.git
   cd RAISE
   ```
-- **Option B (Download ZIP)**:
-  1. Click the green **Code** button at the top of the repository on GitHub.
-  2. Select **Download ZIP**.
-  3. Extract the downloaded `.zip` file on your computer and open the folder.
 
 ---
 
 There are two ways to start the RAISE frontend interface:
-1. **One-Click Portable Launch** (Zero configuration — no manual commands needed)
+1. **One-Click Portable Launch** (Zero configuration — automatic background setup)
 2. **Standard Developer Setup** (Using Node.js and NPM)
 
 ---
 
 ### Method 1: One-Click Portable Launch (Zero Configuration)
 
-Double-click the startup file matching your operating system:
+Run or download the single startup script for your operating system. If run inside the repository, it launches immediately; if run on its own, it automatically downloads the workspace and dependencies in the background:
 
-| Operating System | File to Run | How to Launch | What the Script Automatically Does |
+| Operating System | Startup Script (Click to Download) | How to Launch | What the Script Automatically Does |
 | :--- | :--- | :--- | :--- |
-| **Windows** | `START_RAISE_FRONTEND.bat` | Double-click the file in Windows Explorer. | Checks for Node.js. If missing, automatically downloads a portable standalone copy into `.node/`, installs required dependencies, and opens your default browser at `http://localhost:5173`. |
-| **macOS (Finder)** | `START_RAISE_FRONTEND.command` | Double-click the file in macOS Finder. *(If prompted about permissions, right-click and select "Open")*. | Automatically detects Apple Silicon (M-series) or Intel architecture, verifies/downloads portable tools if needed, launches the local server, and opens your browser. |
-| **Linux / Unix** | `START_RAISE_FRONTEND.sh` | Run `chmod +x START_RAISE_FRONTEND.sh && ./START_RAISE_FRONTEND.sh` in terminal. | Detects Linux distribution architecture (`x86_64` or `arm64`), downloads portable runtime if missing, and boots the development server cleanly. |
+| **Windows** | [**`START_RAISE_FRONTEND.bat`**](https://raw.githubusercontent.com/semanticClimate/RAISE/frontend/START_RAISE_FRONTEND.bat) | Double-click the file in Windows Explorer. | Checks workspace files, verifies Node.js (or downloads portable LTS into `.node/` if missing), installs dependencies if needed, and launches the browser at `http://localhost:5173`. |
+| **macOS (Finder)** | [**`START_RAISE_FRONTEND.command`**](https://raw.githubusercontent.com/semanticClimate/RAISE/frontend/START_RAISE_FRONTEND.command) | Double-click the file in macOS Finder. *(If prompted, right-click and select "Open")*. | Automatically detects Apple Silicon or Intel architecture, verifies workspace files, configures tools in the background, and opens your browser. |
+| **Linux / Unix** | [**`START_RAISE_FRONTEND.sh`**](https://raw.githubusercontent.com/semanticClimate/RAISE/frontend/START_RAISE_FRONTEND.sh) | Run `chmod +x START_RAISE_FRONTEND.sh && ./START_RAISE_FRONTEND.sh` in terminal. | Detects Linux distribution architecture (`x86_64` or `arm64`), checks files, sets up runtime in the background, and boots the development server cleanly. |
 
 ---
 
@@ -179,7 +192,7 @@ npm -v
 *(If you need to install Node.js, download the official LTS installer from [https://nodejs.org/](https://nodejs.org/)).*
 
 #### 2. Install Project Dependencies
-Open your terminal in the `Frontend/` folder and run:
+Open your terminal in the `frontend/` folder and run:
 ```bash
 npm install
 ```

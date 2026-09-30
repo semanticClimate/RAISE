@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { detectProviderFromKey } from '../services/keyDetector';
+import { detectEnvCredentials } from '../services/envDetector';
 import type {
   CloudApiKeyEntry,
   ControlCenterConfig,
@@ -37,6 +38,8 @@ interface ControlCenterState {
     type: 'knowledgeGraph' | 'sessionMemory' | 'cacheAndSignals',
     patch: Partial<SubstrateConfig>
   ) => void;
+  syncEnvCredentials: () => void;
+  setAllSubstratesMode: (mode: 'in_memory_fallback' | 'cloud' | 'local') => void;
 }
 
 const detectDefaultPlatform = (): TargetPlatform => {
@@ -266,6 +269,131 @@ export const useControlCenterStore = create<ControlCenterState>()(
             updatedConfig.redisMode = patch.mode;
           }
           return { config: updatedConfig };
+        });
+      },
+
+      syncEnvCredentials: () => {
+        const envData = detectEnvCredentials();
+        set((s) => {
+          let updatedApiKeys = [...(s.config?.apiKeys || [])];
+          if (envData.llmKeys.length > 0) {
+            for (const envKey of envData.llmKeys) {
+              const existingIdx = updatedApiKeys.findIndex(
+                (k) => k.key === envKey.key || (k.provider === envKey.provider && k.fromEnv)
+              );
+              if (existingIdx >= 0) {
+                updatedApiKeys[existingIdx] = {
+                  ...updatedApiKeys[existingIdx],
+                  key: envKey.key,
+                  provider: envKey.provider,
+                  providerName: envKey.providerName,
+                  fromEnv: true,
+                  envVarName: envKey.sourceEnvVar,
+                };
+              } else {
+                if (updatedApiKeys.length === 1 && !updatedApiKeys[0].key.trim()) {
+                  updatedApiKeys = [
+                    {
+                      id: envKey.id,
+                      key: envKey.key,
+                      provider: envKey.provider,
+                      providerName: envKey.providerName,
+                      verified: null,
+                      fromEnv: true,
+                      envVarName: envKey.sourceEnvVar,
+                    },
+                  ];
+                } else {
+                  updatedApiKeys.push({
+                    id: envKey.id,
+                    key: envKey.key,
+                    provider: envKey.provider,
+                    providerName: envKey.providerName,
+                    verified: null,
+                    fromEnv: true,
+                    envVarName: envKey.sourceEnvVar,
+                  });
+                }
+              }
+            }
+          }
+
+          // If no keys detected and current keys are empty, ensure clean empty single row
+          if (updatedApiKeys.length === 0) {
+            updatedApiKeys = [
+              {
+                id: `key-${Date.now()}`,
+                key: '',
+                provider: 'unknown',
+                providerName: 'Unconfigured Key',
+                verified: null,
+              },
+            ];
+          }
+
+          return {
+            config: {
+              ...s.config,
+              apiKeys: updatedApiKeys,
+            },
+          };
+        });
+      },
+
+      setAllSubstratesMode: (mode) => {
+        const envData = detectEnvCredentials();
+        set((s) => {
+          const kg: SubstrateConfig = {
+            ...s.config.knowledgeGraph,
+            mode,
+            uri:
+              mode === 'cloud' && envData.neo4j.present
+                ? envData.neo4j.uri
+                : s.config.knowledgeGraph?.uri || '',
+            user:
+              mode === 'cloud' && envData.neo4j.present
+                ? envData.neo4j.user
+                : s.config.knowledgeGraph?.user || 'neo4j',
+            password:
+              mode === 'cloud' && envData.neo4j.present
+                ? envData.neo4j.password
+                : s.config.knowledgeGraph?.password || '',
+          };
+          const mem: SubstrateConfig = {
+            ...s.config.sessionMemory,
+            mode,
+            uri:
+              mode === 'cloud' && envData.postgres.present
+                ? envData.postgres.uri
+                : s.config.sessionMemory?.uri || '',
+            user:
+              mode === 'cloud' && envData.postgres.present
+                ? envData.postgres.user
+                : s.config.sessionMemory?.user || '',
+            password:
+              mode === 'cloud' && envData.postgres.present
+                ? envData.postgres.password
+                : s.config.sessionMemory?.password || '',
+          };
+          const cache: SubstrateConfig = {
+            ...s.config.cacheAndSignals,
+            mode,
+            uri:
+              mode === 'cloud' && envData.redis.present
+                ? envData.redis.uri
+                : s.config.cacheAndSignals?.uri || '',
+          };
+          return {
+            config: {
+              ...s.config,
+              knowledgeGraph: kg,
+              sessionMemory: mem,
+              cacheAndSignals: cache,
+              neo4jMode: mode,
+              postgresMode: mode,
+              redisMode: mode,
+            },
+          };
         });
       },
     }),

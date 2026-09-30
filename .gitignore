@@ -14,8 +14,8 @@ dist-ssr/
 # Environment & local files
 .env
 .env*.local
-!.env.example
 .env.*
+!.env.example
 
 # Logs
 npm-debug.log*
@@ -35,9 +35,22 @@ Thumbs.db
 # Vite Cache
 .vite/
 
-# Temporary / Scratch
+# Temporary / Scratch & Notes
 scratch/
 tmp/
+*.tmp
+*.temp
+*.txt
+*.log
+
+# Tests, Mocks & Test Fixtures (never pushed to deployment)
+__tests__/
+**/__tests__/
+*.test.*
+*.spec.*
+tests/
+mocks/
+fixtures/
 
 # Local development tooling & reference (ignored from git repository)
 .node/

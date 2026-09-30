@@ -136,7 +136,7 @@ export const QueryLifecycleTracker: React.FC<QueryLifecycleTrackerProps> = ({
  * - When >= 1s, outputs e.g. "1.8s"
  */
 export function formatThoughtDuration(durationSec: number): string {
-  if (typeof durationSec !== 'number' || isNaN(durationSec) || durationSec <= 0) {
+  if (typeof durationSec !== 'number' || Number.isNaN(durationSec) || durationSec <= 0) {
     return '0.0s';
   }
   if (durationSec < 1) {

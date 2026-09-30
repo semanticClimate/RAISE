@@ -39,6 +39,7 @@ export const QueryTraceViewer: React.FC<QueryTraceViewerProps> = ({ response }) 
         className="flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer select-none"
       >
         <svg
+          aria-hidden="true"
           className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-90 text-indigo-600 dark:text-indigo-400' : ''}`}
           viewBox="0 0 24 24"
           fill="none"
@@ -90,7 +91,7 @@ export const QueryTraceViewer: React.FC<QueryTraceViewerProps> = ({ response }) 
               <div className="space-y-1">
                 {decomposed_queries.map((subQ, idx) => (
                   <div
-                    key={idx}
+                    key={`decomp-${idx}-${subQ.slice(0, 16)}`}
                     className="p-1.5 rounded bg-white dark:bg-[#151928] border border-slate-200 dark:border-white/10 text-[11px] text-slate-800 dark:text-slate-200 flex items-start gap-2"
                   >
                     <span className="text-indigo-600 dark:text-indigo-400 font-mono text-[10px] mt-0.5">

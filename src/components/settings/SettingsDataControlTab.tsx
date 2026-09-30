@@ -1,7 +1,7 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import type { ChatSession } from '../../types';
-import { isLegacyMockSession } from '../../utils/legacyMockCleanser';
+import { isLegacySession } from '../../utils/storageCleaner';
 
 export interface SharedLinkItem {
   id: string;
@@ -64,7 +64,7 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const cleaned = (parsed as ChatSession[]).filter((s) => !isLegacyMockSession(s));
+          const cleaned = (parsed as ChatSession[]).filter((s) => !isLegacySession(s));
           if (cleaned.length !== parsed.length) {
             try {
               localStorage.setItem('raise_archived_sessions', JSON.stringify(cleaned));

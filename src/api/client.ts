@@ -10,6 +10,16 @@ export { sanitizeStreamText };
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number;
   skipModeCheck?: boolean; // Force real network call (used during capability probe)
+  onStageUpdate?: (stage: {
+    node?: string;
+    stage?: string;
+    status?: string;
+    step?: number;
+    total_steps?: number;
+    label?: string;
+    detail?: string;
+  }) => void;
+  onMetadata?: (metadata: Record<string, any>) => void;
 }
 
 export interface ApiResponse<T> {
@@ -323,6 +333,8 @@ class ApiClient {
       const isSse =
         contentType.includes('text/event-stream') || contentType.includes('application/x-ndjson');
 
+      let currentEvent = '';
+
       const processLine = (line: string) => {
         const trimmed = line.trim();
         // Ignore SSE comments/keepalives (e.g. ": keepalive")
@@ -330,8 +342,9 @@ class ApiClient {
           return;
         }
 
-        // Ignore SSE event declaration lines (e.g. "event: ping", "event: stage")
+        // Track SSE event declaration lines (e.g. "event: node_update", "event: stage", "event: citations")
         if (trimmed.startsWith('event:')) {
+          currentEvent = trimmed.slice(6).trim();
           return;
         }
 
@@ -344,20 +357,50 @@ class ApiClient {
         }
 
         if (!payload || payload.trim() === '[DONE]') {
+          currentEvent = '';
           return;
         }
 
         // Handle JSON payloads: {"token": "..."} or {"text": "..."} or {"content": "..."}
         const trimmedPayload = payload.trim();
-        if (trimmedPayload.startsWith('{') && trimmedPayload.endsWith('}')) {
+        if (
+          (trimmedPayload.startsWith('{') && trimmedPayload.endsWith('}')) ||
+          (trimmedPayload.startsWith('[') && trimmedPayload.endsWith(']'))
+        ) {
           try {
-            const parsed = JSON.parse(trimmedPayload) as Record<string, any>;
+            const parsed = JSON.parse(trimmedPayload) as any;
+
+            // 1. Check for stage/node progression events
+            if (
+              currentEvent === 'node_update' ||
+              currentEvent === 'stage' ||
+              Boolean(parsed.node) ||
+              Boolean(parsed.stage)
+            ) {
+              options.onStageUpdate?.(parsed);
+              return;
+            }
+
+            if (
+              currentEvent === 'citations' ||
+              (Array.isArray(parsed) && parsed.length > 0 && (parsed[0] as any)?.citation_index !== undefined)
+            ) {
+              streamMetadata = {
+                ...streamMetadata,
+                citations: parsed,
+              };
+              options.onMetadata?.({ citations: parsed });
+              return;
+            }
+
+            // 3. Check for token streaming payloads
             const token =
               parsed.token ??
               parsed.text ??
               parsed.content ??
               parsed.response ??
               parsed.delta?.content ??
+              parsed.delta ??
               parsed.reply ??
               null;
             if (typeof token === 'string') {
@@ -368,17 +411,19 @@ class ApiClient {
               return;
             }
 
-            // Capture completion metadata (citations, subgraph, sources, status, etc.)
+            // 4. Capture completion metadata (citations, subgraph, sources, status, etc.)
             if (
               parsed.citations ||
               parsed.subgraph ||
               parsed.status === 'completed' ||
-              parsed.sources
+              parsed.sources ||
+              parsed.verified_claims
             ) {
               streamMetadata = {
                 ...streamMetadata,
                 ...parsed,
               };
+              options.onMetadata?.(parsed);
               return;
             }
           } catch {

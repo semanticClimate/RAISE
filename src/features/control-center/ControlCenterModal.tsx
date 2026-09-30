@@ -32,6 +32,7 @@ export const ControlCenterModal: React.FC = () => {
   // Load live hardware telemetry on mount or open
   useEffect(() => {
     if (isOpen) {
+      useControlCenterStore.getState().syncEnvCredentials();
       platformAdapter.getHardware().then((hw) => {
         const detected = platformAdapter.normalizePlatform(
           hw.os_name ||

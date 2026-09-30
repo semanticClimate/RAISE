@@ -14,17 +14,29 @@ import type React from 'react';
 import { useEffect, useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
 import { platformAdapter } from '../services/platformAdapter';
+import { detectEnvCredentials } from '../services/envDetector';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 import type { DynamicLLMModel } from '../types';
 
 export const EngineStep: React.FC = () => {
-  const { config, updateConfig, addApiKey, updateApiKey, removeApiKey, setKeyVerification } =
+  const { config, updateConfig, addApiKey, updateApiKey, removeApiKey, setKeyVerification, syncEnvCredentials } =
     useControlCenterStore();
+  const envData = detectEnvCredentials();
 
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [focusedKeyId, setFocusedKeyId] = useState<string | null>(null);
   const [testingKeyId, setTestingKeyId] = useState<string | null>(null);
   const [dynamicModels, setDynamicModels] = useState<DynamicLLMModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+  const maskKey = (rawKey: string): string => {
+    if (!rawKey) return '';
+    const trimmed = rawKey.trim();
+    if (trimmed.length <= 8) return 'xxxxxxxxxxxxxxxx';
+    const prefix = trimmed.slice(0, 4);
+    const suffix = trimmed.slice(-4);
+    return `${prefix}xxxxxxxxxxxxxxxx${suffix}`;
+  };
 
   const isCloud = config.llmDeployment === 'cloud';
 
@@ -162,6 +174,26 @@ export const EngineStep: React.FC = () => {
       {/* CLOUD LLM VIEW */}
       {isCloud && (
         <div className="space-y-3.5">
+          {/* .env Detection Banner */}
+          {envData.llmKeys.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span>
+                  {envData.llmKeys.length} credentials loaded from <code className="font-mono text-[11px] bg-black/40 px-1 py-0.5 rounded">.env</code>: {envData.llmKeys.map((k) => k.providerName).join(', ')}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => syncEnvCredentials()}
+                className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Reload
+              </button>
+            </div>
+          )}
+
           <div className="text-xs">
             <span className="text-slate-300 font-medium">Configured API Keys:</span>
           </div>
@@ -171,6 +203,9 @@ export const EngineStep: React.FC = () => {
               const show = !!showKeys[item.id];
               const isTesting = testingKeyId === item.id;
               const hasKey = (item?.key || '').trim().length > 0;
+              const isFromEnv = !!item.fromEnv || envData.llmKeys.some((k) => k.key === item.key);
+              const isMasked = !show && focusedKeyId !== item.id && hasKey;
+              const displayValue = isMasked ? maskKey(item.key) : item.key;
 
               return (
                 <div
@@ -178,17 +213,23 @@ export const EngineStep: React.FC = () => {
                   className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-2"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-mono font-bold text-slate-400">
                         #{index + 1}
                       </span>
                       {hasKey ? (
                         <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-white/10 text-white border border-white/15">
-                          {item.providerName} detected
+                          {item.providerName}
                         </span>
                       ) : (
                         <span className="text-[10px] font-mono text-slate-500">
-                          Enter API key below to auto-detect provider
+                          API Key (manual entry)
+                        </span>
+                      )}
+                      {isFromEnv && (
+                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          From .env {item.envVarName ? `(${item.envVarName})` : ''}
                         </span>
                       )}
                     </div>
@@ -208,15 +249,23 @@ export const EngineStep: React.FC = () => {
                         </span>
                       )}
 
-                      {/* Delete button */}
-                      {(config.apiKeys || []).length > 1 && (
+                      {/* Delete / Clear button */}
+                      {((config.apiKeys || []).length > 1 || hasKey) && (
                         <button
                           type="button"
-                          onClick={() => removeApiKey(item.id)}
-                          className="text-slate-400 hover:text-rose-400 transition-colors p-1 cursor-pointer"
-                          title="Delete API Key"
+                          onClick={() => {
+                            removeApiKey(item.id);
+                            if (item.provider && item.provider !== 'unknown') {
+                              platformAdapter.saveConfig({
+                                [`${item.provider}_api_key`]: '',
+                              });
+                            }
+                          }}
+                          className="text-slate-400 hover:text-rose-400 transition-colors p-1 cursor-pointer flex items-center gap-1 text-[11px]"
+                          title="Delete / Clear API Key"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
+                          <span className="text-[10px] text-slate-500 hover:text-rose-400">Clear</span>
                         </button>
                       )}
                     </div>
@@ -226,9 +275,11 @@ export const EngineStep: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
                       <input
-                        type={show ? 'text' : 'password'}
-                        placeholder="Enter API key (gsk_..., AIzaSy..., nvapi-..., sk-...)"
-                        value={item.key}
+                        type="text"
+                        placeholder="Enter API key (e.g. gsk_..., AIzaSy..., nvapi-..., sk-...)"
+                        value={displayValue}
+                        onFocus={() => setFocusedKeyId(item.id)}
+                        onBlur={() => setFocusedKeyId(null)}
                         onChange={(e) => updateApiKey(item.id, e.target.value)}
                         className="w-full px-3 py-2 pr-9 rounded-lg bg-black/60 border border-white/15 text-white font-mono text-xs placeholder-slate-500 focus:outline-none focus:border-white transition-all"
                       />

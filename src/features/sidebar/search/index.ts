@@ -1,2 +1,2 @@
-export * from './SearchModal';
+export type { SearchModalProps } from './SearchModal';
 export * from './SidebarSearchButton';

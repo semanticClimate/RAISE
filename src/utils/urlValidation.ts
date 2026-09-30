@@ -59,9 +59,9 @@ export function validateTunnelUrl(rawUrl: string): UrlValidationResult {
   if (!isLocalDev && !trimmed.toLowerCase().startsWith('https://')) {
     let suggestedFix: string | undefined;
     if (trimmed.toLowerCase().startsWith('http://')) {
-      suggestedFix = 'https://' + trimmed.slice(7);
+      suggestedFix = `https://${trimmed.slice(7)}`;
     } else if (!trimmed.includes('://')) {
-      suggestedFix = 'https://' + trimmed;
+      suggestedFix = `https://${trimmed}`;
     }
 
     return {

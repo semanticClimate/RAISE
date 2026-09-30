@@ -49,7 +49,7 @@ export function formatSessionDate(dateVal?: string | number | Date): string {
   }
 
   const d = new Date(dateVal);
-  if (isNaN(d.getTime())) {
+  if (Number.isNaN(d.getTime())) {
     // If not a parseable date, return the string as-is
     return typeof dateVal === 'string' ? dateVal : 'Recent';
   }

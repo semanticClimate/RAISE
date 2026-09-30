@@ -48,6 +48,7 @@ export const ResponseStoppedBanner: React.FC<ResponseStoppedBannerProps> = ({
             aria-label="Retry response"
           >
             <svg
+              aria-hidden="true"
               className="w-3 h-3"
               viewBox="0 0 24 24"
               fill="none"
@@ -100,6 +101,7 @@ export const BackendErrorCard: React.FC<BackendErrorCardProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-6 h-6 rounded-lg bg-slate-200/80 dark:bg-white/10 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
               <svg
+                aria-hidden="true"
                 className="w-3.5 h-3.5"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -170,6 +172,7 @@ export const BackendErrorCard: React.FC<BackendErrorCardProps> = ({
               className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-lg transition-all cursor-pointer shadow-2xs"
             >
               <svg
+                aria-hidden="true"
                 className="w-3 h-3"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -212,6 +215,7 @@ export const BackendErrorCard: React.FC<BackendErrorCardProps> = ({
           <div className="w-6 h-6 rounded-lg bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
             {isTimeout ? (
               <svg
+                aria-hidden="true"
                 className="w-3.5 h-3.5"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -225,6 +229,7 @@ export const BackendErrorCard: React.FC<BackendErrorCardProps> = ({
               </svg>
             ) : (
               <svg
+                aria-hidden="true"
                 className="w-3.5 h-3.5"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -286,6 +291,7 @@ export const BackendErrorCard: React.FC<BackendErrorCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-rose-600 hover:bg-rose-500 active:scale-95 rounded-lg transition-all cursor-pointer shadow-2xs"
           >
             <svg
+              aria-hidden="true"
               className="w-3 h-3"
               viewBox="0 0 24 24"
               fill="none"

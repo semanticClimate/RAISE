@@ -1,11 +1,11 @@
 /**
- * Legacy Mock Session Cleanser
+ * Legacy Storage Session Cleanser
  *
- * Automatically detects and purges deprecated hardcoded mock chat sessions
- * (e.g., XYMA, Mindgrove, NeoMotion, IITMRP) from browser storage.
+ * Automatically detects and purges deprecated or corrupt chat sessions
+ * from browser localStorage on startup.
  */
 
-export function isLegacyMockSession(
+export function isLegacySession(
   session: { id?: string; title?: string } | null | undefined
 ): boolean {
   if (!session) return false;
@@ -27,7 +27,10 @@ export function isLegacyMockSession(
   );
 }
 
-export function cleanseLegacyMockStorage(): void {
+// Backward-compatible alias
+export const isLegacyMockSession = isLegacySession;
+
+export function cleanseLegacyStorage(): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
 
   try {
@@ -113,3 +116,5 @@ export function cleanseLegacyMockStorage(): void {
     // Graceful fallback if JSON parsing fails
   }
 }
+
+export const cleanseLegacyMockStorage = cleanseLegacyStorage;

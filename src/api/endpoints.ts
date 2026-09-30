@@ -7,6 +7,12 @@ export const ENDPOINTS = {
   SWAGGER: '/docs',
   REDOC: '/redoc',
 
+  // Authentication & Two-Step Security Handshake
+  AUTH_HANDSHAKE: '/api/v1/auth/handshake',
+  AUTH_HANDSHAKE_SESSION: '/session/handshake',
+  WS_TELEMETRY: '/ws/telemetry',
+  WS_TRAFFIC: '/ws/traffic',
+
   // Core Chat & Retrieval (Standard Cloudflare Tunnel & GraphRAG)
   CHAT: '/api/chat',
   CHAT_ABORT: '/api/chat/abort',

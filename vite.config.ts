@@ -22,9 +22,28 @@ export default defineConfig({
       '@': path.resolve(import.meta.dirname, './src'),
     },
   },
+  envDir: path.resolve(import.meta.dirname, '..'),
+  envPrefix: [
+    'VITE_',
+    'GEMINI_',
+    'GROQ_',
+    'DEEPSEEK_',
+    'NVIDIA_',
+    'COHERE_',
+    'OPENROUTER_',
+    'OPENAI_',
+    'ANTHROPIC_',
+    'MISTRAL_',
+    'POSTGRES_',
+    'REDIS_',
+    'NEO4J_',
+    'LLM_',
+    'CHROMA_',
+  ],
   base: './', // Ensures static deployment compatibility (e.g. GitHub Pages)
   server: {
     port: 5173,
+    strictPort: true,
     host: true,
     watch: {
       ignored: [
@@ -39,6 +58,31 @@ export default defineConfig({
         '**/sugestions by frontend/**',
       ],
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react-router-dom/')
+          ) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules/@tanstack/react-query/')) {
+            return 'vendor-query';
+          }
+          if (id.includes('node_modules/lucide-react/')) {
+            return 'vendor-icons';
+          }
+          if (id.includes('node_modules/zod/') || id.includes('node_modules/zustand/')) {
+            return 'vendor-utils';
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 650,
   },
 });
 

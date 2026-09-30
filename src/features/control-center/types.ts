@@ -13,6 +13,8 @@ export interface CloudApiKeyEntry {
   latencyMs?: number;
   isTesting?: boolean;
   error?: string;
+  fromEnv?: boolean;
+  envVarName?: string;
 }
 
 export interface SubstrateConfig {

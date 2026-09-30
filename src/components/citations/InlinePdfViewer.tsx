@@ -153,6 +153,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
               </p>
               <div className="flex justify-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setLoadError(false)}
                   className="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl transition-colors cursor-pointer"
                 >

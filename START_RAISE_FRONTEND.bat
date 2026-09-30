@@ -32,6 +32,65 @@ Write-Host "====================================================================
 Write-Host ""
 
 # ------------------------------------------------------------------------------
+# [0/3] Check if Frontend Source Code is Present; Auto-fetch if missing
+# ------------------------------------------------------------------------------
+if (Test-Path (Join-Path $root "package.json")) {
+    Write-Host "[0/3] Workspace verification: ready." -ForegroundColor Green
+    Write-Host ""
+} else {
+    Write-Host "[0/3] Initializing workspace: fetching frontend assets from repository..." -ForegroundColor Cyan
+    Write-Host ""
+    $zipUrl = "https://github.com/semanticClimate/RAISE/archive/refs/heads/frontend.zip"
+    $zipTemp = Join-Path $env:TEMP "RAISE-frontend-$([guid]::NewGuid().ToString('N')).zip"
+    $extTemp = Join-Path $env:TEMP "RAISE-frontend-ext-$([guid]::NewGuid().ToString('N'))"
+    
+    $downloaded = $false
+    try {
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            Write-Host "      [GIT] Cloning frontend branch from semanticClimate/RAISE..." -ForegroundColor Gray
+            $tempGit = Join-Path $root ".temp_git_frontend"
+            git clone --depth 1 -b frontend https://github.com/semanticClimate/RAISE.git $tempGit
+            if (Test-Path (Join-Path $tempGit "package.json")) {
+                Copy-Item -Path "$tempGit\*" -Destination $root -Recurse -Force
+                Remove-Item -Path $tempGit -Recurse -Force -ErrorAction SilentlyContinue
+                $downloaded = $true
+            }
+        }
+    } catch {}
+
+    if (-not $downloaded) {
+        try {
+            Write-Host "      [WEB] Downloading frontend branch archive..." -ForegroundColor Gray
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $zipUrl -OutFile $zipTemp -UseBasicParsing
+            Expand-Archive -Path $zipTemp -DestinationPath $extTemp -Force
+            $inner = Get-ChildItem -Path $extTemp -Directory | Select-Object -First 1
+            if ($inner) {
+                Copy-Item -Path "$($inner.FullName)\*" -Destination $root -Recurse -Force
+                $downloaded = $true
+            }
+            Remove-Item -Path $zipTemp -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $extTemp -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Host "      [WARN] Direct download attempt failed: $_" -ForegroundColor DarkYellow
+        }
+    }
+
+    if (-not (Test-Path (Join-Path $root "package.json"))) {
+        Write-Host ""
+        Write-Host "============================================================================" -ForegroundColor Red
+        Write-Host " [ERROR] Could not fetch frontend code automatically." -ForegroundColor Red
+        Write-Host " Please clone the frontend branch manually:" -ForegroundColor Red
+        Write-Host "   git clone -b frontend https://github.com/semanticClimate/RAISE.git" -ForegroundColor Red
+        Write-Host "============================================================================" -ForegroundColor Red
+        Pause
+        exit 1
+    }
+    Write-Host "      [SUCCESS] Frontend source code downloaded and prepared!" -ForegroundColor Green
+    Write-Host ""
+}
+
+# ------------------------------------------------------------------------------
 # [1/3] Detect or Automatically Download Node.js LTS
 # ------------------------------------------------------------------------------
 Write-Host "[1/3] Checking environment & Node.js installation..." -ForegroundColor Yellow

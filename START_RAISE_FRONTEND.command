@@ -14,6 +14,54 @@ echo "==========================================================================
 echo ""
 
 # ------------------------------------------------------------------------------
+# [0/3] Check if Frontend Source Code is Present; Auto-fetch if missing
+# ------------------------------------------------------------------------------
+if [ -f "package.json" ]; then
+    echo "[0/3] Workspace verification: ready."
+    echo ""
+else
+    echo "[0/3] Initializing workspace: fetching frontend assets from repository..."
+    echo ""
+    FETCH_SUCCESS=0
+    if command -v git >/dev/null 2>&1; then
+        echo "      [GIT] Cloning frontend branch from semanticClimate/RAISE..."
+        git clone --depth 1 -b frontend https://github.com/semanticClimate/RAISE.git .temp_raise_frontend
+        if [ $? -eq 0 ] && [ -f ".temp_raise_frontend/package.json" ]; then
+            cp -R .temp_raise_frontend/* .
+            cp -R .temp_raise_frontend/.* . 2>/dev/null || true
+            rm -rf .temp_raise_frontend
+            FETCH_SUCCESS=1
+        fi
+    fi
+    if [ $FETCH_SUCCESS -eq 0 ] && command -v curl >/dev/null 2>&1; then
+        echo "      [CURL] Downloading frontend branch archive..."
+        curl -# -fLo /tmp/RAISE-frontend.zip "https://github.com/semanticClimate/RAISE/archive/refs/heads/frontend.zip"
+        if [ $? -eq 0 ]; then
+            unzip -q -o /tmp/RAISE-frontend.zip -d /tmp/RAISE-fe-extracted
+            EXTRACTED_SUBDIR=$(find /tmp/RAISE-fe-extracted -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            if [ -n "$EXTRACTED_SUBDIR" ] && [ -d "$EXTRACTED_SUBDIR" ]; then
+                cp -R "$EXTRACTED_SUBDIR"/* .
+                cp -R "$EXTRACTED_SUBDIR"/.* . 2>/dev/null || true
+                FETCH_SUCCESS=1
+            fi
+            rm -rf /tmp/RAISE-frontend.zip /tmp/RAISE-fe-extracted
+        fi
+    fi
+    if [ ! -f "package.json" ]; then
+        echo ""
+        echo "============================================================================"
+        echo " [ERROR] Could not fetch frontend code automatically."
+        echo " Please clone the frontend branch manually:"
+        echo "   git clone -b frontend https://github.com/semanticClimate/RAISE.git"
+        echo "============================================================================"
+        read -p "Press Enter to exit..."
+        exit 1
+    fi
+    echo "      [SUCCESS] Frontend source code downloaded and prepared!"
+    echo ""
+fi
+
+# ------------------------------------------------------------------------------
 # [1/3] Detect or Automatically Download Node.js & npm for macOS
 # ------------------------------------------------------------------------------
 echo "[1/3] Checking environment & Node.js installation..."

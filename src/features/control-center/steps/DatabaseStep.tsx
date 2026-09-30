@@ -1,12 +1,14 @@
-import { Check, Database, Eye, EyeOff, Layers, RefreshCw, X, Zap } from 'lucide-react';
+import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, X, Zap } from 'lucide-react';
 import type React from 'react';
 import { useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
 import { platformAdapter } from '../services/platformAdapter';
+import { detectEnvCredentials } from '../services/envDetector';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 
 export const DatabaseStep: React.FC = () => {
-  const { config, updateSubstrate } = useControlCenterStore();
+  const { config, updateSubstrate, setAllSubstratesMode } = useControlCenterStore();
+  const envData = detectEnvCredentials();
 
   // Cloud credentials modal state
   const [activeCloudSubstrate, setActiveCloudSubstrate] = useState<
@@ -51,9 +53,20 @@ export const DatabaseStep: React.FC = () => {
 
   const handleOpenCloudModal = (key: 'knowledgeGraph' | 'sessionMemory' | 'cacheAndSignals') => {
     const existing = config[key];
-    setCloudUri(existing?.uri || '');
-    setCloudPass(existing?.password || '');
-    setCloudUser(existing?.user || 'neo4j');
+    const detected =
+      key === 'knowledgeGraph'
+        ? envData.neo4j
+        : key === 'sessionMemory'
+          ? envData.postgres
+          : envData.redis;
+
+    const initialUri = existing?.uri || (detected?.present ? detected.uri || '' : '');
+    const initialUser = existing?.user || (detected?.user || (key === 'knowledgeGraph' ? 'neo4j' : ''));
+    const initialPass = existing?.password || (detected?.password || '');
+
+    setCloudUri(initialUri);
+    setCloudPass(initialPass);
+    setCloudUser(initialUser);
     setCloudModalError(null);
     setShowPassword(false);
     setActiveCloudSubstrate(key);
@@ -105,6 +118,23 @@ export const DatabaseStep: React.FC = () => {
     }
   };
 
+  const kgMode = config.knowledgeGraph?.mode || config.neo4jMode || 'in_memory_fallback';
+  const memMode = config.sessionMemory?.mode || config.postgresMode || 'in_memory_fallback';
+  const cacheMode = config.cacheAndSignals?.mode || config.redisMode || 'in_memory_fallback';
+
+  const isAllMemory =
+    kgMode === 'in_memory_fallback' &&
+    memMode === 'in_memory_fallback' &&
+    cacheMode === 'in_memory_fallback';
+
+  const isAllCloud =
+    kgMode === 'cloud' &&
+    memMode === 'cloud' &&
+    cacheMode === 'cloud';
+
+  const hasAnyDbInEnv =
+    envData.postgres.present || envData.redis.present || envData.neo4j.present;
+
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-150">
       <div>
@@ -115,6 +145,69 @@ export const DatabaseStep: React.FC = () => {
           Select deployment architecture for knowledge graph, memory, and cache layers.
         </p>
       </div>
+
+      {/* Global Mode Quick-Toggle: Python In-Memory vs Cloud Infrastructure */}
+      <div className="p-1.5 rounded-xl bg-[#131622] border border-white/10 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setAllSubstratesMode('in_memory_fallback')}
+          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+            isAllMemory
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-emerald-400" />
+            <span>Python In-Memory</span>
+          </div>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
+            0 GB Disk • Instant
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAllSubstratesMode('cloud')}
+          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+            isAllCloud
+              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
+              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Cloud className="w-4 h-4 text-sky-400" />
+            <span>Cloud Infrastructure</span>
+          </div>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
+            Aura • Neon • Upstash
+          </span>
+        </button>
+      </div>
+
+      {/* .env Detection Banner */}
+      {hasAnyDbInEnv && (
+        <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-between text-xs">
+          <div>
+            <div className="font-semibold text-sky-300 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-sky-400" />
+              <span>Environment endpoints configured:</span>
+            </div>
+            <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex gap-2 flex-wrap">
+              {envData.postgres.present && <span>• PostgreSQL ({envData.postgres.source})</span>}
+              {envData.redis.present && <span>• Redis ({envData.redis.source})</span>}
+              {envData.neo4j.present && <span>• Neo4j ({envData.neo4j.source})</span>}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAllSubstratesMode('cloud')}
+            className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-semibold transition-all cursor-pointer shrink-0"
+          >
+            Apply endpoints
+          </button>
+        </div>
+      )}
 
       {/* Modern Table Format (Single unified view, zero internal scrollbar) */}
       <div className="rounded-xl bg-[#131622] border border-white/10 overflow-hidden">
@@ -311,6 +404,44 @@ export const DatabaseStep: React.FC = () => {
                     {cloudModalError}
                   </div>
                 )}
+
+                {/* Substrate .env Detection Status in Modal */}
+                {(() => {
+                  const detected =
+                    activeCloudSubstrate === 'knowledgeGraph'
+                      ? envData.neo4j
+                      : activeCloudSubstrate === 'sessionMemory'
+                        ? envData.postgres
+                        : envData.redis;
+
+                  if (detected?.present) {
+                    return (
+                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between text-[11px]">
+                        <span className="text-emerald-300 flex items-center gap-1 font-mono">
+                          <Check className="w-3 h-3" />
+                          Detected in root .env ({detected.source})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCloudUri(detected.uri || '');
+                            if (detected.user) setCloudUser(detected.user);
+                            if (detected.password) setCloudPass(detected.password);
+                          }}
+                          className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 font-semibold cursor-pointer"
+                        >
+                          Use .env Value
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-2 rounded-lg bg-white/[0.03] border border-white/10 text-[11px] text-slate-400 font-mono">
+                      No {sub.name} string in root .env. Input spots are empty for custom entry.
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-3">
                   <div className="space-y-1">
