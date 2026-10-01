@@ -154,7 +154,8 @@ export class ChatService implements ChatServiceInterface {
             session_id: req.thread_id,
             thread_id: req.thread_id,
             request_id: req.request_id,
-            active_docs: req.active_docs || [],
+            active_docs:
+              req.active_docs && req.active_docs.length > 0 ? req.active_docs : undefined,
             format: 'raw',
             document_filter: req.document_filter,
             hops: req.hops ?? (effectiveMode === 'expert' ? 3 : 1),
@@ -268,7 +269,8 @@ export class ChatService implements ChatServiceInterface {
       chat_history: req.chat_history,
       session_id: req.thread_id,
       thread_id: req.thread_id,
-      active_docs: req.active_docs || [],
+      active_docs:
+        req.active_docs && req.active_docs.length > 0 ? req.active_docs : undefined,
       format: 'raw',
       document_filter: req.document_filter,
       hops: req.hops ?? (effectiveMode === 'expert' ? 3 : 1),
@@ -540,7 +542,7 @@ export class ChatService implements ChatServiceInterface {
 
   /**
    * Rename a chat session in PostgreSQL backend
-   * POST /api/chat/history or PATCH /api/chat/sessions/{id}
+   * POST /api/chat/sessions/{id}/rename with fallback to POST /api/chat/history
    */
   public async renameChatSession(
     sessionId: string,
@@ -548,6 +550,24 @@ export class ChatService implements ChatServiceInterface {
     username: string = '',
     signal?: AbortSignal
   ): Promise<ApiResponse<{ status: string; title?: string }>> {
+    const trimmedTitle = newTitle.trim();
+    // Try dedicated session rename endpoint
+    const res = await apiClient.request<{ status: string; title?: string }>(
+      ENDPOINTS.RENAME_CHAT_SESSION(sessionId),
+      undefined,
+      {
+        method: 'POST',
+        body: JSON.stringify({ title: trimmedTitle }),
+        signal,
+        timeoutMs: 15000,
+      }
+    );
+
+    if (res.status === 200) {
+      return res;
+    }
+
+    // Fallback to chat history sync if rename endpoint returned 404
     return apiClient.request<{ status: string; title?: string }>(
       ENDPOINTS.CHAT_HISTORY,
       undefined,
@@ -557,7 +577,7 @@ export class ChatService implements ChatServiceInterface {
           thread_id: sessionId,
           session_id: sessionId,
           username,
-          title: newTitle,
+          title: trimmedTitle,
           updated_at: new Date().toISOString(),
         }),
         signal,

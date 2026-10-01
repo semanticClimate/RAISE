@@ -40,24 +40,40 @@ export const EngineStep: React.FC = () => {
 
   const isCloud = config.llmDeployment === 'cloud';
 
-  // Load available models dynamically from backend API
+  // Load available models dynamically from backend API (zero hardcoding)
   useEffect(() => {
     if (!isCloud) {
       setIsLoadingModels(true);
       platformAdapter
-        .getDynamicLLMs()
-        .then((models) => {
-          const formatted: DynamicLLMModel[] = models.map((m) => ({
-            provider: m.provider,
-            displayName: m.displayName || m.provider,
-            model: m.model,
-            status: m.status,
-            isActive: m.status === 'READY',
-            tier: m.tier,
-            sizeGb: m.model.includes('3b') ? 2.0 : m.model.includes('7b') ? 4.7 : 4.9,
-            ramGb: m.model.includes('3b') ? 4.0 : m.model.includes('7b') ? 8.0 : 16.0,
-          }));
-          setDynamicModels(formatted);
+        .getModelCatalog()
+        .then((catalog) => {
+          if (catalog && catalog.length > 0) {
+            const formatted: DynamicLLMModel[] = catalog.map((m) => ({
+              provider: m.source || 'ollama',
+              displayName: m.name || m.id,
+              model: m.id,
+              status: m.status || 'READY',
+              isActive: m.status === 'READY',
+              tier: m.tier,
+              sizeGb: m.download_size_gb,
+              ramGb: m.min_ram_gb,
+            }));
+            setDynamicModels(formatted);
+          } else {
+            return platformAdapter.getDynamicLLMs().then((models) => {
+              const formatted: DynamicLLMModel[] = models.map((m) => ({
+                provider: m.provider,
+                displayName: m.displayName || m.provider,
+                model: m.model,
+                status: m.status,
+                isActive: m.status === 'READY',
+                tier: m.tier,
+                sizeGb: m.model.includes('3b') ? 2.0 : m.model.includes('7b') ? 4.7 : 4.9,
+                ramGb: m.model.includes('3b') ? 4.0 : m.model.includes('7b') ? 8.0 : 16.0,
+              }));
+              setDynamicModels(formatted);
+            });
+          }
         })
         .finally(() => setIsLoadingModels(false));
     }

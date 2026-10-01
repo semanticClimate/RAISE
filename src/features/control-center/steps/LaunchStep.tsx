@@ -72,10 +72,26 @@ export const LaunchStep: React.FC = () => {
     let llmRam = '~1.2 GB';
     let llmNet = 'Cloud API Calls';
     if (!isCloud) {
-      const is7b = config.selectedLocalModel.includes('7b');
-      const is8b = config.selectedLocalModel.includes('8b');
-      const size = is7b ? 4.7 : is8b ? 4.9 : 2.0;
-      const ram = is7b ? 8.0 : is8b ? 16.0 : 4.0;
+      const modelStr = (config.selectedLocalModel || 'llama3.2:3b').toLowerCase();
+      let size = 2.0;
+      let ram = 4.0;
+      const paramMatch = modelStr.match(/(\d+(?:\.\d+)?)[bB]/);
+      if (paramMatch) {
+        const paramVal = parseFloat(paramMatch[1]);
+        if (paramVal <= 3.5) {
+          size = Math.round(paramVal * 0.7 * 10) / 10;
+          ram = 4.0;
+        } else if (paramVal <= 9.0) {
+          size = Math.round(paramVal * 0.65 * 10) / 10;
+          ram = 8.0;
+        } else if (paramVal <= 16.0) {
+          size = Math.round(paramVal * 0.6 * 10) / 10;
+          ram = 16.0;
+        } else {
+          size = Math.round(paramVal * 0.55 * 10) / 10;
+          ram = 32.0;
+        }
+      }
       totalDiskGb += size;
       totalRamGb += ram;
       llmDisk = `${size} GB`;

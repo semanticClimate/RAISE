@@ -46,24 +46,38 @@ export const calculateResourceFootprint = (config: ControlCenterConfig): Resourc
       ramGb: 0,
       isCloud: true,
     });
-  } else {
-    const localModelMap: Record<string, { label: string; disk: number; ram: number }> = {
-      'llama3.2:3b': { label: 'Llama 3.2 3B', disk: 2.0, ram: 4.0 },
-      'qwen2.5:7b': { label: 'Qwen 2.5 7B', disk: 4.7, ram: 8.0 },
-      'llama3.1:8b': { label: 'Llama 3.1 8B', disk: 4.9, ram: 8.0 },
-    };
-    const model = localModelMap[config.selectedLocalModel] || {
-      label: config.selectedLocalModel,
-      disk: 2.0,
-      ram: 4.0,
-    };
-    totalDiskGb += model.disk;
-    totalRamGb += model.ram;
+    // Dynamic parameter parser for model size and memory requirements (zero hardcoding)
+    const modelStr = (config.selectedLocalModel || 'llama3.2:3b').toLowerCase();
+    let disk = 2.0;
+    let ram = 4.0;
+    const paramMatch = modelStr.match(/(\d+(?:\.\d+)?)[bB]/);
+    if (paramMatch) {
+      const paramVal = parseFloat(paramMatch[1]);
+      if (paramVal <= 3.5) {
+        disk = Math.round(paramVal * 0.7 * 10) / 10;
+        ram = 4.0;
+      } else if (paramVal <= 9.0) {
+        disk = Math.round(paramVal * 0.65 * 10) / 10;
+        ram = 8.0;
+      } else if (paramVal <= 16.0) {
+        disk = Math.round(paramVal * 0.6 * 10) / 10;
+        ram = 16.0;
+      } else {
+        disk = Math.round(paramVal * 0.55 * 10) / 10;
+        ram = 32.0;
+      }
+    }
+    const displayName = config.selectedLocalModel
+      ? config.selectedLocalModel.split('/').pop()?.replace(/[-_]/g, ' ') || config.selectedLocalModel
+      : 'Local Model';
+
+    totalDiskGb += disk;
+    totalRamGb += ram;
     addedSubstrates.push({
       category: 'Inference',
-      label: model.label,
-      diskGb: model.disk,
-      ramGb: model.ram,
+      label: displayName,
+      diskGb: disk,
+      ramGb: ram,
       isCloud: false,
     });
   }

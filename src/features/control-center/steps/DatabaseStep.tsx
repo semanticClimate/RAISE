@@ -84,20 +84,51 @@ export const DatabaseStep: React.FC = () => {
     setCloudModalError(null);
 
     try {
-      // Test connection honestly
-      const results = await platformAdapter.testConnections();
-      let isOnline = true;
+      const payload: Record<string, unknown> = {};
+      if (activeCloudSubstrate === 'knowledgeGraph') {
+        payload.neo4j_mode = 'cloud';
+        payload.neo4j_uri = cloudUri.trim();
+        payload.neo4j_password = cloudPass;
+      } else if (activeCloudSubstrate === 'sessionMemory') {
+        payload.postgres_mode = 'cloud';
+        payload.postgres_uri = cloudUri.trim();
+      } else if (activeCloudSubstrate === 'cacheAndSignals') {
+        payload.redis_mode = 'cloud';
+        payload.redis_uri = cloudUri.trim();
+      }
+
+      // Test connection honestly with user-provided credentials
+      const results = await platformAdapter.testConnections(payload);
+      let isOnline = false;
       let latency = 25;
+      let errorMsg: string | undefined;
 
       if (activeCloudSubstrate === 'knowledgeGraph') {
-        isOnline = results.neo4j?.online ?? true;
+        isOnline = results.neo4j?.online === true;
         latency = results.neo4j?.latency_ms || 28;
+        errorMsg = results.neo4j?.error;
       } else if (activeCloudSubstrate === 'sessionMemory') {
-        isOnline = results.postgres?.online ?? true;
+        isOnline = results.postgres?.online === true;
         latency = 35;
+        errorMsg = results.postgres?.error;
       } else if (activeCloudSubstrate === 'cacheAndSignals') {
-        isOnline = results.redis?.online ?? true;
+        isOnline = results.redis?.online === true;
         latency = results.redis?.latency_ms || 12;
+        errorMsg = results.redis?.error;
+      }
+
+      if (!isOnline) {
+        setCloudModalError(errorMsg || 'Connection failed: Unable to reach database endpoint. Check URI/credentials.');
+        updateSubstrate(activeCloudSubstrate, {
+          mode: 'cloud',
+          uri: cloudUri.trim(),
+          user: cloudUser.trim(),
+          password: cloudPass,
+          tested: true,
+          online: false,
+          latencyMs: latency,
+        });
+        return;
       }
 
       updateSubstrate(activeCloudSubstrate, {
@@ -106,7 +137,7 @@ export const DatabaseStep: React.FC = () => {
         user: cloudUser.trim(),
         password: cloudPass,
         tested: true,
-        online: isOnline,
+        online: true,
         latencyMs: latency,
       });
 
@@ -342,21 +373,39 @@ export const DatabaseStep: React.FC = () => {
                       type="button"
                       onClick={() => handleOpenCloudModal(sub.key)}
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
-                        isCloud
+                        isCloud && cfg?.online === true
                           ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                          : isCloud && cfg?.tested && cfg?.online === false
+                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 shadow-sm'
+                          : isCloud
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
                       title={
-                        isCloud
+                        isCloud && cfg?.online === true
                           ? 'Cloud connected (click to edit)'
+                          : isCloud && cfg?.tested && cfg?.online === false
+                          ? 'Cloud connection failed (click to retry)'
+                          : isCloud
+                          ? 'Cloud configured, unverified (click to verify)'
                           : 'Click to configure Cloud connection'
                       }
                       aria-label={`Select Cloud for ${sub.name}`}
                     >
-                      {isCloud ? (
+                      {isCloud && cfg?.online === true ? (
                         <>
                           <Check className="w-4 h-4 stroke-[2.5]" />
                           <span className="sr-only">Cloud</span>
+                        </>
+                      ) : isCloud && cfg?.tested && cfg?.online === false ? (
+                        <>
+                          <X className="w-4 h-4 stroke-[2.5]" />
+                          <span className="sr-only">Connection Failed</span>
+                        </>
+                      ) : isCloud ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span className="sr-only">Unverified</span>
                         </>
                       ) : (
                         <span>-</span>

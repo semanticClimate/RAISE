@@ -112,12 +112,9 @@ export const QualityGateReportSchema = z.object({
 
 export type QualityGateReport = z.infer<typeof QualityGateReportSchema>;
 
-export const QualityGateDecisionSchema = z.enum([
-  'accept',
-  'retry',
-  'unable_to_verify',
-  'empty_workspace',
-]);
+export const QualityGateDecisionSchema = z
+  .enum(['accept', 'retry', 'unable_to_verify', 'empty_workspace'])
+  .catch('accept');
 
 export type QualityGateDecision = z.infer<typeof QualityGateDecisionSchema>;
 

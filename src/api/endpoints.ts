@@ -63,6 +63,15 @@ export const ENDPOINTS = {
   DOCUMENT_STATUS: (id: string) => `/api/documents/${encodeURIComponent(id)}/status`,
   DOCUMENT_EVENTS: (id: string) => `/api/documents/${encodeURIComponent(id)}/events`,
 
+  // System Configuration, Hardware & Dynamic Models
+  SYSTEM_CONFIG: '/api/system/config',
+  SYSTEM_HARDWARE: '/api/system/hardware',
+  SYSTEM_TEST_CONNECTIONS: '/api/system/test-connections',
+  SYSTEM_MODELS_CATALOG: '/api/system/models/catalog',
+  SYSTEM_MODELS_PULL: '/api/system/models/pull',
+  SYSTEM_PREFLIGHT_ASSETS: '/api/system/preflight-assets',
+  SYSTEM_DOWNLOAD_ASSETS: '/api/system/download-assets',
+
   // Future backend abstractions
   FUTURE_CHAT_STREAM: '/api/chat/stream',
   FUTURE_SOURCE_STATUS: (id: string) => `/api/sources/${encodeURIComponent(id)}/status`,

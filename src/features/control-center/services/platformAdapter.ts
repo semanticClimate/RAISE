@@ -16,6 +16,7 @@ export interface HardwareTelemetry {
     details: string;
   };
   has_metal_or_cuda?: boolean;
+  local_model_catalog?: ModelCatalogEntry[];
 }
 
 export interface ConnectionTestResult {
@@ -40,6 +41,52 @@ export interface ConnectionTestResult {
     online: boolean;
     mode: string;
   };
+}
+
+export interface TestConnectionsPayload {
+  neo4j_mode?: string;
+  neo4j_uri?: string;
+  neo4j_password?: string;
+  postgres_mode?: string;
+  postgres_uri?: string;
+  redis_mode?: string;
+  redis_uri?: string;
+  llm_mode?: string;
+  groq_api_key?: string;
+  gemini_api_key?: string;
+  nvidia_api_key?: string;
+  mistral_api_key?: string;
+  cohere_api_key?: string;
+  custom_api_key?: string;
+  [key: string]: unknown;
+}
+
+export interface ModelCatalogEntry {
+  id: string;
+  name: string;
+  download_size_gb: number;
+  min_ram_gb: number;
+  tier: string;
+  status: string;
+  downloads?: string;
+  source: string;
+}
+
+export interface PreflightAsset {
+  name: string;
+  path: string;
+  size_mb: number;
+  required: boolean;
+  present: boolean;
+  sha256_verified?: boolean;
+  category?: string;
+}
+
+export interface PreflightAssetsResponse {
+  all_verified: boolean;
+  total_required_gb: number;
+  total_available_gb: number;
+  assets: PreflightAsset[];
 }
 
 export interface SystemConfigPayload {
@@ -149,11 +196,12 @@ export const platformAdapter = {
   /**
    * Tests live database connections (Upstash Redis, Neo4j Aura, Postgres)
    */
-  async testConnections(): Promise<ConnectionTestResult> {
+  async testConnections(payload?: TestConnectionsPayload): Promise<ConnectionTestResult> {
     try {
       const res = await fetch(resolveApiUrl('/api/system/test-connections'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
       });
       if (res.ok) {
         return (await res.json()) as ConnectionTestResult;
@@ -163,11 +211,162 @@ export const platformAdapter = {
     }
 
     return {
-      redis: { online: true, provider: 'in-memory fallback' },
-      neo4j: { online: true, provider: 'cloud auradb' },
-      postgres: { online: true, mode: 'in-memory fallback' },
-      chroma: { online: true, mode: 'local dense vector' },
+      redis: { online: false, provider: 'disconnected' },
+      neo4j: { online: false, provider: 'disconnected' },
+      postgres: { online: false, mode: 'disconnected' },
+      chroma: { online: false, mode: 'disconnected' },
     };
+  },
+
+  /**
+   * Dynamically retrieves available model catalog from backend
+   * (inspects HuggingFace Hub, OpenRouter, and local Ollama)
+   */
+  async getModelCatalog(): Promise<ModelCatalogEntry[]> {
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/models/catalog'), {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        return (await res.json()) as ModelCatalogEntry[];
+      }
+    } catch {
+      // Backend offline or endpoint unavailable
+    }
+    return [
+      {
+        id: 'llama3.2:3b',
+        name: 'Llama 3.2 3B',
+        download_size_gb: 2.0,
+        min_ram_gb: 4,
+        tier: 'Fast & Light',
+        status: 'READY',
+        downloads: '2.5M downloads',
+        source: 'local_ollama',
+      },
+      {
+        id: 'qwen2.5:7b',
+        name: 'Qwen 2.5 7B',
+        download_size_gb: 4.7,
+        min_ram_gb: 8,
+        tier: 'Balanced Reasoning',
+        status: 'READY',
+        downloads: '1.8M downloads',
+        source: 'local_ollama',
+      },
+      {
+        id: 'llama3.1:8b',
+        name: 'Llama 3.1 8B',
+        download_size_gb: 4.9,
+        min_ram_gb: 16,
+        tier: 'Balanced Reasoning',
+        status: 'READY',
+        downloads: '4.2M downloads',
+        source: 'local_ollama',
+      },
+    ];
+  },
+
+  /**
+   * Fetches status of on-device preflight neural assets (Docling, BGE, ModernBERT)
+   */
+  async getPreflightAssets(): Promise<PreflightAssetsResponse> {
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/preflight-assets'), {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        return (await res.json()) as PreflightAssetsResponse;
+      }
+    } catch {
+      // Backend offline
+    }
+    return {
+      all_verified: false,
+      total_required_gb: 4.6,
+      total_available_gb: 0,
+      assets: [
+        {
+          name: 'BAAI/bge-large-en-v1.5',
+          path: 'models/bge-large-en-v1.5',
+          size_mb: 1340,
+          required: true,
+          present: false,
+          category: 'embedding',
+        },
+        {
+          name: 'BAAI/bge-reranker-large',
+          path: 'models/bge-reranker-large',
+          size_mb: 2240,
+          required: true,
+          present: false,
+          category: 'reranker',
+        },
+        {
+          name: 'FineCat-ModernBERT-NLI',
+          path: 'models/modernbert-nli',
+          size_mb: 700,
+          required: true,
+          present: false,
+          category: 'quality_gate',
+        },
+        {
+          name: 'Docling & PyMuPDF Parsers',
+          path: 'python_runtime/parsers',
+          size_mb: 350,
+          required: true,
+          present: false,
+          category: 'parser',
+        },
+      ],
+    };
+  },
+
+  /**
+   * Streams preflight neural asset downloads via SSE or POST
+   */
+  async downloadNeuralAssets(
+    onProgress?: (percent: number, status: string) => void
+  ): Promise<void> {
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/download-assets'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            const clean = line.replace(/^data:\s*/, '').trim();
+            if (!clean) continue;
+            try {
+              const parsed = JSON.parse(clean) as {
+                percent?: number;
+                status?: string;
+                completed?: boolean;
+              };
+              if (typeof parsed.percent === 'number' && onProgress) {
+                onProgress(parsed.percent, parsed.status || 'Downloading assets...');
+              }
+              if (parsed.completed) {
+                onProgress?.(100, 'All neural assets verified and cached');
+                return;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+        return;
+      }
+    } catch {
+      // Backend offline or streaming error
+    }
   },
 
   /**
