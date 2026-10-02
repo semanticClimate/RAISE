@@ -41,41 +41,54 @@ export const EngineStep: React.FC = () => {
   const isCloud = config.llmDeployment === 'cloud';
 
   // Load available models dynamically from backend API (zero hardcoding)
-  useEffect(() => {
-    if (!isCloud) {
-      setIsLoadingModels(true);
-      platformAdapter
-        .getModelCatalog()
-        .then((catalog) => {
-          if (catalog && catalog.length > 0) {
-            const formatted: DynamicLLMModel[] = catalog.map((m) => ({
-              provider: m.source || 'ollama',
-              displayName: m.name || m.id,
-              model: m.id,
-              status: m.status || 'READY',
+  const fetchModels = () => {
+    setIsLoadingModels(true);
+    platformAdapter
+      .getModelCatalog()
+      .then((catalog) => {
+        if (catalog && catalog.length > 0) {
+          const formatted: DynamicLLMModel[] = catalog.map((m) => ({
+            provider: m.source || 'ollama',
+            displayName: m.name || m.id,
+            model: m.id,
+            status: m.status || 'READY',
+            isActive: m.status === 'READY',
+            tier: m.tier,
+            sizeGb: m.download_size_gb,
+            ramGb: m.min_ram_gb,
+          }));
+          setDynamicModels(formatted);
+          if (!config.selectedLocalModel && formatted.length > 0) {
+            updateConfig({ selectedLocalModel: formatted[0].model });
+          }
+        } else {
+          return platformAdapter.getDynamicLLMs().then((models) => {
+            const formatted: DynamicLLMModel[] = models.map((m) => ({
+              provider: m.provider,
+              displayName: m.displayName || m.provider,
+              model: m.model,
+              status: m.status,
               isActive: m.status === 'READY',
               tier: m.tier,
-              sizeGb: m.download_size_gb,
-              ramGb: m.min_ram_gb,
+              sizeGb: m.model.includes('3b') ? 2.0 : m.model.includes('7b') ? 4.7 : 4.9,
+              ramGb: m.model.includes('3b') ? 4.0 : m.model.includes('7b') ? 8.0 : 16.0,
             }));
             setDynamicModels(formatted);
-          } else {
-            return platformAdapter.getDynamicLLMs().then((models) => {
-              const formatted: DynamicLLMModel[] = models.map((m) => ({
-                provider: m.provider,
-                displayName: m.displayName || m.provider,
-                model: m.model,
-                status: m.status,
-                isActive: m.status === 'READY',
-                tier: m.tier,
-                sizeGb: m.model.includes('3b') ? 2.0 : m.model.includes('7b') ? 4.7 : 4.9,
-                ramGb: m.model.includes('3b') ? 4.0 : m.model.includes('7b') ? 8.0 : 16.0,
-              }));
-              setDynamicModels(formatted);
-            });
-          }
-        })
-        .finally(() => setIsLoadingModels(false));
+            if (!config.selectedLocalModel && formatted.length > 0) {
+              updateConfig({ selectedLocalModel: formatted[0].model });
+            }
+          });
+        }
+      })
+      .catch(() => {
+        setDynamicModels([]);
+      })
+      .finally(() => setIsLoadingModels(false));
+  };
+
+  useEffect(() => {
+    if (!isCloud) {
+      fetchModels();
     }
   }, [isCloud]);
 
@@ -384,50 +397,44 @@ export const EngineStep: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-slate-300">Available Local Models:</span>
-              <span className="text-[11px] text-slate-400 font-mono">
-                {dynamicModels.length} models detected
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {dynamicModels.length} models detected
+                </span>
+                <button
+                  type="button"
+                  onClick={fetchModels}
+                  disabled={isLoadingModels}
+                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Rescan model catalog"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
 
             {isLoadingModels ? (
               <div className="p-6 text-center text-xs text-slate-400">
-                <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2" />
-                Querying local inference runtime...
+                <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-white" />
+                Querying local inference runtime & model registry...
+              </div>
+            ) : dynamicModels.length === 0 ? (
+              <div className="p-6 rounded-xl border border-white/10 bg-black/40 text-center space-y-3">
+                <p className="text-xs text-slate-300">
+                  No local AI engines or open-weight models detected yet. Ensure Ollama is running or scan the public catalog.
+                </p>
+                <button
+                  type="button"
+                  onClick={fetchModels}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/15 text-white border border-white/10 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Scan Dynamic Model Catalog
+                </button>
               </div>
             ) : (
               <div className="space-y-2">
-                {(dynamicModels.length > 0
-                  ? dynamicModels
-                  : [
-                      {
-                        provider: 'ollama',
-                        displayName: 'Llama 3.2 3B',
-                        model: 'llama3.2:3b',
-                        status: 'READY',
-                        isActive: true,
-                        sizeGb: 2.0,
-                        ramGb: 4.0,
-                      },
-                      {
-                        provider: 'ollama',
-                        displayName: 'Qwen 2.5 7B',
-                        model: 'qwen2.5:7b',
-                        status: 'READY',
-                        isActive: true,
-                        sizeGb: 4.7,
-                        ramGb: 8.0,
-                      },
-                      {
-                        provider: 'ollama',
-                        displayName: 'Llama 3.1 8B',
-                        model: 'llama3.1:8b',
-                        status: 'READY',
-                        isActive: true,
-                        sizeGb: 4.9,
-                        ramGb: 16.0,
-                      },
-                    ]
-                ).map((m) => {
+                {dynamicModels.map((m) => {
                   const isSelected = config.selectedLocalModel === m.model;
                   const modelTooltip = (
                     <div className="space-y-1 font-mono text-[11px]">

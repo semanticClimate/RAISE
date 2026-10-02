@@ -20,13 +20,17 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
   const { appMode } = useModeStore();
   const [loadError, setLoadError] = React.useState(false);
   const [activePage, setActivePage] = useState<number>(citation.primary_page || 1);
+  const [streamMode, setStreamMode] = useState<'single' | 'full'>('single');
 
   useEffect(() => {
     setActivePage(citation.primary_page || 1);
     setLoadError(false);
   }, [citation.primary_page, citation.pdf_filename]);
 
-  const pdfUrl = sourceService.getPdfUrl(citation.pdf_filename, activePage);
+  const pdfUrl =
+    streamMode === 'single'
+      ? sourceService.getSinglePagePdfUrl(citation.pdf_filename, activePage)
+      : sourceService.getPdfUrl(citation.pdf_filename, activePage);
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden shadow-sm">
@@ -83,11 +87,40 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
               </button>
             )}
 
+          {/* Mode Toggle: Single Page vs Full Document */}
+          <div className="flex items-center rounded-xl bg-slate-200/80 dark:bg-black/40 p-0.5 border border-slate-300 dark:border-white/10 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setStreamMode('single')}
+              className={`px-2 py-0.5 rounded-lg font-medium transition-colors cursor-pointer ${
+                streamMode === 'single'
+                  ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+              title="Loads only the single referenced page in ~25ms (<100KB)"
+            >
+              ⚡ Page Only (~70KB)
+            </button>
+            <button
+              type="button"
+              onClick={() => setStreamMode('full')}
+              className={`px-2 py-0.5 rounded-lg font-medium transition-colors cursor-pointer ${
+                streamMode === 'full'
+                  ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+              title="Loads the full multi-page PDF"
+            >
+              Full Doc
+            </button>
+          </div>
+
           <a
             href={pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors px-2.5 py-1 rounded-xl hover:bg-slate-200/60 dark:hover:bg-white/5"
+            title="Open preview in a standalone browser tab"
           >
             <span>Open in Tab</span>
             <ExternalLink className="w-3 h-3 ml-0.5" />

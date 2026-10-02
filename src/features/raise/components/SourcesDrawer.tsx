@@ -1,4 +1,4 @@
-import type React from 'react';
+import React, { useState } from 'react';
 import { CircularUploadProgress } from '../../../components/ui/CircularUploadProgress';
 import { useModeStore } from '../../../stores/modeStore';
 import type { SourceDocument } from '../../../types';
@@ -17,6 +17,7 @@ export interface SourcesDrawerProps {
   onOpenLibraryPicker: () => void;
   isDocReady: (doc: SourceDocument) => boolean;
   onToggleSourceDoc: (id: string) => void;
+  onToggleAllSources?: (select: boolean) => void;
   onDeleteSourceDoc: (id: string, name: string) => void;
   onViewPdf?: (filename: string, pageNumber?: number) => void;
 }
@@ -34,17 +35,25 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
   onOpenLibraryPicker,
   isDocReady,
   onToggleSourceDoc,
+  onToggleAllSources,
   onDeleteSourceDoc,
   onViewPdf,
 }) => {
   const { appMode } = useModeStore();
   const isOnline = appMode === 'connected';
+  const [scopeTab, setScopeTab] = useState<'all' | 'active' | 'inactive'>('all');
 
   if (!isOpen) return null;
 
-  const filteredDocs = sourceDocs.filter((d) =>
-    d.name.toLowerCase().includes(sourceFilter.toLowerCase())
-  );
+  const allSelected = sourceDocs.length > 0 && sourceDocs.every((d) => d.selected);
+
+  const filteredDocs = sourceDocs.filter((d) => {
+    const matchesFilter = d.name.toLowerCase().includes(sourceFilter.toLowerCase());
+    if (!matchesFilter) return false;
+    if (scopeTab === 'active') return d.selected;
+    if (scopeTab === 'inactive') return !d.selected;
+    return true;
+  });
 
   return (
     <div
@@ -300,10 +309,73 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
           className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2"
           style={{ scrollbarWidth: 'thin' }}
         >
-          <div className="px-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-between">
-            <span>Documents in Chat</span>
-            <span>{isOnline ? sourceDocs.length : 0} total</span>
+          <div className="px-1 flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-200/60 dark:border-white/5">
+            <div className="flex items-center gap-1.5 overflow-x-auto text-[11px]">
+              {(
+                [
+                  { id: 'all', label: `All (${sourceDocs.length})` },
+                  { id: 'active', label: `Active (${activeSourcesCount})` },
+                  {
+                    id: 'inactive',
+                    label: `Inactive (${Math.max(0, sourceDocs.length - activeSourcesCount)})`,
+                  },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setScopeTab(tab.id)}
+                  className={`px-2.5 py-0.5 rounded-full font-medium transition-all cursor-pointer ${
+                    scopeTab === tab.id
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-white/10'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {onToggleAllSources && sourceDocs.length > 0 && isOnline && (
+              <button
+                type="button"
+                onClick={() => onToggleAllSources(!allSelected)}
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 dark:text-[#a8c7fa] border border-indigo-200/80 dark:border-indigo-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+                title={allSelected ? 'Exclude all documents from search' : 'Include all documents in search'}
+              >
+                {allSelected ? 'Deselect All' : 'Select All'}
+              </button>
+            )}
           </div>
+
+          {/* Scope notice banner */}
+          {isOnline && sourceDocs.length > 0 && (
+            <div className="px-2.5 py-1.5 rounded-xl text-[11px] flex items-center justify-between gap-2 bg-slate-100/70 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/5">
+              {activeSourcesCount === 0 ? (
+                <span className="text-slate-500 dark:text-slate-400">
+                  🌐 <strong>Global Scope:</strong> 0 docs selected. Queries search all ready library documents.
+                </span>
+              ) : activeSourcesCount < sourceDocs.length ? (
+                <span className="text-amber-700 dark:text-amber-300">
+                  🎯 <strong>Filtered Scope:</strong> Searching {activeSourcesCount} of {sourceDocs.length} documents.
+                </span>
+              ) : (
+                <span className="text-emerald-700 dark:text-emerald-300">
+                  ✓ <strong>Full Scope:</strong> All {sourceDocs.length} documents active in retrieval.
+                </span>
+              )}
+
+              {onToggleAllSources && activeSourcesCount < sourceDocs.length && (
+                <button
+                  type="button"
+                  onClick={() => onToggleAllSources(true)}
+                  className="text-[10px] font-semibold text-indigo-600 dark:text-[#a8c7fa] hover:underline cursor-pointer shrink-0"
+                >
+                  Search All
+                </button>
+              )}
+            </div>
+          )}
 
           {!isOnline && (
             <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-xs">

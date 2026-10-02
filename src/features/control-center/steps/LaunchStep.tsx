@@ -4,7 +4,14 @@ import { useMemo } from 'react';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 
 export const LaunchStep: React.FC = () => {
-  const { config, downloadProgress, downloadSpeed, isDownloading } = useControlCenterStore();
+  const {
+    config,
+    downloadProgress,
+    downloadSpeed,
+    isDownloading,
+    preflightAssets,
+    preflightFootprint,
+  } = useControlCenterStore();
 
   const isWebTunnel = config.targetPlatform === 'web';
   const isCloud = config.llmDeployment
@@ -72,30 +79,34 @@ export const LaunchStep: React.FC = () => {
     let llmRam = '~1.2 GB';
     let llmNet = 'Cloud API Calls';
     if (!isCloud) {
-      const modelStr = (config.selectedLocalModel || 'llama3.2:3b').toLowerCase();
-      let size = 2.0;
-      let ram = 4.0;
-      const paramMatch = modelStr.match(/(\d+(?:\.\d+)?)[bB]/);
-      if (paramMatch) {
-        const paramVal = parseFloat(paramMatch[1]);
-        if (paramVal <= 3.5) {
-          size = Math.round(paramVal * 0.7 * 10) / 10;
-          ram = 4.0;
-        } else if (paramVal <= 9.0) {
-          size = Math.round(paramVal * 0.65 * 10) / 10;
-          ram = 8.0;
-        } else if (paramVal <= 16.0) {
-          size = Math.round(paramVal * 0.6 * 10) / 10;
-          ram = 16.0;
-        } else {
-          size = Math.round(paramVal * 0.55 * 10) / 10;
-          ram = 32.0;
+      const modelStr = (config.selectedLocalModel || '').toLowerCase();
+      let size = 0.0;
+      let ram = 0.0;
+      if (modelStr) {
+        size = 2.0;
+        ram = 4.0;
+        const paramMatch = modelStr.match(/(\d+(?:\.\d+)?)[bB]/);
+        if (paramMatch) {
+          const paramVal = parseFloat(paramMatch[1]);
+          if (paramVal <= 3.5) {
+            size = Math.round(paramVal * 0.7 * 10) / 10;
+            ram = 4.0;
+          } else if (paramVal <= 9.0) {
+            size = Math.round(paramVal * 0.65 * 10) / 10;
+            ram = 8.0;
+          } else if (paramVal <= 16.0) {
+            size = Math.round(paramVal * 0.6 * 10) / 10;
+            ram = 16.0;
+          } else {
+            size = Math.round(paramVal * 0.55 * 10) / 10;
+            ram = 32.0;
+          }
         }
       }
       totalDiskGb += size;
       totalRamGb += ram;
-      llmDisk = `${size} GB`;
-      llmRam = `~${ram} GB`;
+      llmDisk = size > 0 ? `${size} GB` : '0 GB (Installed)';
+      llmRam = ram > 0 ? `~${ram} GB` : '~2.0 GB';
       llmNet = 'Zero Network (100% Offline)';
     }
 
@@ -224,7 +235,7 @@ export const LaunchStep: React.FC = () => {
                   ? 'Remote Cloud Gateway'
                   : isCloud
                     ? `Cloud (${providers})`
-                    : `Local (${config.selectedLocalModel})`}
+                    : `Local (${config.selectedLocalModel || 'On-Device Engine'})`}
               </strong>
             </span>
           </div>
@@ -315,7 +326,7 @@ export const LaunchStep: React.FC = () => {
               </p>
             </div>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/10 text-slate-300 border border-white/15 shrink-0">
-              ~4.6 GB Total Footprint
+              {preflightFootprint || '~4.6 GB Total Footprint'}
             </span>
           </div>
 
@@ -348,70 +359,48 @@ export const LaunchStep: React.FC = () => {
 
           {/* Module Requirements List */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-            {[
-              {
-                name: 'Docling & PyMuPDF Parsers',
-                size: '~350 MB',
-                desc: 'TableFormer AST reconstruction & font coordinate bounding boxes',
-                status: 'Requires pip install',
-                statusColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-              },
-              {
-                name: 'GGAHC Chunking Engine',
-                size: 'In-Process',
-                desc: 'Graph-Guided Adaptive Hierarchical Chunking (token-budgeted)',
-                status: 'Python Engine',
-                statusColor: 'text-slate-300 bg-white/5 border-white/10',
-              },
-              {
-                name: 'BAAI/bge-large-en-v1.5',
-                size: '1.34 GB',
-                desc: '1024-dim dense semantic vector embeddings for ChromaDB HNSW',
-                status: 'Requires Download (1.34 GB)',
-                statusColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-              },
-              {
-                name: 'BAAI/bge-reranker-large',
-                size: '2.24 GB',
-                desc: 'Contextual Cross-Encoder neural reranker on Metal / CUDA',
-                status: 'Requires Download (2.24 GB)',
-                statusColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-              },
-              {
-                name: 'FineCat-ModernBERT-NLI',
-                size: '~700 MB',
-                desc: 'Runtime Faithfulness Quality Gate & zero-hallucination shield',
-                status: 'Requires Download (~700 MB)',
-                statusColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-              },
-              {
-                name: 'Vector Database',
-                size: '~200 MB',
-                desc: 'ChromaDB (Local) • In-Process persistent chunk embeddings & HNSW vector index',
-                status: 'Requires Indexing',
-                statusColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-              },
-            ].map((asset) => (
-              <div
-                key={asset.name}
-                className="p-2.5 rounded-lg bg-black/40 border border-white/10 flex items-start justify-between gap-2"
-              >
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-white text-xs">{asset.name}</span>
-                    <span className="text-[10px] font-mono text-slate-400">({asset.size})</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 leading-tight">
-                    {asset.desc}
-                  </div>
-                </div>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded border shrink-0 ${asset.statusColor}`}
-                >
-                  {asset.status}
+            {preflightAssets.length === 0 ? (
+              <div className="col-span-1 sm:col-span-2 p-6 rounded-xl border border-white/10 bg-black/40 text-center flex flex-col items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />
+                <span className="text-xs text-slate-300 font-medium">
+                  Probing runtime environment & pre-flight assets...
+                </span>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Connecting to backend /api/system/preflight-assets
                 </span>
               </div>
-            ))}
+            ) : (
+              preflightAssets.map((asset) => (
+                <div
+                  key={asset.id || asset.name}
+                  className="p-2.5 rounded-lg bg-black/40 border border-white/10 flex items-start justify-between gap-2"
+                >
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-white text-xs">{asset.name}</span>
+                      {asset.size && (
+                        <span className="text-[10px] font-mono text-slate-400">({asset.size})</span>
+                      )}
+                    </div>
+                    {asset.desc && (
+                      <div className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                        {asset.desc}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded border shrink-0 ${
+                      asset.statusColor ||
+                      (asset.verified
+                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                        : 'text-amber-400 bg-amber-500/10 border-amber-500/20')
+                    }`}
+                  >
+                    {asset.status || (asset.verified ? 'Verified' : 'Pending')}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

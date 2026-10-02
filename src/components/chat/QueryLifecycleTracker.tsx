@@ -140,7 +140,12 @@ export function formatThoughtDuration(durationSec: number): string {
     return '0.0s';
   }
   if (durationSec < 1) {
-    return `${Math.round(durationSec * 1000)}ms`;
+    const ms = Math.round(durationSec * 1000);
+    return `${Math.max(ms, 1)}ms`;
+  }
+  if (durationSec < 10) {
+    const s = durationSec.toFixed(2);
+    return s.endsWith('0') ? `${durationSec.toFixed(1)}s` : `${s}s`;
   }
   return `${durationSec.toFixed(1)}s`;
 }

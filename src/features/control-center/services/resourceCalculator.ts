@@ -30,46 +30,50 @@ export const calculateResourceFootprint = (config: ControlCenterConfig): Resourc
   });
 
   // 2. Intelligence Engine (Cloud vs Local)
-  if (config.llmMode === 'cloud_groq') {
+  const isCloudLlm = config.llmDeployment
+    ? config.llmDeployment === 'cloud'
+    : !config.llmMode || config.llmMode.startsWith('cloud');
+
+  if (isCloudLlm) {
+    const validKeys = (config.apiKeys || []).filter((k) => k?.key && k.key.trim().length > 0);
+    const providers =
+      Array.from(new Set(validKeys.map((k) => k.providerName))).join(', ') || 'Cloud Inference';
     addedSubstrates.push({
       category: 'Inference',
-      label: 'Groq LPU (Llama 3.3 70B)',
+      label: `Cloud API (${providers})`,
       diskGb: 0,
       ramGb: 0,
       isCloud: true,
     });
-  } else if (config.llmMode === 'cloud_gemini') {
-    addedSubstrates.push({
-      category: 'Inference',
-      label: 'Google Gemini 2.5 Flash',
-      diskGb: 0,
-      ramGb: 0,
-      isCloud: true,
-    });
+  } else {
     // Dynamic parameter parser for model size and memory requirements (zero hardcoding)
-    const modelStr = (config.selectedLocalModel || 'llama3.2:3b').toLowerCase();
-    let disk = 2.0;
-    let ram = 4.0;
-    const paramMatch = modelStr.match(/(\d+(?:\.\d+)?)[bB]/);
-    if (paramMatch) {
-      const paramVal = parseFloat(paramMatch[1]);
-      if (paramVal <= 3.5) {
-        disk = Math.round(paramVal * 0.7 * 10) / 10;
-        ram = 4.0;
-      } else if (paramVal <= 9.0) {
-        disk = Math.round(paramVal * 0.65 * 10) / 10;
-        ram = 8.0;
-      } else if (paramVal <= 16.0) {
-        disk = Math.round(paramVal * 0.6 * 10) / 10;
-        ram = 16.0;
-      } else {
-        disk = Math.round(paramVal * 0.55 * 10) / 10;
-        ram = 32.0;
+    const modelStr = (config.selectedLocalModel || '').toLowerCase();
+    let disk = 0;
+    let ram = 0;
+    if (modelStr) {
+      disk = 2.0;
+      ram = 4.0;
+      const paramMatch = modelStr.match(/(\d+(?:\.\d+)?)[bB]/);
+      if (paramMatch) {
+        const paramVal = parseFloat(paramMatch[1]);
+        if (paramVal <= 3.5) {
+          disk = Math.round(paramVal * 0.7 * 10) / 10;
+          ram = 4.0;
+        } else if (paramVal <= 9.0) {
+          disk = Math.round(paramVal * 0.65 * 10) / 10;
+          ram = 8.0;
+        } else if (paramVal <= 16.0) {
+          disk = Math.round(paramVal * 0.6 * 10) / 10;
+          ram = 16.0;
+        } else {
+          disk = Math.round(paramVal * 0.55 * 10) / 10;
+          ram = 32.0;
+        }
       }
     }
     const displayName = config.selectedLocalModel
       ? config.selectedLocalModel.split('/').pop()?.replace(/[-_]/g, ' ') || config.selectedLocalModel
-      : 'Local Model';
+      : 'Local Inference Engine';
 
     totalDiskGb += disk;
     totalRamGb += ram;

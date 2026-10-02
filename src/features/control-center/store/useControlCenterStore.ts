@@ -19,6 +19,8 @@ interface ControlCenterState {
   downloadSpeed: string;
   isDownloading: boolean;
   statusMessage: string | null;
+  preflightAssets: import('../services/platformAdapter').PreflightAsset[];
+  preflightFootprint: string;
 
   setOpen: (open: boolean) => void;
   setActiveTab: (tab: 'platform' | 'models' | 'databases' | 'launch') => void;
@@ -26,6 +28,10 @@ interface ControlCenterState {
   setHardware: (info: SystemHardwareInfo) => void;
   setDownloadProgress: (percent: number, speed: string) => void;
   setIsDownloading: (downloading: boolean) => void;
+  setPreflightAssets: (
+    assets: import('../services/platformAdapter').PreflightAsset[],
+    footprint?: string
+  ) => void;
   setStatusMessage: (msg: string | null) => void;
   completeFirstRun: () => void;
 
@@ -83,6 +89,8 @@ export const useControlCenterStore = create<ControlCenterState>()(
       downloadSpeed: '',
       isDownloading: false,
       statusMessage: null,
+      preflightAssets: [],
+      preflightFootprint: '~4.6 GB Total Footprint',
       config: {
         firstRunCompleted: typeof process !== 'undefined' && process.env.NODE_ENV === 'test',
         targetPlatform: defaultPlatform,
@@ -148,6 +156,11 @@ export const useControlCenterStore = create<ControlCenterState>()(
       setDownloadProgress: (percent, speed) =>
         set({ downloadProgress: percent, downloadSpeed: speed }),
       setIsDownloading: (isDownloading) => set({ isDownloading }),
+      setPreflightAssets: (preflightAssets, footprint) =>
+        set((s) => ({
+          preflightAssets,
+          preflightFootprint: footprint || s.preflightFootprint,
+        })),
       setStatusMessage: (statusMessage) => set({ statusMessage }),
       completeFirstRun: () =>
         set((s) => ({

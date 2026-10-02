@@ -57,19 +57,26 @@ export const ControlCenterModal: React.FC = () => {
   // Pre-flight Neural Assets Verification and Download Gate
   useEffect(() => {
     if (!isOpen || config.targetPlatform === 'web') return;
-    const { setDownloadProgress, setIsDownloading } = useControlCenterStore.getState();
+    const { setDownloadProgress, setIsDownloading, setPreflightAssets } =
+      useControlCenterStore.getState();
 
     let cancelled = false;
 
-    // Honest probe of on-device preflight assets
+    // Honest probe of on-device preflight assets from backend
     platformAdapter.getPreflightAssets().then(async (res) => {
       if (cancelled) return;
+      if (Array.isArray(res.assets) && res.assets.length > 0) {
+        setPreflightAssets(res.assets, res.total_footprint);
+      }
       if (res.all_verified) {
-        setDownloadProgress(100, 'All Neural Assets Verified');
+        setDownloadProgress(100, res.download_speed || 'All Neural Assets Verified');
         setIsDownloading(false);
       } else {
         setIsDownloading(true);
-        setDownloadProgress(10, 'Synchronizing neural models...');
+        setDownloadProgress(
+          res.download_progress || 10,
+          res.download_speed || 'Synchronizing neural models...'
+        );
         try {
           await platformAdapter.downloadNeuralAssets((percent, status) => {
             if (!cancelled) {
@@ -81,6 +88,9 @@ export const ControlCenterModal: React.FC = () => {
         }
         if (!cancelled) {
           const finalCheck = await platformAdapter.getPreflightAssets();
+          if (Array.isArray(finalCheck.assets) && finalCheck.assets.length > 0) {
+            setPreflightAssets(finalCheck.assets, finalCheck.total_footprint);
+          }
           if (finalCheck.all_verified) {
             setDownloadProgress(100, 'All Neural Assets Verified');
           } else {
@@ -235,12 +245,14 @@ export const ControlCenterModal: React.FC = () => {
         }
       }
 
-      // Determine active primary provider
+      // Determine active primary provider and mode
       const primaryCloudProvider =
         (config.apiKeys || []).find((k) => k?.key && k.key.trim())?.provider || 'groq';
       const activeBackend = isCloud ? primaryCloudProvider : 'ollama';
+      const activeLlmMode = isCloud ? `cloud_${primaryCloudProvider}` : 'local_ollama';
 
       await platformAdapter.saveConfig({
+        llm_mode: activeLlmMode,
         llm_backend: activeBackend,
         groq_api_key: keyMap['groq'] || config.groqApiKey,
         gemini_api_key: keyMap['gemini'] || config.geminiApiKey,
@@ -251,14 +263,18 @@ export const ControlCenterModal: React.FC = () => {
         mistral_api_key: keyMap['mistral'],
         cohere_api_key: keyMap['cohere'],
         openrouter_api_key: keyMap['openrouter'],
+        selected_local_model: config.selectedLocalModel,
         ollama_model: config.selectedLocalModel,
         neo4j_mode: config.knowledgeGraph.mode,
         neo4j_uri: config.knowledgeGraph.uri,
+        neo4j_user: config.knowledgeGraph.user,
         neo4j_password: config.knowledgeGraph.password,
         postgres_mode: config.sessionMemory.mode,
         postgres_uri: config.sessionMemory.uri,
+        postgres_url: config.sessionMemory.uri,
         redis_mode: config.cacheAndSignals.mode,
         redis_uri: config.cacheAndSignals.uri,
+        redis_url: config.cacheAndSignals.uri,
         tunnel_url: config.tunnelUrl,
       });
     } finally {

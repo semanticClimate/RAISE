@@ -5,6 +5,8 @@ import { sourceService } from '../../services/SourceService';
 import type { Citation } from '../../types';
 import { extractVerifiedPageNumber } from '../../utils/citationParser';
 
+import { getApiBaseUrl } from '../../app/config';
+
 export interface CitationBadgeProps {
   index?: number;
   indices?: number[];
@@ -18,6 +20,9 @@ interface CitationItemDetail {
   pageNumber?: number;
   fileName: string;
   pdfUrl?: string;
+  singlePagePdfUrl?: string;
+  singlePageImageUrl?: string;
+  singlePageViewUrl?: string;
   heading?: string;
   plainText?: string;
 }
@@ -37,6 +42,27 @@ function resolveCitationDetail(cit?: Citation, fallbackIndex: number = 1): Citat
 
   const fileName =
     rawFileName && rawFileName !== 'Document' ? rawFileName : rawFileName || 'Audited Document';
+
+  const base = getApiBaseUrl().replace(/\/+$/, '');
+
+  const singlePagePdfUrl = cit?.page_url
+    ? `${base}${cit.page_url.startsWith('/') ? '' : '/'}${cit.page_url}`
+    : rawFileName && pageNumber && pageNumber > 0
+      ? sourceService.getSinglePagePdfUrl(rawFileName, pageNumber)
+      : undefined;
+
+  const singlePageImageUrl = cit?.page_image_url
+    ? `${base}${cit.page_image_url.startsWith('/') ? '' : '/'}${cit.page_image_url}`
+    : rawFileName && pageNumber && pageNumber > 0
+      ? sourceService.getSinglePageImageUrl(rawFileName, pageNumber)
+      : undefined;
+
+  const singlePageViewUrl = cit?.page_view_url
+    ? `${base}${cit.page_view_url.startsWith('/') ? '' : '/'}${cit.page_view_url}`
+    : rawFileName && pageNumber && pageNumber > 0
+      ? sourceService.getSinglePageViewUrl(rawFileName, pageNumber)
+      : undefined;
+
   const pdfUrl = rawFileName ? sourceService.getPdfUrl(rawFileName, pageNumber) : undefined;
 
   return {
@@ -44,6 +70,9 @@ function resolveCitationDetail(cit?: Citation, fallbackIndex: number = 1): Citat
     pageNumber,
     fileName,
     pdfUrl,
+    singlePagePdfUrl,
+    singlePageImageUrl,
+    singlePageViewUrl,
     heading: cit?.heading,
     plainText: cit?.plain_text,
   };
@@ -110,9 +139,15 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
     ? `[${items.map((it) => it.index).join(', ')}]`
     : `[${firstItem.index}]`;
 
-  const handleTogglePopover = (e: React.MouseEvent) => {
+  const handleBadgeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setShowTooltip((prev) => !prev);
+    if (isMultiple) {
+      setShowTooltip((prev) => !prev);
+    } else if (onViewPdf && firstItem.fileName && firstItem.fileName !== 'Audited Document') {
+      onViewPdf(firstItem.fileName, firstItem.pageNumber || 1);
+    } else {
+      setShowTooltip((prev) => !prev);
+    }
   };
 
   const handleOpenDoc = (
@@ -135,7 +170,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
     <span className="relative inline-block mx-0.5 align-baseline">
       <button
         type="button"
-        onClick={handleTogglePopover}
+        onClick={handleBadgeClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onFocus={handleMouseEnter}
@@ -150,13 +185,13 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
           isMultiple
             ? `Multiple citations ${buttonLabel} - Click to inspect`
             : firstItem.fileName
-              ? `${firstItem.fileName}${firstItem.pageNumber ? ` (Page ${firstItem.pageNumber})` : ''} - Click to inspect source`
+              ? `Click to view ${firstItem.fileName}${firstItem.pageNumber ? ` at Page ${firstItem.pageNumber}` : ''}`
               : `Citation [${firstItem.index}]`
         }
       >
         <span>{buttonLabel}</span>
         {!isMultiple && firstItem.pageNumber !== undefined && firstItem.pageNumber > 0 && (
-          <span className="ml-1 text-[9.5px] font-mono font-medium opacity-85">
+          <span className="ml-1 px-1 py-0.2 rounded text-[9.5px] font-mono font-semibold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-400/25">
             p.{firstItem.pageNumber}
           </span>
         )}
@@ -194,10 +229,25 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
                     <span className="truncate">{item.fileName}</span>
                   </div>
                   {item.pageNumber !== undefined && item.pageNumber > 0 ? (
-                    <span className="text-[10px] font-mono font-medium bg-white/[0.08] text-slate-200 border border-white/15 px-1.5 py-0.2 rounded shrink-0">
-                      Page {item.pageNumber}
-                      <span className="sr-only"> (p. {item.pageNumber})</span>
-                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onViewPdf && item.fileName) {
+                          onViewPdf(item.fileName, item.pageNumber || 1);
+                          return;
+                        }
+                        const targetUrl = item.singlePagePdfUrl || item.pdfUrl;
+                        if (targetUrl && typeof window !== 'undefined') {
+                          window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      title={`Open Page ${item.pageNumber} in viewer`}
+                      className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 hover:text-white border border-blue-500/30 px-2 py-0.5 rounded cursor-pointer transition-all shrink-0 hover:scale-105 active:scale-95 shadow-2xs"
+                    >
+                      <span>Page {item.pageNumber}</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </button>
                   ) : (
                     <span className="text-[10px] font-mono font-medium bg-slate-800 text-slate-400 border border-slate-700/60 px-1.5 py-0.2 rounded shrink-0">
                       Doc Source
@@ -220,21 +270,41 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
                   </blockquote>
                 )}
 
-                {/* Footer with View PDF Link - Single page number display in header, clean action link here */}
-                {item.pdfUrl && (
-                  <div className="flex items-center justify-end text-[10.5px] pt-1.5 mt-1">
+                {/* Footer with Single Page & View PDF Links */}
+                <div className="flex items-center justify-between text-[10.5px] pt-1.5 mt-1 border-t border-white/5">
+                  {item.singlePagePdfUrl ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (typeof window !== 'undefined') {
+                          window.open(item.singlePagePdfUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline cursor-pointer transition-colors text-[10.5px] font-medium"
+                      title="Open isolated 1-page PDF (~72 KB in 25ms)"
+                    >
+                      <span>⚡ Page {item.pageNumber || 1} Only</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-mono">Source</span>
+                  )}
+
+                  {item.pdfUrl && (
                     <button
                       type="button"
                       onClick={(e) =>
                         handleOpenDoc(e, item.pdfUrl, item.fileName, item.pageNumber || 1)
                       }
-                      className="inline-flex items-center gap-1 text-slate-300 hover:text-white hover:underline cursor-pointer transition-colors text-[10.5px] font-medium"
+                      className="inline-flex items-center gap-1 text-slate-400 hover:text-white hover:underline cursor-pointer transition-colors text-[10.5px] font-medium"
+                      title="Open full document"
                     >
-                      <span>View PDF</span>
+                      <span>Full Doc</span>
                       <ExternalLink className="w-2.5 h-2.5" />
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>

@@ -13,6 +13,7 @@ export interface LibraryPickerModalProps {
   attachedDocNames: string[];
   onOpenUploadFromPC: () => void;
   onViewPdf?: (filename: string, pageNumber?: number) => void;
+  onAttachAll?: (items: LibraryItem[]) => void;
 }
 
 export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
@@ -22,6 +23,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   attachedDocNames,
   onOpenUploadFromPC,
   onViewPdf,
+  onAttachAll,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'pdf' | 'csv' | 'docx' | 'other'>('all');
@@ -80,6 +82,10 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
     return result;
   }, [items, searchQuery, typeFilter]);
+
+  const unattachedReadyItems = filteredItems.filter(
+    (item) => isItemIndexed(item) && !attachedSet.has(item.name.toLowerCase().trim())
+  );
 
   if (!isOpen) return null;
 
@@ -165,22 +171,35 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
             />
           </div>
 
-          {/* Type Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            {(['all', 'pdf', 'csv', 'docx', 'other'] as const).map((t) => (
+          {/* Type Filter Pills & Attach All */}
+          <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-0.5">
+            <div className="flex items-center gap-1.5">
+              {(['all', 'pdf', 'csv', 'docx', 'other'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFilter(t)}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                    typeFilter === t
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                      : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-[#c4c7c5] hover:bg-slate-200/70 dark:hover:bg-white/10'
+                  }`}
+                >
+                  {t === 'all' ? 'All' : t.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {onAttachAll && unattachedReadyItems.length > 0 && (
               <button
-                key={t}
                 type="button"
-                onClick={() => setTypeFilter(t)}
-                className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                  typeFilter === t
-                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                    : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-[#c4c7c5] hover:bg-slate-200/70 dark:hover:bg-white/10'
-                }`}
+                onClick={() => onAttachAll(unattachedReadyItems)}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
+                title={`Attach all ${unattachedReadyItems.length} ready documents to current chat`}
               >
-                {t === 'all' ? 'All' : t.toUpperCase()}
+                Attach All ({unattachedReadyItems.length})
               </button>
-            ))}
+            )}
           </div>
         </div>
 

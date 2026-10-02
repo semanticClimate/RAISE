@@ -50,6 +50,12 @@ export const ENDPOINTS = {
   DELETE_DOCUMENT_BY_ID: (id: string) => `/api/documents/${encodeURIComponent(id)}`,
   LOAD_VAULT_DEFAULTS: '/api/vault/load-defaults',
   PDF_VIEW: (filename: string) => `/api/pdf/${encodeURIComponent(filename)}`,
+  PDF_PAGE: (filename: string, page: number) =>
+    `/api/pdf/${encodeURIComponent(filename)}/pages/${page}/pdf`,
+  PDF_PAGE_IMAGE: (filename: string, page: number) =>
+    `/api/pdf/${encodeURIComponent(filename)}/pages/${page}/image`,
+  PDF_PAGE_VIEW: (filename: string, page: number) =>
+    `/api/pdf/${encodeURIComponent(filename)}/pages/${page}/view`,
 
   // Graph & Subgraph
   GRAPH: '/api/graph',

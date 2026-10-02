@@ -82,9 +82,26 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
       className={`hidden sm:flex items-center space-x-1.5 sm:space-x-2 overflow-x-auto scrollbar-none py-0.5 select-none shrink ${className}`}
     >
       {selectedDocs.length === 0 && (
-        <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal sm:hidden select-none truncate">
-          Attach sources
-        </span>
+        <button
+          type="button"
+          onClick={() => onOpenDrawer?.()}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100/60 hover:bg-slate-200/60 dark:bg-white/[0.04] dark:hover:bg-white/[0.08] border border-slate-200/80 dark:border-white/10 transition-all cursor-pointer shadow-2xs group"
+          title="Queries automatically search across all ready library documents. Click to manage active drawer sources."
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 group-hover:scale-125 transition-transform" />
+          <span>Global Search: All Library Docs</span>
+        </button>
+      )}
+
+      {selectedDocs.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onOpenDrawer?.()}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-mono font-medium text-indigo-600 dark:text-[#a8c7fa] bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200/60 dark:border-indigo-500/30 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 transition-colors cursor-pointer shrink-0"
+          title="Click to view or adjust search scope in Sources Drawer"
+        >
+          <span>Scope: {selectedDocs.length} {selectedDocs.length === 1 ? 'doc' : 'docs'}</span>
+        </button>
       )}
 
       {selectedDocs.map((file) => {

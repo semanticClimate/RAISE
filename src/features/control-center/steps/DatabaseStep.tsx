@@ -88,6 +88,7 @@ export const DatabaseStep: React.FC = () => {
       if (activeCloudSubstrate === 'knowledgeGraph') {
         payload.neo4j_mode = 'cloud';
         payload.neo4j_uri = cloudUri.trim();
+        payload.neo4j_user = cloudUser.trim();
         payload.neo4j_password = cloudPass;
       } else if (activeCloudSubstrate === 'sessionMemory') {
         payload.postgres_mode = 'cloud';

@@ -39,6 +39,10 @@ export const CitationSchema = z.object({
   plain_text: z.string().default(''),
   university: z.string().default(''),
   similarity: z.number().default(0),
+  printed_page: z.union([z.string(), z.number()]).nullable().optional(),
+  page_url: z.string().optional(),
+  page_image_url: z.string().optional(),
+  page_view_url: z.string().optional(),
 });
 
 export type Citation = z.infer<typeof CitationSchema>;
