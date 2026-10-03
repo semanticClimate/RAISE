@@ -242,7 +242,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
                           window.open(targetUrl, '_blank', 'noopener,noreferrer');
                         }
                       }}
-                      title={`Open Page ${item.pageNumber} in viewer`}
+                      title={`Open Page ${item.pageNumber} in new tab`}
                       className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 hover:text-white border border-blue-500/30 px-2 py-0.5 rounded cursor-pointer transition-all shrink-0 hover:scale-105 active:scale-95 shadow-2xs"
                     >
                       <span>Page {item.pageNumber}</span>

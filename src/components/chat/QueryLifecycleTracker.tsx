@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 
@@ -6,12 +7,12 @@ import { useEffect, useState } from 'react';
  */
 export const STAGE_THOUGHT_MAP: Record<string, string> = {
   RECEIVED: 'Analyzing your question...',
-  ROUTING: 'Analyzing your question...',
+  ROUTING: 'Analyzing question and scoping topics...',
   QUERY_DECOMPOSITION: 'Structuring research topics...',
   VECTOR_RETRIEVAL: 'Searching attached documents...',
   GRAPH_RETRIEVAL: 'Exploring concept relationships in knowledge graph...',
   FUSION: 'Finding the most relevant evidence...',
-  RERANKING: 'Finding the most relevant evidence...',
+  RERANKING: 'Ranking and verifying evidence chunks...',
   SYNTHESIS: 'Synthesizing research findings...',
 };
 
@@ -30,7 +31,7 @@ export interface QueryLifecycleTrackerProps {
   onAbort?: () => void;
   decomposedQueries?: string[];
   isComplete?: boolean;
-  durationSec?: number;
+  durationSec?: number | null;
 }
 
 /**
@@ -64,15 +65,82 @@ export function getFriendlyThought(stage?: string, elapsedSec = 0): string {
 }
 
 /**
- * Active Thinking UI:
- * Subtle, pulsing status indicator with active friendly phrase without technical jargon prefixes.
- * E.g. `✦ Exploring concept relationships in knowledge graph... (0.4s)`
+ * Formats elapsed duration into human-readable seconds or milliseconds based strictly
+ * on actual measured execution time (never hardcoded):
+ * - When durationSec is invalid or <= 0, returns null
+ * - When < 1s, outputs e.g. "450ms"
+ * - When >= 1s and < 60s, outputs e.g. "1.8s"
+ * - When >= 60s, outputs e.g. "1m 12s"
+ */
+export function formatThoughtDuration(durationSec?: number | null): string | null {
+  if (typeof durationSec !== 'number' || Number.isNaN(durationSec) || durationSec <= 0) {
+    return null;
+  }
+  if (durationSec < 1) {
+    const ms = Math.round(durationSec * 1000);
+    return `${Math.max(ms, 1)}ms`;
+  }
+  if (durationSec >= 60) {
+    const mins = Math.floor(durationSec / 60);
+    const secs = Math.round(durationSec % 60);
+    return `${mins}m ${secs}s`;
+  }
+  return `${durationSec.toFixed(1)}s`;
+}
+
+export interface ThoughtDurationProps {
+  executionTimeSec?: number | null;
+  decomposedQueries?: string[];
+  citationsCount?: number;
+  chunksCount?: number;
+  sourcesCount?: number;
+  routingStrategy?: string;
+  query?: string;
+  className?: string;
+}
+
+/**
+ * Clean Thought Badge (Gemini / ChatGPT style):
+ * Displays above the AI response card: `✦ Thought for {X}s` (or `✦ Thought` if no duration recorded).
+ * Does not show any expandable accordion or fake hardcoded durations.
+ */
+export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
+  executionTimeSec,
+  className = '',
+}) => {
+  const formattedTime = formatThoughtDuration(executionTimeSec);
+
+  return (
+    <div
+      className={`thought-duration-container mb-2 ml-0.5 select-none ${className}`}
+      data-testid="thought-duration"
+    >
+      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/10 shadow-2xs">
+        <Sparkles
+          className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0"
+          aria-hidden="true"
+        />
+        <span className="font-medium tracking-tight">
+          {formattedTime ? `Thought for ${formattedTime}` : 'Thought'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// Aliases for backwards compatibility
+export const ResearchStepsAccordion = ThoughtDuration;
+export const ThoughtDurationIndicator = ThoughtDuration;
+
+/**
+ * Active Thinking UI (Gemini / ChatGPT style):
+ * Subtle, pulsing status indicator with active friendly phrase and live elapsed seconds.
+ * E.g. `✦ Exploring concept relationships in knowledge graph... (2.4s)`
  */
 export const QueryLifecycleTracker: React.FC<QueryLifecycleTrackerProps> = ({
   query,
   stage,
   onAbort: _onAbort,
-  decomposedQueries: _decomposedQueries,
   isComplete,
   durationSec,
 }) => {
@@ -91,33 +159,36 @@ export const QueryLifecycleTracker: React.FC<QueryLifecycleTrackerProps> = ({
   }, [isComplete]);
 
   if (isComplete) {
-    return <ResearchStepsAccordion executionTimeSec={durationSec ?? elapsedSec} />;
+    const finalSec =
+      typeof durationSec === 'number' && durationSec > 0
+        ? durationSec
+        : elapsedSec > 0
+          ? elapsedSec
+          : null;
+
+    return <ThoughtDuration executionTimeSec={finalSec} query={query} />;
   }
 
   const activeThought = getFriendlyThought(stage, elapsedSec);
 
   return (
     <div
-      className="query-lifecycle-tracker inline-flex items-center gap-2 py-1 px-1 text-xs text-slate-500 dark:text-slate-400 select-none animate-in fade-in duration-200"
+      className="query-lifecycle-tracker inline-flex items-center gap-2 py-1.5 px-3 text-xs rounded-xl bg-slate-100/80 dark:bg-white/[0.05] border border-slate-200/80 dark:border-white/10 text-slate-700 dark:text-slate-300 select-none animate-in fade-in duration-200 shadow-2xs"
       data-testid="query-lifecycle-tracker"
       role="status"
       aria-live="polite"
     >
-      {/* Subtle pulsing status glyph */}
-      <span
-        className="text-indigo-600 dark:text-indigo-400 animate-pulse text-sm font-semibold select-none shrink-0"
+      {/* Subtle pulsing sparkle glyph */}
+      <Sparkles
+        className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-pulse shrink-0"
         aria-hidden="true"
-      >
-        ✦
-      </span>
+      />
 
       {/* Active human-readable thought label */}
-      <span className="font-medium text-slate-700 dark:text-slate-200 tracking-tight">
-        {activeThought}
-      </span>
+      <span className="font-medium tracking-tight">{activeThought}</span>
 
       {/* Elapsed seconds timer */}
-      <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] shrink-0">
+      <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] font-medium shrink-0">
         ({elapsedSec.toFixed(1)}s)
       </span>
 
@@ -129,58 +200,3 @@ export const QueryLifecycleTracker: React.FC<QueryLifecycleTrackerProps> = ({
     </div>
   );
 };
-
-/**
- * Formats elapsed duration into human-readable seconds or milliseconds:
- * - When < 1s and > 0, outputs e.g. "450ms"
- * - When >= 1s, outputs e.g. "1.8s"
- */
-export function formatThoughtDuration(durationSec: number): string {
-  if (typeof durationSec !== 'number' || Number.isNaN(durationSec) || durationSec <= 0) {
-    return '0.0s';
-  }
-  if (durationSec < 1) {
-    const ms = Math.round(durationSec * 1000);
-    return `${Math.max(ms, 1)}ms`;
-  }
-  if (durationSec < 10) {
-    const s = durationSec.toFixed(2);
-    return s.endsWith('0') ? `${durationSec.toFixed(1)}s` : `${s}s`;
-  }
-  return `${durationSec.toFixed(1)}s`;
-}
-
-export interface ThoughtDurationProps {
-  executionTimeSec: number;
-  className?: string;
-}
-
-/**
- * Clean completed thinking indicator:
- * Once the answer is received from the backend, shows only the execution time.
- * No "View research steps" or "Hide research steps" buttons or expandable dropdowns.
- */
-export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
-  executionTimeSec,
-  className = '',
-}) => {
-  const formattedTime = formatThoughtDuration(executionTimeSec);
-
-  return (
-    <div
-      className={`thought-duration flex items-center gap-1.5 mb-2 ml-0.5 text-xs text-slate-500 dark:text-slate-400 select-none animate-in fade-in duration-200 ${className}`}
-      data-testid="thought-duration"
-    >
-      <span className="text-indigo-500 dark:text-indigo-400 text-xs shrink-0" aria-hidden="true">
-        ✦
-      </span>
-      <span className="font-medium text-slate-600 dark:text-slate-300">
-        Thought for {formattedTime}
-      </span>
-    </div>
-  );
-};
-
-// Aliases for backwards compatibility
-export const ResearchStepsAccordion = ThoughtDuration;
-export const ThoughtDurationIndicator = ThoughtDuration;

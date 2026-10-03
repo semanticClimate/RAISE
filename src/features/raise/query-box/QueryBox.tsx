@@ -33,6 +33,7 @@ export interface QueryBoxProps {
   isDocReady: (doc: SourceDocument) => boolean;
   onRemoveAttachedDoc: (id: string) => void;
   onOpenSourcesDrawer?: () => void;
+  onViewPdf?: (filename: string, pageNumber?: number) => void;
 
   // Add Source Menu (+ button)
   addSourceMenuOpen: 'input' | 'drawer' | null;
@@ -86,6 +87,7 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
   isDocReady,
   onRemoveAttachedDoc,
   onOpenSourcesDrawer,
+  onViewPdf,
   addSourceMenuOpen,
   setAddSourceMenuOpen,
   fileInputRef,
@@ -163,6 +165,7 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
           selectedDocs={selectedDocs}
           isDocReady={isDocReady}
           onRemoveDoc={onRemoveAttachedDoc}
+          onViewPdf={onViewPdf}
           variant="mobile"
         />
 
@@ -342,6 +345,7 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
                 isDocReady={isDocReady}
                 onRemoveDoc={onRemoveAttachedDoc}
                 onOpenDrawer={onOpenSourcesDrawer}
+                onViewPdf={onViewPdf}
                 conversationLength={conversationLength}
                 variant="desktop"
               />

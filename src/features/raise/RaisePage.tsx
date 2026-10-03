@@ -14,14 +14,12 @@ import {
 } from '../../components/chat/QueryLifecycleTracker';
 import type { LibraryItem } from '../../components/settings/SettingsLibraryTab';
 import { applyStoredTunerConfigToDom } from '../../components/ui/GridGradientTuner';
-import { Modal } from '../../components/ui/Modal';
 import { SpecialTooltip } from '../../components/ui/SpecialTooltip';
 import { chatService } from '../../services/ChatService';
 import { sourceService } from '../../services/SourceService';
 import { systemService } from '../../services/SystemService';
 import { useFilterStore } from '../../stores/filterStore';
 import { useModeStore } from '../../stores/modeStore';
-import { useUiStore } from '../../stores/uiStore';
 import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../../types';
 import { ensureMinimumDuration } from '../../utils/async';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
@@ -37,9 +35,6 @@ import { settingsJunction, useSettingsJunction } from '../settings/junction';
 import { Sidebar as MainSidebar } from '../sidebar/Sidebar';
 import { ActionTooltip } from './components/ActionTooltip';
 
-const InlinePdfViewer = lazy(() =>
-  import('../../components/citations/InlinePdfViewer').then((m) => ({ default: m.InlinePdfViewer }))
-);
 const LibraryPickerModal = lazy(() =>
   import('../../components/library/LibraryPickerModal').then((m) => ({ default: m.LibraryPickerModal }))
 );
@@ -264,7 +259,6 @@ export const RaisePage: React.FC = () => {
       return next;
     });
   };
-  const { activeModal, openModal, closeModal, selectedCitation, setSelectedCitation } = useUiStore();
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
     const saved = localStorage.getItem('raise_theme');
     if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
@@ -692,7 +686,9 @@ export const RaisePage: React.FC = () => {
     }
     if (audioStreamRef.current) {
       try {
-        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+        audioStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
       } catch {}
       audioStreamRef.current = null;
     }
@@ -914,7 +910,7 @@ export const RaisePage: React.FC = () => {
   };
 
   const removeAttachedFile = (id: string) => {
-    toggleSourceDoc(id);
+    handleDeleteSourceDoc(id);
   };
 
   const handleDeleteSourceDoc = (id: string, _name?: string) => {
@@ -1076,19 +1072,11 @@ export const RaisePage: React.FC = () => {
   const selectedDocs = sourceDocs.filter((doc) => doc.selected);
   const activeSourcesCount = selectedDocs.length;
 
-  const handleOpenPdfViewer = (filename: string, pageNumber: number = 1, heading?: string) => {
-    setSelectedCitation({
-      citation_index: 1,
-      chunk_id: `view-${filename}-${pageNumber}`,
-      document_id: filename,
-      pdf_filename: filename,
-      primary_page: pageNumber,
-      heading: heading || filename,
-      plain_text: `Viewing document ${filename} (page ${pageNumber}) from research drawer.`,
-      university: 'Research Vault',
-      similarity: 1.0,
-    });
-    openModal('pdf');
+  const handleOpenPdfViewer = (filename: string, pageNumber: number = 1, _heading?: string) => {
+    if (typeof window !== 'undefined' && filename) {
+      const url = sourceService.getPdfUrl(filename, pageNumber);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1194,10 +1182,6 @@ export const RaisePage: React.FC = () => {
           setIsLibraryPickerOpen(false);
           closedSomething = true;
         }
-        if (activeModal === 'pdf' || selectedCitation) {
-          closeModal();
-          closedSomething = true;
-        }
         if (addSourceMenuOpen) {
           setAddSourceMenuOpen(null);
           closedSomething = true;
@@ -1243,8 +1227,6 @@ export const RaisePage: React.FC = () => {
     isSourcesDrawerOpen,
     isPipelineDrawerOpen,
     isLibraryPickerOpen,
-    activeModal,
-    selectedCitation,
     addSourceMenuOpen,
     activeSessionMenuId,
     expandedQVersionsIndex,
@@ -1252,7 +1234,6 @@ export const RaisePage: React.FC = () => {
     showSuggestions,
     isUserMenuOpen,
     editingMessageIndex,
-    closeModal,
   ]);
 
   useEffect(() => {
@@ -1767,7 +1748,9 @@ export const RaisePage: React.FC = () => {
           .getUserMedia({ audio: true })
           .then((stream) => {
             if (!recognitionRef.current) {
-              stream.getTracks().forEach((t) => t.stop());
+              stream.getTracks().forEach((t) => {
+                t.stop();
+              });
               return;
             }
             audioStreamRef.current = stream;
@@ -3838,27 +3821,27 @@ export const RaisePage: React.FC = () => {
                       ? msg.durationSec
                       : null) ??
                     (typeof activeResp?.response?.latency_sec === 'number' &&
-                    activeResp.response.latency_sec > 0
-                      ? activeResp.response.latency_sec
+                    (activeResp?.response?.latency_sec ?? 0) > 0
+                      ? activeResp?.response?.latency_sec
                       : null) ??
-                    (typeof msg.response?.latency_sec === 'number' && msg.response.latency_sec > 0
-                      ? msg.response.latency_sec
+                    (typeof msg.response?.latency_sec === 'number' && (msg.response?.latency_sec ?? 0) > 0
+                      ? msg.response?.latency_sec
                       : null) ??
                     (typeof (activeResp?.response as any)?.execution_time === 'number' &&
-                    (activeResp?.response as any).execution_time > 0
-                      ? (activeResp?.response as any).execution_time
+                    ((activeResp?.response as any)?.execution_time ?? 0) > 0
+                      ? (activeResp?.response as any)?.execution_time
                       : null) ??
                     (typeof (msg.response as any)?.execution_time === 'number' &&
-                    (msg.response as any).execution_time > 0
-                      ? (msg.response as any).execution_time
+                    ((msg.response as any)?.execution_time ?? 0) > 0
+                      ? (msg.response as any)?.execution_time
                       : null) ??
                     (typeof (activeResp?.response as any)?.elapsed_ms === 'number' &&
-                    (activeResp?.response as any).elapsed_ms > 0
-                      ? (activeResp?.response as any).elapsed_ms / 1000
+                    ((activeResp?.response as any)?.elapsed_ms ?? 0) > 0
+                      ? Number((activeResp?.response as any)?.elapsed_ms) / 1000
                       : null) ??
                     (typeof (msg.response as any)?.elapsed_ms === 'number' &&
-                    (msg.response as any).elapsed_ms > 0
-                      ? (msg.response as any).elapsed_ms / 1000
+                    ((msg.response as any)?.elapsed_ms ?? 0) > 0
+                      ? Number((msg.response as any)?.elapsed_ms) / 1000
                       : null) ??
                     null;
 
@@ -3887,9 +3870,7 @@ export const RaisePage: React.FC = () => {
                         )
                       ) : (
                         !msg.error &&
-                        !isStopped &&
-                        executionTimeSec !== null &&
-                        executionTimeSec > 0 && (
+                        !isStopped && (
                           <ThoughtDuration executionTimeSec={executionTimeSec} />
                         )
                       )}
@@ -4441,6 +4422,7 @@ export const RaisePage: React.FC = () => {
             isDocReady={isDocReady}
             onRemoveAttachedDoc={removeAttachedFile}
             onOpenSourcesDrawer={() => setIsSourcesDrawerOpen(true)}
+            onViewPdf={handleOpenPdfViewer}
             addSourceMenuOpen={addSourceMenuOpen}
             setAddSourceMenuOpen={setAddSourceMenuOpen}
             fileInputRef={fileInputRef}
@@ -4492,26 +4474,6 @@ export const RaisePage: React.FC = () => {
       )}
 
       {/* Global PDF Document Modal */}
-      {selectedCitation && activeModal === 'pdf' && (
-        <Modal
-          isOpen={activeModal === 'pdf'}
-          onClose={() => closeModal()}
-          title={`Document Evidence: ${selectedCitation.pdf_filename || 'Institutional PDF'}`}
-          subtitle={
-            selectedCitation.primary_page && selectedCitation.primary_page > 0
-              ? `Verified Page ${selectedCitation.primary_page}${selectedCitation.heading ? ` • ${selectedCitation.heading}` : ''}`
-              : selectedCitation.heading || 'Audited Document Evidence'
-          }
-          maxWidth="full"
-        >
-          <div className="h-[75vh]">
-            <Suspense fallback={<div className="h-full flex items-center justify-center text-slate-400">Loading document viewer...</div>}>
-              <InlinePdfViewer citation={selectedCitation} />
-            </Suspense>
-          </div>
-        </Modal>
-      )}
-
       {/* Search Chats Modal (Modular feature) */}
       {isSearchModalOpen && (
         <Suspense fallback={null}>

@@ -491,7 +491,7 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
           .slice(1, -1)
           .split(',')
           .map((s) => parseInt(s.trim(), 10))
-          .filter((n) => !isNaN(n));
+          .filter((n) => !Number.isNaN(n));
 
         const matchedCitations = rawIndices
           .map(

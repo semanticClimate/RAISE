@@ -52,8 +52,14 @@ tests/
 mocks/
 fixtures/
 
-# Local development tooling & reference (ignored from git repository)
+# Local development tooling & reference (ignored from git repository - never commit/push)
 .node/
 biome.json
+biome.jsonc
+.biome/
+.biome
+biome-logs/
+*.biome
 sheriff.config.ts
+.eslintcache
 

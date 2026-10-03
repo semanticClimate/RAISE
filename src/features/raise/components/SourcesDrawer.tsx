@@ -502,8 +502,8 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
                             onViewPdf(doc.name, 1);
                           }}
                           className="px-2 py-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 rounded-lg border border-indigo-200/80 dark:border-indigo-500/30 transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                          title={`View ${doc.name} in PDF Viewer`}
-                          aria-label={`View ${doc.name} in PDF Viewer`}
+                          title={`Open ${doc.name} in new tab`}
+                          aria-label={`Open ${doc.name} in new tab`}
                         >
                           <svg
                             className="w-3.5 h-3.5"

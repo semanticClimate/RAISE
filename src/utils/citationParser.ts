@@ -85,7 +85,7 @@ export function extractVerifiedPageNumber(raw: any): number | undefined {
     if (typeof cand === 'number' && cand > 0) {
       return cand;
     }
-    if (typeof cand === 'string' && !isNaN(parseInt(cand, 10))) {
+    if (typeof cand === 'string' && !Number.isNaN(parseInt(cand, 10))) {
       const p = parseInt(cand, 10);
       if (p > 0) return p;
     }
@@ -376,7 +376,7 @@ export function parseCitations(text: string, citations: Citation[] = []): Citati
     const rawIndices = match[1]
       .split(',')
       .map((s) => parseInt(s.trim(), 10))
-      .filter((n) => !isNaN(n));
+      .filter((n) => !Number.isNaN(n));
 
     for (const citationIndex of rawIndices) {
       const matchedCitation =
