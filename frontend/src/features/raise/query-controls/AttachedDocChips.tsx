@@ -7,6 +7,7 @@ export interface AttachedDocChipsProps {
   isDocReady: (doc: SourceDocument) => boolean;
   onRemoveDoc: (id: string) => void;
   onOpenDrawer?: () => void;
+  onViewPdf?: (filename: string, pageNumber?: number) => void;
   conversationLength?: number;
   variant?: 'desktop' | 'mobile';
   className?: string;
@@ -17,6 +18,7 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
   isDocReady,
   onRemoveDoc,
   onOpenDrawer,
+  onViewPdf,
   conversationLength = 0,
   variant = 'desktop',
   className = '',
@@ -41,7 +43,17 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
               key={`mob-${file.id}`}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/10 shrink-0 text-[11px]"
             >
-              <span className="truncate max-w-[100px] font-medium text-slate-700 dark:text-slate-200">
+              <span
+                onClick={() => {
+                  if (onViewPdf && ready) {
+                    onViewPdf(file.name, 1);
+                  }
+                }}
+                className={`truncate max-w-[100px] font-medium text-slate-700 dark:text-slate-200 ${
+                  ready ? 'cursor-pointer hover:underline' : ''
+                }`}
+                title={ready ? 'Open document in new tab' : undefined}
+              >
                 {file.name}
               </span>
               {isProcessing ? (
@@ -76,17 +88,13 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
     );
   }
 
+  if (selectedDocs.length === 0) return null;
+
   // Desktop horizontal scrolling chips
   return (
     <div
       className={`hidden sm:flex items-center space-x-1.5 sm:space-x-2 overflow-x-auto scrollbar-none py-0.5 select-none shrink ${className}`}
     >
-      {selectedDocs.length === 0 && (
-        <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal sm:hidden select-none truncate">
-          Attach sources
-        </span>
-      )}
-
       {selectedDocs.map((file) => {
         const ready = isDocReady(file);
         const isProcessing = !ready;
@@ -97,8 +105,14 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onOpenDrawer?.()}
-              aria-label={file.name}
+              onClick={() => {
+                if (onViewPdf && ready) {
+                  onViewPdf(file.name, 1);
+                } else {
+                  onOpenDrawer?.();
+                }
+              }}
+              aria-label={`Open ${file.name} in new tab`}
               className={`${
                 conversationLength === 0 ? 'w-7.5 h-7.5 sm:w-9 sm:h-9' : 'w-6 h-6 sm:w-7 sm:h-7'
               } rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300/80 dark:bg-white/[0.06] dark:hover:bg-white/10 dark:border-white/10 hover:border-indigo-400/40 flex items-center justify-center transition-all shadow-xs active:scale-95 cursor-pointer relative overflow-hidden select-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 ${
@@ -106,11 +120,6 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
                   ? 'filter blur-[1.5px] opacity-70 cursor-wait'
                   : 'filter-none opacity-100'
               }`}
-              title={
-                isProcessing
-                  ? `Uploading & parsing in GraphRAG... (${Math.round(progress)}%)`
-                  : `Source: ${file.name} (click to view in drawer)`
-              }
             >
               <svg
                 className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${
@@ -145,7 +154,6 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
             {isProcessing ? (
               <div
                 className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
-                title={`Uploading & parsing in GraphRAG... (${Math.round(progress)}%)`}
               >
                 <CircularUploadProgress
                   progress={progress}
@@ -154,16 +162,16 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
                 />
               </div>
             ) : (
-              /* Once parsed and full circle: unblurred and show x sign to deselect/remove */
+              /* Once parsed and full circle: unblurred and show x sign to remove from drawer */
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemoveDoc(file.id);
                 }}
-                aria-label={`Remove ${file.name}`}
-                className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-white dark:bg-[#12141d] border border-slate-300 dark:border-white/20 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-xs cursor-pointer"
-                title="Deselect source"
+                aria-label={`Remove ${file.name} from drawer`}
+                className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-white dark:bg-[#12141d] border border-slate-300 dark:border-white/20 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-white/10"
+                title="Remove from drawer"
               >
                 <svg
                   className="w-2 h-2 sm:w-2.5 sm:h-2.5"
@@ -179,10 +187,12 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
               </button>
             )}
 
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none">
-              <div className="bg-slate-900 text-white dark:bg-[#12141d] dark:border dark:border-white/10 dark:text-slate-200 text-[11px] font-medium py-1 px-2 rounded-md shadow-xl whitespace-nowrap">
+            {/* Simple tooltip with doc name on hover */}
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none">
+              <div className="bg-slate-900 text-white dark:bg-[#1a1c23] dark:border dark:border-white/10 dark:text-slate-200 text-[11px] font-medium py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap max-w-[240px] truncate">
                 {isProcessing ? `Uploading: ${file.name} (${Math.round(progress)}%)` : file.name}
               </div>
+              <div className="w-1.5 h-1.5 -mt-0.5 rotate-45 bg-slate-900 dark:bg-[#1a1c23] border-r border-b border-slate-900 dark:border-white/10" />
             </div>
           </div>
         );

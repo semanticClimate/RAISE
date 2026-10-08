@@ -10,8 +10,13 @@ export interface AppConfig {
   defaultTopK: number;
 }
 
-const envBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const envBaseUrl =
+  (import.meta.env.VITE_API_URL as string | undefined) ||
+  (import.meta.env.VITE_API_BASE_URL as string | undefined);
 const envMode = import.meta.env.VITE_API_MODE as ConfigMode | undefined;
+
+export const EXPECTED_BACKEND_VERSION =
+  (import.meta.env.VITE_BACKEND_VERSION as string | undefined) || '1.0.0';
 
 export const config: AppConfig = {
   apiBaseUrl: envBaseUrl && envBaseUrl.trim() !== '' ? envBaseUrl.trim() : 'http://localhost:8000',

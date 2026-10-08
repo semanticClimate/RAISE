@@ -43,6 +43,7 @@ export default defineConfig({
   base: './', // Ensures static deployment compatibility (e.g. GitHub Pages)
   server: {
     port: 5173,
+    strictPort: true,
     host: true,
     watch: {
       ignored: [

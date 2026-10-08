@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useModeStore } from '../stores/modeStore';
 import { systemService } from '../services/SystemService';
+import { EXPECTED_BACKEND_VERSION } from '../app/config';
 import type { AppMode, BackendCapabilities } from '../types';
 import { sanitizeTunnelUrl, validateTunnelUrl } from '../utils/urlValidation';
 
@@ -57,6 +58,9 @@ export interface UseBackendConnectionResult {
   capabilities: BackendCapabilities | null;
   probeError: string | null;
   isPendingTransition: boolean;
+  expectedVersion: string;
+  backendVersion: string;
+  isVersionAligned: boolean;
 
   // Actions
   connect: (targetUrl: string) => Promise<{ success: boolean; error?: string; latencyMs: number }>;
@@ -231,6 +235,10 @@ export function useBackendConnection(
     }
   }, [autoDetectLocalOnMount, isOffline, isTunnelConfigured, scanLocalPorts]);
 
+  const expectedVersion = EXPECTED_BACKEND_VERSION;
+  const backendVersion = capabilities?.backendVersion || '1.0.0';
+  const isVersionAligned = backendVersion === expectedVersion || backendVersion === '1.0.0';
+
   return useMemo(
     () => ({
       appMode,
@@ -244,6 +252,9 @@ export function useBackendConnection(
       capabilities,
       probeError,
       isPendingTransition,
+      expectedVersion,
+      backendVersion,
+      isVersionAligned,
       connect,
       disconnect,
       scanLocalPorts,
@@ -263,6 +274,9 @@ export function useBackendConnection(
       capabilities,
       probeError,
       isPendingTransition,
+      expectedVersion,
+      backendVersion,
+      isVersionAligned,
       connect,
       disconnect,
       scanLocalPorts,

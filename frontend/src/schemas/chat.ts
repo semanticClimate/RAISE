@@ -10,6 +10,7 @@ export const SubgraphQueryRequestSchema = z.object({
   active_docs: z.array(z.string()).optional(),
   format: z.string().optional(),
   thread_id: z.string().optional(),
+  request_id: z.string().optional(),
   chat_history: z.array(z.object({ human: z.string(), ai: z.string() })).optional(),
   parser: z.string().optional(),
   full_potential: z.boolean().optional(),
@@ -38,6 +39,10 @@ export const CitationSchema = z.object({
   plain_text: z.string().default(''),
   university: z.string().default(''),
   similarity: z.number().default(0),
+  printed_page: z.union([z.string(), z.number()]).nullable().optional(),
+  page_url: z.string().optional(),
+  page_image_url: z.string().optional(),
+  page_view_url: z.string().optional(),
 });
 
 export type Citation = z.infer<typeof CitationSchema>;
@@ -111,12 +116,9 @@ export const QualityGateReportSchema = z.object({
 
 export type QualityGateReport = z.infer<typeof QualityGateReportSchema>;
 
-export const QualityGateDecisionSchema = z.enum([
-  'accept',
-  'retry',
-  'unable_to_verify',
-  'empty_workspace',
-]);
+export const QualityGateDecisionSchema = z
+  .enum(['accept', 'retry', 'unable_to_verify', 'empty_workspace'])
+  .catch('accept');
 
 export type QualityGateDecision = z.infer<typeof QualityGateDecisionSchema>;
 
@@ -226,7 +228,9 @@ export type ChatSessionSummary = z.infer<typeof ChatSessionSummarySchema>;
 export const SessionDrawerResponseSchema = z
   .object({
     status: z.string().default('success'),
-    session_id: z.string(),
+    session_id: z.string().optional(),
+    drawer_documents: z.array(z.string()).default([]),
+    total_documents: z.number().int().optional(),
     attached_docs: z.array(z.string()).default([]),
     active_docs: z.array(z.string()).default([]),
     documents: z.array(z.any()).default([]),

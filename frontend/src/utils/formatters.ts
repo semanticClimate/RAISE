@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 B';
+  if (!bytes || bytes <= 0 || Number.isNaN(bytes)) return '0 B';
   const k = 1024;
   if (bytes < k) {
     return `${bytes} B`;
@@ -38,7 +38,7 @@ export function formatSeconds(sec: number): string {
 }
 
 export function formatScore(score?: number | null): string {
-  if (typeof score !== 'number' || isNaN(score)) return '95%';
+  if (typeof score !== 'number' || Number.isNaN(score)) return '95%';
   return `${Math.round(score * 100)}%`;
 }
 

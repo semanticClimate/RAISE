@@ -23,9 +23,21 @@ export const Neo4jStatusSchema = z.object({
 
 export type Neo4jStatus = z.infer<typeof Neo4jStatusSchema>;
 
+export const AuthHandshakeResponseSchema = z.object({
+  token: z.string(),
+  expires_in: z.number().default(300),
+  status: z.string().default('active'),
+  mode: z.string().optional(),
+  client_ip: z.string().optional(),
+});
+
+export type AuthHandshakeResponse = z.infer<typeof AuthHandshakeResponseSchema>;
+
 export const BackendCapabilitiesSchema = z.object({
   apiReachable: z.boolean().default(false),
   openApiReachable: z.boolean().default(false),
+  handshakeAvailable: z.boolean().default(false),
+  backendVersion: z.string().default('1.0.0'),
   chatAvailable: z.boolean().default(false),
   documentsAvailable: z.boolean().default(false),
   graphAvailable: z.boolean().default(false),

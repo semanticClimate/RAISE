@@ -186,6 +186,8 @@ export const useModeStore = create<ModeState>((set, get) => ({
         capabilities: {
           apiReachable: true,
           openApiReachable: true,
+          handshakeAvailable: true,
+          backendVersion: '1.0.0',
           chatAvailable: true,
           documentsAvailable: true,
           graphAvailable: true,

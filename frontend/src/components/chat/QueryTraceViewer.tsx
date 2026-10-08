@@ -57,7 +57,9 @@ export const QueryTraceViewer: React.FC<QueryTraceViewerProps> = ({ response }) 
           </span>
         )}
         {totalLatency > 0 && (
-          <span className="text-[10px] font-mono text-slate-400">• {totalLatency.toFixed(1)}s</span>
+          <span className="text-[10px] font-mono text-slate-400">
+            • {totalLatency >= 1 ? `${totalLatency.toFixed(2)}s` : `${Math.round(totalLatency * 1000)}ms`}
+          </span>
         )}
       </button>
 

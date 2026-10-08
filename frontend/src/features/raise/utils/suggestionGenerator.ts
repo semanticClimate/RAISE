@@ -69,39 +69,24 @@ export function generateContextualFollowUps(params: {
   backendFollowUps?: string[];
   backendDecomposed?: string[];
 }): string[] {
-  const {
-    lastUserQuery = '',
-    activeDocs = [],
-    backendSuggestions = [],
-    backendFollowUps = [],
-    backendDecomposed = [],
-  } = params;
+  const { backendFollowUps = [] } = params;
 
-  const activeKeywords = [
-    ...lastUserQuery
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 3),
-    ...activeDocs.map((d) => cleanDocName(d).toLowerCase()),
-  ];
-
-  // Collect candidate queries strictly from backend-provided data
-  const rawCandidates: (DynamicSuggestion | string)[] = [];
-
-  if (Array.isArray(backendFollowUps)) {
-    rawCandidates.push(...backendFollowUps);
+  // STRICT RULE: Only show suggestions if provided explicitly by backend follow_up_inquiries
+  // If the backend did not return follow_up_inquiries, return [] (no suggestions shown)
+  if (!Array.isArray(backendFollowUps) || backendFollowUps.length === 0) {
+    return [];
   }
 
-  if (Array.isArray(backendDecomposed)) {
-    rawCandidates.push(...backendDecomposed);
+  const results: string[] = [];
+  for (const item of backendFollowUps) {
+    const raw = typeof item === 'string' ? item : (item as any)?.query;
+    if (typeof raw === 'string') {
+      const clean = raw.trim().replace(/[.?]+$/, '');
+      if (clean.length > 5 && !results.includes(clean)) {
+        results.push(clean);
+      }
+    }
   }
 
-  if (Array.isArray(backendSuggestions)) {
-    rawCandidates.push(...backendSuggestions);
-  }
-
-  // Filter against foreign document bleed and duplicates
-  const filtered = filterRelevantBackendSuggestions(rawCandidates, activeDocs, activeKeywords);
-
-  return filtered.slice(0, 4);
+  return results.slice(0, 4);
 }

@@ -85,9 +85,30 @@ export function extractVerifiedPageNumber(raw: any): number | undefined {
     if (typeof cand === 'number' && cand > 0) {
       return cand;
     }
-    if (typeof cand === 'string' && !isNaN(parseInt(cand, 10))) {
+    if (typeof cand === 'string' && !Number.isNaN(parseInt(cand, 10))) {
       const p = parseInt(cand, 10);
       if (p > 0) return p;
+    }
+  }
+
+  // 1b. Check page extracted from direct single-page extraction endpoints (/pages/29/pdf, /pages/29/image, /pages/29/view)
+  const candidateUrls = [
+    raw.page_url,
+    raw.page_image_url,
+    raw.page_view_url,
+    raw.url,
+    raw.metadata?.page_url,
+    raw.metadata?.page_image_url,
+    raw.metadata?.page_view_url,
+    raw.metadata?.url,
+  ];
+  for (const u of candidateUrls) {
+    if (typeof u === 'string') {
+      const match = u.match(/\/pages\/(\d+)(?:\/|\?|$)/i) || u.match(/[?&#]page=(\d+)/i);
+      if (match) {
+        const p = parseInt(match[1], 10);
+        if (p > 0) return p;
+      }
     }
   }
 
@@ -237,6 +258,10 @@ export function normalizeCitation(
     plain_text: raw.plain_text || raw.text || raw.content || raw.snippet || '',
     university: raw.university || raw.metadata?.university || '',
     similarity: typeof raw.similarity === 'number' ? raw.similarity : 0.9,
+    printed_page: raw.printed_page || raw.metadata?.printed_page,
+    page_url: raw.page_url || raw.metadata?.page_url,
+    page_image_url: raw.page_image_url || raw.metadata?.page_image_url,
+    page_view_url: raw.page_view_url || raw.metadata?.page_view_url,
   };
 }
 
@@ -351,7 +376,7 @@ export function parseCitations(text: string, citations: Citation[] = []): Citati
     const rawIndices = match[1]
       .split(',')
       .map((s) => parseInt(s.trim(), 10))
-      .filter((n) => !isNaN(n));
+      .filter((n) => !Number.isNaN(n));
 
     for (const citationIndex of rawIndices) {
       const matchedCitation =

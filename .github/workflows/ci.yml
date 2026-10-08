@@ -1,0 +1,141 @@
+name: Monorepo CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-validation:
+    name: Backend Compilation & Smoke Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout Monorepo
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements-core.txt
+
+      - name: Install Backend Core Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-core.txt
+
+      - name: Syntax & Bytecode Compilation Check
+        run: |
+          python -m compileall -q src app.py main.py server.py
+
+      - name: Backend Runtime & Payload Smoke Test
+        run: |
+          python -c "
+          from src.features.query.service import QueryService
+          qs = QueryService.__new__(QueryService)
+          sample_raw = {
+              'answer': 'The study finds a 14% increase in yield.',
+              'citations': [{'doc_id': 'doc_1', 'page': 4, 'snippet': 'yield increase'}],
+              'quality_gate_decision': 'accept'
+          }
+          formatted = qs._format_frontend_payload(sample_raw, 'What is the yield change?', 'test-session')
+          assert formatted['status'] == 'SUCCESS', 'Status must be SUCCESS'
+          assert formatted['answer'] == sample_raw['answer'], 'Answer mismatch'
+          assert formatted['thread_id'] == 'test-session', 'Thread ID mismatch'
+          assert 'subgraph' in formatted, 'Subgraph key missing'
+          assert isinstance(formatted['citations'], list), 'Citations must be a list'
+          print('Verified QueryService payload formatting successfully.')
+          "
+
+      - name: Verify CLI Cheatsheet
+        run: |
+          python main.py --help
+
+  frontend-validation:
+    name: Frontend Typecheck & Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["20.x", "22.x"]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout Monorepo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: TypeScript Typecheck
+        run: npm run typecheck
+
+      - name: Production Vite Build
+        run: npm run build
+
+  repository-hygiene:
+    name: Monorepo Topology & Security Hygiene Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Monorepo
+        uses: actions/checkout@v4
+
+      - name: Enforce Single Root .gitignore Standard
+        run: |
+          count=$(find . -name ".gitignore" | wc -l)
+          echo "Found $count .gitignore file(s)."
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Violation of Single Unified Config Policy: Exactly 1 root .gitignore allowed."
+            find . -name ".gitignore"
+            exit 1
+          fi
+
+      - name: Enforce Single Root .env.example Standard
+        run: |
+          count=$(find . -name ".env.example" | wc -l)
+          echo "Found $count .env.example file(s)."
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Violation of Single Unified Config Policy: Exactly 1 root .env.example allowed."
+            find . -name ".env.example"
+            exit 1
+          fi
+
+      - name: Verify Unified Launcher & Prohibit Branch-Specific Launchers
+        run: |
+          if [ ! -f "START_RAISE.bat" ]; then
+            echo "::error::Violation: Unified root launcher START_RAISE.bat is missing from origin/main."
+            exit 1
+          fi
+          echo "Verified: Unified root launcher START_RAISE.bat exists."
+          launchers=$(find . -name "*START_RAISE_BACKEND*" -o -name "*START_RAISE_FRONTEND*")
+          if [ -n "$launchers" ]; then
+            echo "::error::Violation: Branch-specific launchers are forbidden on origin/main:"
+            echo "$launchers"
+            exit 1
+          fi
+          echo "Verified: No branch-specific launchers present."
+
+      - name: Validate Docker Compose Configuration
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.example.yml config --quiet
+          rm .env

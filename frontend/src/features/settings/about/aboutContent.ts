@@ -57,7 +57,7 @@ export const aboutContent: AboutContentConfig = {
   // Main title, version badge, and intro text
   header: {
     title: 'About RAISE GraphRAG',
-    version: 'v1.4.0',
+    version: 'v1.0.0',
     description:
       'Hybrid Vector + BM25 retrieval with multi-hop Neo4j GraphRAG routing and real-time citation verification.',
     showAsciiText: 'Show ASCII Blueprint',

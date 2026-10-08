@@ -491,7 +491,7 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
           .slice(1, -1)
           .split(',')
           .map((s) => parseInt(s.trim(), 10))
-          .filter((n) => !isNaN(n));
+          .filter((n) => !Number.isNaN(n));
 
         const matchedCitations = rawIndices
           .map(
@@ -499,7 +499,13 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
               citationMap.get(citIdx) ??
               (citIdx > 0 && enrichedCitations && citIdx <= enrichedCitations.length
                 ? enrichedCitations[citIdx - 1]
-                : undefined)
+                : undefined) ??
+              // Fallback to primary citation if index was out-of-bounds (e.g. LLM outputs [2] when 1 citation is returned)
+              (enrichedCitations && enrichedCitations.length > 0
+                ? enrichedCitations[0]
+                : citations && citations.length > 0
+                  ? citations[0]
+                  : undefined)
           )
           .filter(Boolean) as Citation[];
 

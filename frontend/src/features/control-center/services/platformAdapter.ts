@@ -16,6 +16,7 @@ export interface HardwareTelemetry {
     details: string;
   };
   has_metal_or_cuda?: boolean;
+  local_model_catalog?: ModelCatalogEntry[];
 }
 
 export interface ConnectionTestResult {
@@ -42,8 +43,68 @@ export interface ConnectionTestResult {
   };
 }
 
+export interface TestConnectionsPayload {
+  neo4j_mode?: string;
+  neo4j_uri?: string;
+  neo4j_password?: string;
+  postgres_mode?: string;
+  postgres_uri?: string;
+  redis_mode?: string;
+  redis_uri?: string;
+  llm_mode?: string;
+  groq_api_key?: string;
+  gemini_api_key?: string;
+  nvidia_api_key?: string;
+  mistral_api_key?: string;
+  cohere_api_key?: string;
+  custom_api_key?: string;
+  [key: string]: unknown;
+}
+
+export interface ModelCatalogEntry {
+  id: string;
+  name: string;
+  download_size_gb: number;
+  min_ram_gb: number;
+  tier: string;
+  status: string;
+  downloads?: string;
+  source: string;
+}
+
+export interface PreflightAsset {
+  id?: string;
+  name: string;
+  size?: string;
+  desc?: string;
+  verified?: boolean;
+  status?: string;
+  statusColor?: string;
+  path?: string;
+  size_mb?: number;
+  required?: boolean;
+  present?: boolean;
+  sha256_verified?: boolean;
+  category?: string;
+}
+
+export interface PreflightAssetsResponse {
+  all_verified: boolean;
+  all_assets_verified?: boolean;
+  total_required_gb?: number;
+  total_available_gb?: number;
+  total_footprint_gb?: number;
+  total_footprint?: string;
+  download_progress?: number;
+  download_speed?: string;
+  is_downloading?: boolean;
+  assets: PreflightAsset[];
+}
+
 export interface SystemConfigPayload {
   llm_backend?: string;
+  llm_mode?: string;
+  selected_local_model?: string;
   groq_api_key?: string;
   gemini_api_key?: string;
   openai_api_key?: string;
@@ -57,11 +118,15 @@ export interface SystemConfigPayload {
   ollama_model?: string;
   neo4j_mode?: string;
   neo4j_uri?: string;
+  neo4j_user?: string;
   neo4j_password?: string;
+  neo4j_database?: string;
   postgres_mode?: string;
   postgres_uri?: string;
+  postgres_url?: string;
   redis_mode?: string;
   redis_uri?: string;
+  redis_url?: string;
   tunnel_url?: string;
 }
 
@@ -149,11 +214,12 @@ export const platformAdapter = {
   /**
    * Tests live database connections (Upstash Redis, Neo4j Aura, Postgres)
    */
-  async testConnections(): Promise<ConnectionTestResult> {
+  async testConnections(payload?: TestConnectionsPayload): Promise<ConnectionTestResult> {
     try {
       const res = await fetch(resolveApiUrl('/api/system/test-connections'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
       });
       if (res.ok) {
         return (await res.json()) as ConnectionTestResult;
@@ -163,11 +229,109 @@ export const platformAdapter = {
     }
 
     return {
-      redis: { online: true, provider: 'in-memory fallback' },
-      neo4j: { online: true, provider: 'cloud auradb' },
-      postgres: { online: true, mode: 'in-memory fallback' },
-      chroma: { online: true, mode: 'local dense vector' },
+      redis: { online: false, provider: 'disconnected' },
+      neo4j: { online: false, provider: 'disconnected' },
+      postgres: { online: false, mode: 'disconnected' },
+      chroma: { online: false, mode: 'disconnected' },
     };
+  },
+
+  /**
+   * Dynamically retrieves available model catalog from backend
+   * (inspects HuggingFace Hub, OpenRouter, and local Ollama)
+   */
+  async getModelCatalog(): Promise<ModelCatalogEntry[]> {
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/models/catalog'), {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        return (await res.json()) as ModelCatalogEntry[];
+      }
+    } catch {
+      // Backend offline or endpoint unavailable
+    }
+    return [];
+  },
+
+  /**
+   * Fetches status of on-device preflight neural assets (Docling, BGE, ModernBERT)
+   */
+  async getPreflightAssets(): Promise<PreflightAssetsResponse> {
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/preflight-assets'), {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        const raw = (await res.json()) as Record<string, any>;
+        const allVerified = raw.all_assets_verified ?? raw.all_verified ?? false;
+        return {
+          all_verified: Boolean(allVerified),
+          all_assets_verified: Boolean(allVerified),
+          total_required_gb: raw.total_footprint_gb ?? raw.total_required_gb ?? 4.6,
+          total_footprint: raw.total_footprint ?? '~4.6 GB Total Footprint',
+          download_progress: typeof raw.download_progress === 'number' ? raw.download_progress : (allVerified ? 100 : 0),
+          download_speed: raw.download_speed || '',
+          is_downloading: Boolean(raw.is_downloading),
+          assets: Array.isArray(raw.assets) ? (raw.assets as PreflightAsset[]) : [],
+        };
+      }
+    } catch {
+      // Backend offline
+    }
+    return {
+      all_verified: false,
+      total_required_gb: 4.6,
+      total_available_gb: 0,
+      assets: [],
+    };
+  },
+
+  /**
+   * Streams preflight neural asset downloads via SSE or POST
+   */
+  async downloadNeuralAssets(
+    onProgress?: (percent: number, status: string) => void
+  ): Promise<void> {
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/download-assets'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            const clean = line.replace(/^data:\s*/, '').trim();
+            if (!clean) continue;
+            try {
+              const parsed = JSON.parse(clean) as {
+                percent?: number;
+                status?: string;
+                completed?: boolean;
+              };
+              if (typeof parsed.percent === 'number' && onProgress) {
+                onProgress(parsed.percent, parsed.status || 'Downloading assets...');
+              }
+              if (parsed.completed) {
+                onProgress?.(100, 'All neural assets verified and cached');
+                return;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+        return;
+      }
+    } catch {
+      // Backend offline or streaming error
+    }
   },
 
   /**
@@ -189,13 +353,17 @@ export const platformAdapter = {
           nvidia_api_key: provider === 'nvidia' ? key : undefined,
           mistral_api_key: provider === 'mistral' ? key : undefined,
           cohere_api_key: provider === 'cohere' ? key : undefined,
+          deepseek_api_key: provider === 'deepseek' ? key : undefined,
+          openrouter_api_key: provider === 'openrouter' ? key : undefined,
+          openai_api_key: provider === 'openai' ? key : undefined,
+          anthropic_api_key: provider === 'anthropic' ? key : undefined,
           custom_api_key: key,
         }),
       });
       const latencyMs = Math.round(performance.now() - start);
       if (res.ok) {
         const data = (await res.json().catch(() => null)) as Record<string, any> | null;
-        const isOnline = data?.llm?.online ?? data?.online ?? true;
+        const isOnline = data?.llm?.online ?? data?.online ?? false;
         if (isOnline) {
           return { available: true, latencyMs: Math.max(12, latencyMs) };
         }
@@ -243,29 +411,7 @@ export const platformAdapter = {
     } catch {
       // Backend offline
     }
-    return [
-      {
-        provider: 'ollama',
-        displayName: 'Llama 3.2 3B',
-        model: 'llama3.2:3b',
-        status: 'READY',
-        tier: 'On-Device',
-      },
-      {
-        provider: 'ollama',
-        displayName: 'Qwen 2.5 7B',
-        model: 'qwen2.5:7b',
-        status: 'READY',
-        tier: 'On-Device',
-      },
-      {
-        provider: 'ollama',
-        displayName: 'Llama 3.1 8B',
-        model: 'llama3.1:8b',
-        status: 'READY',
-        tier: 'On-Device',
-      },
-    ];
+    return [];
   },
 
   /**

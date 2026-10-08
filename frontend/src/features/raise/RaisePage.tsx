@@ -14,14 +14,12 @@ import {
 } from '../../components/chat/QueryLifecycleTracker';
 import type { LibraryItem } from '../../components/settings/SettingsLibraryTab';
 import { applyStoredTunerConfigToDom } from '../../components/ui/GridGradientTuner';
-import { Modal } from '../../components/ui/Modal';
 import { SpecialTooltip } from '../../components/ui/SpecialTooltip';
 import { chatService } from '../../services/ChatService';
 import { sourceService } from '../../services/SourceService';
 import { systemService } from '../../services/SystemService';
 import { useFilterStore } from '../../stores/filterStore';
 import { useModeStore } from '../../stores/modeStore';
-import { useUiStore } from '../../stores/uiStore';
 import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../../types';
 import { ensureMinimumDuration } from '../../utils/async';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
@@ -37,9 +35,6 @@ import { settingsJunction, useSettingsJunction } from '../settings/junction';
 import { Sidebar as MainSidebar } from '../sidebar/Sidebar';
 import { ActionTooltip } from './components/ActionTooltip';
 
-const InlinePdfViewer = lazy(() =>
-  import('../../components/citations/InlinePdfViewer').then((m) => ({ default: m.InlinePdfViewer }))
-);
 const LibraryPickerModal = lazy(() =>
   import('../../components/library/LibraryPickerModal').then((m) => ({ default: m.LibraryPickerModal }))
 );
@@ -264,7 +259,6 @@ export const RaisePage: React.FC = () => {
       return next;
     });
   };
-  const { activeModal, closeModal, selectedCitation, setSelectedCitation } = useUiStore();
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
     const saved = localStorage.getItem('raise_theme');
     if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
@@ -692,7 +686,9 @@ export const RaisePage: React.FC = () => {
     }
     if (audioStreamRef.current) {
       try {
-        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+        audioStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
       } catch {}
       audioStreamRef.current = null;
     }
@@ -892,8 +888,29 @@ export const RaisePage: React.FC = () => {
     });
   };
 
+  const handleToggleAllSources = (selectAll: boolean) => {
+    setSourceDocs((prev) => {
+      const updated = prev.map((doc) => ({ ...doc, selected: selectAll }));
+      if (currentSessionId && currentSessionId !== 'new') {
+        const activeIds = updated.filter((d) => d.selected).map((d) => d.id);
+        const activeNames = updated.filter((d) => d.selected).map((d) => d.name);
+        setSessions((prevSessions) => {
+          const updatedSessions = prevSessions.map((s) =>
+            s.id === currentSessionId
+              ? { ...s, selectedSourceIds: activeIds, sources: updated, attached_docs: activeNames }
+              : s
+          );
+          saveSessionsLocally(updatedSessions);
+          return updatedSessions;
+        });
+        chatService.updateSessionDrawer?.(currentSessionId, activeNames).catch(() => {});
+      }
+      return updated;
+    });
+  };
+
   const removeAttachedFile = (id: string) => {
-    toggleSourceDoc(id);
+    handleDeleteSourceDoc(id);
   };
 
   const handleDeleteSourceDoc = (id: string, _name?: string) => {
@@ -1002,22 +1019,61 @@ export const RaisePage: React.FC = () => {
     });
   };
 
+  const handleAttachAllLibraryDocuments = (itemsToAttach: LibraryItem[]) => {
+    setSourceDocs((prev) => {
+      let updated = [...prev];
+      for (const item of itemsToAttach) {
+        const existing = updated.find(
+          (d) => d.id === item.id || d.name.toLowerCase() === item.name.toLowerCase()
+        );
+        if (existing) {
+          updated = updated.map((d) =>
+            d.id === existing.id || d.name.toLowerCase() === item.name.toLowerCase()
+              ? { ...d, selected: true }
+              : d
+          );
+        } else {
+          const newDoc: SourceDocument = {
+            id: item.id.startsWith('src-') ? item.id : `src-${item.id}`,
+            name: item.name,
+            size: item.size,
+            bytes: item.bytes,
+            pages: item.pages || 1,
+            color: item.color,
+            selected: true,
+            status: 'ready',
+          };
+          updated.push(newDoc);
+        }
+      }
+
+      if (currentSessionId && currentSessionId !== 'new') {
+        const activeIds = updated.filter((d) => d.selected).map((d) => d.id);
+        const activeNames = updated.filter((d) => d.selected).map((d) => d.name);
+        setSessions((prevSessions) => {
+          const updatedSessions = prevSessions.map((s) =>
+            s.id === currentSessionId
+              ? { ...s, selectedSourceIds: activeIds, sources: updated, attached_docs: activeNames }
+              : s
+          );
+          saveSessionsLocally(updatedSessions);
+          return updatedSessions;
+        });
+
+        itemsToAttach.forEach((item) => {
+          chatService.attachToSessionDrawer?.(currentSessionId, item.name).catch(() => {});
+        });
+        chatService.updateSessionDrawer?.(currentSessionId, activeNames).catch(() => {});
+      }
+      return updated;
+    });
+  };
+
   const selectedDocs = sourceDocs.filter((doc) => doc.selected);
   const activeSourcesCount = selectedDocs.length;
 
-  const handleOpenPdfViewer = (filename: string, pageNumber: number = 1, heading?: string) => {
-    setSelectedCitation({
-      citation_index: 1,
-      chunk_id: `view-${filename}-${pageNumber}`,
-      document_id: filename,
-      pdf_filename: filename,
-      primary_page: pageNumber,
-      heading: heading || filename,
-      plain_text: `Viewing document ${filename} (page ${pageNumber}) from research drawer.`,
-      university: 'Research Vault',
-      similarity: 1.0,
-    });
-    if (typeof window !== 'undefined') {
+  const handleOpenPdfViewer = (filename: string, pageNumber: number = 1, _heading?: string) => {
+    if (typeof window !== 'undefined' && filename) {
       const url = sourceService.getPdfUrl(filename, pageNumber);
       window.open(url, '_blank', 'noopener,noreferrer');
     }
@@ -1031,6 +1087,7 @@ export const RaisePage: React.FC = () => {
   const isUserAbortingRef = useRef<boolean>(false);
   const isUnmountedRef = useRef<boolean>(false);
   const latestStreamedTextRef = useRef<string>('');
+  const activeRequestIdRef = useRef<string | null>(null);
 
   // Clean unmount cancellation without showing error UI
   useEffect(() => {
@@ -1125,10 +1182,6 @@ export const RaisePage: React.FC = () => {
           setIsLibraryPickerOpen(false);
           closedSomething = true;
         }
-        if (activeModal === 'pdf' || selectedCitation) {
-          closeModal();
-          closedSomething = true;
-        }
         if (addSourceMenuOpen) {
           setAddSourceMenuOpen(null);
           closedSomething = true;
@@ -1174,8 +1227,6 @@ export const RaisePage: React.FC = () => {
     isSourcesDrawerOpen,
     isPipelineDrawerOpen,
     isLibraryPickerOpen,
-    activeModal,
-    selectedCitation,
     addSourceMenuOpen,
     activeSessionMenuId,
     expandedQVersionsIndex,
@@ -1183,7 +1234,6 @@ export const RaisePage: React.FC = () => {
     showSuggestions,
     isUserMenuOpen,
     editingMessageIndex,
-    closeModal,
   ]);
 
   useEffect(() => {
@@ -1260,7 +1310,18 @@ export const RaisePage: React.FC = () => {
     isUserAbortingRef.current = true;
     terminalLogger.info('Query execution stopped by user.', {
       session_id: currentSessionId,
+      request_id: activeRequestIdRef.current,
     });
+    if (currentSessionId) {
+      chatService
+        .abortChat?.({
+          session_id: currentSessionId,
+          request_id: activeRequestIdRef.current || undefined,
+        })
+        ?.catch((err) => {
+          terminalLogger.error('Backend abort notification failed:', err);
+        });
+    }
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -1687,7 +1748,9 @@ export const RaisePage: React.FC = () => {
           .getUserMedia({ audio: true })
           .then((stream) => {
             if (!recognitionRef.current) {
-              stream.getTracks().forEach((t) => t.stop());
+              stream.getTracks().forEach((t) => {
+                t.stop();
+              });
               return;
             }
             audioStreamRef.current = stream;
@@ -1896,13 +1959,19 @@ export const RaisePage: React.FC = () => {
     chatService
       .getSessionDrawer?.(session.id)
       .then((res) => {
-        if (
+        const attachedNames =
           res?.data &&
-          Array.isArray(res.data.attached_docs) &&
-          res.data.attached_docs.length > 0
-        ) {
-          const attachedNames = res.data.attached_docs;
-          const enrichedDocs = Array.isArray(res.data.documents)
+          Array.isArray(res.data.drawer_documents) &&
+          res.data.drawer_documents.length > 0
+            ? res.data.drawer_documents
+            : res?.data &&
+              Array.isArray(res.data.attached_docs) &&
+              res.data.attached_docs.length > 0
+            ? res.data.attached_docs
+            : [];
+
+        if (attachedNames.length > 0) {
+          const enrichedDocs = Array.isArray(res?.data?.documents)
             ? res.data.documents
             : apiReadyDocs;
           const reconstructedSources: SourceDocument[] = attachedNames.map(
@@ -2201,10 +2270,13 @@ export const RaisePage: React.FC = () => {
     } = useFilterStore.getState();
     latestStreamedTextRef.current = '';
     isUserAbortingRef.current = false;
+    const reqId = generateUUID();
+    activeRequestIdRef.current = reqId;
 
     try {
       const queryTask = chatService.querySubgraph(
         {
+          request_id: reqId,
           query: q,
           hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
           top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
@@ -2238,7 +2310,8 @@ export const RaisePage: React.FC = () => {
           : await queryTask;
 
       if (isUnmountedRef.current) return;
-      const elapsedSec = parseFloat(((performance.now() - executionStartTime) / 1000).toFixed(1));
+      const elapsedSec =
+        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
 
       let assistantMsg: ChatMessage;
 
@@ -2313,7 +2386,8 @@ export const RaisePage: React.FC = () => {
       }
     } catch (err: any) {
       if (isUnmountedRef.current) return;
-      const elapsedSec = parseFloat(((performance.now() - executionStartTime) / 1000).toFixed(1));
+      const elapsedSec =
+        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
       const isManualAbort =
         isUserAbortingRef.current ||
         err?.name === 'AbortError' ||
@@ -2385,6 +2459,7 @@ export const RaisePage: React.FC = () => {
       setIsLoading(false);
       setActiveExecutingQuery('');
       abortControllerRef.current = null;
+      activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
     }
@@ -2500,10 +2575,13 @@ export const RaisePage: React.FC = () => {
     } = useFilterStore.getState();
     latestStreamedTextRef.current = '';
     isUserAbortingRef.current = false;
+    const reqId = generateUUID();
+    activeRequestIdRef.current = reqId;
 
     try {
       const queryTask = chatService.querySubgraph(
         {
+          request_id: reqId,
           query: trimmed,
           hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
           top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
@@ -2539,7 +2617,8 @@ export const RaisePage: React.FC = () => {
           : await queryTask;
 
       if (isUnmountedRef.current) return;
-      const elapsedSec = parseFloat(((performance.now() - executionStartTime) / 1000).toFixed(1));
+      const elapsedSec =
+        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
 
       let answerText = '';
       let respData: Partial<SubgraphQueryResponse> | undefined;
@@ -2620,7 +2699,8 @@ export const RaisePage: React.FC = () => {
       });
     } catch (err: any) {
       if (isUnmountedRef.current) return;
-      const elapsedSec = parseFloat(((performance.now() - executionStartTime) / 1000).toFixed(1));
+      const elapsedSec =
+        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
       const isManualAbort =
         isUserAbortingRef.current ||
         err?.name === 'AbortError' ||
@@ -2712,6 +2792,7 @@ export const RaisePage: React.FC = () => {
       setRegeneratingIndex(null);
       setActiveExecutingQuery('');
       abortControllerRef.current = null;
+      activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
     }
@@ -2827,10 +2908,13 @@ export const RaisePage: React.FC = () => {
     } = useFilterStore.getState();
     latestStreamedTextRef.current = '';
     isUserAbortingRef.current = false;
+    const reqId = generateUUID();
+    activeRequestIdRef.current = reqId;
 
     try {
       const queryTask = chatService.querySubgraph(
         {
+          request_id: reqId,
           query: activeQuestion,
           hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
           top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
@@ -2866,7 +2950,8 @@ export const RaisePage: React.FC = () => {
           : await queryTask;
 
       if (isUnmountedRef.current) return;
-      const elapsedSec = parseFloat(((performance.now() - executionStartTime) / 1000).toFixed(1));
+      const elapsedSec =
+        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
 
       let newAnswerText = '';
       let newResponseData: Partial<SubgraphQueryResponse> | undefined;
@@ -2948,7 +3033,8 @@ export const RaisePage: React.FC = () => {
       });
     } catch (err: any) {
       if (isUnmountedRef.current) return;
-      const elapsedSec = parseFloat(((performance.now() - executionStartTime) / 1000).toFixed(1));
+      const elapsedSec =
+        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
       const isManualAbort =
         isUserAbortingRef.current ||
         err?.name === 'AbortError' ||
@@ -3044,6 +3130,7 @@ export const RaisePage: React.FC = () => {
       setRegeneratingIndex(null);
       setActiveExecutingQuery('');
       abortControllerRef.current = null;
+      activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
     }
@@ -3354,6 +3441,7 @@ export const RaisePage: React.FC = () => {
         onOpenLibraryPicker={() => setIsLibraryPickerOpen(true)}
         isDocReady={isDocReady}
         onToggleSourceDoc={toggleSourceDoc}
+        onToggleAllSources={handleToggleAllSources}
         onDeleteSourceDoc={handleDeleteSourceDoc}
         onViewPdf={handleOpenPdfViewer}
       />
@@ -3725,12 +3813,37 @@ export const RaisePage: React.FC = () => {
                     );
                   }
 
-                  const executionTimeSec =
-                    activeResp?.durationSec ??
-                    msg.durationSec ??
-                    (typeof msg.response?.latency_sec === 'number'
-                      ? parseFloat(msg.response.latency_sec.toFixed(1))
-                      : 2.1);
+                  const executionTimeSec: number | null =
+                    (typeof activeResp?.durationSec === 'number' && activeResp.durationSec > 0
+                      ? activeResp.durationSec
+                      : null) ??
+                    (typeof msg.durationSec === 'number' && msg.durationSec > 0
+                      ? msg.durationSec
+                      : null) ??
+                    (typeof activeResp?.response?.latency_sec === 'number' &&
+                    (activeResp?.response?.latency_sec ?? 0) > 0
+                      ? activeResp?.response?.latency_sec
+                      : null) ??
+                    (typeof msg.response?.latency_sec === 'number' && (msg.response?.latency_sec ?? 0) > 0
+                      ? msg.response?.latency_sec
+                      : null) ??
+                    (typeof (activeResp?.response as any)?.execution_time === 'number' &&
+                    ((activeResp?.response as any)?.execution_time ?? 0) > 0
+                      ? (activeResp?.response as any)?.execution_time
+                      : null) ??
+                    (typeof (msg.response as any)?.execution_time === 'number' &&
+                    ((msg.response as any)?.execution_time ?? 0) > 0
+                      ? (msg.response as any)?.execution_time
+                      : null) ??
+                    (typeof (activeResp?.response as any)?.elapsed_ms === 'number' &&
+                    ((activeResp?.response as any)?.elapsed_ms ?? 0) > 0
+                      ? Number((activeResp?.response as any)?.elapsed_ms) / 1000
+                      : null) ??
+                    (typeof (msg.response as any)?.elapsed_ms === 'number' &&
+                    ((msg.response as any)?.elapsed_ms ?? 0) > 0
+                      ? Number((msg.response as any)?.elapsed_ms) / 1000
+                      : null) ??
+                    null;
 
                   return (
                     <div
@@ -3739,7 +3852,7 @@ export const RaisePage: React.FC = () => {
                     >
                       {/* Unified Single-Line Thinking & Searching Tracker while active; Thought Duration when complete */}
                       {isCurrentlyActive ? (
-                        appMode === 'connected' ? (
+                        activeExecutingQuery ? (
                           <div className="w-full mb-2">
                             <QueryLifecycleTracker
                               query={activeExecutingQuery}
@@ -3757,8 +3870,7 @@ export const RaisePage: React.FC = () => {
                         )
                       ) : (
                         !msg.error &&
-                        !isStopped &&
-                        appMode === 'connected' && (
+                        !isStopped && (
                           <ThoughtDuration executionTimeSec={executionTimeSec} />
                         )
                       )}
@@ -4168,6 +4280,39 @@ export const RaisePage: React.FC = () => {
                                 </button>
                               </ActionTooltip>
                             ))}
+
+                          {/* Exact Execution Time / Latency Badge */}
+                          {executionTimeSec !== null && executionTimeSec > 0 && (
+                            <ActionTooltip
+                              label={`Total execution time: ${
+                                executionTimeSec >= 1
+                                  ? `${executionTimeSec.toFixed(2)}s`
+                                  : `${Math.round(executionTimeSec * 1000)}ms`
+                              }`}
+                            >
+                              <div
+                                data-testid="response-execution-time"
+                                className="flex items-center gap-1 px-2 py-0.5 ml-1.5 rounded-md text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100/80 dark:bg-white/[0.05] border border-slate-200/60 dark:border-white/[0.08] select-none"
+                              >
+                                <svg
+                                  className="w-3 h-3 text-indigo-500 dark:text-indigo-400 shrink-0"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                                </svg>
+                                <span>
+                                  {executionTimeSec >= 1
+                                    ? `${executionTimeSec.toFixed(2)}s`
+                                    : `${Math.round(executionTimeSec * 1000)}ms`}
+                                </span>
+                              </div>
+                            </ActionTooltip>
+                          )}
                         </div>
                       )}
 
@@ -4195,7 +4340,7 @@ export const RaisePage: React.FC = () => {
                 regeneratingIndex === null &&
                 conversation[conversation.length - 1]?.role === 'user' && (
                   <div className="w-full mb-3">
-                    {appMode === 'connected' ? (
+                    {activeExecutingQuery ? (
                       <QueryLifecycleTracker
                         query={activeExecutingQuery}
                         onAbort={handleAbortActiveQuery}
@@ -4277,6 +4422,7 @@ export const RaisePage: React.FC = () => {
             isDocReady={isDocReady}
             onRemoveAttachedDoc={removeAttachedFile}
             onOpenSourcesDrawer={() => setIsSourcesDrawerOpen(true)}
+            onViewPdf={handleOpenPdfViewer}
             addSourceMenuOpen={addSourceMenuOpen}
             setAddSourceMenuOpen={setAddSourceMenuOpen}
             fileInputRef={fileInputRef}
@@ -4328,26 +4474,6 @@ export const RaisePage: React.FC = () => {
       )}
 
       {/* Global PDF Document Modal */}
-      {selectedCitation && activeModal === 'pdf' && (
-        <Modal
-          isOpen={activeModal === 'pdf'}
-          onClose={() => closeModal()}
-          title={`Document Evidence: ${selectedCitation.pdf_filename || 'Institutional PDF'}`}
-          subtitle={
-            selectedCitation.primary_page && selectedCitation.primary_page > 0
-              ? `Verified Page ${selectedCitation.primary_page}${selectedCitation.heading ? ` • ${selectedCitation.heading}` : ''}`
-              : selectedCitation.heading || 'Audited Document Evidence'
-          }
-          maxWidth="full"
-        >
-          <div className="h-[75vh]">
-            <Suspense fallback={<div className="h-full flex items-center justify-center text-slate-400">Loading document viewer...</div>}>
-              <InlinePdfViewer citation={selectedCitation} />
-            </Suspense>
-          </div>
-        </Modal>
-      )}
-
       {/* Search Chats Modal (Modular feature) */}
       {isSearchModalOpen && (
         <Suspense fallback={null}>
@@ -4386,6 +4512,7 @@ export const RaisePage: React.FC = () => {
             attachedDocNames={sourceDocs.filter((d) => d.selected).map((d) => d.name)}
             onOpenUploadFromPC={() => fileInputRef.current?.click()}
             onViewPdf={handleOpenPdfViewer}
+            onAttachAll={handleAttachAllLibraryDocuments}
           />
         </Suspense>
       )}

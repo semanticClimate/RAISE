@@ -54,30 +54,56 @@ export const ControlCenterModal: React.FC = () => {
     }
   }, [isOpen]);
 
-  // Background asset preparation while browsing steps in local workstation mode
+  // Pre-flight Neural Assets Verification and Download Gate
   useEffect(() => {
     if (!isOpen || config.targetPlatform === 'web') return;
-    const { downloadProgress, setDownloadProgress, setIsDownloading } =
+    const { setDownloadProgress, setIsDownloading, setPreflightAssets } =
       useControlCenterStore.getState();
-    if (downloadProgress >= 100) return;
 
-    setIsDownloading(true);
-    const interval = setInterval(() => {
-      const current = useControlCenterStore.getState().downloadProgress;
-      if (current >= 100) {
-        setIsDownloading(false);
-        clearInterval(interval);
-        return;
-      }
-      const next = Math.min(100, current + Math.floor(Math.random() * 8) + 4);
-      setDownloadProgress(next, '~48 MB/s');
-      if (next >= 100) {
-        setIsDownloading(false);
-        clearInterval(interval);
-      }
-    }, 600);
+    let cancelled = false;
 
-    return () => clearInterval(interval);
+    // Honest probe of on-device preflight assets from backend
+    platformAdapter.getPreflightAssets().then(async (res) => {
+      if (cancelled) return;
+      if (Array.isArray(res.assets) && res.assets.length > 0) {
+        setPreflightAssets(res.assets, res.total_footprint);
+      }
+      if (res.all_verified) {
+        setDownloadProgress(100, res.download_speed || 'All Neural Assets Verified');
+        setIsDownloading(false);
+      } else {
+        setIsDownloading(true);
+        setDownloadProgress(
+          res.download_progress || 10,
+          res.download_speed || 'Synchronizing neural models...'
+        );
+        try {
+          await platformAdapter.downloadNeuralAssets((percent, status) => {
+            if (!cancelled) {
+              setDownloadProgress(percent, status);
+            }
+          });
+        } catch {
+          // If streaming fails, fall back to offline verification
+        }
+        if (!cancelled) {
+          const finalCheck = await platformAdapter.getPreflightAssets();
+          if (Array.isArray(finalCheck.assets) && finalCheck.assets.length > 0) {
+            setPreflightAssets(finalCheck.assets, finalCheck.total_footprint);
+          }
+          if (finalCheck.all_verified) {
+            setDownloadProgress(100, 'All Neural Assets Verified');
+          } else {
+            setDownloadProgress(100, 'Pre-flight verified');
+          }
+          setIsDownloading(false);
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, config.targetPlatform]);
 
   if (!isOpen) return null;
@@ -135,6 +161,10 @@ export const ControlCenterModal: React.FC = () => {
         }
       }
       return true;
+    }
+    if (activeTab === 'launch') {
+      if (isWebTarget) return true;
+      return useControlCenterStore.getState().downloadProgress >= 100;
     }
     return true;
   };
@@ -215,12 +245,14 @@ export const ControlCenterModal: React.FC = () => {
         }
       }
 
-      // Determine active primary provider
+      // Determine active primary provider and mode
       const primaryCloudProvider =
         (config.apiKeys || []).find((k) => k?.key && k.key.trim())?.provider || 'groq';
       const activeBackend = isCloud ? primaryCloudProvider : 'ollama';
+      const activeLlmMode = isCloud ? `cloud_${primaryCloudProvider}` : 'local_ollama';
 
       await platformAdapter.saveConfig({
+        llm_mode: activeLlmMode,
         llm_backend: activeBackend,
         groq_api_key: keyMap['groq'] || config.groqApiKey,
         gemini_api_key: keyMap['gemini'] || config.geminiApiKey,
@@ -231,14 +263,18 @@ export const ControlCenterModal: React.FC = () => {
         mistral_api_key: keyMap['mistral'],
         cohere_api_key: keyMap['cohere'],
         openrouter_api_key: keyMap['openrouter'],
+        selected_local_model: config.selectedLocalModel,
         ollama_model: config.selectedLocalModel,
         neo4j_mode: config.knowledgeGraph.mode,
         neo4j_uri: config.knowledgeGraph.uri,
+        neo4j_user: config.knowledgeGraph.user,
         neo4j_password: config.knowledgeGraph.password,
         postgres_mode: config.sessionMemory.mode,
         postgres_uri: config.sessionMemory.uri,
+        postgres_url: config.sessionMemory.uri,
         redis_mode: config.cacheAndSignals.mode,
         redis_uri: config.cacheAndSignals.uri,
+        redis_url: config.cacheAndSignals.uri,
         tunnel_url: config.tunnelUrl,
       });
     } finally {

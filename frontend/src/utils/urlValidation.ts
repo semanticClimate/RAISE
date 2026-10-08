@@ -158,7 +158,7 @@ export function formatLastConnected(
     return 'Last connected: Just now';
   }
 
-  if (!timestamp || isNaN(timestamp) || timestamp <= 0) {
+  if (!timestamp || Number.isNaN(timestamp) || timestamp <= 0) {
     return 'Last connected: Never';
   }
 

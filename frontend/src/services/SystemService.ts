@@ -7,6 +7,8 @@ import {
   HardwareTelemetrySchema,
   type Neo4jStatus,
   Neo4jStatusSchema,
+  type AuthHandshakeResponse,
+  AuthHandshakeResponseSchema,
 } from '../types';
 
 export class SystemService {
@@ -35,6 +37,38 @@ export class SystemService {
   }
 
   /**
+   * Two-Step Security Handshake:
+   * Requests an ephemeral single-use session token from backend gateway
+   */
+  public async performHandshake(signal?: AbortSignal): Promise<ApiResponse<AuthHandshakeResponse>> {
+    let res = await apiClient.request<AuthHandshakeResponse>(
+      ENDPOINTS.AUTH_HANDSHAKE,
+      AuthHandshakeResponseSchema,
+      {
+        method: 'POST',
+        signal,
+        skipModeCheck: true,
+        timeoutMs: 3000,
+      }
+    );
+
+    if (res.status !== 200) {
+      res = await apiClient.request<AuthHandshakeResponse>(
+        ENDPOINTS.AUTH_HANDSHAKE_SESSION,
+        AuthHandshakeResponseSchema,
+        {
+          method: 'POST',
+          signal,
+          skipModeCheck: true,
+          timeoutMs: 3000,
+        }
+      );
+    }
+
+    return res;
+  }
+
+  /**
    * Centralized capability and health detection probe
    * Probes active endpoints to determine operational state
    */
@@ -45,6 +79,8 @@ export class SystemService {
     const capabilities: BackendCapabilities = {
       apiReachable: false,
       openApiReachable: false,
+      handshakeAvailable: false,
+      backendVersion: '1.0.0',
       chatAvailable: false,
       documentsAvailable: false,
       graphAvailable: false,
@@ -98,6 +134,10 @@ export class SystemService {
         capabilities.chatAvailable = true;
         capabilities.documentsAvailable = true;
         capabilities.searchAvailable = true;
+        const resData = aliveRes.data as any;
+        if (resData?.version || resData?.api_version) {
+          capabilities.backendVersion = resData.version || resData.api_version;
+        }
       }
 
       // 2. Probe OpenAPI schema
@@ -132,6 +172,12 @@ export class SystemService {
           capabilities.graphAvailable = true;
         }
       }
+
+      // 5. Probe Handshake
+      const handshakeRes = await this.performHandshake();
+      if (handshakeRes.status === 200 && handshakeRes.data?.token) {
+        capabilities.handshakeAvailable = true;
+      }
     } catch {
       // Ignore network errors in probe
     }
@@ -148,6 +194,8 @@ export class SystemService {
     status: number;
     latencyMs: number;
     endpoint: string;
+    version?: string;
+    isVersionAligned?: boolean;
     error?: string;
     isCorsIssue?: boolean;
   }> {
@@ -174,11 +222,23 @@ export class SystemService {
 
         // 2xx, 3xx, or even 401/403 proves the backend is alive and responding
         if (res.status < 500) {
+          let parsedVersion: string | undefined;
+          let isVersionAligned = true;
+          try {
+            const body = (await res.clone().json().catch(() => null)) as Record<string, any> | null;
+            parsedVersion = body?.version || body?.api_version;
+            if (parsedVersion) {
+              isVersionAligned = parsedVersion === '1.0.0';
+            }
+          } catch {}
+
           return {
             success: true,
             status: res.status,
             latencyMs,
             endpoint: ep,
+            version: parsedVersion ?? '1.0.0',
+            isVersionAligned,
           };
         }
       } catch (err: any) {

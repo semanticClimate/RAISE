@@ -178,10 +178,41 @@ export class SourceService {
    * Deep-linked PDF URL with page fragment anchor
    */
   public getPdfUrl(filename: string, pageNumber?: number): string {
-    const base = getApiBaseUrl();
+    const base = getApiBaseUrl().replace(/\/+$/, '');
     const cleanFilename = encodeURIComponent(filename);
     const pageFragment = pageNumber && pageNumber > 0 ? `#page=${pageNumber}` : '';
     return `${base}/api/pdf/${cleanFilename}${pageFragment}`;
+  }
+
+  /**
+   * High-speed URL that streams ONLY the single referenced page (<100KB)
+   * in ~25ms instead of downloading the entire multi-megabyte PDF.
+   */
+  public getSinglePagePdfUrl(filename: string, pageNumber: number): string {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const cleanFilename = encodeURIComponent(filename);
+    const safePage = Math.max(1, pageNumber || 1);
+    return `${base}/api/pdf/${cleanFilename}/pages/${safePage}/pdf`;
+  }
+
+  /**
+   * High-DPI PNG image URL of the single page (150 DPI)
+   */
+  public getSinglePageImageUrl(filename: string, pageNumber: number): string {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const cleanFilename = encodeURIComponent(filename);
+    const safePage = Math.max(1, pageNumber || 1);
+    return `${base}/api/pdf/${cleanFilename}/pages/${safePage}/image`;
+  }
+
+  /**
+   * Standalone HTML reader view of the single page
+   */
+  public getSinglePageViewUrl(filename: string, pageNumber: number): string {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const cleanFilename = encodeURIComponent(filename);
+    const safePage = Math.max(1, pageNumber || 1);
+    return `${base}/api/pdf/${cleanFilename}/pages/${safePage}/view`;
   }
 
   /**

@@ -117,7 +117,7 @@ export const helpContent: HelpContentConfig = {
   platform: {
     title: 'RAISE RAG Platform',
     description: 'Hybrid Vector + BM25 Retrieval with GraphRAG Routing',
-    version: 'v1.4.0',
+    version: 'v1.0.0',
   },
 };
 

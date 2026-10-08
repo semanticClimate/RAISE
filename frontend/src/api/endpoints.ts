@@ -7,6 +7,12 @@ export const ENDPOINTS = {
   SWAGGER: '/docs',
   REDOC: '/redoc',
 
+  // Authentication & Two-Step Security Handshake
+  AUTH_HANDSHAKE: '/api/v1/auth/handshake',
+  AUTH_HANDSHAKE_SESSION: '/session/handshake',
+  WS_TELEMETRY: '/ws/telemetry',
+  WS_TRAFFIC: '/ws/traffic',
+
   // Core Chat & Retrieval (Standard Cloudflare Tunnel & GraphRAG)
   CHAT: '/api/chat',
   CHAT_ABORT: '/api/chat/abort',
@@ -44,6 +50,12 @@ export const ENDPOINTS = {
   DELETE_DOCUMENT_BY_ID: (id: string) => `/api/documents/${encodeURIComponent(id)}`,
   LOAD_VAULT_DEFAULTS: '/api/vault/load-defaults',
   PDF_VIEW: (filename: string) => `/api/pdf/${encodeURIComponent(filename)}`,
+  PDF_PAGE: (filename: string, page: number) =>
+    `/api/pdf/${encodeURIComponent(filename)}/pages/${page}/pdf`,
+  PDF_PAGE_IMAGE: (filename: string, page: number) =>
+    `/api/pdf/${encodeURIComponent(filename)}/pages/${page}/image`,
+  PDF_PAGE_VIEW: (filename: string, page: number) =>
+    `/api/pdf/${encodeURIComponent(filename)}/pages/${page}/view`,
 
   // Graph & Subgraph
   GRAPH: '/api/graph',
@@ -56,6 +68,15 @@ export const ENDPOINTS = {
   // Document ingestion status polling (live) & real-time SSE stream
   DOCUMENT_STATUS: (id: string) => `/api/documents/${encodeURIComponent(id)}/status`,
   DOCUMENT_EVENTS: (id: string) => `/api/documents/${encodeURIComponent(id)}/events`,
+
+  // System Configuration, Hardware & Dynamic Models
+  SYSTEM_CONFIG: '/api/system/config',
+  SYSTEM_HARDWARE: '/api/system/hardware',
+  SYSTEM_TEST_CONNECTIONS: '/api/system/test-connections',
+  SYSTEM_MODELS_CATALOG: '/api/system/models/catalog',
+  SYSTEM_MODELS_PULL: '/api/system/models/pull',
+  SYSTEM_PREFLIGHT_ASSETS: '/api/system/preflight-assets',
+  SYSTEM_DOWNLOAD_ASSETS: '/api/system/download-assets',
 
   // Future backend abstractions
   FUTURE_CHAT_STREAM: '/api/chat/stream',
