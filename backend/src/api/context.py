@@ -211,6 +211,9 @@ def purge_all_ready_documents() -> bool:
     return True
 
 
+clear_ready_documents = purge_all_ready_documents
+
+
 def _parse_drawer_active_docs(raw_val: Any) -> Optional[List[str]]:
     """
     Parse, normalize, and unquote active drawer documents from:

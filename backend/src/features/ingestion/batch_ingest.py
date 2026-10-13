@@ -102,10 +102,10 @@ class BatchReportIngestor:
 
             t0 = time.time()
 
-            # Extract raw text spans using fitz (PyMuPDF)
+            # Extract raw text spans using PyMuPDF
             try:
-                import fitz
-                doc = fitz.open(str(pdf))
+                import pymupdf
+                doc = pymupdf.open(str(pdf))
                 page_count = min(len(doc), max_pages_per_doc)
                 chunks = []
 

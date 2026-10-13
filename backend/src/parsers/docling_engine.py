@@ -37,7 +37,7 @@ except Exception:
     HAS_DOCLING = False
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf
     HAS_PYMUPDF = True
 except Exception:
     HAS_PYMUPDF = False
@@ -132,10 +132,10 @@ class DoclingParserEngine:
             # Only slice if caller explicitly requested a partial page limit
             if doc_pages and HAS_PYMUPDF:
                 try:
-                    with fitz.open(str(pdf_path)) as _chk_doc:
+                    with pymupdf.open(str(pdf_path)) as _chk_doc:
                         if len(_chk_doc) > doc_pages:
                             temp_slice_path = pdf_path.parent / f"_temp_docling_slice_{doc_pages}_{pdf_path.name}"
-                            sub_doc = fitz.open()
+                            sub_doc = pymupdf.open()
                             for p in range(doc_pages):
                                 sub_doc.insert_pdf(_chk_doc, from_page=p, to_page=p)
                             sub_doc.save(str(temp_slice_path))
@@ -222,7 +222,7 @@ class DoclingParserEngine:
             # Page-Continuity & Targeted Page-Level GPU OCR
             if pages_data and HAS_PYMUPDF:
                 try:
-                    with fitz.open(str(pdf_path)) as _vdoc:
+                    with pymupdf.open(str(pdf_path)) as _vdoc:
                         target_total = min(len(_vdoc), int(max_pages)) if (max_pages and int(max_pages) > 0) else len(_vdoc)
                         existing_pages = {p["page_number"] for p in pages_data}
                         ocr_reader = self._get_ocr_reader()

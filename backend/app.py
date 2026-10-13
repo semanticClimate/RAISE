@@ -72,6 +72,9 @@ from src.api.context import (
     ACTIVE_ABORTS,
     DOCUMENTS_DIR,
     get_lan_ip,
+    record_ready_document,
+    get_ready_documents_list,
+    clear_ready_documents,
 )
 from src.api.dependencies import set_dependencies
 
@@ -326,15 +329,15 @@ app.include_router(system_router)
 # ---------------------------------------------------------------------------
 # Handshake Endpoints (Two-Step Handshake Contract Alignment)
 # ---------------------------------------------------------------------------
-@app.post("/api/v1/auth/handshake")
-@app.post("/session/handshake")
+@app.post("/api/v1/auth/handshake", operation_id="auth_handshake_api_v1")
+@app.post("/session/handshake", operation_id="auth_handshake_session")
 async def create_auth_handshake(request: Request):
     """
     Step 1 of Two-Step Security Handshake:
     Generates an ephemeral single-use token (5-min TTL) in Redis or standalone fallback.
     Guarantees app.py standalone execution matches server.py gateway contract.
     """
-    mgr = getattr(app.state, "handshake_mgr", None)
+    mgr = getattr(app.state, "handshake_mgr", None) or getattr(getattr(request, "app", None), "state", None) and getattr(request.app.state, "handshake_mgr", None)
     client_ip = "127.0.0.1"
     try:
         from src.security import resolve_client_ip

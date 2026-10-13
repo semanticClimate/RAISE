@@ -2,7 +2,7 @@
 RAISE PyMuPDF High-Speed Document Parser Engine
 ================================================
 Purpose:
-  Provides fast, layout-aware geometric PDF parsing utilizing PyMuPDF (fitz),
+  Provides fast, layout-aware geometric PDF parsing utilizing PyMuPDF,
   supplemented with targeted OCR for scanned graphics/pages and markdown table extraction.
 
 Architecture:
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf
     HAS_PYMUPDF = True
 except Exception:
     HAS_PYMUPDF = False
@@ -56,7 +56,7 @@ class PyMuPDFParserEngine:
         if not HAS_PYMUPDF:
             return True
         try:
-            with fitz.open(str(pdf_path)) as doc:
+            with pymupdf.open(str(pdf_path)) as doc:
                 total = len(doc)
                 step = max(1, total // max_check)
                 indices = range(0, total, step)
@@ -86,7 +86,7 @@ class PyMuPDFParserEngine:
         if not HAS_PYMUPDF:
             return []
 
-        doc = fitz.open(str(pdf_path))
+        doc = pymupdf.open(str(pdf_path))
         pages_to_process = min(len(doc), int(max_pages)) if (max_pages and int(max_pages) > 0) else len(doc)
 
         prev_page_raw = ""

@@ -4,7 +4,7 @@ RAISE Adaptive Document Parser (Docling + PyMuPDF Hybrid)
 Purpose:
   Intelligently chooses the best parsing engine based on document complexity:
   - Uses Docling (TableFormer / LayoutFormer) for layout-heavy, multi-column, table-rich documents.
-  - Uses PyMuPDF (fitz) for fast text-first streaming and fallback when ML parser is unavailable.
+  - Uses PyMuPDF for fast text-first streaming and fallback when ML parser is unavailable.
 
 Architecture & Maintenance:
   This module acts as the unified high-level facade. Detailed implementation sub-components:
@@ -31,6 +31,12 @@ from src.parsers.text_quality import (
 )
 from src.parsers.pymupdf_engine import PyMuPDFParserEngine
 from src.parsers.docling_engine import DoclingParserEngine, HAS_DOCLING
+
+try:
+    import pymupdf
+    HAS_PYMUPDF = True
+except ImportError:
+    HAS_PYMUPDF = False
 
 
 class SmartDocumentParser:

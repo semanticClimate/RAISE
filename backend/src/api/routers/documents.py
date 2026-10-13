@@ -297,7 +297,7 @@ async def get_pdf_single_page(
     Supported formats: 'pdf' (default), 'image' / 'png', 'view' (HTML preview).
     """
     import urllib.parse
-    import fitz
+    import pymupdf
 
     target_path = _resolve_document_file(filename)
     if not target_path or not target_path.exists():
@@ -307,7 +307,7 @@ async def get_pdf_single_page(
         raise HTTPException(status_code=400, detail="Page number must be >= 1.")
 
     try:
-        doc = fitz.open(str(target_path))
+        doc = pymupdf.open(str(target_path))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to open PDF document: {e}")
 
@@ -461,7 +461,7 @@ async def get_pdf_single_page(
         return HTMLResponse(content=html_content)
     else:
         # Default: Single-Page PDF stream
-        single_doc = fitz.open()
+        single_doc = pymupdf.open()
         single_doc.insert_pdf(doc, from_page=p_idx, to_page=p_idx)
         pdf_bytes = single_doc.tobytes()
         single_doc.close()

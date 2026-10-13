@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import json
 import logging
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -66,6 +67,15 @@ class LocalVLLMProvider(BaseLLMProvider):
         self.base_url = (base_url or os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")).rstrip("/")
         self.model_name = model_name or os.getenv("VLLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
 
+    def is_available(self) -> bool:
+        """Fast non-blocking check to determine if the local vLLM server is alive."""
+        try:
+            req = urllib.request.Request(f"{self.base_url}/models", headers={"User-Agent": "RAISE-Provider"})
+            with urllib.request.urlopen(req, timeout=0.25) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
     def complete(
         self,
         prompt: str,
@@ -86,18 +96,156 @@ class LocalVLLMProvider(BaseLLMProvider):
             "temperature": temperature,
         }
 
+        # Use responsive timeout for local daemon probe (3.0s default if localhost)
+        is_loopback = any(h in self.base_url for h in ("localhost", "127.0.0.1", "0.0.0.0"))
+        timeout = kwargs.get("timeout", 3.0 if is_loopback else 30.0)
+
         try:
             req = urllib.request.Request(
                 f"{self.base_url}/chat/completions",
                 data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json", "User-Agent": "RAISE-Provider"},
             )
-            with urllib.request.urlopen(req, timeout=kwargs.get("timeout", 60.0)) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["choices"][0]["message"]["content"]
         except Exception as e:
-            logger.warning(f"Local vLLM completion failed: {e}")
-            raise RuntimeError(f"Error executing inference: {e}")
+            err_str = str(e)
+            is_refused = "10061" in err_str or "actively refused" in err_str.lower() or "connection refused" in err_str.lower()
+            if is_refused:
+                logger.warning(f"Local vLLM endpoint ({self.base_url}) is offline (connection refused).")
+            else:
+                logger.warning(f"Local vLLM endpoint ({self.base_url}) unavailable: {e}.")
+
+            # Only fallback to in-process Transformers if GPU / CUDA is genuinely active
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    logger.info("Attempting in-process GPU fallback via LocalTransformersProvider...")
+                    fallback_local = LocalTransformersProvider()
+                    return fallback_local.complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature, **kwargs)
+                else:
+                    raise RuntimeError(f"Local vLLM endpoint is offline and system is running on CPU (no CUDA).")
+            except Exception as _fb_err:
+                raise RuntimeError(f"Error executing local inference: vLLM ({e}) -> LocalGPU ({_fb_err})")
+
+
+class LocalTransformersProvider(BaseLLMProvider):
+    """
+    Direct in-process GPU LLM inference using HuggingFace Transformers on CUDA (RTX 3090, 24GB VRAM).
+    Zero external server dependency, runs fully local with torch.float16 / bfloat16.
+    """
+
+    name = "local"
+    cost_mode = "LOCAL GPU / ZERO BILLING"
+
+    _shared_model = None
+    _shared_tokenizer = None
+    _loaded_model_name = None
+    _lock = threading.Lock()
+
+    def __init__(self, model_name: Optional[str] = None):
+        self.model_name = model_name or os.getenv("LOCAL_LLM_MODEL", "Qwen/Qwen2.5-1.5B-Instruct")
+
+    def _ensure_loaded(self):
+        with self._lock:
+            if LocalTransformersProvider._shared_model is not None and LocalTransformersProvider._loaded_model_name == self.model_name:
+                return
+
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+
+            device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+            logger.info(f"Loading in-process local LLM '{self.model_name}' on {device} ({dtype})...")
+            tok = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
+            mod = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                dtype=dtype,
+                device_map=device,
+                trust_remote_code=True,
+            )
+            mod.eval()
+            LocalTransformersProvider._shared_tokenizer = tok
+            LocalTransformersProvider._shared_model = mod
+            LocalTransformersProvider._loaded_model_name = self.model_name
+            logger.info(f"In-process local LLM '{self.model_name}' successfully loaded into VRAM.")
+
+    def complete(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.1,
+        **kwargs: Any,
+    ) -> str:
+        try:
+            self._ensure_loaded()
+            import torch
+
+            tok = LocalTransformersProvider._shared_tokenizer
+            mod = LocalTransformersProvider._shared_model
+
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
+            input_text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = tok([input_text], return_tensors="pt").to(mod.device)
+
+            with torch.no_grad():
+                outputs = mod.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    temperature=max(temperature, 0.01) if temperature > 0 else None,
+                    do_sample=(temperature > 0),
+                    pad_token_id=tok.eos_token_id,
+                )
+            generated_ids = [
+                output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, outputs)
+            ]
+            response = tok.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            return response.strip()
+        except Exception as e:
+            logger.error(f"In-process local LLM generation failed: {e}")
+            raise RuntimeError(f"Error executing local inference: {e}")
+
+    async def complete_stream(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.1,
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        text = self.complete(prompt, system_prompt, max_tokens, temperature, **kwargs)
+        yield text
+
+    def health_check(self, timeout: float = 5.0) -> ProviderHealth:
+        import torch
+        if not torch.cuda.is_available():
+            return ProviderHealth(
+                provider=self.name,
+                configured=False,
+                credential_valid=False,
+                endpoint_reachable=False,
+                model_available=False,
+                functional_test=False,
+                status="NO_CUDA",
+                cost_mode=self.cost_mode,
+            )
+        return ProviderHealth(
+            provider=self.name,
+            configured=True,
+            credential_valid=True,
+            endpoint_reachable=True,
+            model_available=True,
+            functional_test=True,
+            status="READY",
+            cost_mode=self.cost_mode,
+        )
 
     async def complete_stream(
         self,
@@ -291,9 +439,6 @@ def get_llm_provider(config: Optional[LLMConfig] = None, provider_name: Optional
     elif backend == "groq":
         from src.infrastructure.providers.groq import GroqProvider
         return GroqProvider()
-    elif backend == "deepseek":
-        from src.infrastructure.providers.deepseek import DeepSeekProvider
-        return DeepSeekProvider()
     elif backend in ("nvidia", "nvidia-nim", "nim"):
         from src.infrastructure.providers.nvidia import NvidiaNIMProvider
         return NvidiaNIMProvider()
@@ -303,17 +448,16 @@ def get_llm_provider(config: Optional[LLMConfig] = None, provider_name: Optional
     elif backend == "mistral":
         from src.infrastructure.providers.mistral import MistralProvider
         return MistralProvider()
-    elif backend in ("vercel", "typesafe", "jev"):
-        from src.infrastructure.providers.vercel import VercelAIGatewayProvider
-        return VercelAIGatewayProvider()
-    elif backend == "openrouter":
-        from src.infrastructure.providers.openrouter import OpenRouterProvider
-        return OpenRouterProvider()
+    elif backend in ("deepseek", "openrouter", "vercel", "typesafe", "jev"):
+        # Deprecated / billing restricted -> fall back to primary fast cloud provider
+        from src.infrastructure.providers.groq import GroqProvider
+        return GroqProvider()
+    elif backend in ("local", "transformers", "gpu", "hf"):
+        return LocalTransformersProvider(model_name=cfg.model_name)
     elif backend in ("universal", "custom", "together", "fireworks", "perplexity"):
-        from src.infrastructure.providers.universal import UniversalCloudProvider
         return UniversalCloudProvider(custom_name=backend)
     elif backend == "ollama":
         return LocalOllamaProvider(base_url=cfg.base_url, model_name=cfg.model_name)
     else:
-        # Default local vLLM
+        # Default local vLLM (falls back to in-process LocalTransformers on GPU if vLLM offline)
         return LocalVLLMProvider(base_url=cfg.base_url, model_name=cfg.model_name)

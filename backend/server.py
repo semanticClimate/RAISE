@@ -266,8 +266,15 @@ async def server_lifespan(app: FastAPI):
             print(f" \033[90mTunnel routes securely to local backend at http://localhost:{APP_PORT}\033[0m")
             print("\033[1;92m" + "─" * 78 + "\033[0m")
     else:
-        logger.info("Cloudflare Tunnel disabled (local only mode).")
         print(f"\033[1;93mℹ️  [Tunnel Mode: DISABLED via --no-tunnel / config] Running locally on http://localhost:{APP_PORT}\033[0m")
+
+    # 4. Auto-synchronize pending documents from disk in background thread if dev_operator is available
+    if hasattr(app.state, "dev_operator") and app.state.dev_operator:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, app.state.dev_operator.auto_synchronize_pending_documents)
+        except Exception as exc:
+            logger.warning(f"Startup document synchronization notice in server.py: {exc}")
 
     yield
 
@@ -315,42 +322,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Attach Pure ASGI Security Shield as Outer Layer
+app.add_middleware(PureASGISecurityShieldMiddleware)
+
+# Attach Pure ASGI Security Shield Reference on state
 shield_middleware = PureASGISecurityShieldMiddleware(app=app, redis_client=None)
 app.state.asgi_shield = shield_middleware
 
 
-# ------------------------------------------------------------------------------
-# Authentication Handshake Endpoints (Two-Step Handshake)
-# ------------------------------------------------------------------------------
-@app.post("/api/v1/auth/handshake")
-@app.post("/session/handshake")
-async def create_auth_handshake(request: Request):
-    """
-    Step 1 of Two-Step Security Handshake:
-    Generates an ephemeral single-use token (5-min TTL) in Redis.
-    """
-    mgr: Optional[HandshakeManager] = getattr(app.state, "handshake_mgr", None)
-    client_ip = resolve_client_ip(dict(request.scope))
-
-    if not mgr or not mgr.redis:
-        # Standalone mode fallback
-        import secrets
-        mock_token = f"standalone_{secrets.token_urlsafe(24)}"
-        return {
-            "token": mock_token,
-            "expires_in": 300,
-            "status": "active",
-            "mode": "standalone"
-        }
-
-    token = await mgr.create_handshake_token(metadata={"client_ip": client_ip})
-    return {
-        "token": token,
-        "expires_in": 300,
-        "status": "active",
-        "client_ip": client_ip
-    }
+# Handshake endpoints are mounted from core_rag_app (app.py) at the bottom of this file
+# to prevent duplicate route definitions and duplicate OpenAPI operation IDs.
 
 
 # ------------------------------------------------------------------------------

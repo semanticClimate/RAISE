@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import logging
+import threading
 import time
 from enum import Enum
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
@@ -15,11 +16,10 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
 from src.infrastructure.providers.base import (
     LLMProvider,
 )
-from src.infrastructure.providers.llm import LocalVLLMProvider
+from src.infrastructure.providers.llm import LocalVLLMProvider, LocalTransformersProvider
 from src.infrastructure.providers.gemini import GeminiProvider
 from src.infrastructure.providers.groq import GroqProvider
 from src.infrastructure.providers.mistral import MistralProvider
-from src.infrastructure.providers.vercel import VercelAIGatewayProvider
 from src.infrastructure.providers.universal import UniversalCloudProvider
 from src.infrastructure.providers.deepseek import DeepSeekProvider
 from src.infrastructure.providers.nvidia import NvidiaNIMProvider
@@ -92,19 +92,19 @@ class ProviderRouter:
         # Instantiate provider registry
         self.providers: Dict[str, LLMProvider] = {
             "vllm": LocalVLLMProvider(),
+            "local": LocalTransformersProvider(),
             "gemini": GeminiProvider(),
             "groq": GroqProvider(),
             "mistral": MistralProvider(),
             "nvidia": NvidiaNIMProvider(),
             "cohere": CohereProvider(),
-            "vercel": VercelAIGatewayProvider(),
             "deepseek": DeepSeekProvider(),
             "openrouter": OpenRouterProvider(),
             "universal": UniversalCloudProvider(),
         }
 
-        # Active primary provider selection
-        primary_cloud = env_backend if env_backend in self.providers else "groq"
+        # Active primary provider selection (ignoring billing-restricted providers)
+        primary_cloud = env_backend if (env_backend in self.providers and env_backend not in ("deepseek", "openrouter")) else "groq"
 
         # Task routing policy mapping (Production Defaults for 8 Pipeline Phases)
         # DeepSeek is NOT used as default because it has NO permanent free tier (returns HTTP 402 once trial expires).
@@ -114,7 +114,7 @@ class ProviderRouter:
 
         self.task_policy: Dict[InferenceTask, str] = {
             InferenceTask.CHAT: "groq" if self.cloud_allowed else "vllm",  # Phase 1: Low-latency chat
-            InferenceTask.RAG_GENERATION: primary_cloud if self.mode == ExecutionMode.CLOUD else "vllm",  # Phase 2: RAG Answer Synthesis
+            InferenceTask.RAG_GENERATION: primary_cloud if self.cloud_allowed else "vllm",  # Phase 2: RAG Answer Synthesis
             InferenceTask.DOCUMENT_EXTRACTION: "gemini",  # Phase 3: Doc Layout & Vision
             InferenceTask.QUERY_REWRITE: "groq",  # Phase 4: Query Intake & Reformulation
             InferenceTask.REASONING: primary_cloud if self.cloud_allowed else "vllm",  # Phase 5: Multi-Hop Relational Reasoning
@@ -127,9 +127,15 @@ class ProviderRouter:
 
         # Provider health, cooldown & disabled tracking
         self.provider_cooldowns: Dict[str, float] = {}
-        self.disabled_providers: Set[str] = set()
+        # Disable DeepSeek & OpenRouter permanently if billing restricted (HTTP 402 / $0 balance)
+        self.disabled_providers: Set[str] = {"deepseek", "openrouter"}
         self.last_used_provider: str = ""
         self.last_used_model: str = ""
+
+        # Thread-safe round-robin model rotation across all configured models
+        self.round_robin_enabled = os.getenv("LLM_ROUND_ROBIN", "true").lower() in ("true", "1", "yes") or env_backend in ("round_robin", "all")
+        self._rr_lock = threading.Lock()
+        self._round_robin_index = 0
 
         # Construct dynamic fallback chain based on user-provided keys
         self.fallback_chain: List[str] = []
@@ -138,28 +144,32 @@ class ProviderRouter:
     def _refresh_fallback_chain(self, primary_cloud: Optional[str] = None) -> None:
         """
         Dynamically constructs the fallback chain based on user-provided API keys.
-        Providers without free tiers or requiring balance (DeepSeek, OpenRouter, Vercel)
-        are strictly omitted unless the user has explicitly written their key and it is not payment-restricted.
+        Orders all configured providers so every model gets called sequentially in a line.
         """
         from src.infrastructure.credentials.manager import get_credential_manager
         cm = get_credential_manager()
         prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else "groq")
 
-        active = [prim] if prim not in self.disabled_providers else []
-        for cand in ["groq", "mistral", "nvidia", "cohere", "gemini"]:
+        # Multi-model sequence line: Groq, NVIDIA NIM, Mistral, Cohere, Gemini
+        ordered_candidates = ["groq", "nvidia", "mistral", "cohere", "gemini"]
+        active = []
+        if prim in ordered_candidates and prim not in self.disabled_providers and cm.get_credential_status(prim) == "configured":
+            active.append(prim)
+
+        for cand in ordered_candidates:
             if cand in self.disabled_providers:
                 continue
             if cm.get_credential_status(cand) == "configured":
                 if cand not in active:
                     active.append(cand)
 
-        # Paid / account-credit gated tiers (HTTP 402/403 if expired or missing card)
-        # ONLY include if user explicitly wrote their key AND not disabled
-        for paid in ["deepseek", "openrouter", "vercel", "universal"]:
+        for paid in ["openrouter", "universal"]:
             if paid not in self.disabled_providers and cm.get_credential_status(paid) == "configured":
                 if paid not in active:
                     active.append(paid)
 
+        if "local" not in active:
+            active.append("local")
         if "vllm" not in active:
             active.append("vllm")
 
@@ -182,17 +192,26 @@ class ProviderRouter:
             "nvidia": {"name": "NVIDIA NIM", "tier": "Developer Free Tier (1,000 Credits)", "default_model": "meta/llama-3.2-11b-vision-instruct"},
             "cohere": {"name": "Cohere Command", "tier": "Evaluation Free Tier", "default_model": "command-r-plus-08-2024"},
             "gemini": {"name": "Google Gemini", "tier": "Free Tier (Rate-Limited Quota)", "default_model": "gemini-2.0-flash"},
-            "vercel": {"name": "Vercel AI Gateway / TypeSafe Jev", "tier": "Vercel Gateway Tier", "default_model": "typesafe-ai/jev"},
             "deepseek": {"name": "DeepSeek API", "tier": "Prepaid Only (No Permanent Free Tier)", "default_model": "deepseek-chat"},
             "openrouter": {"name": "OpenRouter Gateway", "tier": "Prepaid Only (Account Credits)", "default_model": "anthropic/claude-3-haiku"},
             "universal": {"name": "Universal Custom Cloud API", "tier": "Custom OpenAI-Compatible", "default_model": "gpt-4o-mini"},
         }
 
-        # Check local vLLM
+        # Check local GPU providers (In-process Transformers & vLLM)
+        if "local" in self.providers and "local" not in self.disabled_providers:
+            available.append({
+                "provider": "local",
+                "display_name": "Local GPU (In-Process PyTorch/CUDA, RTX 3090)",
+                "model": getattr(self.providers["local"], "model_name", "Qwen/Qwen2.5-1.5B-Instruct"),
+                "status": "READY",
+                "is_active": self.mode == ExecutionMode.LOCAL,
+                "tier": "Local Zero-Cost (24GB VRAM)",
+            })
+
         if "vllm" in self.providers and "vllm" not in self.disabled_providers:
             available.append({
                 "provider": "vllm",
-                "display_name": "Local vLLM (RTX 3090)",
+                "display_name": "Local vLLM (Daemon Endpoint, RTX 3090)",
                 "model": getattr(self.providers["vllm"], "model_name", "Qwen2.5-14B"),
                 "status": "READY" if self.mode == ExecutionMode.LOCAL else "LOCAL_OFFLINE",
                 "is_active": self.mode == ExecutionMode.LOCAL,
@@ -258,8 +277,31 @@ class ProviderRouter:
             logger.info(f"Cloud inference confirmation required for {target_name}. Defaulting to Local vLLM.")
             return self.providers["vllm"]
 
-        # Check if preferred provider is on rate-limit cooldown or disabled; if so, pick next healthy fallback
         now = time.time()
+
+        # Multi-model Round-Robin rotation across every configured model in a line
+        healthy_chain = [
+            cand for cand in self.fallback_chain
+            if cand not in self.disabled_providers
+            and self.provider_cooldowns.get(cand, 0) <= now
+            and cand in self.providers
+            and cand not in ("vllm", "local")
+        ]
+
+        if self.round_robin_enabled and healthy_chain and t in (InferenceTask.RAG_GENERATION, InferenceTask.CHAT):
+            with self._rr_lock:
+                target_name = healthy_chain[self._round_robin_index % len(healthy_chain)]
+                self._round_robin_index = (self._round_robin_index + 1) % len(healthy_chain)
+                return self.providers[target_name]
+
+        target_name = self.task_policy.get(t, "vllm")
+
+        # If Cloud mode or Automatic mode, check billing guardrail
+        if target_name != "vllm" and not self.cloud_allowed and self.mode != ExecutionMode.CLOUD:
+            logger.info(f"Cloud inference confirmation required for {target_name}. Defaulting to Local vLLM.")
+            return self.providers["vllm"]
+
+        # Check if preferred provider is on rate-limit cooldown or disabled; if so, pick next healthy fallback
         if target_name in self.disabled_providers or self.provider_cooldowns.get(target_name, 0) > now:
             for cand in self.fallback_chain:
                 if cand != target_name and cand not in self.disabled_providers and self.provider_cooldowns.get(cand, 0) <= now and cand in self.providers:
@@ -368,13 +410,19 @@ class ProviderRouter:
                     fb_str = str(fb_err)
                     if "429" in fb_str or "RATE_LIMITED" in fb_str or "quota" in fb_str.lower():
                         self.provider_cooldowns[candidate_name] = time.time() + 60.0
-                    elif "402" in fb_str or "BILLING_RESTRICTED" in fb_str or "credit card" in fb_str.lower() or ("403" in fb_str and candidate_name in ("deepseek", "vercel", "openrouter")):
+                    elif "402" in fb_str or "BILLING_RESTRICTED" in fb_str or "credit card" in fb_str.lower() or ("403" in fb_str and candidate_name in ("deepseek", "openrouter")):
                         self.disabled_providers.add(candidate_name)
                         logger.warning(f"Permanently disabled billing-restricted fallback '{candidate_name}'.")
                     errors.append(f"{candidate_name}: {fb_err}")
                     logger.warning(f"Fallback candidate '{candidate_name}' failed: {fb_err}")
 
-            return f"Inference execution error: All providers in fallback chain failed: {'; '.join(errors)}"
+            all_errs = "; ".join(errors)
+            if "not configured" in all_errs and ("offline" in all_errs or "refused" in all_errs or "10061" in all_errs or "CUDA is unavailable" in all_errs):
+                return (
+                    "Inference execution error: No functional LLM provider available. "
+                    "Please configure an API key (Groq, Gemini, NVIDIA, Mistral) in Settings or start a local Ollama/vLLM instance."
+                )
+            return f"Inference execution error: All providers in fallback chain failed: {all_errs}"
 
     async def complete_stream(
         self,

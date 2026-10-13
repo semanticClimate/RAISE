@@ -26,9 +26,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf
 except ImportError:
-    fitz = None
+    pymupdf = None
 
 # Auto-load .env variables if not already loaded
 try:
@@ -192,11 +192,11 @@ class AcademicPipelineIngestor:
                 "neo4j_synced": False,
             }
 
-        if fitz is None:
+        if pymupdf is None:
             raise RuntimeError(
-                "PyMuPDF (fitz) is required for PDF ingestion. Please run: pip install pymupdf"
+                "PyMuPDF is required for PDF ingestion. Please run: pip install pymupdf"
             )
-        doc = fitz.open(str(pdf_path))
+        doc = pymupdf.open(str(pdf_path))
         total_doc_pages = len(doc)
         if max_pages is not None and int(max_pages) > 0:
             pages_to_process = min(total_doc_pages, int(max_pages))

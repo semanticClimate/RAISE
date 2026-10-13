@@ -64,7 +64,8 @@ async def get_dynamic_llms() -> List[Dict[str, Any]]:
     return p_router.get_dynamic_available_providers()
 
 
-@router.post("/test-connections")
+@router.get("/test-connections", operation_id="get_system_test_connections")
+@router.post("/test-connections", operation_id="post_system_test_connections")
 async def test_system_connections(req: Optional[SystemConfigRequest] = None) -> Dict[str, Any]:
     """
     Probes live connectivity for Neo4j, Redis, PostgreSQL, ChromaDB, and LLM inference.

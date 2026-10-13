@@ -186,8 +186,8 @@ def ingest_pdf_from_path(
     try:
         total_pdf_pages = 0
         try:
-            import fitz
-            with fitz.open(str(src_path)) as _doc:
+            import pymupdf
+            with pymupdf.open(str(src_path)) as _doc:
                 total_pdf_pages = len(_doc)
         except Exception:
             pass

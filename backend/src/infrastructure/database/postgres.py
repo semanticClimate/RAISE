@@ -111,10 +111,30 @@ def get_database_engine(
     else:
         logger.debug("Cloud PostgreSQL URL not configured. Falling back to In-Memory SQLite...")
 
-    # Tier 3: Python In-Memory SQLite Database
-    engine = create_engine(memory_url)
+    # Tier 3: Local SQLite Database (persistent file-backed by default, or memory if in test environment)
+    import sys
+    is_testing = os.getenv("TESTING", "").lower() in ("true", "1") or "pytest" in sys.modules
+    sqlite_path = os.getenv("SQLITE_DB_PATH")
+    if not sqlite_path and not is_testing and memory_url == "sqlite:///:memory:":
+        data_dir = os.path.join(os.getcwd(), "data")
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+            sqlite_path = os.path.join(data_dir, "raise_local.db")
+        except Exception:
+            sqlite_path = None
+
+    if sqlite_path and memory_url == "sqlite:///:memory:":
+        norm_path = sqlite_path.replace(os.sep, "/")
+        actual_url = f"sqlite:///{norm_path}"
+    else:
+        actual_url = memory_url
+
+    engine = create_engine(actual_url)
     if not _HAS_LOGGED_PG_CONNECTION:
-        logger.info("Connected to In-Memory SQLite Database")
+        if "sqlite:///:memory:" in actual_url:
+            logger.info("Connected to In-Memory SQLite Database")
+        else:
+            logger.info("Connected to Persistent Local SQLite Database (%s)", actual_url)
         _HAS_LOGGED_PG_CONNECTION = True
     return engine
 

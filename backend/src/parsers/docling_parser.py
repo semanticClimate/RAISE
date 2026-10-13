@@ -96,12 +96,12 @@ class DoclingLayoutParser:
         convert_path = str(pdf_path)
         if max_pages is not None and int(max_pages) > 0:
             try:
-                import fitz
-                with fitz.open(str(pdf_path)) as _chk_doc:
+                import pymupdf
+                with pymupdf.open(str(pdf_path)) as _chk_doc:
                     target_pages = int(max_pages)
                     if len(_chk_doc) > target_pages:
                         temp_slice = pdf_path.parent / f"_temp_docling_slice_{target_pages}_{pdf_path.name}"
-                        sub_doc = fitz.open()
+                        sub_doc = pymupdf.open()
                         for p in range(target_pages):
                             sub_doc.insert_pdf(_chk_doc, from_page=p, to_page=p)
                         sub_doc.save(str(temp_slice))

@@ -53,7 +53,7 @@ def check_hf_model_cached(repo_id: str) -> bool:
 def check_docling_pymupdf() -> bool:
     """Verifies that either PyMuPDF or Docling is available for document parsing."""
     try:
-        import fitz  # PyMuPDF
+        import pymupdf
         return True
     except ImportError:
         pass
