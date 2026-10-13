@@ -165,44 +165,7 @@ export function formatMarkdownReport(
     });
   }
 
-  // Verified Claims Section (if available)
-  if (response?.verified_claims && response.verified_claims.length > 0) {
-    lines.push('---');
-    lines.push('');
-    lines.push('## Verified Claims & Fact Checks');
-    lines.push('');
 
-    response.verified_claims.forEach((claim) => {
-      const supported = claim.is_supported ? '[x]' : '[ ]';
-      const citRef =
-        claim.citations_found && claim.citations_found.length > 0
-          ? `(Citations: [${claim.citations_found.join(', ')}])`
-          : '';
-      lines.push(`- ${supported} **${claim.claim_id}:** ${claim.text} ${citRef}`);
-      if (claim.status && claim.status !== 'SUPPORTED') {
-        lines.push(`  - *Status:* \`${claim.status}\``);
-      }
-    });
-    lines.push('');
-  }
-
-  // Knowledge Graph Context Summary (if available)
-  if (response?.subgraph?.nodes && response.subgraph.nodes.length > 0) {
-    lines.push('---');
-    lines.push('');
-    lines.push('## Subgraph Entity Context');
-    lines.push('');
-    lines.push(
-      `Identified **${response.subgraph.nodes.length} entities** and **${
-        response.subgraph.edges?.length || 0
-      } relationships** in the knowledge graph traversal.`
-    );
-    const nodeNames = response.subgraph.nodes.map((n) => `\`${n.name || n.id}\``).slice(0, 15);
-    lines.push(
-      `- Key Entities: ${nodeNames.join(', ')}${response.subgraph.nodes.length > 15 ? ', ...' : ''}`
-    );
-    lines.push('');
-  }
 
   // Footer
   lines.push('---');

@@ -95,7 +95,7 @@ if (Test-Path (Join-Path $root "package.json")) {
 # ------------------------------------------------------------------------------
 Write-Host "[1/3] Checking environment & Node.js installation..." -ForegroundColor Yellow
 
-$targetNodeVer   = "v26.10.0"
+$targetNodeVer   = "v22.14.0"
 $portableNodeDir = Join-Path $root ".node\node-$targetNodeVer-win-x64"
 $portableNodeExe = Join-Path $portableNodeDir "node.exe"
 $portableNpmCmd  = Join-Path $portableNodeDir "npm.cmd"
@@ -108,10 +108,18 @@ if (Test-Path -LiteralPath $portableNodeExe) {
     $nodeFound = $true
     Write-Host "      [SUCCESS] Local portable Node.js ($targetNodeVer) Available in .node folder." -ForegroundColor Green
 }
-# 2. Check if system Node.js is Available and working
+# 2. Check if system Node.js is Available and meets minimum requirements (Node 22 LTS)
 elseif (Get-Command "node" -ErrorAction SilentlyContinue) {
-    $nodeFound = $true
-    Write-Host "      [SUCCESS] System Node.js Available in PATH." -ForegroundColor Green
+    $sysVerRaw = (& node -v 2>$null).Trim()
+    $sysMajor = 0
+    if ($sysVerRaw -match "^v?(\d+)") { $sysMajor = [int]$matches[1] }
+    if ($sysMajor -ge 22) {
+        $nodeFound = $true
+        Write-Host "      [SUCCESS] Modern system Node.js ($sysVerRaw) Available in PATH." -ForegroundColor Green
+    } else {
+        Write-Host "      [WARNING] Detected outdated Node.js ($sysVerRaw). Node 22.14+ LTS is required." -ForegroundColor Yellow
+        Write-Host "      Switching to portable Node.js ($targetNodeVer)..." -ForegroundColor Yellow
+    }
 }
 
 # 3. If Node.js is missing, auto-download portable Node.js LTS

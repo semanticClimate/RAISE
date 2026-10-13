@@ -58,6 +58,10 @@ export interface QueryBoxProps {
   voiceError: string | null;
   onDismissVoiceError: () => void;
 
+  // Unconfigured LLM proactive alert
+  isLlmConfigured?: boolean;
+  onOpenConfigureLlm?: () => void;
+
   /** Optional custom class name applied to outer section */
   className?: string;
 }
@@ -105,6 +109,8 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
   onStopVoiceListening,
   voiceError,
   onDismissVoiceError,
+  isLlmConfigured = true,
+  onOpenConfigureLlm,
   className = '',
 }) => {
   return (
@@ -168,6 +174,25 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
           onViewPdf={onViewPdf}
           variant="mobile"
         />
+
+        {/* Proactive Unconfigured LLM UX Alert Pill */}
+        {!isLlmConfigured && (
+          <div className="flex justify-center sm:justify-start mb-2 px-1 animate-in fade-in slide-in-from-bottom-1 duration-200">
+            <button
+              type="button"
+              onClick={onOpenConfigureLlm}
+              className="inline-flex items-center gap-1.5 py-1 px-3 rounded-full bg-amber-500/15 dark:bg-amber-950/70 border border-amber-500/35 text-amber-950 dark:text-amber-200 hover:bg-amber-500/25 dark:hover:bg-amber-900/60 shadow-sm backdrop-blur-md text-[11px] sm:text-xs transition-all cursor-pointer group text-left"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              <span>
+                No LLM configured yet.{' '}
+                <span className="underline group-hover:text-amber-950 dark:group-hover:text-amber-100 font-semibold">
+                  Click here to add a free Groq / Gemini key in Settings or connect local Ollama.
+                </span>
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* WhatsApp-Style Input Bar on Mobile / Full RAG Card on Desktop */}
         <form

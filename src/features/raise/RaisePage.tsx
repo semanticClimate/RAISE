@@ -21,7 +21,6 @@ import { systemService } from '../../services/SystemService';
 import { useFilterStore } from '../../stores/filterStore';
 import { useModeStore } from '../../stores/modeStore';
 import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../../types';
-import { ensureMinimumDuration } from '../../utils/async';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
 import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { formatBytes } from '../../utils/formatters';
@@ -30,6 +29,8 @@ import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
 import { terminalLogger } from '../../utils/terminalLogger';
 import { formatSessionDate, generateUUID, truncateSessionTitle } from '../../utils/uuid';
 import { useControlCenterStore } from '../control-center/store/useControlCenterStore';
+import { detectEnvCredentials } from '../control-center/services/envDetector';
+import { platformAdapter } from '../control-center/services/platformAdapter';
 import { Header as MainHeader, UnconfiguredNotice } from '../header';
 import { settingsJunction, useSettingsJunction } from '../settings/junction';
 import { Sidebar as MainSidebar } from '../sidebar/Sidebar';
@@ -139,6 +140,48 @@ export const RaisePage: React.FC = () => {
     }
   };
   const isControlCenterOpen = useControlCenterStore((s) => s.isOpen);
+  const ccConfig = useControlCenterStore((s) => s.config);
+  const openControlCenter = useControlCenterStore((s) => s.setOpen);
+  const setControlCenterTab = useControlCenterStore((s) => s.setActiveTab);
+
+  const [dynamicLlms, setDynamicLlms] = useState<Array<{ provider: string; status?: string }>>([]);
+
+  useEffect(() => {
+    if (appMode !== 'connected') return;
+    platformAdapter
+      .getDynamicLLMs()
+      .then((models) => {
+        if (Array.isArray(models)) {
+          setDynamicLlms(models);
+        }
+      })
+      .catch(() => {});
+  }, [appMode]);
+
+  const isLlmConfigured = useMemo(() => {
+    // 1. If backend dynamic LLM endpoint reports active providers ready
+    if (dynamicLlms.some((m) => m.status === 'READY' || m.status === 'ACTIVE')) {
+      return true;
+    }
+    // 2. If local mode, check selected model
+    if (ccConfig.llmDeployment === 'local') {
+      return Boolean(ccConfig.selectedLocalModel);
+    }
+    // 3. If cloud mode, check saved API keys in store
+    const hasConfiguredKey = ccConfig.apiKeys?.some(
+      (k) => k.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+    );
+    if (hasConfiguredKey) return true;
+    // 4. Check client-side environment credentials (.env)
+    const envCreds = detectEnvCredentials();
+    return envCreds.llmKeys.length > 0;
+  }, [dynamicLlms, ccConfig.llmDeployment, ccConfig.selectedLocalModel, ccConfig.apiKeys]);
+
+  const handleOpenConfigureLlm = useCallback(() => {
+    setControlCenterTab('models');
+    openControlCenter(true);
+  }, [openControlCenter, setControlCenterTab]);
+
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -1072,10 +1115,22 @@ export const RaisePage: React.FC = () => {
   const selectedDocs = sourceDocs.filter((doc) => doc.selected);
   const activeSourcesCount = selectedDocs.length;
 
-  const handleOpenPdfViewer = (filename: string, pageNumber: number = 1, _heading?: string) => {
+  const handleOpenPdfViewer = (
+    filename: string,
+    pageNumber: number = 1,
+    _heading?: string,
+    mode?: 'page' | 'full' | 'view'
+  ) => {
     if (typeof window !== 'undefined' && filename) {
-      const url = sourceService.getPdfUrl(filename, pageNumber);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      const safePage = Math.max(1, pageNumber || 1);
+      let targetUrl: string;
+      if (mode === 'page' || mode === 'view') {
+        targetUrl = sourceService.getSinglePageViewUrl(filename, safePage);
+      } else {
+        // mode === 'full' or default
+        targetUrl = sourceService.getPdfUrl(filename, safePage);
+      }
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -2221,6 +2276,11 @@ export const RaisePage: React.FC = () => {
     const q = (typeof overrideQuery === 'string' ? overrideQuery : query).trim();
     if (!q || isLoading) return;
 
+    if (!isLlmConfigured) {
+      handleOpenConfigureLlm();
+      return;
+    }
+
     if (isListening) {
       stopVoiceListening();
     }
@@ -2304,10 +2364,7 @@ export const RaisePage: React.FC = () => {
         }
       );
 
-      const res =
-        appMode === 'connected'
-          ? await ensureMinimumDuration(queryTask, 1000, controller.signal)
-          : await queryTask;
+      const res = await queryTask;
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -2343,19 +2400,30 @@ export const RaisePage: React.FC = () => {
             durationSec: elapsedSec,
           };
         } else {
-          const errorDetails = createErrorDetails(res.error, null);
-          if (!errorDetails.isOffline) {
-            showErrorPopup(errorDetails.title, errorDetails.message, async () => {
-              if (appMode !== 'connected') {
-                await runCapabilityProbe();
-              }
-              handleRegenerateResponse(updatedConversation.length);
-            });
+          const isNoLlm =
+            res.error?.code === 'NO_LLM_CONFIGURED' ||
+            (typeof res.error?.message === 'string' &&
+              (res.error.message.includes('NO_LLM_CONFIGURED') ||
+                res.error.message.includes('No LLM configured') ||
+                res.error.message.includes('No active LLM provider')));
+
+          if (isNoLlm) {
+            handleOpenConfigureLlm();
+          } else {
+            const errorDetails = createErrorDetails(res.error, null);
+            if (!errorDetails.isOffline) {
+              showErrorPopup(errorDetails.title, errorDetails.message, async () => {
+                if (appMode !== 'connected') {
+                  await runCapabilityProbe();
+                }
+                handleRegenerateResponse(updatedConversation.length);
+              });
+            }
           }
           assistantMsg = {
             role: 'assistant',
             text: '',
-            error: errorDetails,
+            error: createErrorDetails(res.error, null),
             durationSec: elapsedSec,
           };
         }
@@ -2424,13 +2492,24 @@ export const RaisePage: React.FC = () => {
         setConversation(finalMessages);
       } else {
         const errorDetails = createErrorDetails(null, err);
-        if (!errorDetails.isOffline) {
-          showErrorPopup(errorDetails.title, errorDetails.message, async () => {
-            if (appMode !== 'connected') {
-              await runCapabilityProbe();
-            }
-            handleRegenerateResponse(updatedConversation.length);
-          });
+        const isNoLlm =
+          err?.code === 'NO_LLM_CONFIGURED' ||
+          (typeof err?.message === 'string' &&
+            (err.message.includes('NO_LLM_CONFIGURED') ||
+              err.message.includes('No LLM configured') ||
+              err.message.includes('No active LLM provider')));
+
+        if (isNoLlm) {
+          handleOpenConfigureLlm();
+        } else {
+          if (!errorDetails.isOffline) {
+            showErrorPopup(errorDetails.title, errorDetails.message, async () => {
+              if (appMode !== 'connected') {
+                await runCapabilityProbe();
+              }
+              handleRegenerateResponse(updatedConversation.length);
+            });
+          }
         }
         const errorAssistantMsg: ChatMessage = {
           role: 'assistant',
@@ -2611,10 +2690,7 @@ export const RaisePage: React.FC = () => {
         }
       );
 
-      const res =
-        appMode === 'connected'
-          ? await ensureMinimumDuration(queryTask, 1000, controller.signal)
-          : await queryTask;
+      const res = await queryTask;
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -2944,10 +3020,7 @@ export const RaisePage: React.FC = () => {
         }
       );
 
-      const res =
-        appMode === 'connected'
-          ? await ensureMinimumDuration(queryTask, 1000, controller.signal)
-          : await queryTask;
+      const res = await queryTask;
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -4440,6 +4513,8 @@ export const RaisePage: React.FC = () => {
             onStopVoiceListening={stopVoiceListening}
             voiceError={voiceError}
             onDismissVoiceError={() => setVoiceError(null)}
+            isLlmConfigured={isLlmConfigured}
+            onOpenConfigureLlm={handleOpenConfigureLlm}
           />
         </main>
       </div>

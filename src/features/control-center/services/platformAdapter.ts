@@ -174,6 +174,19 @@ export function isLocalEnvironment(): boolean {
   );
 }
 
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs: number = 3500): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 export const platformAdapter = {
   isNativeTauri: isTauri,
   isLocalEnvironment,
@@ -192,9 +205,9 @@ export const platformAdapter = {
     }
 
     try {
-      const res = await fetch(resolveApiUrl('/api/system/hardware'), {
+      const res = await fetchWithTimeout(resolveApiUrl('/api/system/hardware'), {
         headers: { Accept: 'application/json' },
-      });
+      }, 3000);
       if (res.ok) {
         return (await res.json()) as HardwareTelemetry;
       }
@@ -216,11 +229,11 @@ export const platformAdapter = {
    */
   async testConnections(payload?: TestConnectionsPayload): Promise<ConnectionTestResult> {
     try {
-      const res = await fetch(resolveApiUrl('/api/system/test-connections'), {
+      const res = await fetchWithTimeout(resolveApiUrl('/api/system/test-connections'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: payload ? JSON.stringify(payload) : undefined,
-      });
+        body: JSON.stringify(payload || {}),
+      }, 4000);
       if (res.ok) {
         return (await res.json()) as ConnectionTestResult;
       }
@@ -242,9 +255,9 @@ export const platformAdapter = {
    */
   async getModelCatalog(): Promise<ModelCatalogEntry[]> {
     try {
-      const res = await fetch(resolveApiUrl('/api/system/models/catalog'), {
+      const res = await fetchWithTimeout(resolveApiUrl('/api/system/models/catalog'), {
         headers: { Accept: 'application/json' },
-      });
+      }, 3000);
       if (res.ok) {
         return (await res.json()) as ModelCatalogEntry[];
       }
@@ -259,9 +272,9 @@ export const platformAdapter = {
    */
   async getPreflightAssets(): Promise<PreflightAssetsResponse> {
     try {
-      const res = await fetch(resolveApiUrl('/api/system/preflight-assets'), {
+      const res = await fetchWithTimeout(resolveApiUrl('/api/system/preflight-assets'), {
         headers: { Accept: 'application/json' },
-      });
+      }, 3500);
       if (res.ok) {
         const raw = (await res.json()) as Record<string, any>;
         const allVerified = raw.all_assets_verified ?? raw.all_verified ?? false;
@@ -343,7 +356,7 @@ export const platformAdapter = {
   ): Promise<{ available: boolean; latencyMs: number; error?: string }> {
     const start = performance.now();
     try {
-      const res = await fetch(resolveApiUrl('/api/system/test-connections'), {
+      const res = await fetchWithTimeout(resolveApiUrl('/api/system/test-connections'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
@@ -359,7 +372,7 @@ export const platformAdapter = {
           anthropic_api_key: provider === 'anthropic' ? key : undefined,
           custom_api_key: key,
         }),
-      });
+      }, 4000);
       const latencyMs = Math.round(performance.now() - start);
       if (res.ok) {
         const data = (await res.json().catch(() => null)) as Record<string, any> | null;

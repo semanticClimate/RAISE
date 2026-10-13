@@ -249,15 +249,7 @@ export class ChatService implements ChatServiceInterface {
         };
       }
 
-      // If /api/chat returned a 404 or failed to connect, continue to try standard request fallback
-      if (streamRes.status !== 404 && streamRes.error && streamRes.status !== 0) {
-        return {
-          data: null,
-          error: streamRes.error,
-          isMock: false,
-          status: streamRes.status,
-        };
-      }
+      // If /api/chat stream failed, continue and fall back to standard JSON request and SUBGRAPH_QUERY
     }
 
     // 2. Standard JSON call: First try /api/chat
@@ -300,6 +292,17 @@ export class ChatService implements ChatServiceInterface {
         (typeof data === 'string' ? data : JSON.stringify(data));
 
       const actualDurationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
+      const isRefusal =
+        answerText.includes('INSUFFICIENT_EVIDENCE') ||
+        answerText.toLowerCase().includes('do not contain sufficient evidence') ||
+        answerText.toLowerCase().includes('unable to verify');
+      const normalizedDecision =
+        data.quality_gate_decision && data.quality_gate_decision !== 'accept'
+          ? data.quality_gate_decision
+          : isRefusal
+            ? 'unable_to_verify'
+            : (data.quality_gate_decision || 'accept');
+
       const synthesizedResp: SubgraphQueryResponse = {
         query: req.query,
         grounded_answer: sanitizeStreamText(answerText),
@@ -347,14 +350,13 @@ export class ChatService implements ChatServiceInterface {
           return cits;
         })(),
         verified_claims: Array.isArray(data.verified_claims) ? data.verified_claims : [],
-        quality_gate_decision: data.quality_gate_decision || 'accept',
+        quality_gate_decision: normalizedDecision,
         selected_tools: Array.isArray(data.selected_tools) ? data.selected_tools : [],
         cypher_repair_count: data.cypher_repair_count ?? 0,
         path_critic_expanded: data.path_critic_expanded ?? false,
         top_chunks: Array.isArray(data.top_chunks) ? data.top_chunks : [],
         retry_count: data.retry_count ?? 0,
         decomposed_queries: Array.isArray(data.decomposed_queries) ? data.decomposed_queries : [],
-        // Forward dynamic follow-up chips from response payload
         follow_up_inquiries: Array.isArray(data.follow_up_inquiries)
           ? data.follow_up_inquiries
           : data.suggestions || [],
@@ -376,26 +378,35 @@ export class ChatService implements ChatServiceInterface {
       };
     }
 
-    // 3. Fallback to /api/graphrag/subgraph-query ONLY if /api/chat is 404 (endpoint not implemented)
-    if (chatRes.status === 404) {
-      return apiClient.request<SubgraphQueryResponse>(
-        ENDPOINTS.SUBGRAPH_QUERY,
-        SubgraphQueryResponseSchema,
-        {
-          method: 'POST',
-          body: JSON.stringify(req),
-          signal,
-          timeoutMs: 90000, // Multi-hop reasoning can take up to 90s
-        }
-      );
+    // 3. Fallback to /api/graphrag/subgraph-query if /api/chat is 404, 500, or errored
+    const fallbackRes = await apiClient.request<SubgraphQueryResponse>(
+      ENDPOINTS.SUBGRAPH_QUERY,
+      SubgraphQueryResponseSchema,
+      {
+        method: 'POST',
+        body: JSON.stringify(req),
+        signal,
+        timeoutMs: 90000,
+      }
+    );
+
+    if (fallbackRes.status === 200 && fallbackRes.data) {
+      const data = fallbackRes.data;
+      const isRefusal =
+        (data.grounded_answer && data.grounded_answer.includes('INSUFFICIENT_EVIDENCE')) ||
+        (data.grounded_answer && data.grounded_answer.toLowerCase().includes('do not contain sufficient evidence'));
+      if (isRefusal && data.quality_gate_decision === 'accept') {
+        data.quality_gate_decision = 'unable_to_verify';
+      }
+      return fallbackRes;
     }
 
-    // If /api/chat returned any other error (400, 422, 500, etc.), return it directly
+    // Return the response error
     return {
       data: null,
-      error: chatRes.error,
+      error: fallbackRes.error || chatRes.error,
       isMock: chatRes.isMock,
-      status: chatRes.status,
+      status: fallbackRes.status || chatRes.status,
     };
   }
 

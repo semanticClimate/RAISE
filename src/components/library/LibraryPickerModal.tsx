@@ -1,10 +1,22 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type React from 'react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { documentsQueryOptions } from '../../api/queryOptions';
 import { useEscapeKey } from '../../hooks';
 import { documentItemToLibraryItem, type LibraryItem } from '../settings/SettingsLibraryTab';
+import { sourceService } from '../../services/SourceService';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
+
+export interface OptimisticUploadItem {
+  id: string;
+  name: string;
+  size: string;
+  bytes: number;
+  previewHash: string;
+  progress: number;
+  status: 'processing' | 'ready' | 'error';
+  timestamp: number;
+}
 
 export interface LibraryPickerModalProps {
   isOpen: boolean;
@@ -27,6 +39,10 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'pdf' | 'csv' | 'docx' | 'other'>('all');
+  const [optimisticUploads, setOptimisticUploads] = useState<OptimisticUploadItem[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const localFileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   // TanStack Query v5 declarative caching & data fetching
   const { data: rawDocuments = [], isLoading } = useQuery({
@@ -34,9 +50,127 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
     enabled: isOpen,
   });
 
+  // Fast preview hash generation using Web Crypto SHA-256 slice or metadata
+  const computePreviewHash = useCallback(async (file: File): Promise<string> => {
+    try {
+      if (typeof crypto !== 'undefined' && crypto.subtle) {
+        const slice = file.slice(0, 32768);
+        const buffer = await slice.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        return hex.slice(0, 10);
+      }
+    } catch {
+      // Fallback
+    }
+    const clean = file.name.replace(/[^a-zA-Z0-9]/g, '');
+    return `${clean.slice(0, 6)}-${file.size % 99999}`;
+  }, []);
+
+  // Format local file size cleanly (e.g. "2.4 MB" or "840 KB")
+  const formatFileSize = (bytes: number): string => {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (bytes >= 1024) {
+      return `${Math.round(bytes / 1024)} KB`;
+    }
+    return `${bytes} B`;
+  };
+
+  // Immediate optimistic upload handler
+  const handleOptimisticUpload = useCallback(
+    async (selectedFiles: FileList | File[]) => {
+      const files = Array.from(selectedFiles);
+      if (files.length === 0) return;
+
+      const newOptimistic: OptimisticUploadItem[] = [];
+
+      for (const file of files) {
+        const previewHash = await computePreviewHash(file);
+        const optItem: OptimisticUploadItem = {
+          id: `opt-${previewHash}-${Date.now()}`,
+          name: file.name,
+          size: formatFileSize(file.size),
+          bytes: file.size,
+          previewHash,
+          progress: 18,
+          status: 'processing',
+          timestamp: Date.now(),
+        };
+        newOptimistic.push(optItem);
+      }
+
+      setOptimisticUploads((prev) => [...prev, ...newOptimistic]);
+
+      // Progress tick animation
+      const interval = setInterval(() => {
+        setOptimisticUploads((prev) =>
+          prev.map((item) => {
+            if (newOptimistic.some((n) => n.id === item.id) && item.progress < 85) {
+              return { ...item, progress: Math.min(85, item.progress + 14) };
+            }
+            return item;
+          })
+        );
+      }, 400);
+
+      try {
+        await sourceService.uploadPdfs(files);
+        clearInterval(interval);
+        setOptimisticUploads((prev) =>
+          prev.map((item) =>
+            newOptimistic.some((n) => n.id === item.id)
+              ? { ...item, progress: 100, status: 'ready' }
+              : item
+          )
+        );
+        await queryClient.invalidateQueries({ queryKey: ['documents'] });
+        setTimeout(() => {
+          setOptimisticUploads((prev) =>
+            prev.filter((item) => !newOptimistic.some((n) => n.id === item.id))
+          );
+        }, 1800);
+      } catch {
+        clearInterval(interval);
+        setOptimisticUploads((prev) =>
+          prev.map((item) =>
+            newOptimistic.some((n) => n.id === item.id)
+              ? { ...item, status: 'error', progress: 0 }
+              : item
+          )
+        );
+      }
+    },
+    [computePreviewHash, queryClient]
+  );
+
   const items = useMemo(() => {
-    return rawDocuments.map(documentItemToLibraryItem);
-  }, [rawDocuments]);
+    const backendItems = rawDocuments.map(documentItemToLibraryItem);
+    const backendNames = new Set(backendItems.map((b) => b.name.toLowerCase()));
+
+    // Filter out optimistic items that have already completed and appeared in backend
+    const pendingOptimistic: (LibraryItem & { previewHash?: string })[] = optimisticUploads
+      .filter((opt) => !backendNames.has(opt.name.toLowerCase()))
+      .map((opt) => ({
+        id: opt.id,
+        name: opt.name,
+        size: opt.size,
+        bytes: opt.bytes,
+        uploadedAt: 'Processing...',
+        timestamp: opt.timestamp,
+        type: (opt.name.split('.').pop()?.toLowerCase() || 'pdf') as any,
+        pages: 1,
+        chunks: 0,
+        status: opt.status === 'ready' ? 'ready' : 'processing',
+        color: 'indigo' as const,
+        uploadProgress: opt.progress,
+        previewHash: opt.previewHash,
+      }));
+
+    return [...pendingOptimistic, ...backendItems];
+  }, [rawDocuments, optimisticUploads]);
 
   const apiReadyFilenames = useMemo(() => {
     return new Set(
@@ -91,9 +225,35 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center p-[clamp(0.5rem,2vw,1.25rem)] bg-black/60 backdrop-blur-sm animate-in fade-in duration-150 select-none"
+      className={`fixed inset-0 z-[120] flex items-center justify-center p-[clamp(0.5rem,2vw,1.25rem)] bg-black/60 backdrop-blur-sm animate-in fade-in duration-150 select-none ${
+        isDragOver ? 'ring-4 ring-indigo-500/60' : ''
+      }`}
       onClick={onClose}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleOptimisticUpload(e.dataTransfer.files);
+        }
+      }}
     >
+      <input
+        ref={localFileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.txt,.docx,.csv,.md,.json"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleOptimisticUpload(e.target.files);
+          }
+        }}
+      />
       <div
         className="w-[min(94vw,38rem)] max-h-[88dvh] bg-white dark:bg-[#1e1f20] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
@@ -122,7 +282,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                 Select from Knowledge Base Library
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-[#a8a8a8] truncate">
-                Pre-parsed &amp; embedded in GraphRAG — instant retrieval with 0 indexing wait
+                Pre-indexed library documents — ready for instant research
               </p>
             </div>
           </div>
@@ -231,7 +391,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
               <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mb-4">
                 {searchQuery
                   ? `No indexed documents matched "${searchQuery}". Try a different keyword or reset filters.`
-                  : 'No documents have been indexed into the GraphRAG knowledge base yet. Upload files from your PC to get started.'}
+                  : 'No documents in library yet. Upload files from your PC to get started.'}
               </p>
               {!searchQuery && (
                 <button
@@ -282,7 +442,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                   }`}
                   title={
                     !indexed
-                      ? `Document is still parsing in GraphRAG... (${Math.round(progress)}%)`
+                      ? `Document is still processing... (${Math.round(progress)}%)`
                       : item.name
                   }
                 >
@@ -320,6 +480,17 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-[#a8a8a8] mt-0.5">
                         <span className="font-mono">{item.size}</span>
+                        {(item as any).previewHash && (
+                          <>
+                            <span>•</span>
+                            <span
+                              className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-500/20"
+                              title={`Optimistic Local Hash: ${(item as any).previewHash}`}
+                            >
+                              #{(item as any).previewHash}
+                            </span>
+                          </>
+                        )}
                         <span>•</span>
                         {item.pages && (
                           <>

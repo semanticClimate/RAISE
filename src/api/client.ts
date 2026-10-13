@@ -110,7 +110,7 @@ class ApiClient {
 
     // Merge external signal if provided
     if (options.signal) {
-      options.signal.addEventListener('abort', () => controller.abort());
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
     }
 
     const headers: Record<string, string> = {
@@ -256,7 +256,7 @@ class ApiClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     if (options.signal) {
-      options.signal.addEventListener('abort', () => controller.abort());
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
     }
 
     const headers: Record<string, string> = {

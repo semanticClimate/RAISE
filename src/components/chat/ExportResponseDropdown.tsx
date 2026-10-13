@@ -179,11 +179,11 @@ export const ExportResponseDropdown: React.FC<ExportResponseDropdownProps> = ({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold">Developer JSON (.json)</span>
+                <span className="text-xs font-semibold">Structured JSON (.json)</span>
                 <span className="text-[10px] text-slate-400 font-mono">Raw</span>
               </div>
               <p className="text-[11px] text-slate-400 dark:text-slate-400/90 leading-snug">
-                Full metadata, quality gates &amp; subgraph
+                Complete response and citation metadata
               </p>
             </div>
           </button>

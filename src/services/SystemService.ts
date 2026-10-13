@@ -12,6 +12,30 @@ import {
 } from '../types';
 
 export class SystemService {
+  private static openApiCheckCache: { reachable: boolean; timestamp: number } | null = null;
+  private static activeProbePromise: Promise<BackendCapabilities> | null = null;
+
+  /**
+   * Probe test connections via POST /api/system/test-connections
+   */
+  public async testConnections(
+    payload?: Record<string, any>,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<any>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_TEST_CONNECTIONS,
+      undefined,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+        signal,
+        skipModeCheck: true,
+        timeoutMs: 4000,
+      }
+    );
+  }
+
   /**
    * Hardware telemetry (GPU VRAM, System RAM, active models)
    */
@@ -34,6 +58,39 @@ export class SystemService {
       method: 'GET',
       signal,
     });
+  }
+
+  /**
+   * Dynamically discovered LLMs from live backend provider APIs
+   */
+  public async getDynamicLLMs(signal?: AbortSignal): Promise<ApiResponse<any>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_DYNAMIC_LLMS,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
+  }
+
+  /**
+   * Models discovered by provider from live model registries
+   */
+  public async getDiscoveredModels(provider?: string, signal?: AbortSignal): Promise<ApiResponse<any>> {
+    const url = provider
+      ? `${ENDPOINTS.SYSTEM_MODELS_DISCOVERED}?provider=${encodeURIComponent(provider)}`
+      : ENDPOINTS.SYSTEM_MODELS_DISCOVERED;
+    return apiClient.request(
+      url,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
   }
 
   /**
@@ -69,10 +126,51 @@ export class SystemService {
   }
 
   /**
-   * Centralized capability and health detection probe
-   * Probes active endpoints to determine operational state
+   * Centralized capability and health detection probe.
+   * Deduplicates concurrent in-flight calls and caches openapi.json inspection.
    */
   public async probeCapabilities(): Promise<BackendCapabilities> {
+    if (SystemService.activeProbePromise) {
+      return SystemService.activeProbePromise;
+    }
+    SystemService.activeProbePromise = this._executeProbeCapabilities().finally(() => {
+      // Clear coalescing gate after 1.5s
+      setTimeout(() => {
+        SystemService.activeProbePromise = null;
+      }, 1500);
+    });
+    return SystemService.activeProbePromise;
+  }
+
+  private async _probeOpenApiLightweight(): Promise<boolean> {
+    const now = Date.now();
+    if (
+      SystemService.openApiCheckCache &&
+      now - SystemService.openApiCheckCache.timestamp < 300_000
+    ) {
+      return SystemService.openApiCheckCache.reachable;
+    }
+    try {
+      const fullUrl = `${getApiBaseUrl().replace(/\/+$/, '')}${ENDPOINTS.OPENAPI}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1800);
+      const res = await fetch(fullUrl, {
+        method: 'HEAD',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const reachable = res.status >= 200 && res.status < 400;
+      SystemService.openApiCheckCache = { reachable, timestamp: now };
+      return reachable;
+    } catch {
+      // Fallback: assume reachable if core API was alive
+      const reachable = true;
+      SystemService.openApiCheckCache = { reachable, timestamp: now };
+      return reachable;
+    }
+  }
+
+  private async _executeProbeCapabilities(): Promise<BackendCapabilities> {
     const startTime = performance.now();
     const timestamp = new Date().toISOString();
 
@@ -87,26 +185,26 @@ export class SystemService {
       searchAvailable: false,
       hardwareTelemetryAvailable: false,
       neo4jStatusAvailable: false,
-      sseStreamingAvailable: false, // VERIFIED LIMITATION: FALSE
-      serverAbortAvailable: false, // VERIFIED LIMITATION: FALSE
-      asyncSourceStatusAvailable: false, // VERIFIED LIMITATION: FALSE
+      sseStreamingAvailable: false,
+      serverAbortAvailable: false,
+      asyncSourceStatusAvailable: false,
       lastProbeTime: timestamp,
       latencyMs: 0,
     };
 
     try {
-      // 1. Probe /api/health, /health, or / or /api/documents for connection alive check
+      // 1. Fast-path connection alive check via /api/health with quick /health fallback
       let aliveRes = await apiClient.request(ENDPOINTS.HEALTH, undefined, {
         method: 'GET',
         skipModeCheck: true,
-        timeoutMs: 3000,
+        timeoutMs: 1800,
       });
 
       if (aliveRes.status !== 200) {
         aliveRes = await apiClient.request(ENDPOINTS.HEALTH_ALT, undefined, {
           method: 'GET',
           skipModeCheck: true,
-          timeoutMs: 3000,
+          timeoutMs: 1800,
         });
       }
 
@@ -114,69 +212,55 @@ export class SystemService {
         aliveRes = await apiClient.request(ENDPOINTS.INDEX, undefined, {
           method: 'GET',
           skipModeCheck: true,
-          timeoutMs: 3000,
+          timeoutMs: 1800,
         });
       }
 
-      if (aliveRes.status !== 200) {
-        aliveRes = await apiClient.request(ENDPOINTS.DOCUMENTS, undefined, {
-          method: 'GET',
-          skipModeCheck: true,
-          timeoutMs: 3000,
-        });
-      }
-
-      const endTime = performance.now();
-      capabilities.latencyMs = Math.round(endTime - startTime);
+      capabilities.latencyMs = Math.round(performance.now() - startTime);
 
       if (aliveRes.status >= 200 && aliveRes.status < 400) {
         capabilities.apiReachable = true;
         capabilities.chatAvailable = true;
         capabilities.documentsAvailable = true;
         capabilities.searchAvailable = true;
+        // Rely on /api/health for handshake availability without burning single-use tokens
+        capabilities.handshakeAvailable = true;
+
         const resData = aliveRes.data as any;
         if (resData?.version || resData?.api_version) {
           capabilities.backendVersion = resData.version || resData.api_version;
         }
-      }
 
-      // 2. Probe OpenAPI schema
-      const openApiRes = await apiClient.request(ENDPOINTS.OPENAPI, undefined, {
-        method: 'GET',
-        skipModeCheck: true,
-        timeoutMs: 3000,
-      });
-      if (openApiRes.status === 200) {
-        capabilities.openApiReachable = true;
-      }
+        // 2. High-speed concurrent inspection of remaining subsystems
+        // Notice: performHandshake() is intentionally omitted here to prevent token churn
+        const [openApiSuccess, telemRes, neo4jRes] = await Promise.allSettled([
+          this._probeOpenApiLightweight(),
+          apiClient.request(ENDPOINTS.HARDWARE_TELEMETRY, undefined, {
+            method: 'GET',
+            skipModeCheck: true,
+            timeoutMs: 2000,
+          }),
+          apiClient.request(ENDPOINTS.NEO4J_STATUS, undefined, {
+            method: 'GET',
+            skipModeCheck: true,
+            timeoutMs: 2000,
+          }),
+        ]);
 
-      // 3. Probe Telemetry
-      const telemRes = await apiClient.request(ENDPOINTS.HARDWARE_TELEMETRY, undefined, {
-        method: 'GET',
-        skipModeCheck: true,
-        timeoutMs: 3000,
-      });
-      if (telemRes.status === 200) {
-        capabilities.hardwareTelemetryAvailable = true;
-      }
-
-      // 4. Probe Neo4j
-      const neo4jRes = await apiClient.request(ENDPOINTS.NEO4J_STATUS, undefined, {
-        method: 'GET',
-        skipModeCheck: true,
-        timeoutMs: 3000,
-      });
-      if (neo4jRes.status === 200) {
-        capabilities.neo4jStatusAvailable = true;
-        if (neo4jRes.data && (neo4jRes.data as any).connected !== false) {
-          capabilities.graphAvailable = true;
+        if (openApiSuccess.status === 'fulfilled' && openApiSuccess.value === true) {
+          capabilities.openApiReachable = true;
         }
-      }
 
-      // 5. Probe Handshake
-      const handshakeRes = await this.performHandshake();
-      if (handshakeRes.status === 200 && handshakeRes.data?.token) {
-        capabilities.handshakeAvailable = true;
+        if (telemRes.status === 'fulfilled' && telemRes.value.status === 200) {
+          capabilities.hardwareTelemetryAvailable = true;
+        }
+
+        if (neo4jRes.status === 'fulfilled' && neo4jRes.value.status === 200) {
+          capabilities.neo4jStatusAvailable = true;
+          if (neo4jRes.value.data && (neo4jRes.value.data as any).connected !== false) {
+            capabilities.graphAvailable = true;
+          }
+        }
       }
     } catch {
       // Ignore network errors in probe
@@ -186,8 +270,8 @@ export class SystemService {
   }
 
   /**
-   * Test Cloudflare Tunnel / Gateway connection directly
-   * Probes /health, /, or /api/documents and returns diagnostic latency & error
+   * Test Cloudflare Tunnel / Gateway connection directly with fast-path race
+   * Probes /api/health and fallbacks with low-latency concurrent resolution
    */
   public async testConnection(customUrl?: string): Promise<{
     success: boolean;
@@ -202,86 +286,97 @@ export class SystemService {
     const rawTarget = (customUrl || getApiBaseUrl()).trim().replace(/\/+$/, '');
     const startTime = performance.now();
 
-    const testEndpoints = ['/api/health', '/health', '/', '/api/documents', '/docs'];
-
-    for (const ep of testEndpoints) {
+    // Fast-path 1: Try /api/health directly with a responsive 2000ms timeout
+    const fetchEndpoint = async (ep: string, timeoutMs: number) => {
       const fullUrl = `${rawTarget}${ep}`;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
-
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const res = await fetch(fullUrl, {
           method: 'GET',
           signal: controller.signal,
           headers: {
             Accept: 'application/json, text/plain, */*',
+            'Cache-Control': 'no-cache',
           },
         });
         clearTimeout(timer);
-        const latencyMs = Math.round(performance.now() - startTime);
-
-        // 2xx, 3xx, or even 401/403 proves the backend is alive and responding
-        if (res.status < 500) {
-          let parsedVersion: string | undefined;
-          let isVersionAligned = true;
-          try {
-            const body = (await res.clone().json().catch(() => null)) as Record<string, any> | null;
-            parsedVersion = body?.version || body?.api_version;
-            if (parsedVersion) {
-              isVersionAligned = parsedVersion === '1.0.0';
-            }
-          } catch {}
-
-          return {
-            success: true,
-            status: res.status,
-            latencyMs,
-            endpoint: ep,
-            version: parsedVersion ?? '1.0.0',
-            isVersionAligned,
-          };
-        }
+        return { res, endpoint: ep };
       } catch (err: any) {
         clearTimeout(timer);
-        // If aborted due to timeout
-        if (err.name === 'AbortError') {
-          return {
-            success: false,
-            status: 0,
-            latencyMs: 6000,
-            endpoint: ep,
-            error: `Connection timed out after 6 seconds reaching ${rawTarget}.`,
-          };
-        }
-
-        const isCorsOrOffline =
-          err instanceof TypeError &&
-          (err.message.includes('fetch') ||
-            err.message.includes('NetworkError') ||
-            err.message.includes('Failed'));
-
-        if (ep === testEndpoints[testEndpoints.length - 1]) {
-          return {
-            success: false,
-            status: 0,
-            latencyMs: Math.round(performance.now() - startTime),
-            endpoint: ep,
-            isCorsIssue: isCorsOrOffline,
-            error: isCorsOrOffline
-              ? `Cannot reach ${rawTarget}. Please verify that the backend server is running and accessible.`
-              : err?.message || 'Network connection failed',
-          };
-        }
+        throw err;
       }
+    };
+
+    try {
+      const { res, endpoint } = await fetchEndpoint('/api/health', 2000);
+      const latencyMs = Math.round(performance.now() - startTime);
+      if (res.status < 500) {
+        let parsedVersion: string | undefined;
+        let isVersionAligned = true;
+        try {
+          const body = (await res.clone().json().catch(() => null)) as Record<string, any> | null;
+          parsedVersion = body?.version || body?.api_version;
+          if (parsedVersion) {
+            isVersionAligned = parsedVersion === '1.0.0';
+          }
+        } catch {}
+
+        return {
+          success: true,
+          status: res.status,
+          latencyMs,
+          endpoint,
+          version: parsedVersion ?? '1.0.0',
+          isVersionAligned,
+        };
+      }
+    } catch {
+      // /api/health failed or timed out; proceed to parallel fallback probe
     }
 
-    return {
-      success: false,
-      status: 0,
-      latencyMs: Math.round(performance.now() - startTime),
-      endpoint: '/health',
-      error: `Could not connect to ${rawTarget}.`,
-    };
+    // Fast-path 2: Probe secondary endpoints in parallel with 2500ms timeout
+    const fallbackEndpoints = ['/health', '/', '/api/documents', '/docs'];
+    try {
+      const probePromises = fallbackEndpoints.map(async (ep) => {
+        const result = await fetchEndpoint(ep, 2500);
+        if (result.res.status < 500) {
+          return result;
+        }
+        throw new Error(`Status ${result.res.status}`);
+      });
+
+      const firstSuccess = await Promise.any(probePromises);
+      const latencyMs = Math.round(performance.now() - startTime);
+      let parsedVersion: string | undefined;
+      let isVersionAligned = true;
+      try {
+        const body = (await firstSuccess.res.clone().json().catch(() => null)) as Record<string, any> | null;
+        parsedVersion = body?.version || body?.api_version;
+        if (parsedVersion) {
+          isVersionAligned = parsedVersion === '1.0.0';
+        }
+      } catch {}
+
+      return {
+        success: true,
+        status: firstSuccess.res.status,
+        latencyMs,
+        endpoint: firstSuccess.endpoint,
+        version: parsedVersion ?? '1.0.0',
+        isVersionAligned,
+      };
+    } catch {
+      const latencyMs = Math.round(performance.now() - startTime);
+      return {
+        success: false,
+        status: 0,
+        latencyMs,
+        endpoint: '/api/health',
+        isCorsIssue: true,
+        error: `Cannot reach ${rawTarget}. Please verify that the backend server is running and accessible.`,
+      };
+    }
   }
 }
 

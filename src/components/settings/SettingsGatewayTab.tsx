@@ -11,6 +11,7 @@ import {
   sanitizeTunnelUrl,
   validateTunnelUrl,
 } from '../../utils/urlValidation';
+import { useDynamicModels } from '../../hooks/useDynamicModels';
 
 export interface SettingsGatewayTabProps {
   onCloseSettings?: () => void;
@@ -47,6 +48,13 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
   const [isLoadingFeedbackStats, setIsLoadingFeedbackStats] = useState(false);
   const [isScanningLocal, setIsScanningLocal] = useState(false);
+
+  const {
+    models: dynamicModels,
+    activeModel,
+    isLoading: isLoadingModels,
+    refetch: refetchModels,
+  } = useDynamicModels();
 
   const fetchFeedbackStats = async () => {
     if (!isGatewayActive) {
@@ -561,7 +569,83 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
         </button>
       </div>
 
-      {/* 4. User Satisfaction & Telemetry Analytics (Shown ONLY when Gateway is connected) */}
+      {/* 4. Active LLM Intelligence & Dynamic Model Discovery */}
+      {isGatewayActive && (
+        <div
+          className="pt-4 border-t border-slate-200 dark:border-white/10 space-y-3"
+          data-testid="dynamic-models-widget"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-semibold text-slate-900 dark:text-white uppercase tracking-wider">
+                Live LLM Catalog &amp; Routing
+              </h4>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-semibold">
+                /api/system/dynamic-llms
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => refetchModels()}
+              disabled={isLoadingModels}
+              title="Refresh Dynamic Models"
+              aria-label="Refresh Dynamic Models"
+              className="p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingModels ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {dynamicModels.length > 0 ? (
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#12141d] border border-slate-200 dark:border-[#37393b] space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Primary Active Model</span>
+                <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                  {activeModel || 'Automatic Selection'}
+                </span>
+              </div>
+              <div className="space-y-1.5 pt-1">
+                {dynamicModels.map((m) => (
+                  <div
+                    key={`${m.provider}-${m.model}`}
+                    className={`p-2 rounded-xl border text-xs flex items-center justify-between ${
+                      m.isActive
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
+                        : 'bg-white dark:bg-white/[0.03] border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          m.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                        }`}
+                      />
+                      <span className="font-semibold truncate">{m.displayName}</span>
+                      <code className="text-[10px] font-mono bg-slate-200/60 dark:bg-black/40 px-1 py-0.5 rounded text-slate-600 dark:text-slate-300">
+                        {m.model}
+                      </code>
+                    </div>
+                    {m.tier && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 shrink-0">
+                        {m.tier}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 text-xs text-amber-700 dark:text-amber-300 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              <span>
+                No functional LLM provider available. Add API keys in Settings &gt; Intelligence Engine.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. User Satisfaction & Telemetry Analytics (Shown ONLY when Gateway is connected) */}
       {isGatewayActive && (
         <div
           className="pt-4 border-t border-slate-200 dark:border-white/10 space-y-3"

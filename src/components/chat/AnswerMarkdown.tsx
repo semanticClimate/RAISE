@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
+import { BookOpen, ExternalLink, FileText } from 'lucide-react';
 import type { Citation } from '../../types';
 import { cleanRagResponseText } from '../../utils/citationParser';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
-import { CitationBadge } from '../citations/CitationBadge';
+import { CitationBadge, resolveCitationDetail } from '../citations/CitationBadge';
 
 export interface AnswerMarkdownProps {
   content: string;
   citations?: Citation[];
   showCitations?: boolean;
   className?: string;
-  onViewPdf?: (fileName: string, page: number) => void;
+  onViewPdf?: (fileName: string, page: number, mode?: 'page' | 'full' | 'view') => void;
 }
 
 interface CodeBlockProps {
@@ -789,6 +790,130 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
           }
         }
       })}
+
+      {/* Grounded Sources & Verified Citations Card */}
+      {showCitations && enrichedCitations && enrichedCitations.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-slate-200/90 dark:border-white/10 select-text">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <BookOpen className="w-3.5 h-3.5 text-blue-500" />
+              <span>Sources ({enrichedCitations.length})</span>
+            </div>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+              Click to view in new tab
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {enrichedCitations.map((cit, citIdx) => {
+              const detail = resolveCitationDetail(cit, citIdx + 1);
+              return (
+                <div
+                  key={`${detail.index}-${detail.fileName}-${citIdx}`}
+                  className="p-3 rounded-xl bg-slate-50/90 dark:bg-white/[0.03] border border-slate-200/90 dark:border-white/10 hover:border-blue-400/60 dark:hover:border-blue-500/60 transition-all duration-150 flex flex-col justify-between group shadow-2xs"
+                >
+                  <div>
+                    {/* Top row: badge + filename + page pill */}
+                    <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 shrink-0">
+                          [{detail.index}]
+                        </span>
+                        <div
+                          className="flex items-center gap-1 text-[12px] font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors"
+                          title={detail.fileName}
+                        >
+                          <FileText className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                          <span className="truncate">{detail.fileName}</span>
+                        </div>
+                      </div>
+
+                      {detail.pageNumber !== undefined && detail.pageNumber > 0 && (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 shrink-0">
+                          Page {detail.pageNumber}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Section heading */}
+                    {detail.heading && (
+                      <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1 line-clamp-1">
+                        {detail.heading}
+                      </div>
+                    )}
+
+                    {/* Excerpt */}
+                    {detail.plainText && (
+                      <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2 italic mb-2">
+                        "{detail.plainText}"
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Quick Action Buttons */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
+                    <a
+                      href={detail.singlePageViewUrl || detail.singlePagePdfUrl || detail.pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (
+                          onViewPdf &&
+                          detail.fileName &&
+                          detail.fileName !== 'Audited Document'
+                        ) {
+                          onViewPdf(detail.fileName, detail.pageNumber || 1, 'page');
+                          return;
+                        }
+                        if (
+                          detail.primaryUrl &&
+                          detail.primaryUrl !== '#' &&
+                          typeof window !== 'undefined'
+                        ) {
+                          window.open(detail.primaryUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors cursor-pointer shadow-2xs no-underline"
+                      title={`Open Page ${detail.pageNumber || 1} in a new tab`}
+                    >
+                      <span>⚡ Open Page {detail.pageNumber || 1}</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+
+                    {detail.pdfUrl && (
+                      <a
+                        href={detail.pdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (
+                            onViewPdf &&
+                            detail.fileName &&
+                            detail.fileName !== 'Audited Document'
+                          ) {
+                            onViewPdf(detail.fileName, detail.pageNumber || 1, 'full');
+                            return;
+                          }
+                          if (typeof window !== 'undefined') {
+                            window.open(detail.pdfUrl, '_blank', 'noopener,noreferrer');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium bg-slate-200/80 hover:bg-slate-300/80 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-slate-700 dark:text-slate-300 rounded-md transition-colors cursor-pointer no-underline"
+                        title="Open full PDF document in a new tab"
+                      >
+                        <span>📖 Full PDF</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

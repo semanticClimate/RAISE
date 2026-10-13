@@ -122,7 +122,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
     setApiBaseUrl('http://localhost:8000', false);
     set({
       apiBaseUrl: 'http://localhost:8000',
-      isTunnelConfigured: false,
+      isTunnelConfigured: true,
       appMode: 'offline',
       capabilities: null,
       latencyMs: 0,
@@ -247,9 +247,9 @@ export const useModeStore = create<ModeState>((set, get) => ({
   },
 }));
 
-// Automatically check connection on startup if tunnel URL is saved
-if (typeof window !== 'undefined' && initialTunnel && initialTunnel.trim() !== '') {
+// Automatically probe backend connectivity on application launch
+if (typeof window !== 'undefined') {
   setTimeout(() => {
     useModeStore.getState().runCapabilityProbe();
-  }, 100);
+  }, 50);
 }

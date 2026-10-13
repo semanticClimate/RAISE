@@ -68,7 +68,7 @@ else
     [ "$RAW_ARCH" = "aarch64" ] && NODE_ARCH="arm64" || NODE_ARCH="x64"
 fi
 
-NODE_VER="v26.10.0"
+NODE_VER="v22.14.0"
 NODE_FOLDER="node-${NODE_VER}-${PLATFORM}-${NODE_ARCH}"
 PORTABLE_BIN="$(pwd)/.node/${NODE_FOLDER}/bin"
 
@@ -78,13 +78,20 @@ if [ -x "${PORTABLE_BIN}/node" ]; then
     NPM_CMD="${PORTABLE_BIN}/npm"
     echo "      [SUCCESS] Local portable Node.js Available in .node folder."
 elif command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    NODE_CMD="node"
-    NPM_CMD="npm"
-    echo "      [SUCCESS] System Node.js Available in PATH: $(node -v)."
-else
+    SYS_NODE_VER=$(node -v 2>/dev/null | tr -d 'v')
+    SYS_MAJOR=$(echo "$SYS_NODE_VER" | cut -d'.' -f1)
+    if [ "$SYS_MAJOR" -ge 22 ]; then
+        NODE_CMD="node"
+        NPM_CMD="npm"
+        echo "      [SUCCESS] Modern system Node.js Available in PATH: $(node -v)."
+    else
+        echo "      [WARNING] Detected outdated Node.js ($(node -v)). Node 22.14+ LTS is required."
+        echo "      Proceeding to download portable Node.js LTS (${NODE_VER})..."
+    fi
+if [ -z "$NODE_CMD" ]; then
     echo ""
     echo "============================================================================"
-    echo " [NOTICE] Node.js is NOT installed on this machine."
+    echo " [NOTICE] Node.js 22.14+ LTS is required."
     echo " Automatically downloading portable Node.js LTS (${NODE_VER} for ${PLATFORM}-${NODE_ARCH})..."
     echo "============================================================================"
     echo ""

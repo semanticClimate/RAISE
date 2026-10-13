@@ -238,6 +238,23 @@ export function normalizeCitation(
 
   if (typeof filename === 'string') {
     filename = filename.trim();
+    // Strip leading path if it contains directory separators
+    const lastSlash = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
+    if (lastSlash >= 0) {
+      filename = filename.slice(lastSlash + 1).trim();
+    }
+  }
+
+  // If still generic or missing, recover from chunk_id prefix if available
+  const chunkId = raw.chunk_id || raw.id || raw.metadata?.chunk_id;
+  if (
+    (!filename || filename === 'Audited Document' || filename === 'Document') &&
+    typeof chunkId === 'string'
+  ) {
+    const stemMatch = chunkId.match(/^([a-zA-Z0-9_\-\s]+?)(?:_p\d+|_parent|\.pdf|$)/i);
+    if (stemMatch && stemMatch[1] && stemMatch[1].length > 3 && !stemMatch[1].startsWith('chk_') && !stemMatch[1].startsWith('cit-')) {
+      filename = stemMatch[1].endsWith('.pdf') ? stemMatch[1] : `${stemMatch[1]}.pdf`;
+    }
   }
 
   // 3. Extract citation index
@@ -248,9 +265,23 @@ export function normalizeCitation(
         ? raw.index
         : indexFallback;
 
+  const safePage = page && page > 0 ? page : 1;
+  const encodedName = encodeURIComponent(filename);
+
+  const pageUrl =
+    raw.page_url || raw.metadata?.page_url || `/api/pdf/${encodedName}/pages/${safePage}/pdf`;
+  const pageViewUrl =
+    raw.page_view_url ||
+    raw.metadata?.page_view_url ||
+    `/api/pdf/${encodedName}/pages/${safePage}/view`;
+  const pageImageUrl =
+    raw.page_image_url ||
+    raw.metadata?.page_image_url ||
+    `/api/pdf/${encodedName}/pages/${safePage}/image`;
+
   return {
     citation_index: citIdx,
-    chunk_id: raw.chunk_id || raw.id || raw.metadata?.chunk_id || `chk-${citIdx}`,
+    chunk_id: chunkId || `chk-${citIdx}`,
     document_id: raw.document_id || raw.doc_id || raw.metadata?.doc_id || filename,
     pdf_filename: filename,
     primary_page: page && page > 0 ? page : (undefined as any),
@@ -259,9 +290,9 @@ export function normalizeCitation(
     university: raw.university || raw.metadata?.university || '',
     similarity: typeof raw.similarity === 'number' ? raw.similarity : 0.9,
     printed_page: raw.printed_page || raw.metadata?.printed_page,
-    page_url: raw.page_url || raw.metadata?.page_url,
-    page_image_url: raw.page_image_url || raw.metadata?.page_image_url,
-    page_view_url: raw.page_view_url || raw.metadata?.page_view_url,
+    page_url: pageUrl,
+    page_image_url: pageImageUrl,
+    page_view_url: pageViewUrl,
   };
 }
 
@@ -428,26 +459,22 @@ export function pruneRedundantCitations(text: string): string {
   const lines = text.split('\n');
   const resultLines: string[] = [];
 
-  let currentScopeCitation: string | null = null;
-  let sameCitationCount = 0;
-
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
     const trimmed = line.trim();
 
-    // Reset scope on empty lines or major section headers (#, ##, ###)
+    // Preserve headers and empty lines
     if (!trimmed || /^#{1,4}\s+/.test(trimmed)) {
-      if (/^#{1,4}\s+/.test(trimmed)) {
-        currentScopeCitation = null;
-        sameCitationCount = 0;
-      }
       resultLines.push(line);
       continue;
     }
 
-    // 1. Intra-line deduplication:
-    // If the exact same citation appears 2+ times on the SAME line/item:
-    // e.g. "CMCNPs [1, 2]. These nanoparticles deliver siRNA... [1, 2]."
+    // 1. Merge adjacent identical citation brackets e.g. [1] [1] -> [1]
+    line = deduplicateAndMergeCitations(line);
+
+    // 2. Intra-line deduplication:
+    // If the exact same citation appears 2+ times on the SAME line:
+    // e.g. "CMCNPs [1]. These nanoparticles deliver siRNA [1]."
     // Keep only the concluding citation on the item.
     const allCitsOnLine = line.match(/\[\d+(?:\s*,\s*\d+)*\]/g) || [];
     if (allCitsOnLine.length > 1) {
@@ -467,47 +494,6 @@ export function pruneRedundantCitations(text: string): string {
             return punct || '';
           });
         }
-      }
-    }
-
-    // 2. Inter-line / List deduplication:
-    // Extract trailing citation on this line (e.g. "... [1, 2].")
-    const match = line.match(/\[(\d+(?:\s*,\s*\d+)*)\]\s*[.,;:!?]?\s*$/);
-    const lineCit = match ? `[${match[1]}]` : null;
-
-    if (lineCit) {
-      const isBullet = /^(\s*[-*•]|\s*\d+\.)/.test(line);
-
-      if (lineCit === currentScopeCitation) {
-        sameCitationCount++;
-
-        // If an introductory sentence or parent statement already cited this source set,
-        // prune the redundant repetition from child attribute bullets:
-        // e.g. "* Patent Name: ...", "* Inventors: ...", "* Patent Application Number: ..."
-        const isAttributeBullet =
-          isBullet &&
-          /^\s*[-*•]\s*(\*\*)?(Patent Name|Inventors?|Application Number|Patent Application|Date|Filing Date|Assignee|Mechanism of Action|Experimental Evidence|Key Findings?|Results?|Evidence|Methods?)(\*\*)?\s*:/i.test(
-            line
-          );
-
-        // Or in a list of consecutive items citing the identical source:
-        if (isAttributeBullet || sameCitationCount > 1) {
-          // Check if this is the concluding line of the current block
-          const isNextLineDifferent =
-            i + 1 >= lines.length ||
-            !lines[i + 1].trim() ||
-            /^#{1,4}\s+/.test(lines[i + 1].trim()) ||
-            !lines[i + 1].includes(lineCit);
-
-          // If it's an attribute bullet or intermediate bullet, prune it
-          if (!isNextLineDifferent || isAttributeBullet) {
-            const escaped = lineCit.replace(/[[\]]/g, '\\$&');
-            line = line.replace(new RegExp(`\\s*${escaped}\\s*([.,;:!?])?$`), (_, p) => p || '');
-          }
-        }
-      } else {
-        currentScopeCitation = lineCit;
-        sameCitationCount = 1;
       }
     }
 
