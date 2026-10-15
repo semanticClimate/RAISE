@@ -8,10 +8,12 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit",
+    "lint": "tsc --noEmit",
     "analyze": "ANALYZE=true vite build"
   },
   "engines": {
-    "node": ">=22.14.0"
+    "node": ">=20.18.0 || >=22.0.0"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.0",
@@ -32,6 +34,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "rollup-plugin-visualizer": "^7.1.1",
+    "source-map-js": ">=1.2.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.1"

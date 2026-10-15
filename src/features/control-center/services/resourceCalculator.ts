@@ -17,7 +17,7 @@ export interface ResourceFootprint {
 
 export const calculateResourceFootprint = (config: ControlCenterConfig): ResourceFootprint => {
   let totalDiskGb = 0;
-  let totalRamGb = 1.2; // Base RAISE workstation memory footprint
+  let totalRamGb = 1.2; // Base RAISE system memory footprint
   const addedSubstrates: AddedSubstrate[] = [];
 
   // 1. Platform substrate

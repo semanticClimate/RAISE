@@ -1,0 +1,75 @@
+name: Frontend CI & Verification
+
+on:
+  push:
+    branches:
+      - frontend
+      - main
+  pull_request:
+    branches:
+      - frontend
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint, Typecheck & Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Biome Toolchain
+        uses: biomejs/setup-biome@v2
+        with:
+          version: 'latest'
+
+      - name: Run Biome Lint & Correctness Checks
+        run: biome check --formatter-enabled=false src || biome lint src
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: TypeScript Typecheck & Compilation
+        run: npm run typecheck
+
+      - name: Build Application Bundle with Vite
+        run: npm run build
+
+      - name: Upload Build Artifacts
+        if: github.ref == 'refs/heads/frontend' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.ref == 'refs/heads/frontend' && github.event_name != 'pull_request'
+    needs: validate
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy Pages Artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -178,9 +178,13 @@ export const RaisePage: React.FC = () => {
   }, [dynamicLlms, ccConfig.llmDeployment, ccConfig.selectedLocalModel, ccConfig.apiKeys]);
 
   const handleOpenConfigureLlm = useCallback(() => {
-    setControlCenterTab('models');
+    if (appMode !== 'connected') {
+      setControlCenterTab('platform');
+    } else {
+      setControlCenterTab('models');
+    }
     openControlCenter(true);
-  }, [openControlCenter, setControlCenterTab]);
+  }, [appMode, openControlCenter, setControlCenterTab]);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -195,8 +199,8 @@ export const RaisePage: React.FC = () => {
   }, []);
 
   // Control Center will ONLY show when there is a backend connected with it,
-  // so that the workstation can download the required modules and initialize the RAISE pipeline.
-  // On the web or when offline (no backend Rust daemon connected), it will NOT show up.
+  // so that the system can download the required modules and initialize the RAISE pipeline.
+  // On the web or when offline (no backend daemon connected), it will NOT show up.
   useEffect(() => {
     if (appMode !== 'connected') return;
 
@@ -3406,22 +3410,31 @@ export const RaisePage: React.FC = () => {
         }}
       />
 
-      {/* Upper Side Notification: Gateway Disconnected / Offline Notice with Retry */}
-      {isTunnelConfigured && appMode === 'offline' && (
+      {/* Upper Side Notification: Gateway Disconnected / Offline Notice with Retry & Connect */}
+      {appMode === 'offline' && (
         <div className="fixed top-14 sm:top-16 left-0 sm:left-16 right-0 z-30 flex justify-center px-[clamp(0.5rem,2vw,1rem)] pt-1 pointer-events-none animate-in fade-in slide-in-from-top-1 duration-200">
           <div
             data-testid="gateway-disconnected-notice"
             className="pointer-events-auto inline-flex items-center gap-1.5 sm:gap-2 py-1 px-3 rounded-full bg-rose-500/15 dark:bg-rose-950/75 border border-rose-500/30 text-rose-950 dark:text-rose-200 shadow-sm backdrop-blur-md text-[clamp(10px,2.4vw,12px)] max-w-[calc(100vw-1.5rem)] sm:max-w-none text-center sm:text-left"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 animate-pulse" />
-            <span className="leading-tight truncate sm:whitespace-normal">
-              Gateway not connected properly.
+            <span className="leading-tight truncate sm:whitespace-normal font-medium">
+              Backend Gateway not connected.
             </span>
+            <button
+              type="button"
+              aria-label="Connect Gateway"
+              onClick={handleOpenConfigureLlm}
+              className="font-bold underline hover:text-rose-950 dark:hover:text-white cursor-pointer ml-1 inline-flex items-center gap-1 shrink-0"
+            >
+              Connect Gateway
+            </button>
+            <span className="text-rose-300 dark:text-rose-600">·</span>
             <button
               type="button"
               aria-label="Retry Connection"
               onClick={() => runCapabilityProbe()}
-              className="font-semibold underline hover:text-rose-950 dark:hover:text-white cursor-pointer ml-1 inline-flex items-center gap-1 shrink-0"
+              className="font-medium underline hover:text-rose-950 dark:hover:text-white cursor-pointer inline-flex items-center gap-1 shrink-0"
             >
               <svg
                 className="w-3 h-3"
@@ -3435,15 +3448,6 @@ export const RaisePage: React.FC = () => {
                 <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
               </svg>
               Retry
-            </button>
-            <span className="text-rose-300 dark:text-rose-600">·</span>
-            <button
-              type="button"
-              aria-label="Open Settings"
-              onClick={() => settingsJunction.open('gateway')}
-              className="font-medium underline hover:text-rose-950 dark:hover:text-white cursor-pointer shrink-0"
-            >
-              Settings
             </button>
           </div>
         </div>
@@ -3528,7 +3532,7 @@ export const RaisePage: React.FC = () => {
         <title>{pageDocumentTitle}</title>
         <meta
           name="description"
-          content="Academic research intelligence workstation for multi-hop institutional report synthesis and citation provenance."
+          content="Academic research intelligence platform for multi-hop institutional report synthesis and citation provenance."
         />
 
         <main
@@ -4513,8 +4517,6 @@ export const RaisePage: React.FC = () => {
             onStopVoiceListening={stopVoiceListening}
             voiceError={voiceError}
             onDismissVoiceError={() => setVoiceError(null)}
-            isLlmConfigured={isLlmConfigured}
-            onOpenConfigureLlm={handleOpenConfigureLlm}
           />
         </main>
       </div>

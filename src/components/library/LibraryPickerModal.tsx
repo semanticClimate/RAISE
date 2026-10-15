@@ -141,6 +141,11 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
               : item
           )
         );
+        setTimeout(() => {
+          setOptimisticUploads((prev) =>
+            prev.filter((item) => !newOptimistic.some((n) => n.id === item.id))
+          );
+        }, 5000);
       }
     },
     [computePreviewHash, queryClient]
@@ -158,14 +163,14 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
         name: opt.name,
         size: opt.size,
         bytes: opt.bytes,
-        uploadedAt: 'Processing...',
+        uploadedAt: opt.status === 'error' ? 'Failed (Gateway Offline)' : 'Processing...',
         timestamp: opt.timestamp,
         type: (opt.name.split('.').pop()?.toLowerCase() || 'pdf') as any,
         pages: 1,
         chunks: 0,
-        status: opt.status === 'ready' ? 'ready' : 'processing',
-        color: 'indigo' as const,
-        uploadProgress: opt.progress,
+        status: opt.status === 'ready' ? 'ready' : opt.status === 'error' ? 'error' : 'processing',
+        color: opt.status === 'error' ? ('rose' as const) : ('indigo' as const),
+        uploadProgress: opt.status === 'error' ? 0 : opt.progress,
         previewHash: opt.previewHash,
       }));
 
@@ -251,6 +256,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
             handleOptimisticUpload(e.target.files);
+            e.target.value = '';
           }
         }}
       />
@@ -397,8 +403,12 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    onClose();
-                    onOpenUploadFromPC();
+                    if (localFileInputRef.current) {
+                      localFileInputRef.current.click();
+                    } else {
+                      onClose();
+                      onOpenUploadFromPC();
+                    }
                   }}
                   className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-all active:scale-95 cursor-pointer shadow-xs flex items-center gap-1.5"
                 >
@@ -472,10 +482,17 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                           {item.name}
                         </h4>
                         {!indexed && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                            <span>Parsing...</span>
-                          </span>
+                          item.status === 'error' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              <span>Gateway Offline</span>
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                              <span>Parsing...</span>
+                            </span>
+                          )
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-[#a8a8a8] mt-0.5">
@@ -491,7 +508,6 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                             </span>
                           </>
                         )}
-                        <span>•</span>
                         {item.pages && (
                           <>
                             <span>•</span>
@@ -505,17 +521,23 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                   {/* Right: Exactly ONE Circular Progress Spinner */}
                   <div className="shrink-0">
                     {!indexed ? (
-                      <div
-                        className="flex items-center gap-1 text-[11px] font-mono text-indigo-600 dark:text-[#a8c7fa] px-2 py-1"
-                        title={`Parsing progress: ${Math.round(progress)}%`}
-                      >
-                        <CircularUploadProgress
-                          progress={progress}
-                          size={24}
-                          strokeWidth={2.5}
-                          showPercentText={true}
-                        />
-                      </div>
+                      item.status === 'error' ? (
+                        <span className="text-[11px] font-mono font-semibold text-rose-500 px-2 py-1">
+                          Failed
+                        </span>
+                      ) : (
+                        <div
+                          className="flex items-center gap-1 text-[11px] font-mono text-indigo-600 dark:text-[#a8c7fa] px-2 py-1"
+                          title={`Parsing progress: ${Math.round(progress)}%`}
+                        >
+                          <CircularUploadProgress
+                            progress={progress}
+                            size={24}
+                            strokeWidth={2.5}
+                            showPercentText={true}
+                          />
+                        </div>
+                      )
                     ) : (
                       <div className="flex items-center gap-1.5">
                         {onViewPdf && item.type === 'pdf' && (
@@ -605,8 +627,12 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              onClose();
-              onOpenUploadFromPC();
+              if (localFileInputRef.current) {
+                localFileInputRef.current.click();
+              } else {
+                onClose();
+                onOpenUploadFromPC();
+              }
             }}
             className="text-xs text-indigo-600 dark:text-[#a8c7fa] hover:underline font-medium flex items-center gap-1.5 cursor-pointer"
           >

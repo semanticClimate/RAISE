@@ -106,6 +106,9 @@ export const EngineStep: React.FC = () => {
     try {
       const res = await platformAdapter.pingApiKey(provider, key);
       setKeyVerification(id, res.available, res.latencyMs, res.error);
+      if (res.available) {
+        refetchLiveModels();
+      }
     } catch (err: any) {
       setKeyVerification(id, false, undefined, err?.message || 'Connection failed');
     } finally {

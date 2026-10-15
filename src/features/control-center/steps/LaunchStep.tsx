@@ -72,7 +72,7 @@ export const LaunchStep: React.FC = () => {
     }
 
     let totalDiskGb = 0.0;
-    let totalRamGb = 1.2; // Base workstation runtime
+    let totalRamGb = 1.2; // Base system runtime
 
     // 1. LLM
     let llmDisk = '0 GB';
@@ -212,7 +212,7 @@ export const LaunchStep: React.FC = () => {
         <p className="text-xs text-slate-400 mt-0.5">
           {isWebTunnel
             ? 'Operating in Remote Gateway Tunnel Mode. All computation and models execute remotely.'
-            : 'Operating in Local Workstation Mode. Verify required modules and neural weights before starting.'}
+            : 'Operating in Local Environment Mode. Verify required modules and neural weights before starting.'}
         </p>
       </div>
 
@@ -319,7 +319,7 @@ export const LaunchStep: React.FC = () => {
           <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-2.5">
             <div>
               <span className="text-xs font-bold text-white">
-                Local Workstation Environment & Pre-Flight Assets
+                Local Host Environment & Pre-Flight Assets
               </span>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 Required neural weights and runtime engines verified for on-device inference.

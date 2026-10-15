@@ -5,6 +5,7 @@ import {
   Copy,
   Globe,
   Laptop,
+  RefreshCw,
   Smartphone,
   Terminal,
   X,
@@ -13,6 +14,7 @@ import type React from 'react';
 import { useEffect, useState } from 'react';
 import { getStoredTunnelUrl, setStoredTunnelUrl } from '../../../app/config';
 import { useModeStore } from '../../../stores/modeStore';
+import { useBackendConnection } from '../../../hooks/useBackendConnection';
 import { Tooltip } from '../components/Tooltip';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 import type { TargetPlatform } from '../types';
@@ -21,12 +23,34 @@ export const PlatformStep: React.FC = () => {
   const { hardware, config, updateConfig } = useControlCenterStore();
   const { appMode, isProbing, latencyMs } = useModeStore();
   const isConnected = appMode === 'connected';
+  const { connect, scanLocalPorts, isConnecting } = useBackendConnection();
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [probeNotice, setProbeNotice] = useState<string | null>(null);
 
   // Tunnel state
   const defaultTunnel = config.tunnelUrl || getStoredTunnelUrl() || '';
   const [tunnelInput, setTunnelInput] = useState(defaultTunnel);
   const [copied, setCopied] = useState(false);
+
+  const handleQuickLocalDetect = async () => {
+    setProbeNotice('Probing localhost:8000...');
+    const res = await connect('http://localhost:8000');
+    if (res.success) {
+      setTunnelInput('http://localhost:8000');
+      setProbeNotice('Connected to localhost:8000!');
+      setTimeout(() => setProbeNotice(null), 3000);
+    } else {
+      const found = await scanLocalPorts();
+      if (found) {
+        setTunnelInput(found);
+        setProbeNotice(`Connected to ${found}!`);
+        setTimeout(() => setProbeNotice(null), 3000);
+      } else {
+        setProbeNotice('No local backend on :8000. Paste remote tunnel URL.');
+        setTimeout(() => setProbeNotice(null), 4000);
+      }
+    }
+  };
 
   // Dynamic local time formatting (e.g., 7:25 PM)
   const [currentTime, setCurrentTime] = useState('');
@@ -60,7 +84,7 @@ export const PlatformStep: React.FC = () => {
     {
       id: 'macos',
       label: 'macOS',
-      sub: 'Desktop Workstation (Local Metal acceleration)',
+      sub: 'Desktop Environment (Local Metal acceleration)',
       icon: Laptop,
     },
     {
@@ -72,13 +96,13 @@ export const PlatformStep: React.FC = () => {
     {
       id: 'windows',
       label: 'Windows',
-      sub: 'Desktop Workstation (Local DirectML / CUDA acceleration)',
+      sub: 'Desktop Environment (Local DirectML / CUDA acceleration)',
       icon: Laptop,
     },
     {
       id: 'linux',
       label: 'Linux',
-      sub: 'Desktop Workstation (Local CUDA / ROCm)',
+      sub: 'Desktop Environment (Local CUDA / ROCm)',
       icon: Terminal,
     },
     {
@@ -235,7 +259,7 @@ export const PlatformStep: React.FC = () => {
       </div>
 
       {/* WEB / GATEWAY TUNNEL CONFIGURATION SECTION */}
-      {config.targetPlatform === 'web' && (
+      {(config.targetPlatform === 'web' || !isConnected) && (
         <div className="p-4 rounded-xl bg-[#131622] border border-white/10 space-y-3 animate-in fade-in duration-150">
           {/* Status Header */}
           <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
@@ -246,21 +270,25 @@ export const PlatformStep: React.FC = () => {
                 className={`relative inline-flex rounded-full h-2 w-2 shrink-0 transition-colors ${
                   isConnected
                     ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
-                    : isProbing
+                    : isProbing || isConnecting
                       ? 'bg-amber-500 animate-pulse ring-2 ring-amber-500/20'
                       : 'bg-rose-500 ring-2 ring-rose-500/20'
                 }`}
               />
-              {isConnected && (
+              {isConnected ? (
                 <span className="text-[11px] font-mono font-medium text-emerald-400">
                   • Connected {latencyMs ? `(${latencyMs}ms)` : ''}
+                </span>
+              ) : (
+                <span className="text-[11px] font-mono font-medium text-rose-400">
+                  • Disconnected (Gateway Required)
                 </span>
               )}
               <Tooltip
                 content={
                   <div className="space-y-1 font-mono text-[11px]">
                     <div className="font-bold text-white text-xs border-b border-white/10 pb-1">
-                      Remote Cloudflare Tunnel
+                      Remote Cloudflare Tunnel & Gateway
                     </div>
                     <div className="text-slate-300">
                       Connect to your remote FastAPI, LangGraph, and vector store gateway with zero
@@ -270,7 +298,27 @@ export const PlatformStep: React.FC = () => {
                 }
               />
             </div>
+
+            {!isConnected && (
+              <button
+                type="button"
+                disabled={isConnecting}
+                onClick={handleQuickLocalDetect}
+                className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white border border-white/15 text-[11px] font-mono transition-all cursor-pointer flex items-center gap-1.5"
+                title="Probe local machine for port 8000"
+              >
+                <RefreshCw className={`w-3 h-3 ${isConnecting ? 'animate-spin' : ''}`} />
+                <span>Probe Localhost</span>
+              </button>
+            )}
           </div>
+
+          {!isConnected && (
+            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
+              {probeNotice ||
+                'Backend is not detected on this system. Provide your Gateway Link (Cloudflare Tunnel URL or http://localhost:8000) to connect.'}
+            </div>
+          )}
 
           {/* Pipeline Tunnel URL Input */}
           <div className="space-y-1.5">
@@ -278,26 +326,39 @@ export const PlatformStep: React.FC = () => {
               htmlFor="pipeline-tunnel-url-input"
               className="text-xs font-semibold text-slate-200 block"
             >
-              Pipeline Tunnel URL
+              Pipeline Tunnel / Gateway URL
             </label>
-            <div className="relative">
-              <input
-                id="pipeline-tunnel-url-input"
-                type="text"
-                value={tunnelInput}
-                onChange={(e) => handleTunnelChange(e.target.value)}
-                placeholder="https://your-tunnel-name.trycloudflare.com"
-                className="w-full px-3 py-2 pr-9 rounded-lg bg-black/60 border border-white/15 text-white font-mono text-xs placeholder-slate-500 focus:outline-none focus:border-white transition-all"
-              />
-              {tunnelInput.length > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  id="pipeline-tunnel-url-input"
+                  type="text"
+                  value={tunnelInput}
+                  onChange={(e) => handleTunnelChange(e.target.value)}
+                  placeholder="https://your-tunnel-name.trycloudflare.com or http://localhost:8000"
+                  className="w-full px-3 py-2 pr-9 rounded-lg bg-black/60 border border-white/15 text-white font-mono text-xs placeholder-slate-500 focus:outline-none focus:border-white transition-all"
+                />
+                {tunnelInput.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearUrl}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                    title="Clear input"
+                    aria-label="Clear input"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {!isConnected && (
                 <button
                   type="button"
-                  onClick={handleClearUrl}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
-                  title="Clear input"
-                  aria-label="Clear input"
+                  disabled={isConnecting || !tunnelInput.trim()}
+                  onClick={() => connect(tunnelInput)}
+                  className="px-4 py-2 rounded-lg bg-white hover:bg-slate-200 text-black text-xs font-bold transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  {isConnecting ? 'Testing...' : 'Connect'}
                 </button>
               )}
             </div>

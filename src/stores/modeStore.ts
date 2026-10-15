@@ -236,12 +236,12 @@ export const useModeStore = create<ModeState>((set, get) => ({
         isProbing: false,
         lastConnectedAt: caps.apiReachable ? Date.now() : get().lastConnectedAt,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       set({
         capabilities: null,
         appMode: 'offline',
         isProbing: false,
-        probeError: err?.message || 'Capability probe failed',
+        probeError: err instanceof Error ? err.message : String(err ?? 'Capability probe failed'),
       });
     }
   },

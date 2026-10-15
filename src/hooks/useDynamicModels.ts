@@ -40,14 +40,17 @@ export function useDynamicModels(): UseDynamicModelsResult {
     queryFn: async ({ signal }) => {
       const res = await systemService.getDynamicLLMs(signal);
       if (res.data && Array.isArray(res.data)) {
-        return res.data.map((m: any) => ({
-          provider: String(m.provider || 'unknown'),
-          displayName: String(m.displayName || m.display_name || m.provider || 'Model'),
-          model: String(m.model || 'default'),
-          status: String(m.status || 'READY'),
-          isActive: Boolean(m.isActive ?? m.is_active),
-          tier: m.tier ? String(m.tier) : undefined,
-        })) as DynamicModelItem[];
+        return (res.data as unknown[]).map((m: unknown) => {
+          const item = m && typeof m === 'object' ? (m as Record<string, unknown>) : {};
+          return {
+            provider: String(item.provider || 'unknown'),
+            displayName: String(item.displayName || item.display_name || item.provider || 'Model'),
+            model: String(item.model || 'default'),
+            status: String(item.status || 'READY'),
+            isActive: Boolean(item.isActive ?? item.is_active),
+            tier: item.tier ? String(item.tier) : undefined,
+          };
+        }) as DynamicModelItem[];
       }
       return [] as DynamicModelItem[];
     },
@@ -61,8 +64,9 @@ export function useDynamicModels(): UseDynamicModelsResult {
     queryKey: ['system', 'models-discovered'],
     queryFn: async ({ signal }) => {
       const res = await systemService.getDiscoveredModels(undefined, signal);
-      if (res.data?.providers && typeof res.data.providers === 'object') {
-        return res.data.providers as Record<string, string[]>;
+      const resData = res.data && typeof res.data === 'object' ? (res.data as Record<string, unknown>) : null;
+      if (resData?.providers && typeof resData.providers === 'object') {
+        return resData.providers as Record<string, string[]>;
       }
       return {} as Record<string, string[]>;
     },

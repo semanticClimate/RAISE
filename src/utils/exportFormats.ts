@@ -991,7 +991,7 @@ export function generatePdfBlob(
   const keywordsStr = `RAISE, GraphRAG, A4, Justified, Research Synthesis${uniqueDocs.length > 0 ? `, ${uniqueDocs.join(', ')}` : ''}${uniqueUnis.length > 0 ? `, ${uniqueUnis.join(', ')}` : ''}`;
 
   appendString(
-    `${infoId} 0 obj\n<<\n  /Title (${escapePdfText(`RAISE Report: ${query.slice(0, 60) || 'Research Inquiry'}${safeDocTitle}`)})\n  /Subject (${escapePdfText('Research Assessment Intelligence & Semantic Extraction')})\n  /Author (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')})\n  /Creator (${escapePdfText('RAISE Semantic Research Workstation')})\n  /Producer (${escapePdfText('RAISE PDF Engine 1.4 (ISO A4 Justified)')})\n  /CreationDate (${pdfDate})\n  /ModDate (${pdfDate})\n  /Keywords (${escapePdfText(keywordsStr)})\n>>\nendobj\n`
+    `${infoId} 0 obj\n<<\n  /Title (${escapePdfText(`RAISE Report: ${query.slice(0, 60) || 'Research Inquiry'}${safeDocTitle}`)})\n  /Subject (${escapePdfText('Research Assessment Intelligence & Semantic Extraction')})\n  /Author (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')})\n  /Creator (${escapePdfText('RAISE Semantic Research Platform')})\n  /Producer (${escapePdfText('RAISE PDF Engine 1.4 (ISO A4 Justified)')})\n  /CreationDate (${pdfDate})\n  /ModDate (${pdfDate})\n  /Keywords (${escapePdfText(keywordsStr)})\n>>\nendobj\n`
   );
 
   // Cross Reference Table

@@ -19,9 +19,9 @@ export class SystemService {
    * Probe test connections via POST /api/system/test-connections
    */
   public async testConnections(
-    payload?: Record<string, any>,
+    payload?: Record<string, unknown>,
     signal?: AbortSignal
-  ): Promise<ApiResponse<any>> {
+  ): Promise<ApiResponse<unknown>> {
     return apiClient.request(
       ENDPOINTS.SYSTEM_TEST_CONNECTIONS,
       undefined,
@@ -63,7 +63,7 @@ export class SystemService {
   /**
    * Dynamically discovered LLMs from live backend provider APIs
    */
-  public async getDynamicLLMs(signal?: AbortSignal): Promise<ApiResponse<any>> {
+  public async getDynamicLLMs(signal?: AbortSignal): Promise<ApiResponse<unknown>> {
     return apiClient.request(
       ENDPOINTS.SYSTEM_DYNAMIC_LLMS,
       undefined,
@@ -78,7 +78,7 @@ export class SystemService {
   /**
    * Models discovered by provider from live model registries
    */
-  public async getDiscoveredModels(provider?: string, signal?: AbortSignal): Promise<ApiResponse<any>> {
+  public async getDiscoveredModels(provider?: string, signal?: AbortSignal): Promise<ApiResponse<unknown>> {
     const url = provider
       ? `${ENDPOINTS.SYSTEM_MODELS_DISCOVERED}?provider=${encodeURIComponent(provider)}`
       : ENDPOINTS.SYSTEM_MODELS_DISCOVERED;
@@ -226,9 +226,12 @@ export class SystemService {
         // Rely on /api/health for handshake availability without burning single-use tokens
         capabilities.handshakeAvailable = true;
 
-        const resData = aliveRes.data as any;
-        if (resData?.version || resData?.api_version) {
-          capabilities.backendVersion = resData.version || resData.api_version;
+        const resData =
+          aliveRes.data && typeof aliveRes.data === 'object'
+            ? (aliveRes.data as Record<string, unknown>)
+            : null;
+        if (typeof resData?.version === 'string' || typeof resData?.api_version === 'string') {
+          capabilities.backendVersion = String(resData.version || resData.api_version);
         }
 
         // 2. High-speed concurrent inspection of remaining subsystems
@@ -257,7 +260,11 @@ export class SystemService {
 
         if (neo4jRes.status === 'fulfilled' && neo4jRes.value.status === 200) {
           capabilities.neo4jStatusAvailable = true;
-          if (neo4jRes.value.data && (neo4jRes.value.data as any).connected !== false) {
+          const neoData =
+            neo4jRes.value.data && typeof neo4jRes.value.data === 'object'
+              ? (neo4jRes.value.data as Record<string, unknown>)
+              : null;
+          if (neoData && neoData.connected !== false) {
             capabilities.graphAvailable = true;
           }
         }
@@ -302,7 +309,7 @@ export class SystemService {
         });
         clearTimeout(timer);
         return { res, endpoint: ep };
-      } catch (err: any) {
+      } catch (err: unknown) {
         clearTimeout(timer);
         throw err;
       }
@@ -315,8 +322,8 @@ export class SystemService {
         let parsedVersion: string | undefined;
         let isVersionAligned = true;
         try {
-          const body = (await res.clone().json().catch(() => null)) as Record<string, any> | null;
-          parsedVersion = body?.version || body?.api_version;
+          const body = (await res.clone().json().catch(() => null)) as Record<string, unknown> | null;
+          parsedVersion = typeof body?.version === 'string' ? body.version : typeof body?.api_version === 'string' ? body.api_version : undefined;
           if (parsedVersion) {
             isVersionAligned = parsedVersion === '1.0.0';
           }
@@ -351,8 +358,8 @@ export class SystemService {
       let parsedVersion: string | undefined;
       let isVersionAligned = true;
       try {
-        const body = (await firstSuccess.res.clone().json().catch(() => null)) as Record<string, any> | null;
-        parsedVersion = body?.version || body?.api_version;
+        const body = (await firstSuccess.res.clone().json().catch(() => null)) as Record<string, unknown> | null;
+        parsedVersion = typeof body?.version === 'string' ? body.version : typeof body?.api_version === 'string' ? body.api_version : undefined;
         if (parsedVersion) {
           isVersionAligned = parsedVersion === '1.0.0';
         }

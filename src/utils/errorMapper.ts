@@ -48,9 +48,9 @@ export function normalizeError(error: unknown, endpoint: string, statusCode: num
       endpoint,
       retryable: true,
       likelyCause:
-        'Windows workstation is offline, FastAPI is stopped, or Windows Firewall is blocking TCP port 8000.',
+        'Windows host is offline, FastAPI is stopped, or Windows Firewall is blocking TCP port 8000.',
       recommendedAction:
-        'Ensure FastAPI is running on Windows (app.py) and firewall rule allows port 8000. Alternatively, toggle Mock Mode.',
+        'Ensure FastAPI is running on Windows (app.py) and firewall rule allows port 8000. Alternatively, verify network link.',
       details: error.message,
       timestamp,
     };
@@ -111,7 +111,7 @@ export function normalizeError(error: unknown, endpoint: string, statusCode: num
         likelyCause:
           'A downstream container (vLLM, Neo4j, or ChromaDB) threw an exception or is unresponsive.',
         recommendedAction:
-          'Check Windows workstation terminal or Docker logs (raise-vllm-prod, raise-neo4j-prod).',
+          'Check Windows host terminal or Docker logs (raise-vllm, raise-neo4j).',
         details: error,
         timestamp,
       };

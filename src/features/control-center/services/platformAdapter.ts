@@ -413,13 +413,16 @@ export const platformAdapter = {
         headers: { Accept: 'application/json' },
       });
       if (res.ok) {
-        return (await res.json()) as Array<{
-          provider: string;
-          displayName: string;
-          model: string;
-          status: string;
-          tier?: string;
-        }>;
+        const raw = await res.json();
+        if (Array.isArray(raw)) {
+          return raw.map((m: any) => ({
+            provider: String(m.provider || 'unknown'),
+            displayName: String(m.displayName || m.display_name || m.provider || 'Model'),
+            model: String(m.model || 'default'),
+            status: String(m.status || 'READY'),
+            tier: m.tier ? String(m.tier) : undefined,
+          }));
+        }
       }
     } catch {
       // Backend offline

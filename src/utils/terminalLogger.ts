@@ -2,7 +2,7 @@ export interface TerminalLogEvent {
   type: 'REQ' | 'RES' | 'ERR' | 'MOCK' | 'SYSTEM';
   method?: string;
   endpoint: string;
-  payload?: any;
+  payload?: unknown;
   status?: number;
   durationMs?: number;
   message?: string;
@@ -55,23 +55,23 @@ export function logToTerminal(event: TerminalLogEvent) {
 }
 
 export const terminalLogger = {
-  info: (message: string, details?: any) => {
+  info: (message: string, details?: unknown) => {
     logToTerminal({
       type: 'SYSTEM',
       endpoint: 'CLIENT',
       message,
-      details: typeof details === 'object' ? JSON.stringify(details) : details,
+      details: typeof details === 'object' && details !== null ? JSON.stringify(details) : String(details ?? ''),
     });
   },
-  error: (message: string, details?: any) => {
+  error: (message: string, details?: unknown) => {
     logToTerminal({
       type: 'ERR',
       endpoint: 'CLIENT',
       error: message,
-      details: typeof details === 'object' ? JSON.stringify(details) : details,
+      details: typeof details === 'object' && details !== null ? JSON.stringify(details) : String(details ?? ''),
     });
   },
-  req: (endpoint: string, method = 'POST', payload?: any) => {
+  req: (endpoint: string, method = 'POST', payload?: unknown) => {
     logToTerminal({
       type: 'REQ',
       endpoint,

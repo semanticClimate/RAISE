@@ -26,7 +26,7 @@ export const ControlCenterModal: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const { testConnection, setBaseUrl, apiBaseUrl, appMode, latencyMs } = useModeStore();
+  const { testConnection, setBaseUrl, apiBaseUrl, appMode } = useModeStore();
   const isConnected = appMode === 'connected';
 
   // Load live hardware telemetry on mount or open
@@ -56,7 +56,7 @@ export const ControlCenterModal: React.FC = () => {
 
   // Pre-flight Neural Assets Verification and Download Gate
   useEffect(() => {
-    if (!isOpen || config.targetPlatform === 'web') return;
+    if (!isOpen || config.targetPlatform === 'web' || !isConnected) return;
     const { setDownloadProgress, setIsDownloading, setPreflightAssets } =
       useControlCenterStore.getState();
 
@@ -120,16 +120,15 @@ export const ControlCenterModal: React.FC = () => {
   ];
 
   const isWebTarget = config.targetPlatform === 'web';
-  const visibleTabs = isWebTarget ? tabs.slice(0, 1) : tabs;
+  const visibleTabs = isWebTarget
+    ? tabs.filter((t) => t.id !== 'databases')
+    : tabs;
   const currentTabIdx = visibleTabs.findIndex((t) => t.id === activeTab);
 
   // Validation gating logic per step
   const isCurrentStepValid = (): boolean => {
     if (activeTab === 'platform') {
-      if (isWebTarget) {
-        return isConnected;
-      }
-      return !!config.targetPlatform;
+      return isConnected;
     }
     if (activeTab === 'models') {
       const isCloud = config.llmDeployment
@@ -139,9 +138,12 @@ export const ControlCenterModal: React.FC = () => {
         const configuredKeys = (config.apiKeys || []).filter(
           (k) => k?.key && k.key.trim().length > 0
         );
-        // User MUST have configured at least one key, and all configured keys must be verified by backend
-        if (configuredKeys.length === 0) return false;
-        return configuredKeys.every((k) => k.verified === true);
+        // If user entered API keys in the frontend, ensure they are verified
+        if (configuredKeys.length > 0) {
+          return configuredKeys.every((k) => k.verified === true);
+        }
+        // If no keys entered locally, allow proceeding so gateway-discovered models or env keys work
+        return true;
       }
       return !!config.selectedLocalModel;
     }
@@ -200,8 +202,12 @@ export const ControlCenterModal: React.FC = () => {
 
     // If already verified connected to this target, proceed immediately
     if (isConnected && sanitizedUrl === apiBaseUrl) {
-      completeFirstRun();
-      setOpen(false);
+      if (isWebTarget) {
+        completeFirstRun();
+        setOpen(false);
+      } else {
+        handleNext();
+      }
       return;
     }
 
@@ -212,10 +218,16 @@ export const ControlCenterModal: React.FC = () => {
       const result = await testConnection(sanitizedUrl);
       if (result.success) {
         setConnectNotice('Connected to pipeline gateway!');
-        completeFirstRun();
-        setTimeout(() => {
-          setOpen(false);
-        }, 400);
+        if (isWebTarget) {
+          completeFirstRun();
+          setTimeout(() => {
+            setOpen(false);
+          }, 400);
+        } else {
+          setTimeout(() => {
+            setConnectNotice(null);
+          }, 1200);
+        }
       } else {
         setConnectNotice(result.error || 'Connection attempt failed. Check terminal for details.');
         setTimeout(() => setConnectNotice(null), 5000);
@@ -357,7 +369,7 @@ export const ControlCenterModal: React.FC = () => {
           <div />
 
           <div className="flex items-center gap-3">
-            {activeTab !== 'platform' && !isWebTarget && (
+            {currentTabIdx > 0 && (
               <button
                 type="button"
                 onClick={handleBack}
@@ -367,53 +379,55 @@ export const ControlCenterModal: React.FC = () => {
               </button>
             )}
 
-            {isWebTarget ? (
-              (() => {
-                return (
-                  <div className="flex items-center gap-3">
-                    {connectNotice ? (
-                      <span
-                        className={`text-xs font-mono font-medium max-w-[260px] truncate ${
-                          connectNotice.includes('Connected')
-                            ? 'text-emerald-400'
-                            : connectNotice.includes('Testing')
-                              ? 'text-amber-400 animate-pulse'
-                              : 'text-rose-400'
-                        }`}
-                        title={connectNotice}
-                      >
-                        {connectNotice}
-                      </span>
-                    ) : isConnected ? (
-                      <span className="text-xs font-mono font-medium text-emerald-400 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-                        Connected {latencyMs ? `(${latencyMs}ms)` : ''}
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={isConnecting}
-                      onClick={handleWebConnect}
-                      className={`px-6 py-2 rounded-xl text-xs transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 ${
-                        isConnecting ? 'opacity-70 cursor-wait' : ''
-                      } ${
-                        isConnected
-                          ? 'font-bold bg-white hover:bg-slate-200 text-black shadow-sm'
-                          : 'font-semibold border border-white/40 hover:border-white/70 text-white bg-transparent hover:bg-white/5'
-                      }`}
-                    >
-                      {isConnecting ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
-                      ) : isConnected ? (
-                        <Check className="w-3.5 h-3.5 text-black stroke-[3]" />
-                      ) : (
-                        <Zap className="w-3.5 h-3.5 text-white" />
-                      )}
-                      {isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Connect'}
-                    </button>
-                  </div>
-                );
-              })()
+            {activeTab === 'platform' && !isConnected ? (
+              <div className="flex items-center gap-3">
+                {connectNotice && (
+                  <span
+                    className={`text-xs font-mono font-medium max-w-[260px] truncate ${
+                      connectNotice.includes('Connected')
+                        ? 'text-emerald-400'
+                        : connectNotice.includes('Testing')
+                          ? 'text-amber-400 animate-pulse'
+                          : 'text-rose-400'
+                    }`}
+                  >
+                    {connectNotice}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={isConnecting}
+                  onClick={handleWebConnect}
+                  className={`px-6 py-2 rounded-xl text-xs transition-all font-bold cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                    isConnecting ? 'opacity-70 cursor-wait' : ''
+                  } bg-white hover:bg-slate-200 text-black shadow-sm`}
+                >
+                  {isConnecting ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5 fill-black text-black" />
+                  )}
+                  {isConnecting ? 'Connecting...' : 'Connect to Gateway'}
+                </button>
+              </div>
+            ) : activeTab === 'platform' && isConnected && isWebTarget ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleFinalStart}
+                  className="px-4 py-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 text-white text-xs font-semibold transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                  Quick Launch
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="px-6 py-2 rounded-xl text-xs transition-all font-bold bg-white hover:bg-slate-200 text-black cursor-pointer shadow-sm active:scale-95"
+                >
+                  Configure Engine &rarr;
+                </button>
+              </div>
             ) : activeTab !== 'launch' ? (
               <button
                 type="button"
@@ -439,7 +453,7 @@ export const ControlCenterModal: React.FC = () => {
                 ) : (
                   <Zap className="w-3.5 h-3.5 fill-black text-black" />
                 )}
-                Start
+                Launch App
               </button>
             )}
           </div>
