@@ -33,15 +33,30 @@ export function resolveCitationDetail(
 ): CitationItemDetail {
   const pageNumber = extractVerifiedPageNumber(cit);
 
-  let rawFileName =
-    cit?.pdf_filename ||
-    (cit as any)?.filename ||
-    (cit as any)?.file_name ||
-    (cit as any)?.document_name ||
-    (cit as any)?.doc_name ||
-    (cit as any)?.source ||
-    (cit as any)?.metadata?.pdf_filename ||
-    (cit as any)?.metadata?.filename;
+  const citRecord = cit && typeof cit === 'object' ? (cit as Record<string, unknown>) : null;
+  const citMeta =
+    citRecord?.metadata && typeof citRecord.metadata === 'object'
+      ? (citRecord.metadata as Record<string, unknown>)
+      : null;
+
+  let rawFileName: string | undefined =
+    typeof cit?.pdf_filename === 'string'
+      ? cit.pdf_filename
+      : typeof citRecord?.filename === 'string'
+        ? citRecord.filename
+        : typeof citRecord?.file_name === 'string'
+          ? citRecord.file_name
+          : typeof citRecord?.document_name === 'string'
+            ? citRecord.document_name
+            : typeof citRecord?.doc_name === 'string'
+              ? citRecord.doc_name
+              : typeof citRecord?.source === 'string'
+                ? citRecord.source
+                : typeof citMeta?.pdf_filename === 'string'
+                  ? citMeta.pdf_filename
+                  : typeof citMeta?.filename === 'string'
+                    ? citMeta.filename
+                    : undefined;
 
   // Clean directory paths if present (e.g. /app/documents/BRIC.pdf -> BRIC.pdf)
   if (typeof rawFileName === 'string') {
@@ -54,12 +69,18 @@ export function resolveCitationDetail(
 
   // If still generic or missing, recover from chunk_id
   if (!rawFileName || rawFileName === 'Document' || rawFileName === 'Audited Document') {
-    const chunkId = cit?.chunk_id || (cit as any)?.id || (cit as any)?.metadata?.chunk_id;
+    const chunkId =
+      typeof cit?.chunk_id === 'string'
+        ? cit.chunk_id
+        : typeof citRecord?.id === 'string'
+          ? citRecord.id
+          : typeof citMeta?.chunk_id === 'string'
+            ? citMeta.chunk_id
+            : undefined;
     if (typeof chunkId === 'string') {
       const stemMatch = chunkId.match(/^([a-zA-Z0-9_\-\s]+?)(?:_p\d+|_parent|\.pdf|$)/i);
       if (
-        stemMatch &&
-        stemMatch[1] &&
+        stemMatch?.[1] &&
         stemMatch[1].length > 3 &&
         !stemMatch[1].startsWith('chk_') &&
         !stemMatch[1].startsWith('cit-')

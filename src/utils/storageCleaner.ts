@@ -100,13 +100,15 @@ export function cleanseLegacyStorage(): void {
     if (activeConvoRaw) {
       const parsed = JSON.parse(activeConvoRaw) as unknown[];
       if (Array.isArray(parsed)) {
-        const hasMockContent = parsed.some(
-          (m: any) =>
-            typeof m?.text === 'string' &&
-            (m.text.toLowerCase().includes('xyma') ||
-              m.text.toLowerCase().includes('neomotion') ||
-              m.text.toLowerCase().includes('mindgrove'))
-        );
+        const hasMockContent = parsed.some((m: unknown) => {
+          const item = m && typeof m === 'object' ? (m as Record<string, unknown>) : null;
+          return (
+            typeof item?.text === 'string' &&
+            (item.text.toLowerCase().includes('xyma') ||
+              item.text.toLowerCase().includes('neomotion') ||
+              item.text.toLowerCase().includes('mindgrove'))
+          );
+        });
         if (hasMockContent) {
           localStorage.removeItem('raise_active_conversation');
         }

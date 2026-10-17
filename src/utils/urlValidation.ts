@@ -134,7 +134,7 @@ export function sanitizeTunnelUrl(rawUrl: string): string {
   if (!trimmed) return '';
 
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-    trimmed = 'https://' + trimmed;
+    trimmed = `https://${trimmed}`;
   }
 
   try {

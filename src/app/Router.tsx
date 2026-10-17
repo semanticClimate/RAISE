@@ -1,5 +1,5 @@
 import type React from 'react';
-import { Suspense, lazy } from 'react';
+import { lazy, Suspense } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppSkeleton } from '../components/ui/AppSkeleton';
 

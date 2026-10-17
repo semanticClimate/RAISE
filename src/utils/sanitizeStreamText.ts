@@ -36,7 +36,13 @@ export function sanitizeStreamText(text: string): string {
     .replace(/\[DONE\]/g, '');
 
   // 4. Strip non-printable control characters (except \t, \n, \r) like \x08 backspaces
-  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  cleaned = cleaned
+    .split('')
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return (code >= 32 && code !== 127) || code === 9 || code === 10 || code === 13;
+    })
+    .join('');
 
   // 5. Strip literal escaped control character sequences from PDF/OCR extractors (e.g. \x08, \u0008)
   cleaned = cleaned.replace(

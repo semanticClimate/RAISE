@@ -403,8 +403,8 @@ class ApiClient {
             if (
               currentEvent === 'node_update' ||
               currentEvent === 'stage' ||
-              Boolean(p?.node) ||
-              Boolean(p?.stage)
+              p?.node ||
+              p?.stage
             ) {
               if (p) {
                 options.onStageUpdate?.(p);
@@ -475,15 +475,15 @@ class ApiClient {
 
         // If it was an explicit SSE "data: ..." line that is plain text
         if (isData) {
-          fullText += payload + '\n';
-          onChunk?.(payload + '\n', fullText);
+          fullText += `${payload}\n`;
+          onChunk?.(`${payload}\n`, fullText);
           return;
         }
 
         // If plain text line (not JSON)
         if (!trimmedPayload.startsWith('{') && !trimmedPayload.startsWith('[')) {
-          fullText += line + '\n';
-          onChunk?.(line + '\n', fullText);
+          fullText += `${line}\n`;
+          onChunk?.(`${line}\n`, fullText);
         }
       };
 

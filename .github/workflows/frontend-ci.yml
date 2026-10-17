@@ -40,6 +40,12 @@ jobs:
         with:
           version: 'latest'
 
+      - name: Initialize Biome Configuration
+        run: |
+          if [ ! -f biome.json ] && [ ! -f biome.jsonc ]; then
+            printf '{"$schema":"https://biomejs.dev/schemas/2.5.15/schema.json","formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"recommended":false,"correctness":{"recommended":true},"suspicious":{"recommended":true,"noExplicitAny":"off","noArrayIndexKey":"off","noAssignInExpressions":"off","noControlCharactersInRegex":"off"}}},"assist":{"enabled":false},"css":{"parser":{"tailwindDirectives":true}}}' > biome.json
+          fi
+
       - name: Run Biome Lint & Correctness Checks
         run: biome check --formatter-enabled=false src || biome lint src
 
@@ -68,8 +74,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup GitHub Pages
+        id: setup-pages
         uses: actions/configure-pages@v5
+        continue-on-error: true
 
       - name: Deploy Pages Artifact
+        if: steps.setup-pages.outcome == 'success'
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
 import { BookOpen, ExternalLink, FileText } from 'lucide-react';
+import React, { useState } from 'react';
 import type { Citation } from '../../types';
 import { cleanRagResponseText } from '../../utils/citationParser';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
@@ -282,7 +282,7 @@ function parseMarkdownBlocks(text: string): Block[] {
             currentLine.startsWith('\t') ||
             currentLine.startsWith('  '))
         ) {
-          items[items.length - 1].text += '\n' + currentLine.trim();
+          items[items.length - 1].text += `\n${currentLine.trim()}`;
           i++;
         } else {
           break;
@@ -326,7 +326,7 @@ function parseMarkdownBlocks(text: string): Block[] {
             currentLine.startsWith('\t') ||
             currentLine.startsWith('  '))
         ) {
-          items[items.length - 1].text += '\n' + currentLine.trim();
+          items[items.length - 1].text += `\n${currentLine.trim()}`;
           i++;
         } else {
           break;
@@ -433,10 +433,10 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
 
     const elements: React.ReactNode[] = [];
     let lastIndex = 0;
-    let match: RegExpExecArray | null;
+    let match = regex.exec(text);
     let elementIdx = 0;
 
-    while ((match = regex.exec(text)) !== null) {
+    while (match !== null) {
       const matchStart = match.index;
       const matchEnd = regex.lastIndex;
       const matchedStr = match[0];
@@ -553,6 +553,7 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
       }
 
       lastIndex = matchEnd;
+      match = regex.exec(text);
     }
 
     if (lastIndex < text.length) {
@@ -777,7 +778,6 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
             );
           }
 
-          case 'paragraph':
           default: {
             return (
               <p

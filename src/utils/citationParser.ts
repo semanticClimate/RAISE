@@ -523,7 +523,13 @@ export function cleanRagResponseText(
   let text = rawText.normalize('NFKC');
 
   // 1. Strip non-printable control characters (except \t, \n, \r)
-  text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  text = text
+    .split('')
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return (code >= 32 && code !== 127) || code === 9 || code === 10 || code === 13;
+    })
+    .join('');
 
   // Strip literal escaped control character sequences (e.g. \x08, \u0008)
   text = text.replace(
@@ -565,7 +571,7 @@ export function cleanRagResponseText(
       citMap.set(idx, {
         citation_index: idx,
         pdf_filename: filename,
-        primary_page: page as any,
+        primary_page: page,
         chunk_id: `extracted-${idx}`,
         document_id: filename || `doc-${idx}`,
         heading: '',
