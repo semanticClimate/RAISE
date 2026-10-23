@@ -241,7 +241,7 @@ export const EngineStep: React.FC = () => {
             </span>
           </div>
 
-          <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+          <div className="space-y-2.5">
             {(config.apiKeys || []).map((item, index) => {
               const show = !!showKeys[item.id];
               const isTesting = testingKeyId === item.id;

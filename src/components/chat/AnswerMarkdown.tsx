@@ -395,7 +395,7 @@ function parseMarkdownBlocks(text: string): Block[] {
   return blocks;
 }
 
-export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
+const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
   content,
   citations = [],
   showCitations = false,
@@ -754,12 +754,12 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
                 className="overflow-x-auto my-4 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-2xs scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700"
               >
                 <table className="w-full min-w-[640px] text-left text-xs sm:text-sm border-collapse">
-                  <thead className="bg-slate-100/80 dark:bg-white/[0.05] border-b border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-semibold">
+                  <thead className="sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-semibold shadow-xs">
                     <tr>
                       {block.headers.map((h, hIdx) => (
                         <th
                           key={hIdx}
-                          className={`px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100 ${
+                          className={`sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100 ${
                             block.alignments[hIdx] || 'text-left'
                           }`}
                         >
@@ -952,3 +952,5 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
     </div>
   );
 };
+
+export const AnswerMarkdown = React.memo(AnswerMarkdownBase);

@@ -6,4 +6,5 @@ export { useBackendConnection, CONNECTION_PRESETS, type ConnectionPreset } from 
 export { useBackendTelemetry } from './useBackendTelemetry';
 export { useDocumentLibrary } from './useDocumentLibrary';
 export { useDynamicModels, type DynamicModelItem, type UseDynamicModelsResult } from './useDynamicModels';
+export { useScrollLock } from './useScrollLock';
 export { useSlashCommands, type UseSlashCommandsOptions } from './useSlashCommands';

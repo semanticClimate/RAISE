@@ -3,24 +3,31 @@ import { ENDPOINTS } from '../api/endpoints';
 import {
   CommandsResponseSchema,
   DEFAULT_SLASH_COMMANDS,
+  DEV_SLASH_COMMANDS,
   type SlashCommand,
 } from '../schemas/commands';
 
 export class CommandService {
   private static cachedCommands: SlashCommand[] | null = null;
+  private static cachedIncludeDev = false;
   private static lastFetchTime = 0;
   private static readonly CACHE_TTL_MS = 60_000; // 1 minute
 
   /**
-   * Fetch all registered slash commands from the backend API.
+   * Fetch registered slash commands from the backend API.
    * If remote discovery is unavailable or times out, safely falls back
-   * to deterministic DEFAULT_SLASH_COMMANDS.
+   * to deterministic DEFAULT_SLASH_COMMANDS (or DEV_SLASH_COMMANDS if includeDev).
    */
-  public async getCommands(signal?: AbortSignal, forceRefresh = false): Promise<ApiResponse<SlashCommand[]>> {
+  public async getCommands(
+    signal?: AbortSignal,
+    includeDev = false,
+    forceRefresh = false
+  ): Promise<ApiResponse<SlashCommand[]>> {
     const now = Date.now();
     if (
       !forceRefresh &&
       CommandService.cachedCommands &&
+      CommandService.cachedIncludeDev === includeDev &&
       now - CommandService.lastFetchTime < CommandService.CACHE_TTL_MS
     ) {
       return {
@@ -31,9 +38,12 @@ export class CommandService {
       };
     }
 
+    const fallbackCommands = includeDev ? DEV_SLASH_COMMANDS : DEFAULT_SLASH_COMMANDS;
+
     try {
+      const endpoint = includeDev ? `${ENDPOINTS.COMMANDS}?include_dev=true` : ENDPOINTS.COMMANDS;
       const res = await apiClient.request(
-        ENDPOINTS.COMMANDS,
+        endpoint,
         CommandsResponseSchema,
         {
           method: 'GET',
@@ -44,6 +54,7 @@ export class CommandService {
 
       if (res.data?.commands && res.data.commands.length > 0) {
         CommandService.cachedCommands = res.data.commands;
+        CommandService.cachedIncludeDev = includeDev;
         CommandService.lastFetchTime = now;
         return {
           data: res.data.commands,
@@ -57,10 +68,11 @@ export class CommandService {
     }
 
     // Default fallback
-    CommandService.cachedCommands = DEFAULT_SLASH_COMMANDS;
+    CommandService.cachedCommands = fallbackCommands;
+    CommandService.cachedIncludeDev = includeDev;
     CommandService.lastFetchTime = now;
     return {
-      data: DEFAULT_SLASH_COMMANDS,
+      data: fallbackCommands,
       error: null,
       status: 200,
       isMock: false,
@@ -70,8 +82,11 @@ export class CommandService {
   /**
    * Return synchronous cached commands or standard defaults immediately
    */
-  public getCachedCommands(): SlashCommand[] {
-    return CommandService.cachedCommands || DEFAULT_SLASH_COMMANDS;
+  public getCachedCommands(includeDev = false): SlashCommand[] {
+    if (CommandService.cachedCommands && CommandService.cachedIncludeDev === includeDev) {
+      return CommandService.cachedCommands;
+    }
+    return includeDev ? DEV_SLASH_COMMANDS : DEFAULT_SLASH_COMMANDS;
   }
 }
 

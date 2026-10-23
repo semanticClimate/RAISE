@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_SLASH_COMMANDS, type SlashCommand } from '../schemas/commands';
 import { commandService } from '../services/CommandService';
+import { useUiStore } from '../stores/uiStore';
 
 export interface UseSlashCommandsOptions {
   query: string;
@@ -14,22 +15,29 @@ export function useSlashCommands({
   onQueryChange,
   onSelectCommand,
 }: UseSlashCommandsOptions) {
-  const [commands, setCommands] = useState<SlashCommand[]>(
-    commandService.getCachedCommands() || DEFAULT_SLASH_COMMANDS
-  );
+  const viewMode = useUiStore((s) => s.viewMode);
+  const isDeveloper = viewMode === 'developer';
+
+  const [commands, setCommands] = useState<SlashCommand[]>(() => {
+    const cached = commandService.getCachedCommands(isDeveloper);
+    return isDeveloper ? cached : cached.filter((c) => !c.is_dev_only);
+  });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isDismissed, setIsDismissed] = useState(false);
 
-  // Fetch registered slash commands on mount
+  // Fetch registered slash commands on mount or when view mode changes
   useEffect(() => {
     let isCancelled = false;
     const controller = new AbortController();
 
     commandService
-      .getCommands(controller.signal)
+      .getCommands(controller.signal, isDeveloper)
       .then((res) => {
         if (!isCancelled && res.data && res.data.length > 0) {
-          setCommands(res.data);
+          const visible = isDeveloper
+            ? res.data
+            : res.data.filter((c) => !c.is_dev_only);
+          setCommands(visible.length > 0 ? visible : DEFAULT_SLASH_COMMANDS);
         }
       })
       .catch(() => {
@@ -40,7 +48,7 @@ export function useSlashCommands({
       isCancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [isDeveloper]);
 
   // Determine if slash command menu should be active:
   // Active when query starts with '/' and user hasn't pressed space yet (still typing command)

@@ -1,6 +1,7 @@
 import { Network } from 'lucide-react';
 import type React from 'react';
 import { useRef } from 'react';
+import { useScrollLock } from '../../hooks';
 import { GridGradientTuner } from '../../components/ui/GridGradientTuner';
 import { useModeStore } from '../../stores/modeStore';
 import type { ChatSession } from '../../types';
@@ -68,6 +69,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const { appMode } = useModeStore();
   const outsideClicksCountRef = useRef(0);
+
+  // Lock background body scroll while settings modal is open
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 

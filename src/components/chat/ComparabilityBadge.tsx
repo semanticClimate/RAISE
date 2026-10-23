@@ -83,15 +83,20 @@ export interface ComparabilityBadgeProps {
   className?: string;
 }
 
+export function normalizeComparabilityKey(text: string): string {
+  return text
+    .replace(/[`*]/g, '')
+    .replace(/^[\p{Emoji}\p{Symbol}\s]+/u, '')
+    .trim()
+    .toUpperCase();
+}
+
 export const ComparabilityBadge: React.FC<ComparabilityBadgeProps> = ({
   status,
   showIcon = true,
   className = '',
 }) => {
-  const normalizedKey = status
-    .toUpperCase()
-    .replace(/[`*]/g, '')
-    .trim() as ComparabilityStatusType;
+  const normalizedKey = normalizeComparabilityKey(status) as ComparabilityStatusType;
 
   const config = COMPARABILITY_STATUSES[normalizedKey];
 
@@ -111,6 +116,6 @@ export const ComparabilityBadge: React.FC<ComparabilityBadgeProps> = ({
 };
 
 export function isComparabilityStatus(text: string): boolean {
-  const clean = text.toUpperCase().replace(/[`*]/g, '').trim();
+  const clean = normalizeComparabilityKey(text);
   return clean in COMPARABILITY_STATUSES;
 }

@@ -1,6 +1,7 @@
 import { Check, Cpu, Laptop, RefreshCw, X, Zap } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
+import { useScrollLock } from '../../hooks';
 import { useModeStore } from '../../stores/modeStore';
 import { platformAdapter } from './services/platformAdapter';
 import { EngineStep } from './steps/EngineStep';
@@ -54,6 +55,9 @@ export const ControlCenterModal: React.FC = () => {
       });
     }
   }, [isOpen]);
+
+  // Lock background body scroll while Control Center modal is open
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 
@@ -199,7 +203,7 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Scrollable Step Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6 bg-[#0e1017] min-h-0">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 sm:space-y-6 bg-[#0e1017] min-h-0">
           {activeTab === 'platform' && <PlatformStep />}
           {activeTab === 'models' && <EngineStep />}
           {activeTab === 'launch' && <LaunchStep />}

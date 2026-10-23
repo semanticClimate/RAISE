@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type React from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { documentsQueryOptions } from '../../api/queryOptions';
-import { useEscapeKey } from '../../hooks';
+import { useEscapeKey, useScrollLock } from '../../hooks';
 import { documentItemToLibraryItem, type LibraryItem } from '../settings/SettingsLibraryTab';
 import { sourceService } from '../../services/SourceService';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
@@ -225,6 +225,8 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   const unattachedReadyItems = filteredItems.filter(
     (item) => isItemIndexed(item) && !attachedSet.has(item.name.toLowerCase().trim())
   );
+
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 

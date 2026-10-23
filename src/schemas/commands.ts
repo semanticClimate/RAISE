@@ -7,6 +7,7 @@ export const SlashCommandSchema = z.object({
   category: z.string().default('General'),
   examples: z.array(z.string()).default([]),
   aliases: z.array(z.string()).default([]),
+  is_dev_only: z.boolean().optional().default(false),
 });
 
 export type SlashCommand = z.infer<typeof SlashCommandSchema>;
@@ -19,7 +20,8 @@ export const CommandsResponseSchema = z.object({
 export type CommandsResponse = z.infer<typeof CommandsResponseSchema>;
 
 /**
- * Standard default slash commands available even when offline or before initial probe
+ * Standard default slash commands available even when offline or before initial probe.
+ * Regular user interface strictly presents /compare.
  */
 export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
   {
@@ -29,7 +31,15 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
     category: 'Comparison',
     examples: ['/compare', '/compare research', '/compare finance'],
     aliases: ['/diff', '/versus', '/vs'],
+    is_dev_only: false,
   },
+];
+
+/**
+ * Developer diagnostic commands for developer view mode
+ */
+export const DEV_SLASH_COMMANDS: SlashCommand[] = [
+  ...DEFAULT_SLASH_COMMANDS,
   {
     name: '/audit',
     syntax: '/audit [claim or section]',
@@ -37,6 +47,7 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
     category: 'Verification',
     examples: ['/audit', '/audit patents and publications'],
     aliases: ['/verify', '/factcheck'],
+    is_dev_only: true,
   },
   {
     name: '/synthesize',
@@ -45,6 +56,7 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
     category: 'Synthesis',
     examples: ['/synthesize', '/synthesize scientific achievements'],
     aliases: ['/summary', '/summarize'],
+    is_dev_only: true,
   },
   {
     name: '/graph',
@@ -53,6 +65,7 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
     category: 'Knowledge Graph',
     examples: ['/graph', '/graph Early Flowering 3a'],
     aliases: ['/explore', '/network'],
+    is_dev_only: true,
   },
   {
     name: '/bench',
@@ -61,6 +74,7 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
     category: 'Diagnostics',
     examples: ['/bench'],
     aliases: ['/eval', '/benchmark'],
+    is_dev_only: true,
   },
   {
     name: '/help',
@@ -69,5 +83,6 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
     category: 'Help',
     examples: ['/help'],
     aliases: ['/commands'],
+    is_dev_only: true,
   },
 ];

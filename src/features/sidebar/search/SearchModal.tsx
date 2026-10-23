@@ -1,5 +1,6 @@
 import type React from 'react';
 import { useState } from 'react';
+import { useScrollLock } from '../../../hooks';
 import type { ChatSession } from '../../../types';
 import { formatSessionDate } from '../../../utils/uuid';
 
@@ -44,6 +45,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 }) => {
   const [searchFilter, setSearchFilter] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 

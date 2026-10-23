@@ -3613,7 +3613,7 @@ export const RaisePage: React.FC = () => {
                   const totalQVers = qVersions.length;
 
                   return (
-                    <div key={`user-turn-${i}`} className="flex flex-col items-end group/query">
+                    <div key={`user-turn-${i}`} className="content-visibility-auto flex flex-col items-end group/query">
                       {editingMessageIndex === i ? (
                         /* Inline Question Editor */
                         <div className="w-full max-w-[85%] bg-white dark:bg-[#131622] border border-indigo-400 dark:border-indigo-500/50 rounded-2xl rounded-tr-sm p-3.5 shadow-md dark:shadow-xl transition-all">
@@ -3909,7 +3909,7 @@ export const RaisePage: React.FC = () => {
 
                   if (msg.error && !isCurrentlyActive && !isStopped) {
                     return (
-                      <div key={`assistant-turn-${i}`} className="w-full mb-4">
+                      <div key={`assistant-turn-${i}`} className="content-visibility-auto w-full mb-4">
                         <BackendErrorCard
                           error={msg.error}
                           targetUrl={apiBaseUrl}
@@ -3964,7 +3964,7 @@ export const RaisePage: React.FC = () => {
                   return (
                     <div
                       key={`assistant-turn-${i}`}
-                      className="flex flex-col items-start group/response w-full mb-5"
+                      className="content-visibility-auto flex flex-col items-start group/response w-full mb-5"
                     >
                       {/* Unified Single-Line Thinking & Searching Tracker while active; Thought Duration when complete */}
                       {isCurrentlyActive ? (
