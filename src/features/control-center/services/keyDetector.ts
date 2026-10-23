@@ -36,11 +36,11 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     };
   }
 
-  // Google Gemini keys typically start with 'AIzaSy'
+  // Google Gemini / Google Developer Programme keys typically start with 'AIzaSy' or 'AIza'
   if (trimmed.startsWith('AIzaSy') || trimmed.startsWith('AIza')) {
     return {
       provider: 'gemini',
-      displayName: 'Google Gemini',
+      displayName: 'Google Developer Programme (Gemini Pro)',
       defaultModel: 'gemini-2.0-flash',
     };
   }

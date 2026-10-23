@@ -51,34 +51,54 @@ function isValidSecret(val?: string): boolean {
 export function detectEnvCredentials(): DetectedEnvState {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : ({} as Record<string, string>);
 
-  const llmEnvDefinitions: Array<{ envKey: string; defaultProvider: DetectedProvider; displayName: string }> = [
-    { envKey: 'GEMINI_API_KEY', defaultProvider: 'gemini', displayName: 'Google Gemini' },
-    { envKey: 'GROQ_API_KEY', defaultProvider: 'groq', displayName: 'Groq LPU' },
-    { envKey: 'DEEPSEEK_API_KEY', defaultProvider: 'deepseek', displayName: 'DeepSeek' },
-    { envKey: 'NVIDIA_API_KEY', defaultProvider: 'nvidia', displayName: 'NVIDIA NIM' },
-    { envKey: 'COHERE_API_KEY', defaultProvider: 'cohere', displayName: 'Cohere Command' },
-    { envKey: 'OPENROUTER_API_KEY', defaultProvider: 'openrouter', displayName: 'OpenRouter' },
-    { envKey: 'OPENAI_API_KEY', defaultProvider: 'openai', displayName: 'OpenAI' },
-    { envKey: 'ANTHROPIC_API_KEY', defaultProvider: 'anthropic', displayName: 'Anthropic Claude' },
-    { envKey: 'MISTRAL_API_KEY', defaultProvider: 'mistral', displayName: 'Mistral AI' },
-  ];
-
   const detectedLlmKeys: DetectedLlmKey[] = [];
+  const processedKeys = new Set<string>();
 
-  for (const def of llmEnvDefinitions) {
-    const rawVal = env[def.envKey] || env[`VITE_${def.envKey}`];
-    if (isValidSecret(rawVal)) {
-      const keyStr = rawVal.trim();
-      const detected = detectProviderFromKey(keyStr);
-      detectedLlmKeys.push({
-        id: `env-${def.envKey.toLowerCase()}`,
-        key: keyStr,
-        provider: detected.provider !== 'unknown' ? detected.provider : def.defaultProvider,
-        providerName: detected.displayName !== 'Unconfigured Key' ? detected.displayName : def.displayName,
-        sourceEnvVar: def.envKey,
-        fromEnv: true,
-      });
+  // Dynamically discover all LLM keys from environment without static hardcoded lists
+  for (const [key, rawVal] of Object.entries(env)) {
+    if (typeof rawVal !== 'string' || !isValidSecret(rawVal)) continue;
+
+    const normalizedKey = key.replace(/^VITE_/, '');
+    const isApiKeyVar =
+      normalizedKey.endsWith('_API_KEY') ||
+      normalizedKey.endsWith('_KEY') ||
+      normalizedKey.endsWith('_TOKEN') ||
+      normalizedKey.includes('LLM');
+
+    // Skip non-LLM variables like session keys or DB passwords
+    if (
+      !isApiKeyVar ||
+      processedKeys.has(normalizedKey) ||
+      normalizedKey.includes('POSTGRES') ||
+      normalizedKey.includes('REDIS') ||
+      normalizedKey.includes('NEO4J') ||
+      normalizedKey.includes('SECRET')
+    ) {
+      continue;
     }
+
+    const keyStr = rawVal.trim();
+    const detected = detectProviderFromKey(keyStr);
+
+    processedKeys.add(normalizedKey);
+
+    const inferredName =
+      detected.displayName !== 'Unconfigured Key' && detected.displayName !== 'Empty Key'
+        ? detected.displayName
+        : normalizedKey
+            .replace(/_API_KEY$|_KEY$|_TOKEN$/, '')
+            .replace(/_/g, ' ')
+            .toLowerCase()
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+
+    detectedLlmKeys.push({
+      id: `env-${normalizedKey.toLowerCase()}`,
+      key: keyStr,
+      provider: detected.provider,
+      providerName: inferredName,
+      sourceEnvVar: key,
+      fromEnv: true,
+    });
   }
 
   // --- PostgreSQL Detection ---

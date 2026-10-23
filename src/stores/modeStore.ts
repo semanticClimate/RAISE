@@ -119,9 +119,9 @@ export const useModeStore = create<ModeState>((set, get) => ({
 
   clearTunnelUrl: () => {
     setStoredTunnelUrl('');
-    setApiBaseUrl('http://localhost:8000', false);
+    setApiBaseUrl('http://127.0.0.1:8000', false);
     set({
-      apiBaseUrl: 'http://localhost:8000',
+      apiBaseUrl: 'http://127.0.0.1:8000',
       isTunnelConfigured: true,
       appMode: 'offline',
       capabilities: null,

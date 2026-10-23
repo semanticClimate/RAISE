@@ -1,7 +1,9 @@
 import type React from 'react';
 import { VoiceInputButton } from '../../../components/input/VoiceInputButton';
+import { useSlashCommands } from '../../../hooks';
 import type { DynamicSuggestion, SourceDocument } from '../../../types';
 import { AddSourceButton, AttachedDocChips, FastExpertToggle } from '../query-controls';
+import { SlashCommandMenu } from './SlashCommandMenu';
 
 export interface QueryBoxProps {
   /** Current text query entered by the user */
@@ -108,6 +110,20 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
   onDismissVoiceError,
   className = '',
 }) => {
+  const slashCommands = useSlashCommands({
+    query,
+    onQueryChange: (newQuery) => {
+      onQueryChange(newQuery);
+      textareaRef?.current?.focus();
+    },
+    onSelectCommand: (cmd) => {
+      if (cmd.name === '/compare' && selectedDocs.length < 2) {
+        onOpenLibraryPicker();
+      }
+    },
+    selectedDocCount: selectedDocs.length,
+  });
+
   return (
     <section
       data-purpose="rag-prompt-container"
@@ -170,7 +186,17 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
           variant="mobile"
         />
 
-
+        {/* Slash Command Autocomplete Palette */}
+        <SlashCommandMenu
+          isOpen={slashCommands.isOpen}
+          commands={slashCommands.filteredCommands}
+          selectedIndex={slashCommands.selectedIndex}
+          onSelectCommand={slashCommands.selectCommand}
+          onHoverIndex={slashCommands.setSelectedIndex}
+          selectedDocCount={selectedDocs.length}
+          onOpenLibraryPicker={onOpenLibraryPicker}
+          onClose={slashCommands.dismiss}
+        />
 
         {/* WhatsApp-Style Input Bar on Mobile / Full RAG Card on Desktop */}
         <form
@@ -241,17 +267,25 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
                   : undefined
               }
               onChange={(e) => {
-                onQueryChange(e.target.value);
-                if (!showSuggestions && e.target.value.trim()) {
+                const val = e.target.value;
+                onQueryChange(val);
+                if (val.startsWith('/')) {
+                  setShowSuggestions(false);
+                } else if (!showSuggestions && val.trim()) {
                   setShowSuggestions(true);
                 }
               }}
               onFocus={() => {
-                if (conversationLength === 0 || query.length > 0) {
+                if (!query.startsWith('/') && (conversationLength === 0 || query.length > 0)) {
                   setShowSuggestions(true);
                 }
               }}
               onKeyDown={(e) => {
+                if (slashCommands.isOpen) {
+                  if (slashCommands.handleKeyDown(e)) {
+                    return;
+                  }
+                }
                 if (e.key === 'ArrowDown') {
                   if (filteredSuggestions.length > 0) {
                     e.preventDefault();

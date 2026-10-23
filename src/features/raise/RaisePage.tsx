@@ -1146,12 +1146,55 @@ export const RaisePage: React.FC = () => {
   const isUserAbortingRef = useRef<boolean>(false);
   const isUnmountedRef = useRef<boolean>(false);
   const latestStreamedTextRef = useRef<string>('');
+  const streamRafRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
+
+  // Batched 60 FPS streaming flush to React conversation state
+  const flushStreamToConversation = (
+    targetIndex: number | 'last',
+    accumulatedText: string
+  ) => {
+    latestStreamedTextRef.current = accumulatedText;
+    if (streamRafRef.current !== null) return;
+
+    streamRafRef.current = requestAnimationFrame(() => {
+      streamRafRef.current = null;
+      if (isUnmountedRef.current) return;
+      const currentText = latestStreamedTextRef.current;
+      setConversation((prev) => {
+        const updated = [...prev];
+        const idx = targetIndex === 'last' ? updated.length - 1 : targetIndex;
+        if (idx >= 0 && updated[idx] && updated[idx].role === 'assistant') {
+          if (updated[idx].text === currentText) return prev;
+          updated[idx] = {
+            ...updated[idx],
+            text: currentText,
+          };
+          return updated;
+        }
+        if (targetIndex === 'last' && (!updated[idx] || updated[idx].role !== 'assistant')) {
+          return [...updated, { role: 'assistant', text: currentText }];
+        }
+        return prev;
+      });
+    });
+  };
+
+  const cancelPendingStreamRaf = () => {
+    if (streamRafRef.current !== null) {
+      cancelAnimationFrame(streamRafRef.current);
+      streamRafRef.current = null;
+    }
+  };
 
   // Clean unmount cancellation without showing error UI
   useEffect(() => {
     return () => {
       isUnmountedRef.current = true;
+      if (streamRafRef.current !== null) {
+        cancelAnimationFrame(streamRafRef.current);
+        streamRafRef.current = null;
+      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -2327,6 +2370,10 @@ export const RaisePage: React.FC = () => {
     const executionStartTime = performance.now();
 
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
+    const isCompareCmd = /^\/(?:compare|diff|versus|vs)\b/i.test(q);
+    if (isCompareCmd && activeDocNames.length < 2) {
+      setIsSourcesDrawerOpen(true);
+    }
     const {
       hops: filterHops,
       topK: filterTopK,
@@ -2355,20 +2402,13 @@ export const RaisePage: React.FC = () => {
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
-          // Live progressive stream token updates into conversation
-          const cleanText = sanitizeStreamText(fullAccumulated);
-          latestStreamedTextRef.current = cleanText;
-          setConversation((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.role === 'assistant') {
-              return [...prev.slice(0, -1), { ...last, text: cleanText }];
-            }
-            return [...prev, { role: 'assistant', text: cleanText }];
-          });
+          // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
+          flushStreamToConversation('last', fullAccumulated);
         }
       );
 
       const res = await queryTask;
+      cancelPendingStreamRaf();
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -2411,8 +2451,25 @@ export const RaisePage: React.FC = () => {
                 res.error.message.includes('No LLM configured') ||
                 res.error.message.includes('No active LLM provider')));
 
+          const isQuotaOrAuthExhausted =
+            res.error?.status === 429 ||
+            res.error?.status === 401 ||
+            res.error?.status === 402 ||
+            res.error?.code === 'RATE_LIMIT_EXCEEDED' ||
+            (typeof res.error?.message === 'string' &&
+              /quota|rate limit|exhausted|resource_exhausted|credit/i.test(res.error.message));
+
           if (isNoLlm) {
             handleOpenConfigureLlm();
+          } else if (isQuotaOrAuthExhausted) {
+            const errorDetails = createErrorDetails(res.error, null);
+            showErrorPopup(
+              'LLM Quota or Key Required',
+              `${errorDetails.message}\n\nTip: Connect your Google Developer Programme Premium (Gemini Pro) account in the Control Center for uninterrupted high-quota inference.`,
+              async () => {
+                handleOpenConfigureLlm();
+              }
+            );
           } else {
             const errorDetails = createErrorDetails(res.error, null);
             if (!errorDetails.isOffline) {
@@ -2679,22 +2736,13 @@ export const RaisePage: React.FC = () => {
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
-          const cleanText = sanitizeStreamText(fullAccumulated);
-          latestStreamedTextRef.current = cleanText;
-          setConversation((prev) => {
-            const updated = [...prev];
-            if (updated[assistantIndex] && updated[assistantIndex].role === 'assistant') {
-              updated[assistantIndex] = {
-                ...updated[assistantIndex],
-                text: cleanText,
-              };
-            }
-            return updated;
-          });
+          // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
+          flushStreamToConversation(assistantIndex, fullAccumulated);
         }
       );
 
       const res = await queryTask;
+      cancelPendingStreamRaf();
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -3009,22 +3057,13 @@ export const RaisePage: React.FC = () => {
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
-          const cleanText = sanitizeStreamText(fullAccumulated);
-          latestStreamedTextRef.current = cleanText;
-          setConversation((prev) => {
-            const updated = [...prev];
-            if (updated[assistantIndex] && updated[assistantIndex].role === 'assistant') {
-              updated[assistantIndex] = {
-                ...updated[assistantIndex],
-                text: cleanText,
-              };
-            }
-            return updated;
-          });
+          // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
+          flushStreamToConversation(assistantIndex, fullAccumulated);
         }
       );
 
       const res = await queryTask;
+      cancelPendingStreamRaf();
 
       if (isUnmountedRef.current) return;
       const elapsedSec =

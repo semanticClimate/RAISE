@@ -234,8 +234,11 @@ export const EngineStep: React.FC = () => {
             </div>
           )}
 
-          <div className="text-xs">
+          <div className="flex items-center justify-between text-xs">
             <span className="text-slate-300 font-medium">Configured API Keys:</span>
+            <span className="text-[11px] font-mono text-slate-400">
+              Supports Google Developer (Gemini Pro), Groq, NVIDIA, Mistral
+            </span>
           </div>
 
           <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
@@ -316,7 +319,7 @@ export const EngineStep: React.FC = () => {
                     <div className="relative flex-1">
                       <input
                         type="text"
-                        placeholder="Enter API key (e.g. gsk_..., AIzaSy..., nvapi-..., sk-...)"
+                        placeholder="Enter API key (Google AI Studio AIzaSy..., Groq gsk_..., nvapi-..., sk-...)"
                         value={displayValue}
                         onFocus={() => setFocusedKeyId(item.id)}
                         onBlur={() => setFocusedKeyId(null)}

@@ -26,12 +26,12 @@ export const UnconfiguredNotice: React.FC<UnconfiguredNoticeProps> = ({
   };
 
   const handleQuickLocalConnect = async () => {
-    setLocalNotice('Probing localhost:8000...');
-    const res = await connect('http://localhost:8000');
+    setLocalNotice('Probing 127.0.0.1:8000...');
+    const res = await connect('http://127.0.0.1:8000');
     if (!res.success) {
       const found = await scanLocalPorts();
       if (!found) {
-        setLocalNotice('No local backend found on :8000. Open Settings to paste tunnel URL.');
+        setLocalNotice('No local backend on :8000. Start backend with ./START_RAISE.sh');
         setTimeout(() => setLocalNotice(null), 4000);
       }
     }
@@ -49,16 +49,7 @@ export const UnconfiguredNotice: React.FC<UnconfiguredNoticeProps> = ({
             <span>{localNotice}</span>
           ) : (
             <>
-              Please go to{' '}
-              <button
-                type="button"
-                aria-label="Open Settings"
-                onClick={handleClick}
-                className="font-semibold underline hover:text-amber-950 dark:hover:text-white cursor-pointer"
-              >
-                Settings
-              </button>{' '}
-              and paste your Pipeline Tunneling URL to connect, or{' '}
+              Backend not connected on 127.0.0.1:8000.{' '}
               <button
                 type="button"
                 onClick={handleQuickLocalConnect}
@@ -66,6 +57,15 @@ export const UnconfiguredNotice: React.FC<UnconfiguredNoticeProps> = ({
                 className="font-semibold underline text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-white cursor-pointer ml-0.5"
               >
                 {isConnecting ? 'Connecting...' : 'Connect Local (:8000)'}
+              </button>
+              {', or open '}
+              <button
+                type="button"
+                aria-label="Open Settings"
+                onClick={handleClick}
+                className="font-semibold underline hover:text-amber-950 dark:hover:text-white cursor-pointer"
+              >
+                Settings
               </button>
             </>
           )}

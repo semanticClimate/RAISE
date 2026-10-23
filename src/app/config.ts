@@ -19,7 +19,7 @@ export const EXPECTED_BACKEND_VERSION =
   (import.meta.env.VITE_BACKEND_VERSION as string | undefined) || '1.0.0';
 
 export const config: AppConfig = {
-  apiBaseUrl: envBaseUrl && envBaseUrl.trim() !== '' ? envBaseUrl.trim() : 'http://localhost:8000',
+  apiBaseUrl: envBaseUrl && envBaseUrl.trim() !== '' ? envBaseUrl.trim() : 'http://127.0.0.1:8000',
   apiMode: envMode === 'mock' || envMode === 'remote' || envMode === 'auto' ? envMode : 'remote',
   defaultTimeoutMs: 30000,
   uploadTimeoutMs: 120000, // Large PDFs require 120s for synchronous IBM Docling parsing

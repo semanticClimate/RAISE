@@ -2,17 +2,15 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Copy,
-  Globe,
+  Cpu,
+  HardDrive,
   Laptop,
   RefreshCw,
-  Smartphone,
   Terminal,
-  X,
+  Zap,
 } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { getStoredTunnelUrl, setStoredTunnelUrl } from '../../../app/config';
 import { useModeStore } from '../../../stores/modeStore';
 import { useBackendConnection } from '../../../hooks/useBackendConnection';
 import { Tooltip } from '../components/Tooltip';
@@ -21,32 +19,25 @@ import type { TargetPlatform } from '../types';
 
 export const PlatformStep: React.FC = () => {
   const { hardware, config, updateConfig } = useControlCenterStore();
-  const { appMode, isProbing, latencyMs } = useModeStore();
+  const { appMode, latencyMs } = useModeStore();
   const isConnected = appMode === 'connected';
   const { connect, scanLocalPorts, isConnecting } = useBackendConnection();
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [probeNotice, setProbeNotice] = useState<string | null>(null);
 
-  // Tunnel state
-  const defaultTunnel = config.tunnelUrl || getStoredTunnelUrl() || '';
-  const [tunnelInput, setTunnelInput] = useState(defaultTunnel);
-  const [copied, setCopied] = useState(false);
-
   const handleQuickLocalDetect = async () => {
-    setProbeNotice('Probing localhost:8000...');
-    const res = await connect('http://localhost:8000');
+    setProbeNotice('Probing 127.0.0.1:8000...');
+    const res = await connect('http://127.0.0.1:8000');
     if (res.success) {
-      setTunnelInput('http://localhost:8000');
-      setProbeNotice('Connected to localhost:8000!');
+      setProbeNotice('Connected to 127.0.0.1:8000!');
       setTimeout(() => setProbeNotice(null), 3000);
     } else {
       const found = await scanLocalPorts();
       if (found) {
-        setTunnelInput(found);
         setProbeNotice(`Connected to ${found}!`);
         setTimeout(() => setProbeNotice(null), 3000);
       } else {
-        setProbeNotice('No local backend on :8000. Paste remote tunnel URL.');
+        setProbeNotice('Backend offline on 127.0.0.1:8000. Start backend via ./START_RAISE.sh');
         setTimeout(() => setProbeNotice(null), 4000);
       }
     }
@@ -68,12 +59,12 @@ export const PlatformStep: React.FC = () => {
 
   const clientOSLabel =
     hardware?.platform === 'macos'
-      ? 'Mac'
+      ? 'macOS'
       : hardware?.platform === 'windows'
         ? 'Windows'
         : hardware?.platform === 'linux'
           ? 'Linux'
-          : 'Device';
+          : 'Desktop';
 
   const platforms: {
     id: TargetPlatform;
@@ -84,81 +75,36 @@ export const PlatformStep: React.FC = () => {
     {
       id: 'macos',
       label: 'macOS',
-      sub: 'Desktop Environment (Local Metal acceleration)',
+      sub: 'Apple Silicon / Intel (Metal acceleration)',
       icon: Laptop,
-    },
-    {
-      id: 'web',
-      label: 'Web Client',
-      sub: 'Browser & Remote Cloudflare Tunnel Gateway (Zero Local Download)',
-      icon: Globe,
     },
     {
       id: 'windows',
       label: 'Windows',
-      sub: 'Desktop Environment (Local DirectML / CUDA acceleration)',
+      sub: 'DirectML / CUDA acceleration',
       icon: Laptop,
     },
     {
       id: 'linux',
       label: 'Linux',
-      sub: 'Desktop Environment (Local CUDA / ROCm)',
+      sub: 'CUDA / ROCm Desktop',
       icon: Terminal,
-    },
-    {
-      id: 'android',
-      label: 'Android APK',
-      sub: 'Mobile & Tablet Native Build',
-      icon: Smartphone,
-    },
-    {
-      id: 'ios',
-      label: 'iOS / iPadOS',
-      sub: 'iPhone & iPad Swift Native Build',
-      icon: Smartphone,
     },
   ];
 
   const currentPlatform = platforms.find((p) => p.id === config.targetPlatform) || platforms[0];
   const CurrentIcon = currentPlatform.icon;
 
-  const handleTunnelChange = (val: string) => {
-    setTunnelInput(val);
-    const cleaned = val.trim().replace(/\/+$/, '');
-    updateConfig({ tunnelUrl: cleaned });
-    if (cleaned) {
-      setStoredTunnelUrl(cleaned);
-    }
-  };
-
-  const handleCopyUrl = async () => {
-    if (!tunnelInput) return;
-    try {
-      await navigator.clipboard.writeText(tunnelInput);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback
-    }
-  };
-
-  const handleClearUrl = () => {
-    setTunnelInput('');
-    setStoredTunnelUrl('');
-    updateConfig({ tunnelUrl: '' });
-  };
-
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-150">
       <div>
         <h3 className="text-base font-bold text-white tracking-tight">Device & Operating System</h3>
         <p className="text-xs text-slate-400 mt-0.5">
-          Auto-detected system configuration. Select Web Client to connect via remote tunnel with
-          zero downloads.
+          Auto-detected local workstation environment with hardware acceleration.
         </p>
       </div>
 
-      {/* Single Configuration Box with Dropdown Toggle */}
+      {/* Target Operating System Selector */}
       <div className="rounded-xl bg-[#131622] border border-white/10 overflow-hidden">
         <div
           role="button"
@@ -183,13 +129,14 @@ export const PlatformStep: React.FC = () => {
                   content={
                     <div className="space-y-1 font-mono text-[11px]">
                       <div className="font-bold text-white text-xs border-b border-white/10 pb-1">
-                        {currentPlatform.label} Target
+                        {currentPlatform.label} Workstation
                       </div>
                       <div className="text-slate-300">{currentPlatform.sub}</div>
                     </div>
                   }
                 />
               </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">{currentPlatform.sub}</div>
             </div>
           </div>
 
@@ -198,7 +145,7 @@ export const PlatformStep: React.FC = () => {
               type="button"
               className="text-xs font-semibold px-2.5 py-1 rounded-md border border-white/20 bg-white/10 hover:bg-white/15 text-white transition-all cursor-pointer"
             >
-              {isSelectorOpen ? 'Close' : 'Change Target'}
+              {isSelectorOpen ? 'Close' : 'Switch OS'}
             </button>
             {isSelectorOpen ? (
               <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -208,7 +155,6 @@ export const PlatformStep: React.FC = () => {
           </div>
         </div>
 
-        {/* Vertical Layers Selection Drawer */}
         {isSelectorOpen && (
           <div className="border-t border-white/10 bg-[#0e1017] p-2.5 space-y-1.5 animate-in slide-in-from-top-2 duration-150">
             <div className="text-[11px] font-mono text-slate-400 px-2 pb-1">
@@ -258,140 +204,112 @@ export const PlatformStep: React.FC = () => {
         )}
       </div>
 
-      {/* WEB / GATEWAY TUNNEL CONFIGURATION SECTION */}
-      {(config.targetPlatform === 'web' || !isConnected) && (
-        <div className="p-4 rounded-xl bg-[#131622] border border-white/10 space-y-3 animate-in fade-in duration-150">
-          {/* Status Header */}
-          <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white">Pipeline Tunnel & Gateway</span>
-              <span
-                data-testid="connection-status-dot"
-                className={`relative inline-flex rounded-full h-2 w-2 shrink-0 transition-colors ${
-                  isConnected
-                    ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
-                    : isProbing || isConnecting
-                      ? 'bg-amber-500 animate-pulse ring-2 ring-amber-500/20'
-                      : 'bg-rose-500 ring-2 ring-rose-500/20'
-                }`}
-              />
-              {isConnected ? (
-                <span className="text-[11px] font-mono font-medium text-emerald-400">
-                  • Connected {latencyMs ? `(${latencyMs}ms)` : ''}
-                </span>
-              ) : (
-                <span className="text-[11px] font-mono font-medium text-rose-400">
-                  • Disconnected (Gateway Required)
-                </span>
-              )}
-              <Tooltip
-                content={
-                  <div className="space-y-1 font-mono text-[11px]">
-                    <div className="font-bold text-white text-xs border-b border-white/10 pb-1">
-                      Remote Cloudflare Tunnel & Gateway
-                    </div>
-                    <div className="text-slate-300">
-                      Connect to your remote FastAPI, LangGraph, and vector store gateway with zero
-                      local downloads or GPU requirements.
-                    </div>
-                  </div>
-                }
-              />
-            </div>
+      {/* Hardware Telemetry Specs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Laptop className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Platform</span>
+          </div>
+          <div className="text-xs font-bold text-white truncate">
+            {hardware?.osName || clientOSLabel}
+          </div>
+        </div>
 
-            {!isConnected && (
-              <button
-                type="button"
-                disabled={isConnecting}
-                onClick={handleQuickLocalDetect}
-                className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white border border-white/15 text-[11px] font-mono transition-all cursor-pointer flex items-center gap-1.5"
-                title="Probe local machine for port 8000"
-              >
-                <RefreshCw className={`w-3 h-3 ${isConnecting ? 'animate-spin' : ''}`} />
-                <span>Probe Localhost</span>
-              </button>
+        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Host RAM</span>
+          </div>
+          <div className="text-xs font-bold text-white">
+            {hardware?.totalRamGb ? `${hardware.totalRamGb} GB` : '8+ GB'}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Cpu className="w-3.5 h-3.5 text-purple-400" />
+            <span>CPU Cores</span>
+          </div>
+          <div className="text-xs font-bold text-white">
+            {hardware?.cpuCores ? `${hardware.cpuCores} Cores` : '8 Cores'}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>Acceleration</span>
+          </div>
+          <div className="text-xs font-bold text-white">
+            {hardware?.hasMetalOrCuda ? 'Active' : 'CPU Mode'}
+          </div>
+        </div>
+      </div>
+
+      {/* Local Backend Engine Service Card */}
+      <div className="p-4 rounded-xl bg-[#131622] border border-white/10 space-y-3">
+        <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-white">Local Backend Gateway</span>
+            <span
+              data-testid="connection-status-dot"
+              className={`relative inline-flex rounded-full h-2 w-2 shrink-0 transition-colors ${
+                isConnected
+                  ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
+                  : isConnecting
+                    ? 'bg-amber-500 animate-pulse ring-2 ring-amber-500/20'
+                    : 'bg-rose-500 ring-2 ring-rose-500/20'
+              }`}
+            />
+            {isConnected ? (
+              <span className="text-[11px] font-mono font-medium text-emerald-400">
+                • Active (127.0.0.1:8000) {latencyMs ? `(${latencyMs}ms)` : ''}
+              </span>
+            ) : (
+              <span className="text-[11px] font-mono font-medium text-rose-400">
+                • Offline (127.0.0.1:8000)
+              </span>
             )}
           </div>
 
-          {!isConnected && (
-            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
+          <button
+            type="button"
+            disabled={isConnecting}
+            onClick={handleQuickLocalDetect}
+            className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white border border-white/15 text-[11px] font-mono transition-all cursor-pointer flex items-center gap-1.5"
+            title="Probe local machine for port 8000"
+          >
+            <RefreshCw className={`w-3 h-3 ${isConnecting ? 'animate-spin' : ''}`} />
+            <span>{isConnecting ? 'Probing...' : 'Probe Localhost'}</span>
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-300 leading-relaxed">
+          {isConnected ? (
+            <p className="text-emerald-300/90 font-mono text-[11.5px]">
+              Connected to local RAISE backend engine on 127.0.0.1:8000. Low-latency loopback active.
+            </p>
+          ) : (
+            <p className="text-amber-300/90 text-xs">
               {probeNotice ||
-                'Backend is not detected on this system. Provide your Gateway Link (Cloudflare Tunnel URL or http://localhost:8000) to connect.'}
-            </div>
+                'Local backend service is not detected on 127.0.0.1:8000. Start it via ./START_RAISE.sh (Mac/Linux) or START_RAISE.bat (Windows), then click Probe Localhost.'}
+            </p>
           )}
+        </div>
 
-          {/* Pipeline Tunnel URL Input */}
-          <div className="space-y-1.5">
-            <label
-              htmlFor="pipeline-tunnel-url-input"
-              className="text-xs font-semibold text-slate-200 block"
-            >
-              Pipeline Tunnel / Gateway URL
-            </label>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  id="pipeline-tunnel-url-input"
-                  type="text"
-                  value={tunnelInput}
-                  onChange={(e) => handleTunnelChange(e.target.value)}
-                  placeholder="https://your-tunnel-name.trycloudflare.com or http://localhost:8000"
-                  className="w-full px-3 py-2 pr-9 rounded-lg bg-black/60 border border-white/15 text-white font-mono text-xs placeholder-slate-500 focus:outline-none focus:border-white transition-all"
-                />
-                {tunnelInput.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearUrl}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
-                    title="Clear input"
-                    aria-label="Clear input"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {!isConnected && (
-                <button
-                  type="button"
-                  disabled={isConnecting || !tunnelInput.trim()}
-                  onClick={() => connect(tunnelInput)}
-                  className="px-4 py-2 rounded-lg bg-white hover:bg-slate-200 text-black text-xs font-bold transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                >
-                  {isConnecting ? 'Testing...' : 'Connect'}
-                </button>
-              )}
-            </div>
+        <div className="flex items-center justify-between text-xs text-slate-400 pt-0.5 border-t border-white/5">
+          <div className="font-mono text-[11px] text-slate-300">
+            <span className="text-slate-400">Active System: </span>
+            <strong>
+              {clientOSLabel} • {currentTime || 'Active'}
+            </strong>
           </div>
-
-          {/* Secondary Info: Copy URL + Client System & Time */}
-          <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 pt-0.5">
-            <Tooltip as="span" size="sm" content={copied ? 'Copied!' : 'Copy URL'}>
-              <button
-                type="button"
-                onClick={handleCopyUrl}
-                disabled={!tunnelInput}
-                className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-                aria-label="Copy URL"
-                title={copied ? 'Copied!' : 'Copy URL'}
-              >
-                {copied ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </Tooltip>
-
-            <div className="font-mono text-[11px] text-slate-300">
-              <span className="text-slate-400">Client System & Time: </span>
-              <strong>
-                {clientOSLabel} • {currentTime || '7:25 PM'}
-              </strong>
-            </div>
+          <div className="font-mono text-[11px] text-slate-400">
+            Port: <span className="text-slate-200">8000</span> (Loopback)
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

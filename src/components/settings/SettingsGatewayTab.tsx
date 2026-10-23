@@ -108,11 +108,12 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
     setIsScanningLocal(true);
     setStatusNotice('Scanning local ports (8000, 8001, 8080)...');
     const localCandidates = [
-      'http://localhost:8000',
       'http://127.0.0.1:8000',
+      'http://localhost:8000',
+      'http://127.0.0.1:8001',
       'http://localhost:8001',
-      'http://localhost:8080',
       'http://127.0.0.1:8080',
+      'http://localhost:8080',
     ];
 
     let foundUrl: string | null = null;
@@ -208,7 +209,7 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
             <h3 className="text-base font-semibold text-slate-900 dark:text-white shrink-0">
-              Pipeline Tunnel & Gateway
+              Backend Gateway Connection
             </h3>
 
             {/* Status Dot (Red = Not Connected, Amber = Connecting, Green = Connected) */}
@@ -306,10 +307,9 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
               <div className="flex items-start gap-2 text-rose-800 dark:text-rose-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1 shrink-0" />
                 <div>
-                  <p className="font-semibold">Pipeline Disconnected</p>
+                  <p className="font-semibold">Backend Gateway Disconnected</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Paste your Cloudflare Tunnel URL below and click Connect to establish
-                    connection.
+                    Ensure FastAPI backend is running locally on 127.0.0.1:8000 and click Connect.
                   </p>
                 </div>
               </div>
@@ -335,10 +335,10 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
         </div>
       )}
 
-      {/* 1. Pipeline Tunnel URL Input (with real-time validation & warnings) */}
+      {/* 1. Backend Gateway URL Input (with real-time validation & warnings) */}
       <div className="space-y-1.5">
         <label className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
-          Pipeline Tunnel URL
+          Backend Gateway URL
         </label>
         <div className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">

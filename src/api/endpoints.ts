@@ -36,6 +36,7 @@ export const ENDPOINTS = {
     `/api/chat/sessions/${encodeURIComponent(sessionId)}/drawer/remove`,
   SUBGRAPH_QUERY: '/api/graphrag/subgraph-query',
   AGENT_QUERY: '/api/agent/query',
+  COMMANDS: '/api/commands',
   SEARCH: '/api/search',
   SUGGESTIONS: '/api/suggestions',
   FEEDBACK: '/api/feedback',

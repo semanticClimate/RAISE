@@ -4,6 +4,7 @@ import type { Citation } from '../../types';
 import { cleanRagResponseText } from '../../utils/citationParser';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
 import { CitationBadge, resolveCitationDetail } from '../citations/CitationBadge';
+import { ComparabilityBadge, isComparabilityStatus } from './ComparabilityBadge';
 
 export interface AnswerMarkdownProps {
   content: string;
@@ -429,7 +430,7 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
 
     // Tokenize text into inline elements
     const regex =
-      /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\[\d+(?:\s*,\s*\d+)*\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]+)\)|\*[^*\n]+\*|_[^_\n]+_)/g;
+      /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\[\d+(?:\s*,\s*\d+)*\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]+)\)|\b(?:FULLY_COMPARABLE|CONDITIONALLY_COMPARABLE|CONTEXT_ADJUSTED|NOT_COMPARABLE|INSUFFICIENT_EVIDENCE|EXTERNAL_SUPPLEMENTED|EXTERNAL_PUBLIC_RECORD)\b|\*[^*\n]+\*|_[^_\n]+_)/g;
 
     const elements: React.ReactNode[] = [];
     let lastIndex = 0;
@@ -449,16 +450,35 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
         );
       }
 
-      // Inline code
-      if (matchedStr.startsWith('`') && matchedStr.endsWith('`')) {
+      // Comparability Status pill
+      if (isComparabilityStatus(matchedStr)) {
         elements.push(
-          <code
-            key={`${keyPrefix}-code-${elementIdx++}`}
-            className="px-1.5 py-0.5 mx-0.5 rounded-md bg-slate-100 dark:bg-white/[0.08] text-slate-800 dark:text-slate-200 font-mono text-[12.5px] border border-slate-200/80 dark:border-white/10"
-          >
-            {matchedStr.slice(1, -1)}
-          </code>
+          <ComparabilityBadge
+            key={`${keyPrefix}-cmp-${elementIdx++}`}
+            status={matchedStr}
+          />
         );
+      }
+      // Inline code
+      else if (matchedStr.startsWith('`') && matchedStr.endsWith('`')) {
+        const inner = matchedStr.slice(1, -1);
+        if (isComparabilityStatus(inner)) {
+          elements.push(
+            <ComparabilityBadge
+              key={`${keyPrefix}-cmp-${elementIdx++}`}
+              status={inner}
+            />
+          );
+        } else {
+          elements.push(
+            <code
+              key={`${keyPrefix}-code-${elementIdx++}`}
+              className="px-1.5 py-0.5 mx-0.5 rounded-md bg-slate-100 dark:bg-white/[0.08] text-slate-800 dark:text-slate-200 font-mono text-[12.5px] border border-slate-200/80 dark:border-white/10"
+            >
+              {inner}
+            </code>
+          );
+        }
       }
       // Bold Italic
       else if (matchedStr.startsWith('***') && matchedStr.endsWith('***')) {
@@ -731,9 +751,9 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
             return (
               <div
                 key={idx}
-                className="overflow-x-auto my-4 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-2xs"
+                className="overflow-x-auto my-4 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-2xs scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700"
               >
-                <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                <table className="w-full min-w-[640px] text-left text-xs sm:text-sm border-collapse">
                   <thead className="bg-slate-100/80 dark:bg-white/[0.05] border-b border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-semibold">
                     <tr>
                       {block.headers.map((h, hIdx) => (
@@ -754,16 +774,31 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
                         key={rIdx}
                         className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
                       >
-                        {row.map((cell, cIdx) => (
-                          <td
-                            key={cIdx}
-                            className={`px-4 py-2 text-slate-700 dark:text-slate-300 ${
-                              block.alignments[cIdx] || 'text-left'
-                            }`}
-                          >
-                            {renderInline(cell, `td-${idx}-${rIdx}-${cIdx}`)}
-                          </td>
-                        ))}
+                        {row.map((cell, cIdx) => {
+                          const trimmedCell = cell.trim();
+                          if (isComparabilityStatus(trimmedCell)) {
+                            return (
+                              <td
+                                key={cIdx}
+                                className={`px-4 py-2.5 text-slate-700 dark:text-slate-300 ${
+                                  block.alignments[cIdx] || 'text-left'
+                                }`}
+                              >
+                                <ComparabilityBadge status={trimmedCell} />
+                              </td>
+                            );
+                          }
+                          return (
+                            <td
+                              key={cIdx}
+                              className={`px-4 py-2 text-slate-700 dark:text-slate-300 ${
+                                block.alignments[cIdx] || 'text-left'
+                              }`}
+                            >
+                              {renderInline(cell, `td-${idx}-${rIdx}-${cIdx}`)}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
