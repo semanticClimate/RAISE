@@ -1,15 +1,17 @@
+import { BookOpen, ExternalLink, FileText } from 'lucide-react';
 import React, { useState } from 'react';
 import type { Citation } from '../../types';
 import { cleanRagResponseText } from '../../utils/citationParser';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
-import { CitationBadge } from '../citations/CitationBadge';
+import { CitationBadge, resolveCitationDetail } from '../citations/CitationBadge';
+import { ComparabilityBadge, isComparabilityStatus } from './ComparabilityBadge';
 
 export interface AnswerMarkdownProps {
   content: string;
   citations?: Citation[];
   showCitations?: boolean;
   className?: string;
-  onViewPdf?: (fileName: string, page: number) => void;
+  onViewPdf?: (fileName: string, page: number, mode?: 'page' | 'full' | 'view') => void;
 }
 
 interface CodeBlockProps {
@@ -281,7 +283,7 @@ function parseMarkdownBlocks(text: string): Block[] {
             currentLine.startsWith('\t') ||
             currentLine.startsWith('  '))
         ) {
-          items[items.length - 1].text += '\n' + currentLine.trim();
+          items[items.length - 1].text += `\n${currentLine.trim()}`;
           i++;
         } else {
           break;
@@ -325,7 +327,7 @@ function parseMarkdownBlocks(text: string): Block[] {
             currentLine.startsWith('\t') ||
             currentLine.startsWith('  '))
         ) {
-          items[items.length - 1].text += '\n' + currentLine.trim();
+          items[items.length - 1].text += `\n${currentLine.trim()}`;
           i++;
         } else {
           break;
@@ -393,7 +395,7 @@ function parseMarkdownBlocks(text: string): Block[] {
   return blocks;
 }
 
-export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
+const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
   content,
   citations = [],
   showCitations = false,
@@ -428,14 +430,14 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
 
     // Tokenize text into inline elements
     const regex =
-      /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\[\d+(?:\s*,\s*\d+)*\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]+)\)|\*[^*\n]+\*|_[^_\n]+_)/g;
+      /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\[\d+(?:\s*,\s*\d+)*\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]+)\)|\b(?:FULLY_COMPARABLE|CONDITIONALLY_COMPARABLE|CONTEXT_ADJUSTED|NOT_COMPARABLE|INSUFFICIENT_EVIDENCE|EXTERNAL_SUPPLEMENTED|EXTERNAL_PUBLIC_RECORD)\b|\*[^*\n]+\*|_[^_\n]+_)/g;
 
     const elements: React.ReactNode[] = [];
     let lastIndex = 0;
-    let match: RegExpExecArray | null;
+    let match = regex.exec(text);
     let elementIdx = 0;
 
-    while ((match = regex.exec(text)) !== null) {
+    while (match !== null) {
       const matchStart = match.index;
       const matchEnd = regex.lastIndex;
       const matchedStr = match[0];
@@ -448,16 +450,35 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
         );
       }
 
-      // Inline code
-      if (matchedStr.startsWith('`') && matchedStr.endsWith('`')) {
+      // Comparability Status pill
+      if (isComparabilityStatus(matchedStr)) {
         elements.push(
-          <code
-            key={`${keyPrefix}-code-${elementIdx++}`}
-            className="px-1.5 py-0.5 mx-0.5 rounded-md bg-slate-100 dark:bg-white/[0.08] text-slate-800 dark:text-slate-200 font-mono text-[12.5px] border border-slate-200/80 dark:border-white/10"
-          >
-            {matchedStr.slice(1, -1)}
-          </code>
+          <ComparabilityBadge
+            key={`${keyPrefix}-cmp-${elementIdx++}`}
+            status={matchedStr}
+          />
         );
+      }
+      // Inline code
+      else if (matchedStr.startsWith('`') && matchedStr.endsWith('`')) {
+        const inner = matchedStr.slice(1, -1);
+        if (isComparabilityStatus(inner)) {
+          elements.push(
+            <ComparabilityBadge
+              key={`${keyPrefix}-cmp-${elementIdx++}`}
+              status={inner}
+            />
+          );
+        } else {
+          elements.push(
+            <code
+              key={`${keyPrefix}-code-${elementIdx++}`}
+              className="px-1.5 py-0.5 mx-0.5 rounded-md bg-slate-100 dark:bg-white/[0.08] text-slate-800 dark:text-slate-200 font-mono text-[12.5px] border border-slate-200/80 dark:border-white/10"
+            >
+              {inner}
+            </code>
+          );
+        }
       }
       // Bold Italic
       else if (matchedStr.startsWith('***') && matchedStr.endsWith('***')) {
@@ -552,6 +573,7 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
       }
 
       lastIndex = matchEnd;
+      match = regex.exec(text);
     }
 
     if (lastIndex < text.length) {
@@ -729,15 +751,15 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
             return (
               <div
                 key={idx}
-                className="overflow-x-auto my-4 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-2xs"
+                className="overflow-x-auto my-4 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-2xs scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700"
               >
-                <table className="w-full text-left text-xs sm:text-sm border-collapse">
-                  <thead className="bg-slate-100/80 dark:bg-white/[0.05] border-b border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-semibold">
+                <table className="w-full min-w-[640px] text-left text-xs sm:text-sm border-collapse">
+                  <thead className="sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-semibold shadow-xs">
                     <tr>
                       {block.headers.map((h, hIdx) => (
                         <th
                           key={hIdx}
-                          className={`px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100 ${
+                          className={`sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100 ${
                             block.alignments[hIdx] || 'text-left'
                           }`}
                         >
@@ -752,16 +774,31 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
                         key={rIdx}
                         className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
                       >
-                        {row.map((cell, cIdx) => (
-                          <td
-                            key={cIdx}
-                            className={`px-4 py-2 text-slate-700 dark:text-slate-300 ${
-                              block.alignments[cIdx] || 'text-left'
-                            }`}
-                          >
-                            {renderInline(cell, `td-${idx}-${rIdx}-${cIdx}`)}
-                          </td>
-                        ))}
+                        {row.map((cell, cIdx) => {
+                          const trimmedCell = cell.trim();
+                          if (isComparabilityStatus(trimmedCell)) {
+                            return (
+                              <td
+                                key={cIdx}
+                                className={`px-4 py-2.5 text-slate-700 dark:text-slate-300 ${
+                                  block.alignments[cIdx] || 'text-left'
+                                }`}
+                              >
+                                <ComparabilityBadge status={trimmedCell} />
+                              </td>
+                            );
+                          }
+                          return (
+                            <td
+                              key={cIdx}
+                              className={`px-4 py-2 text-slate-700 dark:text-slate-300 ${
+                                block.alignments[cIdx] || 'text-left'
+                              }`}
+                            >
+                              {renderInline(cell, `td-${idx}-${rIdx}-${cIdx}`)}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -776,7 +813,6 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
             );
           }
 
-          case 'paragraph':
           default: {
             return (
               <p
@@ -789,6 +825,132 @@ export const AnswerMarkdown: React.FC<AnswerMarkdownProps> = ({
           }
         }
       })}
+
+      {/* Grounded Sources & Verified Citations Card */}
+      {showCitations && enrichedCitations && enrichedCitations.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-slate-200/90 dark:border-white/10 select-text">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <BookOpen className="w-3.5 h-3.5 text-blue-500" />
+              <span>Sources ({enrichedCitations.length})</span>
+            </div>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+              Click to view in new tab
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {enrichedCitations.map((cit, citIdx) => {
+              const detail = resolveCitationDetail(cit, citIdx + 1);
+              return (
+                <div
+                  key={`${detail.index}-${detail.fileName}-${citIdx}`}
+                  className="p-3 rounded-xl bg-slate-50/90 dark:bg-white/[0.03] border border-slate-200/90 dark:border-white/10 hover:border-blue-400/60 dark:hover:border-blue-500/60 transition-all duration-150 flex flex-col justify-between group shadow-2xs"
+                >
+                  <div>
+                    {/* Top row: badge + filename + page pill */}
+                    <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 shrink-0">
+                          [{detail.index}]
+                        </span>
+                        <div
+                          className="flex items-center gap-1 text-[12px] font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors"
+                          title={detail.fileName}
+                        >
+                          <FileText className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                          <span className="truncate">{detail.fileName}</span>
+                        </div>
+                      </div>
+
+                      {detail.pageNumber !== undefined && detail.pageNumber > 0 && (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 shrink-0">
+                          Page {detail.pageNumber}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Section heading */}
+                    {detail.heading && (
+                      <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1 line-clamp-1">
+                        {detail.heading}
+                      </div>
+                    )}
+
+                    {/* Excerpt */}
+                    {detail.plainText && (
+                      <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2 italic mb-2">
+                        "{detail.plainText}"
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Quick Action Buttons */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
+                    <a
+                      href={detail.singlePageViewUrl || detail.singlePagePdfUrl || detail.pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (
+                          onViewPdf &&
+                          detail.fileName &&
+                          detail.fileName !== 'Audited Document'
+                        ) {
+                          onViewPdf(detail.fileName, detail.pageNumber || 1, 'page');
+                          return;
+                        }
+                        if (
+                          detail.primaryUrl &&
+                          detail.primaryUrl !== '#' &&
+                          typeof window !== 'undefined'
+                        ) {
+                          window.open(detail.primaryUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors cursor-pointer shadow-2xs no-underline"
+                      title={`Open Page ${detail.pageNumber || 1} in a new tab`}
+                    >
+                      <span>⚡ Open Page {detail.pageNumber || 1}</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+
+                    {detail.pdfUrl && (
+                      <a
+                        href={detail.pdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (
+                            onViewPdf &&
+                            detail.fileName &&
+                            detail.fileName !== 'Audited Document'
+                          ) {
+                            onViewPdf(detail.fileName, detail.pageNumber || 1, 'full');
+                            return;
+                          }
+                          if (typeof window !== 'undefined') {
+                            window.open(detail.pdfUrl, '_blank', 'noopener,noreferrer');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium bg-slate-200/80 hover:bg-slate-300/80 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-slate-700 dark:text-slate-300 rounded-md transition-colors cursor-pointer no-underline"
+                        title="Open full PDF document in a new tab"
+                      >
+                        <span>📖 Full PDF</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export const AnswerMarkdown = React.memo(AnswerMarkdownBase);

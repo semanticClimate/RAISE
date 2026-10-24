@@ -5,11 +5,12 @@
 # Core Web & API Framework
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
+orjson>=3.9.0
 pydantic>=2.7.0
 pydantic-settings>=2.2.0
 python-dotenv>=1.0.0
-python-multipart>=0.0.9
-jinja2>=3.1.0
+python-multipart>=0.0.27
+jinja2>=3.1.5
 
 # Database & Cache Drivers
 sqlalchemy>=2.0.0
@@ -21,7 +22,7 @@ neo4j>=5.26.0
 
 # Networking & Cloud
 httpx>=0.27.0
-requests>=2.31.0
+requests>=2.32.3
 boto3>=1.34.0
 botocore>=1.34.0
 openai>=1.12.0
@@ -34,3 +35,17 @@ numpy>=1.26.0
 pandas>=2.2.0
 antlr4-python3-runtime>=4.13.2
 pymupdf>=1.24.0
+pypdf>=5.1.0
+accelerate>=0.28.0
+gliner>=0.2.0
+
+# High-Performance Tabular Analytics & Embedded Engines
+duckdb>=1.0.0
+polars>=1.0.0
+kuzu>=0.7.0
+structlog>=24.0.0
+
+# GraphRAG Orchestration & Streaming
+langchain-core>=0.3.0
+langgraph>=0.2.0
+sse-starlette>=2.0.0

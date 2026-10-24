@@ -98,16 +98,23 @@ def create_empty_drawer_sse_stream(
             await asyncio.sleep(0.015)
 
         meta_payload = {
-            "reply": reply,
+            "status": "SUCCESS",
+            "query": "",
             "answer": reply,
-            "sources": [],
+            "thread_id": session_id,
+            "session_id": session_id,
             "citations": [],
+            "suggestions": [],
+            "reply": reply,
+            "sources": [],
             "verified_claims": [],
             "subgraph": {"nodes": [], "edges": []},
-            "quality_gate_decision": "accept",
+            "quality_gate_decision": "empty_workspace",
             "mode_used": mode,
-            "session_id": session_id,
-            "thread_id": session_id,
+            "persisted": bool(session_id is not None),
+            "saved": bool(session_id is not None),
+            "persistence_status": "saved" if session_id else "ephemeral",
+            "persistence_error": None,
         }
         yield f"data: {json.dumps(meta_payload)}\n\n"
         yield "data: [DONE]\n\n"
@@ -140,7 +147,8 @@ def create_cached_sse_stream(
             await asyncio.sleep(0.008)
 
         cits = cached.get("citations", []) or []
-        yield f"data: {json.dumps({'status': 'completed', 'sources': cached.get('sources', []), 'citations': cits, 'follow_up_inquiries': cached.get('follow_up_inquiries', []), 'subgraph': cached.get('subgraph', {'nodes': [], 'edges': []})})}\n\n"
+        cached_suggestions = cached.get("suggestions") or cached.get("follow_up_inquiries", []) or []
+        yield f"data: {json.dumps({'status': 'SUCCESS', 'query': cached.get('query', ''), 'answer': cached_ans, 'thread_id': session_id, 'session_id': session_id, 'citations': cits, 'suggestions': cached_suggestions, 'sources': cached.get('sources', []), 'follow_up_inquiries': cached_suggestions, 'subgraph': cached.get('subgraph', {'nodes': [], 'edges': []})})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -248,18 +256,42 @@ def create_chat_sse_stream(
             return
 
         try:
-            result = rag_engine.query_subgraph_graphrag(
-                query=message,
-                hops=req.hops or (1 if mode == "fast" else 2),
-                top_k=req.top_k or (4 if mode == "fast" else 8),
-                document_filter=req.document_filter,
-                active_docs=req.active_docs,
-                mode=mode,
-                thread_id=session_id,
-                chat_history=req.chat_history,
+            yield f"event: stage\ndata: {json.dumps({'stage': 'QUERY_INTAKE', 'node': 'query_intake', 'status': 'active', 'detail': 'Analyzing research query intent & resolving entities'})}\n\n"
+
+            query_task = asyncio.create_task(
+                asyncio.to_thread(
+                    rag_engine.query_subgraph_graphrag,
+                    query=message,
+                    hops=req.hops or (1 if mode == "fast" else 2),
+                    top_k=req.top_k or (4 if mode == "fast" else 8),
+                    document_filter=req.document_filter,
+                    active_docs=req.active_docs,
+                    mode=mode,
+                    thread_id=session_id,
+                    chat_history=req.chat_history,
+                )
             )
+
+            # Keep-Alive Pings: Emit ': ping\n\n' every 3s to keep reverse proxies (Cloudflare/Nginx) from dropping idle SSE connections
+            while not query_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(query_task), timeout=3.0)
+                except asyncio.TimeoutError:
+                    if await request.is_disconnected() or is_aborted(session_id, request_id):
+                        query_task.cancel()
+                        yield f"event: error\ndata: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user'}})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    yield ": ping\n\n"
+
+            result = await query_task
             elapsed = round(time.perf_counter() - t_start, 3)
             record_query_metric(elapsed, success=True)
+
+            # Emit intermediate LangGraph pipeline stage progression
+            for stage_item in result.get("pipeline_stages", []):
+                yield f"event: stage\ndata: {json.dumps(stage_item)}\n\n"
+
             raw_ans = result.get("grounded_answer") or result.get("answer", "")
             answer = sanitize_rag_text(str(raw_ans))
             sources = []
@@ -286,23 +318,32 @@ def create_chat_sse_stream(
                 yield f"data: {json.dumps({'token': token_chunk})}\n\n"
                 await asyncio.sleep(0.012)
 
+            suggestions = result.get("suggestions") or result.get("follow_up_inquiries", []) or []
             # Final metadata event
             final_meta = {
+                "status": "SUCCESS",
+                "query": message,
+                "answer": answer,
+                "thread_id": session_id,
+                "session_id": session_id,
+                "citations": citations,
+                "suggestions": suggestions,
                 "reply": answer,
                 "grounded_answer": answer,
-                "answer": answer,
                 "sources": sources,
-                "citations": citations,
-                "follow_up_inquiries": result.get("follow_up_inquiries", []) or [],
+                "follow_up_inquiries": suggestions,
                 "verified_claims": result.get("verified_claims", []) or [],
+                "top_chunks": result.get("top_chunks", []) or [],
                 "subgraph": result.get("subgraph", {"nodes": [], "edges": []}) or {"nodes": [], "edges": []},
                 "quality_gate_decision": _normalize_quality_gate_decision(result.get("quality_gate_decision", "accept")),
+                "traceability_score": result.get("traceability_score", 0.95),
                 "execution_time": elapsed,
                 "latency_sec": elapsed,
                 "mode_used": mode,
-                "session_id": session_id,
-                "thread_id": session_id,
                 "persisted": bool(session_id is not None),
+                "saved": bool(session_id is not None),
+                "persistence_status": "saved" if session_id else "ephemeral",
+                "persistence_error": None,
             }
 
             # Cache & Persist consolidated response
@@ -320,12 +361,18 @@ def create_chat_sse_stream(
                 postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
                 postgres_manager.save_message(session_id, "assistant", answer, mode=mode, sources=sources)
 
-            # Emit clean completion payload without 'reply' to prevent duplicate text in client.ts
-            yield f"data: {json.dumps({'status': 'completed', 'sources': sources, 'citations': citations, 'follow_up_inquiries': result.get('follow_up_inquiries', []) or [], 'subgraph': final_meta['subgraph'], 'verified_claims': final_meta['verified_claims']})}\n\n"
+            # Emit clean completion payload adhering to standardized contract
+            yield f"data: {json.dumps({'status': 'SUCCESS', 'query': message, 'answer': answer, 'thread_id': session_id, 'session_id': session_id, 'citations': citations, 'suggestions': suggestions, 'sources': sources, 'follow_up_inquiries': suggestions, 'subgraph': final_meta['subgraph'], 'verified_claims': final_meta['verified_claims'], 'top_chunks': final_meta['top_chunks'], 'quality_gate_decision': final_meta['quality_gate_decision'], 'traceability_score': final_meta['traceability_score'], 'execution_time': elapsed})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
             record_query_metric(round(time.perf_counter() - t_start, 3), success=False)
-            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            if hasattr(exc, "detail") and isinstance(exc.detail, dict):
+                err_payload = {"error": exc.detail}
+            elif "NO_LLM_CONFIGURED" in str(exc) or "No functional LLM provider" in str(exc):
+                err_payload = {"error": {"code": "NO_LLM_CONFIGURED", "message": str(exc)}}
+            else:
+                err_payload = {"error": {"code": "PIPELINE_ERROR", "message": str(exc)}}
+            yield f"data: {json.dumps(err_payload)}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

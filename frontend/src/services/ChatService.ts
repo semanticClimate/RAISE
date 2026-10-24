@@ -21,6 +21,8 @@ import {
   type SubgraphQueryRequest,
   type SubgraphQueryResponse,
   SubgraphQueryResponseSchema,
+  type TopChunk,
+  type VerifiedClaim,
 } from '../types';
 import { normalizeCitation } from '../utils/citationParser';
 
@@ -62,7 +64,7 @@ export interface ChatServiceInterface {
     req: SubgraphQueryRequest,
     signal?: AbortSignal,
     onStreamChunk?: (chunk: string, accumulated: string) => void,
-    onStageUpdate?: (stage: any) => void
+    onStageUpdate?: (stage: Record<string, unknown>) => void
   ): Promise<ApiResponse<SubgraphQueryResponse>>;
   queryAgent(
     req: AgentQueryRequest,
@@ -134,7 +136,7 @@ export class ChatService implements ChatServiceInterface {
     req: SubgraphQueryRequest,
     signal?: AbortSignal,
     onStreamChunk?: (chunk: string, accumulated: string) => void,
-    onStageUpdate?: (stage: any) => void
+    onStageUpdate?: (stage: Record<string, unknown>) => void
   ): Promise<ApiResponse<SubgraphQueryResponse>> {
     const effectiveMode = req.mode || (req.hops && req.hops > 1 ? 'expert' : 'fast');
     const startTime = Date.now();
@@ -173,7 +175,7 @@ export class ChatService implements ChatServiceInterface {
         const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
         const meta = streamRes.metadata || {};
         let citations: Citation[] = Array.isArray(meta.citations)
-          ? meta.citations.map((c: any, idx: number) =>
+          ? meta.citations.map((c: unknown, idx: number) =>
               normalizeCitation(c, idx + 1, req.active_docs?.[0])
             )
           : [];
@@ -183,27 +185,35 @@ export class ChatService implements ChatServiceInterface {
           Array.isArray(meta.top_chunks) &&
           meta.top_chunks.length > 0
         ) {
-          citations = meta.top_chunks.map((chk: any, idx: number) =>
-            normalizeCitation(
+          citations = (meta.top_chunks as unknown[]).map((chk: unknown, idx: number) => {
+            const chkObj = chk && typeof chk === 'object' ? (chk as Record<string, unknown>) : {};
+            const chkMeta =
+              chkObj.metadata && typeof chkObj.metadata === 'object'
+                ? (chkObj.metadata as Record<string, unknown>)
+                : {};
+            return normalizeCitation(
               {
-                chunk_id: chk.chunk_id || chk.id,
+                chunk_id: chkObj.chunk_id || chkObj.id,
                 pdf_filename:
-                  chk.pdf_filename ||
-                  chk.filename ||
-                  chk.metadata?.pdf_filename ||
-                  chk.metadata?.filename,
+                  chkObj.pdf_filename ||
+                  chkObj.filename ||
+                  chkMeta.pdf_filename ||
+                  chkMeta.filename,
                 primary_page:
-                  chk.primary_page ?? chk.page ?? chk.metadata?.primary_page ?? chk.metadata?.page,
-                heading: chk.heading || chk.metadata?.heading,
-                plain_text: chk.plain_text || chk.text || chk.content,
-                similarity: chk.similarity,
+                  chkObj.primary_page ?? chkObj.page ?? chkMeta.primary_page ?? chkMeta.page,
+                heading: chkObj.heading || chkMeta.heading,
+                plain_text: chkObj.plain_text || chkObj.text || chkObj.content,
+                similarity: typeof chkObj.similarity === 'number' ? chkObj.similarity : 0.9,
               },
               idx + 1,
               req.active_docs?.[0]
-            )
-          );
+            );
+          });
         }
-        const subgraph = meta.subgraph || { nodes: [], edges: [] };
+        const subgraph =
+          meta.subgraph && typeof meta.subgraph === 'object'
+            ? (meta.subgraph as SubgraphQueryResponse['subgraph'])
+            : { nodes: [], edges: [] };
 
         const synthesizedResp: SubgraphQueryResponse = {
           query: req.query,
@@ -216,29 +226,32 @@ export class ChatService implements ChatServiceInterface {
           citations,
           verified_claims: (Array.isArray(meta.verified_claims)
             ? meta.verified_claims
-            : []) as any[],
-          quality_gate_decision: meta.quality_gate_decision || 'accept',
+            : []) as VerifiedClaim[],
+          quality_gate_decision: (meta.quality_gate_decision as SubgraphQueryResponse['quality_gate_decision']) || 'accept',
           selected_tools: (Array.isArray(meta.selected_tools)
             ? meta.selected_tools
             : []) as string[],
-          cypher_repair_count: meta.cypher_repair_count ?? 0,
-          path_critic_expanded: meta.path_critic_expanded ?? false,
-          top_chunks: (Array.isArray(meta.top_chunks) ? meta.top_chunks : []) as any[],
-          retry_count: meta.retry_count ?? 0,
+          cypher_repair_count: typeof meta.cypher_repair_count === 'number' ? meta.cypher_repair_count : 0,
+          path_critic_expanded: Boolean(meta.path_critic_expanded),
+          top_chunks: (Array.isArray(meta.top_chunks) ? meta.top_chunks : []) as TopChunk[],
+          retry_count: typeof meta.retry_count === 'number' ? meta.retry_count : 0,
           decomposed_queries: (Array.isArray(meta.decomposed_queries)
             ? meta.decomposed_queries
             : []) as string[],
-          // Forward dynamic follow-up chips from terminal SSE payload
           follow_up_inquiries: Array.isArray(meta.follow_up_inquiries)
-            ? meta.follow_up_inquiries
-            : meta.suggestions || [],
+            ? (meta.follow_up_inquiries as string[])
+            : Array.isArray(meta.suggestions)
+              ? (meta.suggestions as string[])
+              : [],
           suggestions: Array.isArray(meta.suggestions)
-            ? meta.suggestions
-            : meta.follow_up_inquiries || [],
-          persisted: meta.persisted,
-          saved: meta.saved,
-          persistence_status: meta.persistence_status,
-          persistence_error: meta.persistence_error,
+            ? (meta.suggestions as string[])
+            : Array.isArray(meta.follow_up_inquiries)
+              ? (meta.follow_up_inquiries as string[])
+              : [],
+          persisted: typeof meta.persisted === 'boolean' ? meta.persisted : undefined,
+          saved: typeof meta.saved === 'boolean' ? meta.saved : undefined,
+          persistence_status: typeof meta.persistence_status === 'string' ? meta.persistence_status : undefined,
+          persistence_error: typeof meta.persistence_error === 'string' ? meta.persistence_error : null,
         };
         const parsed = SubgraphQueryResponseSchema.safeParse(synthesizedResp);
         return {
@@ -249,15 +262,7 @@ export class ChatService implements ChatServiceInterface {
         };
       }
 
-      // If /api/chat returned a 404 or failed to connect, continue to try standard request fallback
-      if (streamRes.status !== 404 && streamRes.error && streamRes.status !== 0) {
-        return {
-          data: null,
-          error: streamRes.error,
-          isMock: false,
-          status: streamRes.status,
-        };
-      }
+      // If /api/chat stream failed, continue and fall back to standard JSON request and SUBGRAPH_QUERY
     }
 
     // 2. Standard JSON call: First try /api/chat
@@ -280,7 +285,7 @@ export class ChatService implements ChatServiceInterface {
       request_id: req.request_id,
     };
 
-    const chatRes = await apiClient.request<any>(ENDPOINTS.CHAT, undefined, {
+    const chatRes = await apiClient.request<Record<string, unknown>>(ENDPOINTS.CHAT, undefined, {
       method: 'POST',
       body: JSON.stringify(chatPayload),
       signal,
@@ -291,15 +296,26 @@ export class ChatService implements ChatServiceInterface {
     if (chatRes.status === 200 && chatRes.data) {
       const data = chatRes.data;
       const answerText =
-        data.reply ||
-        data.response ||
-        data.answer ||
-        data.message ||
-        data.output ||
-        data.grounded_answer ||
-        (typeof data === 'string' ? data : JSON.stringify(data));
+        (typeof data.reply === 'string' ? data.reply : undefined) ||
+        (typeof data.response === 'string' ? data.response : undefined) ||
+        (typeof data.answer === 'string' ? data.answer : undefined) ||
+        (typeof data.message === 'string' ? data.message : undefined) ||
+        (typeof data.output === 'string' ? data.output : undefined) ||
+        (typeof data.grounded_answer === 'string' ? data.grounded_answer : undefined) ||
+        JSON.stringify(data);
 
       const actualDurationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
+      const isRefusal =
+        answerText.includes('INSUFFICIENT_EVIDENCE') ||
+        answerText.toLowerCase().includes('do not contain sufficient evidence') ||
+        answerText.toLowerCase().includes('unable to verify');
+      const normalizedDecision: SubgraphQueryResponse['quality_gate_decision'] =
+        data.quality_gate_decision && data.quality_gate_decision !== 'accept'
+          ? (data.quality_gate_decision as SubgraphQueryResponse['quality_gate_decision'])
+          : isRefusal
+            ? 'unable_to_verify'
+            : ((data.quality_gate_decision as SubgraphQueryResponse['quality_gate_decision']) || 'accept');
+
       const synthesizedResp: SubgraphQueryResponse = {
         query: req.query,
         grounded_answer: sanitizeStreamText(answerText),
@@ -313,58 +329,69 @@ export class ChatService implements ChatServiceInterface {
             : actualDurationSec,
         traceability_score:
           typeof data.traceability_score === 'number' ? data.traceability_score : 0.95,
-        subgraph: data.subgraph || { nodes: [], edges: [] },
+        subgraph:
+          data.subgraph && typeof data.subgraph === 'object'
+            ? (data.subgraph as SubgraphQueryResponse['subgraph'])
+            : { nodes: [], edges: [] },
         citations: (() => {
           let cits: Citation[] = Array.isArray(data.citations)
-            ? data.citations.map((c: any, idx: number) =>
+            ? data.citations.map((c: unknown, idx: number) =>
                 normalizeCitation(c, idx + 1, req.active_docs?.[0])
               )
             : [];
           if (cits.length === 0 && Array.isArray(data.top_chunks) && data.top_chunks.length > 0) {
-            cits = data.top_chunks.map((chk: any, idx: number) =>
-              normalizeCitation(
+            cits = (data.top_chunks as unknown[]).map((chk: unknown, idx: number) => {
+              const chkObj = chk && typeof chk === 'object' ? (chk as Record<string, unknown>) : {};
+              const chkMeta =
+                chkObj.metadata && typeof chkObj.metadata === 'object'
+                  ? (chkObj.metadata as Record<string, unknown>)
+                  : {};
+              return normalizeCitation(
                 {
-                  chunk_id: chk.chunk_id || chk.id,
+                  chunk_id: chkObj.chunk_id || chkObj.id,
                   pdf_filename:
-                    chk.pdf_filename ||
-                    chk.filename ||
-                    chk.metadata?.pdf_filename ||
-                    chk.metadata?.filename,
+                    chkObj.pdf_filename ||
+                    chkObj.filename ||
+                    chkMeta.pdf_filename ||
+                    chkMeta.filename,
                   primary_page:
-                    chk.primary_page ??
-                    chk.page ??
-                    chk.metadata?.primary_page ??
-                    chk.metadata?.page,
-                  heading: chk.heading || chk.metadata?.heading,
-                  plain_text: chk.plain_text || chk.text || chk.content,
-                  similarity: chk.similarity,
+                    chkObj.primary_page ??
+                    chkObj.page ??
+                    chkMeta.primary_page ??
+                    chkMeta.page,
+                  heading: chkObj.heading || chkMeta.heading,
+                  plain_text: chkObj.plain_text || chkObj.text || chkObj.content,
+                  similarity: typeof chkObj.similarity === 'number' ? chkObj.similarity : 0.9,
                 },
                 idx + 1,
                 req.active_docs?.[0]
-              )
-            );
+              );
+            });
           }
           return cits;
         })(),
-        verified_claims: Array.isArray(data.verified_claims) ? data.verified_claims : [],
-        quality_gate_decision: data.quality_gate_decision || 'accept',
-        selected_tools: Array.isArray(data.selected_tools) ? data.selected_tools : [],
-        cypher_repair_count: data.cypher_repair_count ?? 0,
-        path_critic_expanded: data.path_critic_expanded ?? false,
-        top_chunks: Array.isArray(data.top_chunks) ? data.top_chunks : [],
-        retry_count: data.retry_count ?? 0,
-        decomposed_queries: Array.isArray(data.decomposed_queries) ? data.decomposed_queries : [],
-        // Forward dynamic follow-up chips from response payload
+        verified_claims: (Array.isArray(data.verified_claims) ? data.verified_claims : []) as VerifiedClaim[],
+        quality_gate_decision: normalizedDecision,
+        selected_tools: Array.isArray(data.selected_tools) ? (data.selected_tools as string[]) : [],
+        cypher_repair_count: typeof data.cypher_repair_count === 'number' ? data.cypher_repair_count : 0,
+        path_critic_expanded: Boolean(data.path_critic_expanded),
+        top_chunks: (Array.isArray(data.top_chunks) ? data.top_chunks : []) as TopChunk[],
+        retry_count: typeof data.retry_count === 'number' ? data.retry_count : 0,
+        decomposed_queries: Array.isArray(data.decomposed_queries) ? (data.decomposed_queries as string[]) : [],
         follow_up_inquiries: Array.isArray(data.follow_up_inquiries)
-          ? data.follow_up_inquiries
-          : data.suggestions || [],
+          ? (data.follow_up_inquiries as string[])
+          : Array.isArray(data.suggestions)
+            ? (data.suggestions as string[])
+            : [],
         suggestions: Array.isArray(data.suggestions)
-          ? data.suggestions
-          : data.follow_up_inquiries || [],
-        persisted: data.persisted,
-        saved: data.saved,
-        persistence_status: data.persistence_status,
-        persistence_error: data.persistence_error,
+          ? (data.suggestions as string[])
+          : Array.isArray(data.follow_up_inquiries)
+            ? (data.follow_up_inquiries as string[])
+            : [],
+        persisted: typeof data.persisted === 'boolean' ? data.persisted : undefined,
+        saved: typeof data.saved === 'boolean' ? data.saved : undefined,
+        persistence_status: typeof data.persistence_status === 'string' ? data.persistence_status : undefined,
+        persistence_error: typeof data.persistence_error === 'string' ? data.persistence_error : null,
       };
 
       const parsed = SubgraphQueryResponseSchema.safeParse(synthesizedResp);
@@ -376,26 +403,35 @@ export class ChatService implements ChatServiceInterface {
       };
     }
 
-    // 3. Fallback to /api/graphrag/subgraph-query ONLY if /api/chat is 404 (endpoint not implemented)
-    if (chatRes.status === 404) {
-      return apiClient.request<SubgraphQueryResponse>(
-        ENDPOINTS.SUBGRAPH_QUERY,
-        SubgraphQueryResponseSchema,
-        {
-          method: 'POST',
-          body: JSON.stringify(req),
-          signal,
-          timeoutMs: 90000, // Multi-hop reasoning can take up to 90s
-        }
-      );
+    // 3. Fallback to /api/graphrag/subgraph-query if /api/chat is 404, 500, or errored
+    const fallbackRes = await apiClient.request<SubgraphQueryResponse>(
+      ENDPOINTS.SUBGRAPH_QUERY,
+      SubgraphQueryResponseSchema,
+      {
+        method: 'POST',
+        body: JSON.stringify(req),
+        signal,
+        timeoutMs: 90000,
+      }
+    );
+
+    if (fallbackRes.status === 200 && fallbackRes.data) {
+      const data = fallbackRes.data;
+      const isRefusal =
+        (data.grounded_answer && data.grounded_answer.includes('INSUFFICIENT_EVIDENCE')) ||
+        (data.grounded_answer && data.grounded_answer.toLowerCase().includes('do not contain sufficient evidence'));
+      if (isRefusal && data.quality_gate_decision === 'accept') {
+        data.quality_gate_decision = 'unable_to_verify';
+      }
+      return fallbackRes;
     }
 
-    // If /api/chat returned any other error (400, 422, 500, etc.), return it directly
+    // Return the response error
     return {
       data: null,
-      error: chatRes.error,
+      error: fallbackRes.error || chatRes.error,
       isMock: chatRes.isMock,
-      status: chatRes.status,
+      status: fallbackRes.status || chatRes.status,
     };
   }
 

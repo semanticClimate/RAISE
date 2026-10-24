@@ -99,6 +99,40 @@ async def pull_model_stream(req: ModelPullRequest):
     return StreamingResponse(_stream_model_pull(req.model_name), media_type="text/event-stream")
 
 
+@router.get("/models/discovered", operation_id="get_system_models_discovered")
+@router.get("/models-discovered", operation_id="get_system_models_discovered_alias")
+async def get_discovered_models(provider: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Returns dynamically discovered live models directly queried from configured provider APIs.
+    Backed by ModelDiscoveryEngine with zero hardcoded model registries.
+    """
+    from src.infrastructure.llm.model_discovery import get_model_discovery_engine
+    from src.infrastructure.credentials.manager import get_credential_manager
+    engine = get_model_discovery_engine()
+    cm = get_credential_manager()
+
+    if provider:
+        models = engine.discover_provider_models(provider)
+        return {
+            "provider": provider,
+            "configured": cm.get_credential_status(provider) == "configured",
+            "models": models,
+        }
+
+    discovered: Dict[str, List[str]] = {}
+    known_providers = ["groq", "gemini", "mistral", "nvidia", "cohere", "openai", "openrouter", "vllm", "ollama"]
+    for p in known_providers:
+        if cm.get_credential_status(p) == "configured" or p in ("vllm", "ollama"):
+            models = engine.discover_provider_models(p)
+            if models:
+                discovered[p] = models
+
+    return {
+        "providers": discovered,
+        "total_models": sum(len(m) for m in discovered.values()),
+    }
+
+
 @router.get("/models/catalog")
 async def get_models_catalog() -> List[Dict[str, Any]]:
     """
@@ -108,6 +142,12 @@ async def get_models_catalog() -> List[Dict[str, Any]]:
     """
     from src.features.system import get_dynamic_model_catalog
     return get_dynamic_model_catalog()
+
+
+@router.get("/status")
+async def get_system_status() -> Dict[str, Any]:
+    """Returns real-time status of all backend subsystems and configuration."""
+    return _get_current_configuration()
 
 
 # Backward compatibility aliases

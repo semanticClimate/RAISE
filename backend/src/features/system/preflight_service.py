@@ -53,7 +53,7 @@ def check_hf_model_cached(repo_id: str) -> bool:
 def check_docling_pymupdf() -> bool:
     """Verifies that either PyMuPDF or Docling is available for document parsing."""
     try:
-        import pymupdf
+        import pymupdf  # PyMuPDF
         return True
     except ImportError:
         pass
@@ -85,7 +85,7 @@ def _background_download_worker(repo_ids: List[str]):
             try:
                 from huggingface_hub import snapshot_download
                 logger.info(f"Pre-flight downloading {repo_id}...")
-                snapshot_download(repo_id=repo_id, resume_download=True)
+                snapshot_download(repo_id=repo_id)
             except Exception as e:
                 logger.warning(f"Failed to snapshot download {repo_id}: {e}")
             _ASSET_DOWNLOAD_PROGRESS = round(((idx + 1) / total) * 100, 1)

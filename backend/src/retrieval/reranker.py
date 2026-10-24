@@ -37,6 +37,18 @@ from src.retrieval.entity_filtering import filter_entity_mismatches
 logger = logging.getLogger("raise.retrieval.reranker")
 
 _CROSS_ENCODER_MODEL_CACHE: Dict[str, Any] = {}
+_GLOBAL_FLASHRANKER: Optional[Any] = None
+
+
+def _get_global_flashranker() -> Optional[Any]:
+    global _GLOBAL_FLASHRANKER
+    if _GLOBAL_FLASHRANKER is None:
+        try:
+            from flashrank import Ranker
+            _GLOBAL_FLASHRANKER = Ranker()
+        except Exception:
+            _GLOBAL_FLASHRANKER = False
+    return _GLOBAL_FLASHRANKER if _GLOBAL_FLASHRANKER is not False else None
 
 
 def is_table_candidate(candidate: Dict[str, Any] | Any) -> bool:
@@ -109,23 +121,21 @@ class CrossEncoderReranker:
             dev = "cuda" if torch.cuda.is_available() else "cpu"
             token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
             try:
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", category=UserWarning)
-                    try:
-                        loaded_model = CrossEncoder(
-                            self.model_name,
-                            device=dev,
-                            token=token,
-                            local_files_only=True,
-                        )
-                    except Exception:
-                        loaded_model = CrossEncoder(
-                            self.model_name,
-                            device=dev,
-                            token=token,
-                        )
-                    self.model = loaded_model
-                    _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
+                try:
+                    loaded_model = CrossEncoder(
+                        self.model_name,
+                        device=dev,
+                        token=token,
+                        local_files_only=True,
+                    )
+                except Exception:
+                    loaded_model = CrossEncoder(
+                        self.model_name,
+                        device=dev,
+                        token=token,
+                    )
+                self.model = loaded_model
+                _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
             except Exception:
                 try:
                     fallback_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
@@ -222,13 +232,9 @@ class CrossEncoderReranker:
                 raw_scores = self.model.predict(all_pairs, batch_size=64, show_progress_bar=False)
                 all_scores = [float(s) for s in raw_scores]
             except Exception:
-                all_scores = []
-                for p_q, p_snip in all_pairs:
-                    all_scores.extend(self._heuristic_cross_attention_scores(p_q, [(p_q, p_snip)]))
+                all_scores = self._score_with_flashrank_or_heuristic(all_pairs)
         else:
-            all_scores = []
-            for p_q, p_snip in all_pairs:
-                all_scores.extend(self._heuristic_cross_attention_scores(p_q, [(p_q, p_snip)]))
+            all_scores = self._score_with_flashrank_or_heuristic(all_pairs)
 
         n_candidates = len(candidates)
         reranked = []
@@ -295,6 +301,37 @@ class CrossEncoderReranker:
                 expanded_results.append(cand)
 
         return expanded_results[:top_n]
+
+    def _score_with_flashrank_or_heuristic(self, pairs: List[Tuple[str, str]]) -> List[float]:
+        """
+        Ultra-fast CPU transformer reranking using FlashRank (sub-query aware, zero-crash).
+        Falls back to lexical cross-attention heuristic only if FlashRank is unavailable.
+        """
+        if not pairs:
+            return []
+        try:
+            from flashrank import RerankRequest
+            ranker = _get_global_flashranker()
+            if ranker is not None:
+                query_groups: Dict[str, List[Tuple[int, str]]] = {}
+                for idx, (q, passage_text) in enumerate(pairs):
+                    query_groups.setdefault(q, []).append((idx, passage_text))
+
+                scores = [0.5] * len(pairs)
+                for q_text, p_items in query_groups.items():
+                    passages = [{"id": orig_idx, "text": txt} for orig_idx, txt in p_items]
+                    req = RerankRequest(query=q_text, passages=passages)
+                    results = ranker.rerank(req)
+                    for item in results:
+                        scores[item["id"]] = float(item["score"])
+                return scores
+        except Exception as e:
+            logger.debug("FlashRank unavailable (%s); falling back to lexical heuristics.", e)
+
+        all_scores = []
+        for p_q, p_snip in pairs:
+            all_scores.extend(self._heuristic_cross_attention_scores(p_q, [(p_q, p_snip)]))
+        return all_scores
 
     def _heuristic_cross_attention_scores(
         self, query: str, pairs: List[Tuple[str, str]]

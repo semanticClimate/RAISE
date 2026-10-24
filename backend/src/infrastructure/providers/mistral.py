@@ -17,8 +17,8 @@ from src.infrastructure.providers.http_client import safe_http_request, Provider
 logger = logging.getLogger("raise.infrastructure.providers.mistral")
 
 DEFAULT_MISTRAL_ENDPOINT = "https://api.mistral.ai/v1"
-DEFAULT_MISTRAL_MODEL = "open-mistral-nemo"
-FALLBACK_MISTRAL_MODELS = ["open-mistral-7b", "codestral-latest", "mistral-small-latest"]
+DEFAULT_MISTRAL_MODEL = "mistral-small-latest"
+FALLBACK_MISTRAL_MODELS = ["mistral-small-latest", "open-mistral-nemo", "codestral-latest", "mistral-large-latest"]
 
 
 class MistralProvider(LLMProvider):

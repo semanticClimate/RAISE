@@ -52,19 +52,6 @@ const detectDefaultPlatform = (): TargetPlatform => {
   if (typeof window === 'undefined') return 'macos';
   const ua = window.navigator.userAgent.toLowerCase();
   const platform = (window.navigator.platform || '').toLowerCase();
-
-  // Distinguish iPad from MacBook:
-  // iPadOS Safari sends 'MacIntel' with maxTouchPoints > 1, but lacks physical keyboard/trackpad profile
-  // MacBook Air has maxTouchPoints === 0 (or 1 on trackpad) and contains 'macintosh' / 'mac os x'
-  const isTouchDevice =
-    typeof window !== 'undefined' &&
-    'ontouchstart' in window &&
-    window.navigator.maxTouchPoints > 1;
-  const isIPad =
-    /ipad/.test(ua) || (platform === 'macintel' && isTouchDevice && !ua.includes('macintosh'));
-  const isIPhone = /iphone|ipod/.test(ua);
-  if (isIPad || isIPhone) return 'ios';
-  if (/android/.test(ua)) return 'android';
   if (/macintosh|mac os x|macintel|darwin/.test(ua) || /mac|darwin/.test(platform)) return 'macos';
   if (/win/.test(platform) || /windows/.test(ua)) return 'windows';
   if (/linux/.test(platform) || /linux/.test(ua)) return 'linux';
@@ -424,6 +411,14 @@ export const useControlCenterStore = create<ControlCenterState>()(
           mergedConfig.tunnelUrl.includes('estimates-racial-aud-strap')
         ) {
           mergedConfig.tunnelUrl = '';
+        }
+        // Normalize platform away from 'web' or mobile to native OS target
+        if (
+          mergedConfig.targetPlatform === 'web' ||
+          mergedConfig.targetPlatform === 'ios' ||
+          mergedConfig.targetPlatform === 'android'
+        ) {
+          mergedConfig.targetPlatform = defaultPlatform;
         }
         if (!Array.isArray(mergedConfig.apiKeys) || mergedConfig.apiKeys.length === 0) {
           mergedConfig.apiKeys = [

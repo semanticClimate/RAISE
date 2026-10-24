@@ -106,12 +106,6 @@ class SubprocessTunnelManager:
                         self.public_url = found_url
                         self._url_event.set()
                         logger.info(f"Cloudflare Public Tunnel URL established: {self.public_url}")
-                        print("\n" + "\033[1;92m" + "═" * 78 + "\033[0m")
-                        print(f" \033[1;92m🌐 PUBLIC EDGE TUNNEL ACTIVE:\033[0m \033[1;96m{self.public_url}\033[0m")
-                        print(f" \033[97m   Share this URL with your frontend developer:\033[0m")
-                        print(f" \033[1;93m   VITE_API_URL={self.public_url}\033[0m")
-                        print(f" \033[90m   Local Gateway target: http://127.0.0.1:{self.port}\033[0m")
-                        print("\033[1;92m" + "═" * 78 + "\033[0m\n", flush=True)
 
         await asyncio.gather(
             read_stream(self.process.stdout),

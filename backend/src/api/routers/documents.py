@@ -190,39 +190,14 @@ async def load_vault_defaults(rag_engine: Any = Depends(get_rag_engine)):
 
 
 @router.get("/api/pdf/{filename}")
+@router.get("/api/documents/{filename}/pdf")
 async def get_pdf_file(filename: str):
     """
     Serves physical PDF for deep-linked in-browser viewing with #page=N.
     Enforces HTTP 206 Partial Content byte ranges, inline display, and long-term caching.
+    Guaranteed containment strictly within DOCUMENTS_DIR with zero host path traversal.
     """
-    import os
-    import urllib.parse
-
-    clean_name = urllib.parse.unquote(filename).strip()
-
-    # Search candidates: DOWNLOAD_DIR, DOCUMENTS_DIR, user Downloads
-    candidates = [
-        DOWNLOAD_DIR / clean_name,
-        DOCUMENTS_DIR / clean_name,
-        Path(os.path.expanduser(f"~/Downloads/{clean_name}")),
-    ]
-
-    target_path = None
-    for cand in candidates:
-        if cand.exists() and cand.is_file():
-            target_path = cand
-            break
-
-    if not target_path:
-        for parent_dir in (DOWNLOAD_DIR, DOCUMENTS_DIR):
-            if parent_dir.exists():
-                for f in parent_dir.glob("*.pdf"):
-                    if f.name.lower() == clean_name.lower():
-                        target_path = f
-                        break
-            if target_path:
-                break
-
+    target_path = _resolve_document_file(filename)
     if not target_path or not target_path.exists():
         raise HTTPException(status_code=404, detail=f"Document '{filename}' not found.")
 
@@ -238,15 +213,27 @@ async def get_pdf_file(filename: str):
 
 
 def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
-    """Resolves raw filename, URI-encoded name, stem, or document ID to a physical PDF file path."""
-    import os
+    """
+    Resolves raw filename, URI-encoded name, stem, or document ID to a physical PDF file path.
+    Guarantees strict containment within DOCUMENTS_DIR and completely neutralizes
+    directory traversal attacks (e.g. '../../', null bytes, leading slashes).
+    """
     import urllib.parse
 
-    clean = urllib.parse.unquote(doc_identifier).strip()
-    # 1. Direct path check in DOCUMENTS_DIR / DOWNLOAD_DIR
-    for p in (DOCUMENTS_DIR / clean, DOWNLOAD_DIR / clean):
-        if p.exists() and p.is_file():
-            return p
+    clean_raw = str(urllib.parse.unquote(doc_identifier)).replace("\x00", "").strip()
+    # Strip any directory traversal components, path separators, or drive letters
+    clean_base = clean_raw.replace("\\", "/").rstrip("/").split("/")[-1]
+    clean = Path(clean_base).name
+    if not clean or clean in (".", ".."):
+        return None
+
+    doc_dir_resolved = DOCUMENTS_DIR.resolve()
+
+    # 1. Direct path check strictly within DOCUMENTS_DIR
+    direct_cand = (DOCUMENTS_DIR / clean).resolve()
+    if direct_cand.is_relative_to(doc_dir_resolved) and direct_cand.exists() and direct_cand.is_file():
+        return direct_cand
+
     # 2. Check manifest for matching id, filename, or stem
     if MANIFEST_FILE.exists():
         try:
@@ -255,21 +242,24 @@ def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
                 d_id = str(doc.get("id") or "")
                 d_fn = str(doc.get("filename") or "")
                 if clean in (d_id, d_fn, Path(d_fn).stem):
-                    cand = DOCUMENTS_DIR / d_fn
-                    if cand.exists() and cand.is_file():
+                    manifest_fn = Path(d_fn.replace("\\", "/").rstrip("/").split("/")[-1]).name
+                    cand = (DOCUMENTS_DIR / manifest_fn).resolve()
+                    if cand.is_relative_to(doc_dir_resolved) and cand.exists() and cand.is_file():
                         return cand
         except Exception:
             pass
-    # 3. Case-insensitive search across candidate directories
-    for parent in (DOCUMENTS_DIR, DOWNLOAD_DIR):
-        if parent.exists():
-            for f in parent.glob("*.pdf"):
-                if f.name.lower() == clean.lower() or f.stem.lower() == clean.lower() or f.name.lower() == f"{clean.lower()}.pdf":
-                    return f
-    # 4. User downloads fallback
-    user_dl = Path(os.path.expanduser(f"~/Downloads/{clean}"))
-    if user_dl.exists() and user_dl.is_file():
-        return user_dl
+
+    # 3. Case-insensitive search strictly across DOCUMENTS_DIR
+    if DOCUMENTS_DIR.exists():
+        for f in DOCUMENTS_DIR.glob("*.pdf"):
+            try:
+                f_res = f.resolve()
+                if f_res.is_relative_to(doc_dir_resolved) and f_res.is_file():
+                    if f.name.lower() == clean.lower() or f.stem.lower() == clean.lower() or f.name.lower() == f"{clean.lower()}.pdf":
+                        return f_res
+            except (ValueError, RuntimeError):
+                continue
+
     return None
 
 
@@ -311,42 +301,40 @@ async def get_pdf_single_page(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to open PDF document: {e}")
 
-    total_pages = doc.page_count
-    if page_number > total_pages:
-        doc.close()
-        raise HTTPException(
-            status_code=404,
-            detail=f"Page {page_number} exceeds document page count ({total_pages}).",
-        )
+    try:
+        total_pages = doc.page_count
+        if page_number > total_pages:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Page {page_number} exceeds document page count ({total_pages}).",
+            )
 
-    p_idx = page_number - 1
-    path_lower = request.url.path.lower()
-    if path_lower.endswith("/image") or path_lower.endswith("/png"):
-        fmt = "image"
-    elif path_lower.endswith("/view"):
-        fmt = "view"
-    elif path_lower.endswith("/pdf"):
-        fmt = "pdf"
-    else:
-        fmt = (format or "pdf").lower().strip()
+        p_idx = page_number - 1
+        path_lower = request.url.path.lower()
+        if path_lower.endswith("/image") or path_lower.endswith("/png"):
+            fmt = "image"
+        elif path_lower.endswith("/view"):
+            fmt = "view"
+        elif path_lower.endswith("/pdf"):
+            fmt = "pdf"
+        else:
+            fmt = (format or "pdf").lower().strip()
 
-    if fmt in ("image", "png", "img"):
-        page = doc.load_page(p_idx)
-        pix = page.get_pixmap(dpi=150)
-        img_bytes = pix.tobytes("png")
-        doc.close()
-        return Response(
-            content=img_bytes,
-            media_type="image/png",
-            headers={
-                "Content-Disposition": f'inline; filename="{target_path.stem}_p{page_number}.png"',
-                "Cache-Control": "public, max-age=604800",
-            },
-        )
-    elif fmt == "view":
-        doc.close()
-        encoded_name = urllib.parse.quote(target_path.name)
-        html_content = f"""<!DOCTYPE html>
+        if fmt in ("image", "png", "img"):
+            page = doc.load_page(p_idx)
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
+            return Response(
+                content=img_bytes,
+                media_type="image/png",
+                headers={
+                    "Content-Disposition": f'inline; filename="{target_path.stem}_p{page_number}.png"',
+                    "Cache-Control": "public, max-age=604800",
+                },
+            )
+        elif fmt == "view":
+            encoded_name = urllib.parse.quote(target_path.name)
+            html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -458,22 +446,22 @@ async def get_pdf_single_page(
   </main>
 </body>
 </html>"""
-        return HTMLResponse(content=html_content)
-    else:
-        # Default: Single-Page PDF stream
-        single_doc = pymupdf.open()
-        single_doc.insert_pdf(doc, from_page=p_idx, to_page=p_idx)
-        pdf_bytes = single_doc.tobytes()
-        single_doc.close()
+            return HTMLResponse(content=html_content)
+        else:
+            # Default: Single-Page PDF stream
+            with pymupdf.open() as single_doc:
+                single_doc.insert_pdf(doc, from_page=p_idx, to_page=p_idx)
+                pdf_bytes = single_doc.tobytes()
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{target_path.stem}_page_{page_number}.pdf"',
+                    "Cache-Control": "public, max-age=604800",
+                },
+            )
+    finally:
         doc.close()
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'inline; filename="{target_path.stem}_page_{page_number}.pdf"',
-                "Cache-Control": "public, max-age=604800",
-            },
-        )
 
 
 @router.get("/api/documents/{document_id}/status")

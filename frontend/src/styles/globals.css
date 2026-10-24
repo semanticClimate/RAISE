@@ -101,6 +101,28 @@
   }
 }
 
+/* Modern Standard Scrollbar & Layout Stability (Chrome Baseline) */
+html {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
+}
+
+html.dark {
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+
+/* Prevent scroll chaining on modals, dialogs, drawers */
+.overscroll-contain {
+  overscroll-behavior: contain;
+}
+
+/* Google PageSpeed / Core Web Vitals - Defer offscreen rendering */
+.content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 160px;
+}
+
 /* Custom Academic Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

@@ -72,8 +72,9 @@ class AsyncParallelRetriever:
     async def _search_sparse_lexical(
         self,
         query: str,
-        top_k: int = 6,
+        top_k: int = 12,
         active_docs: Optional[List[str]] = None,
+        doc_filter: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Run sparse BM25 search independently across the entire document chunk corpus."""
         loop = asyncio.get_running_loop()
@@ -85,15 +86,23 @@ class AsyncParallelRetriever:
 
             # 1. Gather all corpus chunks from disk or vector engine
             corpus_chunks = []
-            chunks_dir = Path(__file__).parent.parent / "data" / "processed" / "chunks"
-            if chunks_dir.exists():
-                for cf in chunks_dir.glob("*_chunks.json"):
-                    try:
-                        c_list = json.loads(cf.read_text(encoding="utf-8"))
-                        if isinstance(c_list, list):
-                            corpus_chunks.extend(c_list)
-                    except Exception:
-                        pass
+            base_candidates = [
+                Path(__file__).resolve().parents[2] / "data" / "processed" / "chunks",
+                Path(__file__).resolve().parents[1] / "data" / "processed" / "chunks",
+                Path("backend/data/processed/chunks"),
+                Path("data/processed/chunks"),
+            ]
+            for bdir in base_candidates:
+                if bdir.exists():
+                    for cf in bdir.glob("*_chunks.json"):
+                        try:
+                            c_list = json.loads(cf.read_text(encoding="utf-8"))
+                            if isinstance(c_list, list):
+                                corpus_chunks.extend(c_list)
+                        except Exception:
+                            pass
+                    if corpus_chunks:
+                        break
 
             if not corpus_chunks and hasattr(self.pipeline, "vector_engine") and self.pipeline.vector_engine.collection:
                 try:
@@ -114,6 +123,7 @@ class AsyncParallelRetriever:
                 return self.pipeline.vector_engine.search(
                     query=" ".join(query_tokens) if query_tokens else query,
                     top_k=top_k,
+                    doc_filter=doc_filter,
                     active_docs=active_docs,
                 )
 
@@ -123,7 +133,7 @@ class AsyncParallelRetriever:
                 self._cached_bm25 = cached_index
                 self._cached_chunk_count = len(corpus_chunks)
 
-            results = cached_index.search(query, top_k=top_k, active_docs=active_docs)
+            results = cached_index.search(query, top_k=top_k, active_docs=active_docs, doc_filter=doc_filter)
             return results
 
         return await loop.run_in_executor(None, _bm25_search)
@@ -173,7 +183,7 @@ class AsyncParallelRetriever:
                             seen_ent.add((cid, ename))
                             elabel = r.get("entity_label") or "Entity"
                             rtype = r.get("rel_type") or "CONNECTED_TO"
-                            doc_val = r.get("doc_id") or doc_filter or "general_graph"
+                            doc_pdf = doc_val if (doc_val and doc_val.endswith(".pdf")) else (f"{doc_val}.pdf" if doc_val and doc_val not in ("general_graph", "global_doc") else None)
                             records.append({
                                 "chunk_id": f"neo4j_{cid}_{ename}",
                                 "plain_text": f"Knowledge Graph Dynamic Entity [{elabel}]: {ename} (Relation: -[{rtype}]- with Chunk {cid})",
@@ -182,7 +192,8 @@ class AsyncParallelRetriever:
                                     "doc_id": doc_val,
                                     "primary_page": 1,
                                     "heading": f"Graph Entity: {ename}",
-                                    "pdf_filename": doc_val if doc_val.endswith(".pdf") else f"{doc_val}.pdf",
+                                    "pdf_filename": doc_pdf,
+                                    "is_graph_entity": True,
                                 },
                             })
                     except Exception:
@@ -229,6 +240,7 @@ class AsyncParallelRetriever:
                             rel_info = f" -> [{rel}] -> ({nbr})" if rel and nbr else ""
                             fact_info = f" (Details: {detail})" if detail else ""
                             
+                            doc_pdf = doc if (doc and doc.endswith(".pdf")) else (f"{doc}.pdf" if doc and doc not in ("general_graph", "global_doc") else None)
                             records.append({
                                 "chunk_id": f"neo4j_{nid}",
                                 "plain_text": f"Knowledge Graph Entity [{ntype}]: {name}{rel_info}{fact_info}",
@@ -237,7 +249,8 @@ class AsyncParallelRetriever:
                                     "doc_id": doc,
                                     "primary_page": page,
                                     "heading": f"Graph Entity: {name}",
-                                    "pdf_filename": doc if doc.endswith(".pdf") else f"{doc}.pdf",
+                                    "pdf_filename": doc_pdf,
+                                    "is_graph_entity": True,
                                 },
                             })
                     except Exception:
@@ -271,18 +284,18 @@ class AsyncParallelRetriever:
     async def retrieve_parallel_and_fuse(
         self,
         query: str,
-        top_k: int = 6,
+        top_k: int = 16,
         hops: int = 2,
         doc_filter: Optional[str] = None,
         active_docs: Optional[List[str]] = None,
-        rerank_top_n: int = 5,
+        rerank_top_n: int = 10,
     ) -> Dict[str, Any]:
         """
         Triggers Dense, Sparse, and Graph retrievers in parallel with asyncio.gather,
         applies Reciprocal Rank Fusion, and contextually reranks candidates with BGE-Reranker-Large.
         """
         dense_task = self._search_dense_vector(query, top_k=top_k, doc_filter=doc_filter, active_docs=active_docs)
-        sparse_task = self._search_sparse_lexical(query, top_k=top_k, active_docs=active_docs)
+        sparse_task = self._search_sparse_lexical(query, top_k=top_k, active_docs=active_docs, doc_filter=doc_filter)
         graph_task = self._traverse_graph_entities(query, hops=hops, active_docs=active_docs, chunk_ids=None)
 
         # 1. Execute Dense, Sparse, and Graph retrieval concurrently
@@ -353,11 +366,11 @@ class AsyncParallelRetriever:
     def retrieve_sync(
         self,
         query: str,
-        top_k: int = 6,
+        top_k: int = 16,
         hops: int = 2,
         doc_filter: Optional[str] = None,
         active_docs: Optional[List[str]] = None,
-        rerank_top_n: int = 5,
+        rerank_top_n: int = 10,
     ) -> Dict[str, Any]:
         """Synchronous wrapper for integration into standard pipeline interfaces."""
         try:

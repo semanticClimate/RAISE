@@ -1,6 +1,7 @@
 import type { Citation } from '../schemas/chat';
 
 export * from '../schemas/chat';
+export * from '../schemas/commands';
 export * from '../schemas/common';
 export * from '../schemas/graph';
 export * from '../schemas/sources';

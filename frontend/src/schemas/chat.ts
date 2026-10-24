@@ -68,7 +68,7 @@ export const GraphNodeSchema = z.object({
   label: z.string().default(''),
   type: z.string().default('Entity'),
   color: z.string().optional(),
-  provenance: z.record(z.any()).default({}),
+  provenance: z.record(z.string(), z.any()).default({}),
 });
 
 export type GraphNode = z.infer<typeof GraphNodeSchema>;
@@ -77,7 +77,7 @@ export const GraphEdgeSchema = z.object({
   source: z.string(),
   target: z.string(),
   relationship: z.string(),
-  provenance: z.record(z.any()).default({}),
+  provenance: z.record(z.string(), z.any()).default({}),
 });
 
 export type GraphEdge = z.infer<typeof GraphEdgeSchema>;
@@ -93,7 +93,7 @@ export const TopChunkSchema = z.object({
   chunk_id: z.string(),
   text: z.string(),
   similarity: z.number().default(0),
-  metadata: z.record(z.any()).default({}),
+  metadata: z.record(z.string(), z.any()).default({}),
 });
 
 export type TopChunk = z.infer<typeof TopChunkSchema>;
@@ -134,7 +134,7 @@ export const SubgraphQueryResponseSchema = z.object({
   traceability_score: z.number().default(0),
   verified_claims: z.array(VerifiedClaimSchema).default([]),
   citations: z.array(CitationSchema).default([]),
-  answer_contract: z.record(z.any()).nullable().optional(),
+  answer_contract: z.record(z.string(), z.any()).nullable().optional(),
   subgraph: SubgraphDataSchema.default({ nodes: [], edges: [] }),
   top_chunks: z.array(TopChunkSchema).default([]),
   quality_gate_decision: QualityGateDecisionSchema.default('accept'),
@@ -142,6 +142,8 @@ export const SubgraphQueryResponseSchema = z.object({
   retry_count: z.number().int().default(0),
   execution_time: z.number().default(0),
   message: z.string().optional(),
+  command: z.string().optional(),
+  meta: z.record(z.string(), z.any()).optional(),
 
   // Dynamic Follow-Up Inquiries & Suggestions from Gateway / LLM Node
   follow_up_inquiries: z.array(z.string()).optional(),
@@ -170,7 +172,7 @@ export const AgentQueryResponseSchema = z.object({
   traceability_score: z.number().default(0),
   verified_claims: z.array(VerifiedClaimSchema).default([]),
   citations: z.array(CitationSchema).default([]),
-  answer_contract: z.record(z.any()).nullable().optional(),
+  answer_contract: z.record(z.string(), z.any()).nullable().optional(),
 });
 
 export type AgentQueryResponse = z.infer<typeof AgentQueryResponseSchema>;

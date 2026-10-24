@@ -58,12 +58,9 @@ try:
 except Exception:
     pass
 
-# Suppress telemetry noise while allowing authenticated HF Hub requests
+# Configure HuggingFace environment settings
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-os.environ["HF_HUB_VERBOSITY"] = "error"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
-warnings.filterwarnings("ignore", message=".*unauthenticated requests.*")
 
 try:
     import huggingface_hub

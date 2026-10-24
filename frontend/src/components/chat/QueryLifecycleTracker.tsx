@@ -6,23 +6,23 @@ import { useEffect, useState } from 'react';
  * Mapping table from backend stages to user-friendly thoughts.
  */
 export const STAGE_THOUGHT_MAP: Record<string, string> = {
-  RECEIVED: 'Analyzing your question...',
-  ROUTING: 'Analyzing question and scoping topics...',
-  QUERY_DECOMPOSITION: 'Structuring research topics...',
-  VECTOR_RETRIEVAL: 'Searching attached documents...',
-  GRAPH_RETRIEVAL: 'Exploring concept relationships in knowledge graph...',
-  FUSION: 'Finding the most relevant evidence...',
-  RERANKING: 'Ranking and verifying evidence chunks...',
-  SYNTHESIS: 'Synthesizing research findings...',
+  RECEIVED: 'Thinking...',
+  ROUTING: 'Thinking...',
+  QUERY_DECOMPOSITION: 'Thinking...',
+  VECTOR_RETRIEVAL: 'Searching documents...',
+  GRAPH_RETRIEVAL: 'Searching documents...',
+  FUSION: 'Reviewing sources...',
+  RERANKING: 'Reviewing sources...',
+  SYNTHESIS: 'Generating response...',
 };
 
 export const RESEARCH_STEPS = [
-  { key: 'ROUTING', label: 'Analyzing your question...' },
-  { key: 'QUERY_DECOMPOSITION', label: 'Structuring research topics...' },
-  { key: 'VECTOR_RETRIEVAL', label: 'Searching attached documents...' },
-  { key: 'GRAPH_RETRIEVAL', label: 'Exploring concept relationships in knowledge graph...' },
-  { key: 'FUSION', label: 'Finding the most relevant evidence...' },
-  { key: 'SYNTHESIS', label: 'Synthesizing research findings...' },
+  { key: 'ROUTING', label: 'Thinking...' },
+  { key: 'QUERY_DECOMPOSITION', label: 'Thinking...' },
+  { key: 'VECTOR_RETRIEVAL', label: 'Searching documents...' },
+  { key: 'GRAPH_RETRIEVAL', label: 'Searching documents...' },
+  { key: 'FUSION', label: 'Reviewing sources...' },
+  { key: 'SYNTHESIS', label: 'Generating response...' },
 ];
 
 export interface QueryLifecycleTrackerProps {

@@ -32,17 +32,30 @@ class PureASGISecurityShieldMiddleware:
     Pure ASGI middleware without BaseHTTPMiddleware task-spawning overhead.
     Provides sub-microsecond IP blacklisting, upload body bypass, and telemetry capture.
     """
+    _active_instance: Optional["PureASGISecurityShieldMiddleware"] = None
 
     def __init__(self, app: Any, redis_client: Optional[Any] = None):
         self.app = app
         self.redis = redis_client
         self.telemetry_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self._worker_task: Optional[asyncio.Task] = None
+        PureASGISecurityShieldMiddleware._active_instance = self
+
+        curr = app
+        while curr:
+            if hasattr(curr, "state"):
+                curr.state.asgi_shield = self
+                break
+            curr = getattr(curr, "app", None)
 
     def start_background_worker(self) -> None:
         """Starts background worker draining telemetry queue and broadcasting to Redis."""
         if not self._worker_task or self._worker_task.done():
-            self._worker_task = asyncio.create_task(self._telemetry_worker())
+            try:
+                loop = asyncio.get_running_loop()
+                self._worker_task = loop.create_task(self._telemetry_worker())
+            except RuntimeError:
+                pass
 
     async def stop_background_worker(self) -> None:
         """Cancels and joins the background telemetry worker."""
@@ -58,9 +71,12 @@ class PureASGISecurityShieldMiddleware:
         while True:
             try:
                 frame = await self.telemetry_queue.get()
-                if self.redis:
+                redis_target = self.redis
+                if not redis_target and PureASGISecurityShieldMiddleware._active_instance:
+                    redis_target = getattr(PureASGISecurityShieldMiddleware._active_instance, "redis", None)
+                if redis_target:
                     try:
-                        await self.redis.publish("channel:telemetry:updates", json.dumps(frame))
+                        await redis_target.publish("channel:telemetry:updates", json.dumps(frame))
                     except Exception:
                         pass
                 self.telemetry_queue.task_done()
@@ -74,6 +90,9 @@ class PureASGISecurityShieldMiddleware:
         if scope_type not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return
+
+        if not self._worker_task or self._worker_task.done():
+            self.start_background_worker()
 
         headers_dict = {
             k.decode("latin-1").lower(): v.decode("latin-1")
@@ -92,9 +111,15 @@ class PureASGISecurityShieldMiddleware:
         scope["state"]["device_meta"] = device_meta
 
         # 2. O(1) Redis Blacklist Check
-        if self.redis:
+        redis_client = self.redis
+        if not redis_client:
+            app_obj = scope.get("app")
+            if app_obj and hasattr(app_obj, "state"):
+                redis_client = getattr(app_obj.state, "redis", None) or getattr(app_obj.state, "redis_client", None)
+
+        if redis_client:
             try:
-                is_blacklisted = await self.redis.exists(f"blacklist:ip:{client_ip}")
+                is_blacklisted = await redis_client.exists(f"blacklist:ip:{client_ip}")
                 if is_blacklisted:
                     if scope_type == "http":
                         await self._reject_http(send, 403, "ERR_BLOCKED_IP: Your IP has been blocked by administrator.")

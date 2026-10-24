@@ -90,6 +90,9 @@ router = APIRouter(tags=["Chat & Reasoning"])
 
 
 @router.post("/api/chat")
+@router.post("/api/chat/stream")
+@router.post("/chat")
+@router.post("/chat/stream")
 async def chat_endpoint(
     req: ChatMessageRequest,
     request: Request,
@@ -102,12 +105,14 @@ async def chat_endpoint(
     """
     Main Chat Endpoint conforming to BACKEND_DEVELOPER_GUIDE.md and system-architecture.md:
     - Supports Fast Mode (speed-first) and Expert Mode (depth-first).
-    - Supports Server-Sent Events (SSE) streaming when stream=True.
+    - Supports Server-Sent Events (SSE) streaming when stream=True or via /api/chat/stream.
     - Token Bucket rate limiting via Redis with X-RateLimit-Remaining header.
     - Caches repeated queries in Redis with X-Redis-Cache header.
     - Persists session turns in PostgreSQL.
     - Supports real-time cancellation via POST /api/chat/abort.
     """
+    if request.url.path.endswith("/stream"):
+        req.stream = True
     raw_query = req.query or req.message or ""
     message = raw_query.strip()
     if not message:
@@ -133,6 +138,23 @@ async def chat_endpoint(
             content={"error": "Too Many Requests", "detail": "API rate limit exceeded. Please retry momentarily."},
             headers=rate_headers,
         )
+
+    # 0.5 Modular Slash Commands System (/compare, /audit, /synthesize, /graph, /bench, /help)
+    if message.startswith("/"):
+        from src.features.commands.chat_bridge import handle_slash_command_chat
+        cmd_resp = await handle_slash_command_chat(
+            req=req,
+            request=request,
+            message=message,
+            session_id=session_id,
+            request_id=request_id,
+            mode=mode,
+            rate_headers=rate_headers,
+            rag_engine=rag_engine,
+            postgres_manager=postgres_manager,
+        )
+        if cmd_resp is not None:
+            return cmd_resp
 
     # 1. Conversational & Memory Routing: Introductions, chit-chat, and memory recall bypass drawer check
     if is_conversational_or_memory_query(message):
@@ -234,13 +256,19 @@ async def chat_endpoint(
 
     if not req.stream and cached:
         cached_ans = cached.get("answer") or cached.get("reply") or cached.get("grounded_answer") or ""
+        suggestions = cached.get("suggestions") or cached.get("follow_up_inquiries", [])
         payload = {
+            "status": "SUCCESS",
+            "query": message,
+            "answer": cached_ans,
+            "thread_id": session_id,
+            "session_id": session_id,
+            "citations": cached.get("citations", []),
+            "suggestions": suggestions,
             "reply": cached_ans,
             "grounded_answer": cached_ans,
-            "answer": cached_ans,
             "sources": cached.get("sources", []),
-            "citations": cached.get("citations", []),
-            "follow_up_inquiries": cached.get("follow_up_inquiries", []),
+            "follow_up_inquiries": cached.get("follow_up_inquiries", suggestions),
             "verified_claims": cached.get("verified_claims", []),
             "subgraph": cached.get("subgraph", {"nodes": [], "edges": []}),
             "top_chunks": cached.get("top_chunks", []),
@@ -251,8 +279,6 @@ async def chat_endpoint(
             "execution_time": 0.005,
             "latency_sec": 0.005,
             "mode_used": mode,
-            "thread_id": session_id,
-            "session_id": session_id,
         }
         if session_id and postgres_manager:
             postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
@@ -279,6 +305,9 @@ async def chat_endpoint(
                 top_k=req.top_k,
                 chat_history=req.chat_history,
             )
+        except HTTPException:
+            record_query_metric(0.0, success=False)
+            raise
         except Exception as exc:
             record_query_metric(0.0, success=False)
             raise HTTPException(status_code=500, detail=f"Pipeline error: {str(exc)}")
@@ -293,13 +322,21 @@ async def chat_endpoint(
         if not sources and result.get("source_documents"):
             sources = result.get("source_documents")
 
+        suggestions = result.get("suggestions") or result.get("follow_up_inquiries", []) or []
+        citations = result.get("citations", []) or []
+
         response_payload = {
+            "status": "SUCCESS",
+            "query": message,
+            "answer": answer,
+            "thread_id": session_id,
+            "session_id": session_id,
+            "citations": citations,
+            "suggestions": suggestions,
             "reply": answer,
             "grounded_answer": answer,
-            "answer": answer,
             "sources": sources,
-            "citations": result.get("citations", []) or [],
-            "follow_up_inquiries": result.get("follow_up_inquiries", []) or [],
+            "follow_up_inquiries": suggestions,
             "verified_claims": result.get("verified_claims", []) or [],
             "subgraph": result.get("subgraph", {"nodes": [], "edges": []}) or {"nodes": [], "edges": []},
             "top_chunks": result.get("top_chunks", []) or [],
@@ -310,9 +347,10 @@ async def chat_endpoint(
             "execution_time": elapsed,
             "latency_sec": elapsed,
             "mode_used": mode,
-            "thread_id": session_id,
-            "session_id": session_id,
             "persisted": bool(session_id is not None),
+            "saved": bool(session_id is not None),
+            "persistence_status": "saved" if session_id else "ephemeral",
+            "persistence_error": None,
         }
 
         # Cache in Redis with semantic vector indexing (TTL: 86400s / 24h)

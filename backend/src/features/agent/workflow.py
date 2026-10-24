@@ -76,7 +76,7 @@ class AcademicGraphRAGWorkflow(
     def _build_graph(self):
         workflow = StateGraph(GraphRAGState)
 
-        # 1. Register All 16 Production Nodes (LangGraph State Machine)
+        # 1. Register All 16 Enterprise Nodes (LangGraph State Machine)
         workflow.add_node("query_intake", self._query_intake_node)
         workflow.add_node("general_chat_responder", self._general_chat_responder_node)
         workflow.add_node("empty_workspace_responder", self._empty_workspace_responder_node)

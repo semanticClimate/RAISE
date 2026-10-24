@@ -111,12 +111,36 @@ def _extract_id_and_dict(item: Any, id_key: str = "chunk_id") -> Tuple[str, Dict
         return doc_id, d
 
 
+def get_intent_modality_weights(intent: Optional[str] = None) -> List[float]:
+    """
+    Computes dynamic modality weights for Reciprocal Rank Fusion:
+    - Tabular / Financial / Metrics: w_dense=0.8, w_sparse=1.4, w_graph=1.0
+    - Multi-Hop / Relational / Governance: w_dense=1.1, w_sparse=0.7, w_graph=1.5
+    - General / Narrative: w_dense=1.3, w_sparse=1.0, w_graph=0.8
+    Channel order: [Dense Vector, Sparse BM25, Knowledge Graph]
+    """
+    if not intent:
+        return [1.0, 1.0, 1.0]
+
+    normalized = intent.strip().lower()
+    if any(k in normalized for k in ("table", "financial", "expenditure", "budget", "tabular", "numeric", "metric")):
+        return [0.8, 1.4, 1.0]
+    elif any(k in normalized for k in ("multihop", "multi-hop", "relation", "governance", "dean", "director", "graph", "hierarchy")):
+        return [1.1, 0.7, 1.5]
+    elif any(k in normalized for k in ("compare", "comparison")):
+        return [1.0, 1.2, 1.2]
+    else:
+        return [1.3, 1.0, 0.8]
+
+
 def reciprocal_rank_fusion(
     ranked_lists: List[List[Dict[str, Any] | Any]],
     k: int = 60,
     id_key: str = "chunk_id",
     weights: Optional[List[float]] = None,
     table_boost: bool = True,
+    min_score_threshold: Optional[float] = None,
+    intent: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Computes Reciprocal Rank Fusion (RRF) over multiple ranked retrieval result sets.
@@ -125,16 +149,21 @@ def reciprocal_rank_fusion(
     Supports:
     - Input items as Python dicts or LangChain Documents.
     - Intent-aware modality weights (Dense, Sparse BM25, Knowledge Graph).
+    - Hard minimum score threshold pruning (min_score_threshold).
     - Table and schedule structural boosting (1.35x).
     """
     if not ranked_lists:
         return []
 
+    active_weights = weights
+    if active_weights is None and intent:
+        active_weights = get_intent_modality_weights(intent)
+
     scores: Dict[str, float] = {}
     doc_map: Dict[str, Dict[str, Any]] = {}
 
     for l_idx, r_list in enumerate(ranked_lists):
-        w = weights[l_idx] if (weights and l_idx < len(weights)) else 1.0
+        w = active_weights[l_idx] if (active_weights and l_idx < len(active_weights)) else 1.0
         for rank, item in enumerate(r_list, start=1):
             doc_id, entry_dict = _extract_id_and_dict(item, id_key=id_key)
             if doc_id not in doc_map:
@@ -149,8 +178,11 @@ def reciprocal_rank_fusion(
 
     results = []
     for rank, doc_id in enumerate(sorted_ids, start=1):
+        final_score = round(scores[doc_id], 6)
+        if min_score_threshold is not None and final_score < min_score_threshold:
+            continue
         entry = dict(doc_map[doc_id])
-        entry["rrf_score"] = round(scores[doc_id], 6)
+        entry["rrf_score"] = final_score
         entry["rrf_rank"] = rank
         results.append(entry)
 
@@ -194,7 +226,7 @@ try:
 
     class HybridRetriever(BaseRetriever):
         """
-        Production LangChain Core BaseRetriever for RAISE GraphRAG.
+        Commercial-grade LangChain Core BaseRetriever for RAISE GraphRAG.
         Executes Dense Vector + Sparse BM25 + Neo4j Graph traversal in parallel,
         fuses candidates via Reciprocal Rank Fusion, and applies Cross-Encoder reranking.
         """

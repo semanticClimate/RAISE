@@ -38,7 +38,8 @@ export function validateTunnelUrl(rawUrl: string): UrlValidationResult {
     trimmed.startsWith('https://localhost') ||
     trimmed.startsWith('http://127.0.0.1') ||
     trimmed.startsWith('https://127.0.0.1') ||
-    trimmed === 'http://localhost:8000';
+    trimmed === 'http://localhost:8000' ||
+    trimmed === 'http://127.0.0.1:8000';
 
   // 1. Incomplete prefix check
   if (
@@ -134,7 +135,7 @@ export function sanitizeTunnelUrl(rawUrl: string): string {
   if (!trimmed) return '';
 
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-    trimmed = 'https://' + trimmed;
+    trimmed = `https://${trimmed}`;
   }
 
   try {

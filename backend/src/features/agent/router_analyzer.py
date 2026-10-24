@@ -153,7 +153,7 @@ class QueryAnalyzerMixin:
         try:
             from src.retrieval.bm25 import SelfContainedBM25
             if not hasattr(self, "_cached_bm25") or self._cached_bm25 is None:
-                chunks_dir = Path(__file__).parent.parent / "data" / "processed" / "chunks"
+                chunks_dir = Path(__file__).resolve().parents[3] / "data" / "processed" / "chunks"
                 corpus_chunks = []
                 if chunks_dir.exists():
                     for cf in chunks_dir.glob("*_chunks.json"):

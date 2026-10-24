@@ -1,16 +1,16 @@
 import type React from 'react';
 
 /**
- * WorkstationSkeleton Component
+ * AppSkeleton Component
  * Pixel-accurate, zero-CLS (Cumulative Layout Shift) loading skeleton
  * mirroring the exact structural layout, fixed header, collapsed sidebar rail,
- * hero welcome title, and glass query box of the RAISE research workstation.
+ * hero welcome title, and glass query box of the RAISE research application.
  */
-export const WorkstationSkeleton: React.FC = () => {
+export const AppSkeleton: React.FC = () => {
   return (
     <div
       role="status"
-      aria-label="Loading RAISE workstation"
+      aria-label="Loading RAISE application"
       className="bg-dot-pattern text-slate-900 dark:text-slate-100 h-screen h-dvh max-h-screen max-h-dvh antialiased flex flex-col font-sans select-none overflow-hidden relative"
     >
       {/* 1. Fixed Top Header matching MainHeader */}

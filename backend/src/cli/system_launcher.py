@@ -151,7 +151,7 @@ def get_synthesizer_status() -> Dict[str, Any]:
         "groq": {
             "key_vars": ["GROQ_API_KEY"],
             "name": "Groq",
-            "model": os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
+            "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         },
         "gemini": {
             "key_vars": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],

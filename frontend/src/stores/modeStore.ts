@@ -119,10 +119,10 @@ export const useModeStore = create<ModeState>((set, get) => ({
 
   clearTunnelUrl: () => {
     setStoredTunnelUrl('');
-    setApiBaseUrl('http://localhost:8000', false);
+    setApiBaseUrl('http://127.0.0.1:8000', false);
     set({
-      apiBaseUrl: 'http://localhost:8000',
-      isTunnelConfigured: false,
+      apiBaseUrl: 'http://127.0.0.1:8000',
+      isTunnelConfigured: true,
       appMode: 'offline',
       capabilities: null,
       latencyMs: 0,
@@ -236,20 +236,20 @@ export const useModeStore = create<ModeState>((set, get) => ({
         isProbing: false,
         lastConnectedAt: caps.apiReachable ? Date.now() : get().lastConnectedAt,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       set({
         capabilities: null,
         appMode: 'offline',
         isProbing: false,
-        probeError: err?.message || 'Capability probe failed',
+        probeError: err instanceof Error ? err.message : String(err ?? 'Capability probe failed'),
       });
     }
   },
 }));
 
-// Automatically check connection on startup if tunnel URL is saved
-if (typeof window !== 'undefined' && initialTunnel && initialTunnel.trim() !== '') {
+// Automatically probe backend connectivity on application launch
+if (typeof window !== 'undefined') {
   setTimeout(() => {
     useModeStore.getState().runCapabilityProbe();
-  }, 100);
+  }, 50);
 }

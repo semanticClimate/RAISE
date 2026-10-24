@@ -18,8 +18,9 @@ export interface RequestOptions extends RequestInit {
     total_steps?: number;
     label?: string;
     detail?: string;
+    [key: string]: unknown;
   }) => void;
-  onMetadata?: (metadata: Record<string, any>) => void;
+  onMetadata?: (metadata: Record<string, unknown>) => void;
 }
 
 export interface ApiResponse<T> {
@@ -33,13 +34,31 @@ export interface StreamResult {
   text: string;
   error: ApiError | null;
   status: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+}
+
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    'message' in err &&
+    typeof (err as { message: unknown }).message === 'string'
+  ) {
+    return (err as { message: string }).message;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 class ApiClient {
   public async request<T>(
     endpoint: string,
-    schema?: z.ZodType<T, any, any>,
+    schema?: { safeParse: (data: unknown) => { success: true; data: T } | { success: false; error: z.ZodError } },
     options: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
     const method = options.method || 'GET';
@@ -49,11 +68,13 @@ class ApiClient {
     let details: string | undefined;
     if (typeof options.body === 'string') {
       try {
-        const parsed = JSON.parse(options.body) as Record<string, any>;
-        details = parsed.query
-          ? `Query: "${parsed.query.slice(0, 70)}${parsed.query.length > 70 ? '...' : ''}"`
-          : parsed.message
-            ? `Message: "${parsed.message.slice(0, 70)}${parsed.message.length > 70 ? '...' : ''}"`
+        const parsed = JSON.parse(options.body) as Record<string, unknown>;
+        const query = typeof parsed.query === 'string' ? parsed.query : undefined;
+        const message = typeof parsed.message === 'string' ? parsed.message : undefined;
+        details = query
+          ? `Query: "${query.slice(0, 70)}${query.length > 70 ? '...' : ''}"`
+          : message
+            ? `Message: "${message.slice(0, 70)}${message.length > 70 ? '...' : ''}"`
             : options.body.slice(0, 100);
       } catch {
         details = options.body.slice(0, 100);
@@ -91,7 +112,7 @@ class ApiClient {
     // 1. MOCK MODE
     if (currentMode === 'mock' && !options.skipModeCheck) {
       const normErr = normalizeError(
-        new Error('Mock adapter is not included in production deployment build.'),
+        new Error('Mock adapter is not included in live deployment build.'),
         endpoint,
         0
       );
@@ -110,7 +131,7 @@ class ApiClient {
 
     // Merge external signal if provided
     if (options.signal) {
-      options.signal.addEventListener('abort', () => controller.abort());
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
     }
 
     const headers: Record<string, string> = {
@@ -120,8 +141,8 @@ class ApiClient {
 
     // Attach optional API Key / Bearer token if configured
     const apiKey = getStoredApiKey();
-    if (apiKey && !headers['Authorization']) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
+    if (apiKey && !headers.Authorization) {
+      headers.Authorization = `Bearer ${apiKey}`;
       headers['X-API-Key'] = apiKey;
     }
 
@@ -139,7 +160,7 @@ class ApiClient {
       clearTimeout(timer);
 
       if (!response.ok) {
-        let errJson: any = null;
+        let errJson: unknown = null;
         try {
           errJson = await response.json();
         } catch {
@@ -208,14 +229,15 @@ class ApiClient {
         message: 'Live Gateway Response 200 OK',
       });
       return { data: json as T, error: null, isMock: false, status: response.status };
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timer);
 
+      const errMessage = getErrorMessage(err);
       const isCorsOrOffline =
         err instanceof TypeError &&
-        (err.message.includes('fetch') ||
-          err.message.includes('NetworkError') ||
-          err.message.includes('Failed'));
+        (errMessage.includes('fetch') ||
+          errMessage.includes('NetworkError') ||
+          errMessage.includes('Failed'));
 
       const normErr = isCorsOrOffline
         ? {
@@ -256,7 +278,7 @@ class ApiClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     if (options.signal) {
-      options.signal.addEventListener('abort', () => controller.abort());
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
     }
 
     const headers: Record<string, string> = {
@@ -265,8 +287,8 @@ class ApiClient {
     };
 
     const apiKey = getStoredApiKey();
-    if (apiKey && !headers['Authorization']) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
+    if (apiKey && !headers.Authorization) {
+      headers.Authorization = `Bearer ${apiKey}`;
       headers['X-API-Key'] = apiKey;
     }
 
@@ -292,7 +314,7 @@ class ApiClient {
       clearTimeout(timer);
 
       if (!response.ok) {
-        let errJson: any = null;
+        let errJson: unknown = null;
         try {
           errJson = await response.json();
         } catch {
@@ -327,7 +349,13 @@ class ApiClient {
       const decoder = new TextDecoder();
       let fullText = '';
       let buffer = '';
-      let streamMetadata: Record<string, any> | undefined;
+      let streamMetadata: Record<string, unknown> | undefined;
+
+      const asRecord = (v: unknown): Record<string, unknown> | null =>
+        v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+      const getStringField = (obj: Record<string, unknown> | null, key: string): string | undefined =>
+        obj && typeof obj[key] === 'string' ? (obj[key] as string) : undefined;
 
       const contentType = response.headers.get('content-type') || '';
       const isSse =
@@ -368,22 +396,27 @@ class ApiClient {
           (trimmedPayload.startsWith('[') && trimmedPayload.endsWith(']'))
         ) {
           try {
-            const parsed = JSON.parse(trimmedPayload) as any;
+            const parsed: unknown = JSON.parse(trimmedPayload);
+            const p = asRecord(parsed);
 
             // 1. Check for stage/node progression events
             if (
               currentEvent === 'node_update' ||
               currentEvent === 'stage' ||
-              Boolean(parsed.node) ||
-              Boolean(parsed.stage)
+              p?.node ||
+              p?.stage
             ) {
-              options.onStageUpdate?.(parsed);
+              if (p) {
+                options.onStageUpdate?.(p);
+              }
               return;
             }
 
             if (
               currentEvent === 'citations' ||
-              (Array.isArray(parsed) && parsed.length > 0 && (parsed[0] as any)?.citation_index !== undefined)
+              (Array.isArray(parsed) &&
+                parsed.length > 0 &&
+                asRecord(parsed[0])?.citation_index !== undefined)
             ) {
               streamMetadata = {
                 ...streamMetadata,
@@ -394,14 +427,15 @@ class ApiClient {
             }
 
             // 3. Check for token streaming payloads
+            const deltaObj = asRecord(p?.delta);
             const token =
-              parsed.token ??
-              parsed.text ??
-              parsed.content ??
-              parsed.response ??
-              parsed.delta?.content ??
-              parsed.delta ??
-              parsed.reply ??
+              getStringField(p, 'token') ??
+              getStringField(p, 'text') ??
+              getStringField(p, 'content') ??
+              getStringField(p, 'response') ??
+              getStringField(deltaObj, 'content') ??
+              (typeof p?.delta === 'string' ? p.delta : undefined) ??
+              getStringField(p, 'reply') ??
               null;
             if (typeof token === 'string') {
               if (token.length > 0) {
@@ -413,17 +447,18 @@ class ApiClient {
 
             // 4. Capture completion metadata (citations, subgraph, sources, status, etc.)
             if (
-              parsed.citations ||
-              parsed.subgraph ||
-              parsed.status === 'completed' ||
-              parsed.sources ||
-              parsed.verified_claims
+              p &&
+              (p.citations !== undefined ||
+                p.subgraph !== undefined ||
+                p.status === 'completed' ||
+                p.sources !== undefined ||
+                p.verified_claims !== undefined)
             ) {
               streamMetadata = {
                 ...streamMetadata,
-                ...parsed,
+                ...p,
               };
-              options.onMetadata?.(parsed);
+              options.onMetadata?.(p);
               return;
             }
           } catch {
@@ -440,15 +475,15 @@ class ApiClient {
 
         // If it was an explicit SSE "data: ..." line that is plain text
         if (isData) {
-          fullText += payload + '\n';
-          onChunk?.(payload + '\n', fullText);
+          fullText += `${payload}\n`;
+          onChunk?.(`${payload}\n`, fullText);
           return;
         }
 
         // If plain text line (not JSON)
         if (!trimmedPayload.startsWith('{') && !trimmedPayload.startsWith('[')) {
-          fullText += line + '\n';
-          onChunk?.(line + '\n', fullText);
+          fullText += `${line}\n`;
+          onChunk?.(`${line}\n`, fullText);
         }
       };
 
@@ -494,13 +529,14 @@ class ApiClient {
       });
 
       return { text: fullText, error: null, status: response.status, metadata: streamMetadata };
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timer);
+      const errMessage = getErrorMessage(err);
       const isCorsOrOffline =
         err instanceof TypeError &&
-        (err.message.includes('fetch') ||
-          err.message.includes('NetworkError') ||
-          err.message.includes('Failed'));
+        (errMessage.includes('fetch') ||
+          errMessage.includes('NetworkError') ||
+          errMessage.includes('Failed'));
       const normErr = isCorsOrOffline
         ? {
             code: 'BACKEND_UNREACHABLE',
@@ -511,7 +547,7 @@ class ApiClient {
             retryable: true,
             timestamp: new Date().toISOString(),
           }
-        : normalizeError(err?.message, endpoint, 0);
+        : normalizeError(err, endpoint, 0);
       logToTerminal({
         type: 'ERR',
         method,

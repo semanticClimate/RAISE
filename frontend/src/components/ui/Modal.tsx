@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import type React from 'react';
-import { useEscapeKey } from '../../hooks';
+import { useEscapeKey, useScrollLock } from '../../hooks';
 import { cn } from '../../utils/formatters';
 
 export interface ModalProps {
@@ -23,6 +23,7 @@ export const Modal: React.FC<ModalProps> = ({
   className,
 }) => {
   useEscapeKey(onClose, isOpen);
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 

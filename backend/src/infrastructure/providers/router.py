@@ -113,13 +113,13 @@ class ProviderRouter:
         _cm = get_credential_manager()
 
         self.task_policy: Dict[InferenceTask, str] = {
-            InferenceTask.CHAT: "groq" if self.cloud_allowed else "vllm",  # Phase 1: Low-latency chat
+            InferenceTask.CHAT: primary_cloud if self.cloud_allowed else "vllm",  # Phase 1: Low-latency chat
             InferenceTask.RAG_GENERATION: primary_cloud if self.cloud_allowed else "vllm",  # Phase 2: RAG Answer Synthesis
             InferenceTask.DOCUMENT_EXTRACTION: "gemini",  # Phase 3: Doc Layout & Vision
-            InferenceTask.QUERY_REWRITE: "groq",  # Phase 4: Query Intake & Reformulation
+            InferenceTask.QUERY_REWRITE: primary_cloud if self.cloud_allowed else "vllm",  # Phase 4: Query Intake & Reformulation
             InferenceTask.REASONING: primary_cloud if self.cloud_allowed else "vllm",  # Phase 5: Multi-Hop Relational Reasoning
             InferenceTask.CODE: "mistral" if _cm.get_credential_status("mistral") == "configured" and self.cloud_allowed else (primary_cloud if self.cloud_allowed else "vllm"),  # Phase 6: Code & Formal Cypher
-            InferenceTask.SUMMARIZATION: "groq",  # Phase 7: Community / Executive Summaries
+            InferenceTask.SUMMARIZATION: primary_cloud if self.cloud_allowed else "vllm",  # Phase 7: Community / Executive Summaries
             InferenceTask.RERANKING: "cohere",  # Phase 8: Neural Cross-Attention Reranking
             InferenceTask.STRUCTURED_EXTRACTION: primary_cloud if self.cloud_allowed else "vllm",
             InferenceTask.EMBEDDING: "vllm",  # Local BGE-Large
@@ -133,7 +133,7 @@ class ProviderRouter:
         self.last_used_model: str = ""
 
         # Thread-safe round-robin model rotation across all configured models
-        self.round_robin_enabled = os.getenv("LLM_ROUND_ROBIN", "true").lower() in ("true", "1", "yes") or env_backend in ("round_robin", "all")
+        self.round_robin_enabled = os.getenv("LLM_ROUND_ROBIN", "false").lower() in ("true", "1", "yes") or env_backend in ("round_robin", "all")
         self._rr_lock = threading.Lock()
         self._round_robin_index = 0
 
@@ -151,7 +151,7 @@ class ProviderRouter:
         prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else "groq")
 
         # Multi-model sequence line: Groq, NVIDIA NIM, Mistral, Cohere, Gemini
-        ordered_candidates = ["groq", "nvidia", "mistral", "cohere", "gemini"]
+        ordered_candidates = ["mistral", "cohere", "nvidia", "gemini", "groq"]
         active = []
         if prim in ordered_candidates and prim not in self.disabled_providers and cm.get_credential_status(prim) == "configured":
             active.append(prim)
@@ -358,7 +358,7 @@ class ProviderRouter:
                 cooldown_secs = 15.0 if primary_provider.name == "groq" else 60.0
                 self.provider_cooldowns[primary_provider.name] = time.time() + cooldown_secs
                 logger.info(f"Activated {int(cooldown_secs)}s cooldown for provider '{primary_provider.name}'.")
-            elif "402" in err_msg or "BILLING_RESTRICTED" in err_msg or "credit card" in err_msg.lower() or "403" in err_msg:
+            elif "401" in err_msg or "AUTH_FAILED" in err_msg or "invalid_api_key" in err_msg.lower() or "402" in err_msg or "BILLING_RESTRICTED" in err_msg or "credit card" in err_msg.lower() or "403" in err_msg:
                 self.disabled_providers.add(primary_provider.name)
                 logger.warning(f"Permanently disabled billing-restricted provider '{primary_provider.name}'.")
 

@@ -99,13 +99,13 @@ class PlanExecutorMixin:
         else:
             raw_chunks = self.vector_engine.search(
                 query=plan.query,
-                top_k=12,
+                top_k=16,
                 doc_filter=target_doc,
                 active_docs=active_doc_list,
             )
             bm25_hits = self._get_bm25_search(
                 query=plan.query,
-                top_k=12,
+                top_k=16,
                 doc_filter=target_doc,
                 active_docs=active_doc_list,
             )
@@ -202,7 +202,7 @@ class PlanExecutorMixin:
                 grouped_blocks: Dict[Tuple[str, int], Dict[str, Any]] = {}
                 for c in ordered_chunks[:6]:
                     meta = c.get("metadata", {})
-                    pdf_name = meta.get("pdf_filename") or (active_doc_list[0] if active_doc_list else "Annual Report.pdf")
+                    pdf_name = meta.get("pdf_filename") or (active_doc_list[0] if active_doc_list else "Document")
                     p_page = meta.get("primary_page") or meta.get("physical_page") or meta.get("page")
                     if not p_page or int(p_page) < 1:
                         match = re.search(r"_p0*(\d+)", str(meta.get("chunk_id") or c.get("id") or ""))
@@ -235,9 +235,19 @@ class PlanExecutorMixin:
                 if subgraph and (subgraph.get("edges") or subgraph.get("nodes")):
                     graph_facts = []
                     for edge in subgraph.get("edges", []):
-                        graph_facts.append(f"• Verified Knowledge Graph Fact: {edge.get('source')} --[{edge.get('type')}]--> {edge.get('target')}")
+                        src = str(edge.get('source', '')).strip()
+                        tgt = str(edge.get('target', '')).strip()
+                        rel = str(edge.get('type') or edge.get('relation') or 'RELATED_TO').strip()
+                        # Filter uninformative or malformed entity nodes
+                        src_l = src.lower().strip()
+                        tgt_l = tgt.lower().strip()
+                        if any(s in {"undefined", "unknown", "null", "none", "", "untitled"} for s in (src_l, tgt_l)):
+                            continue
+                        if len(src) < 3 or len(tgt) < 3:
+                            continue
+                        graph_facts.append(f"• Knowledge Fact: {src} --[{rel}]--> {tgt}")
                     if graph_facts:
-                        evidence_blocks.append("Verified Institutional Knowledge Graph Facts:\n" + "\n".join(graph_facts[:8]))
+                        evidence_blocks.append("[BACKGROUND KNOWLEDGE GRAPH CONTEXT (Do NOT cite '[Verified Knowledge Graph Facts]'. Cite source excerpts strictly as [1], [2])]:\n" + "\n".join(graph_facts[:8]))
 
                 if active_doc_list:
                     evidence_blocks.insert(0, f"[STRICT DRAWER BOUNDARY: The user is querying ONLY the active documents attached to their drawer: {', '.join(active_doc_list)}. Answer strictly and exclusively using excerpts from these attached documents. Disregard any unattached documents in the library.]")
@@ -305,7 +315,6 @@ class PlanExecutorMixin:
                     pdf_name = meta.get("pdf_filename", "Document.pdf")
                     claims.append(f"{pdf_name} ({page_str}): Verified via LLM Grounding.")
             else:
-                answer_parts.append("Based on the verified excerpts from your uploaded institutional reports:\n")
                 findings = []
                 if math_result:
                     findings.append(f"• **Deterministic Mathematical Pre-computation** ({math_result.operation}):\n  {math_result.formula_expression} → **Result: {math_result.formatted_result} {math_result.units or ''}**")
@@ -369,7 +378,8 @@ class PlanExecutorMixin:
                     answer_parts.append("\n\n".join(findings))
                     raw_answer = "\n".join(answer_parts)
                 else:
-                    raw_answer = f"The uploaded institutional documents do not contain information related to '{plan.query}'. They cover institutional governance, sponsored research grants, academic degrees, and startup incubation."
+                    doc_ctx = f"in {', '.join(active_doc_list)}" if active_doc_list else "in the uploaded documents"
+                    raw_answer = f"The uploaded document(s) ({doc_ctx}) do not contain verified statements or findings answering '{plan.query}'." 
         else:
             raw_answer = "INSUFFICIENT_EVIDENCE: No matching verified statements or passages were found in the uploaded document(s) for your query."
             claims.append("INSUFFICIENT_EVIDENCE: No matching statements found in uploaded document(s).")
@@ -388,7 +398,7 @@ class PlanExecutorMixin:
         plan.verified_claims = [c.to_dict() for c in contract.claims]
         plan.traceability_score = contract.grounding_score
 
-        plan.grounded_answer, plan.citations = renumber_and_sanitize_citations(raw_answer, citations)
+        plan.grounded_answer, plan.citations = renumber_and_sanitize_citations(raw_answer, citations, query=plan.query)
 
         # 4. Generate 3 contextual follow-up inquiries (fast deterministic mode for speed & quota protection)
         plan.follow_up_inquiries = generate_follow_up_inquiries(

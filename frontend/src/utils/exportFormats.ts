@@ -165,44 +165,7 @@ export function formatMarkdownReport(
     });
   }
 
-  // Verified Claims Section (if available)
-  if (response?.verified_claims && response.verified_claims.length > 0) {
-    lines.push('---');
-    lines.push('');
-    lines.push('## Verified Claims & Fact Checks');
-    lines.push('');
 
-    response.verified_claims.forEach((claim) => {
-      const supported = claim.is_supported ? '[x]' : '[ ]';
-      const citRef =
-        claim.citations_found && claim.citations_found.length > 0
-          ? `(Citations: [${claim.citations_found.join(', ')}])`
-          : '';
-      lines.push(`- ${supported} **${claim.claim_id}:** ${claim.text} ${citRef}`);
-      if (claim.status && claim.status !== 'SUPPORTED') {
-        lines.push(`  - *Status:* \`${claim.status}\``);
-      }
-    });
-    lines.push('');
-  }
-
-  // Knowledge Graph Context Summary (if available)
-  if (response?.subgraph?.nodes && response.subgraph.nodes.length > 0) {
-    lines.push('---');
-    lines.push('');
-    lines.push('## Subgraph Entity Context');
-    lines.push('');
-    lines.push(
-      `Identified **${response.subgraph.nodes.length} entities** and **${
-        response.subgraph.edges?.length || 0
-      } relationships** in the knowledge graph traversal.`
-    );
-    const nodeNames = response.subgraph.nodes.map((n) => `\`${n.name || n.id}\``).slice(0, 15);
-    lines.push(
-      `- Key Entities: ${nodeNames.join(', ')}${response.subgraph.nodes.length > 15 ? ', ...' : ''}`
-    );
-    lines.push('');
-  }
 
   // Footer
   lines.push('---');
@@ -1028,7 +991,7 @@ export function generatePdfBlob(
   const keywordsStr = `RAISE, GraphRAG, A4, Justified, Research Synthesis${uniqueDocs.length > 0 ? `, ${uniqueDocs.join(', ')}` : ''}${uniqueUnis.length > 0 ? `, ${uniqueUnis.join(', ')}` : ''}`;
 
   appendString(
-    `${infoId} 0 obj\n<<\n  /Title (${escapePdfText(`RAISE Report: ${query.slice(0, 60) || 'Research Inquiry'}${safeDocTitle}`)})\n  /Subject (${escapePdfText('Research Assessment Intelligence & Semantic Extraction')})\n  /Author (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')})\n  /Creator (${escapePdfText('RAISE Semantic Research Workstation')})\n  /Producer (${escapePdfText('RAISE PDF Engine 1.4 (ISO A4 Justified)')})\n  /CreationDate (${pdfDate})\n  /ModDate (${pdfDate})\n  /Keywords (${escapePdfText(keywordsStr)})\n>>\nendobj\n`
+    `${infoId} 0 obj\n<<\n  /Title (${escapePdfText(`RAISE Report: ${query.slice(0, 60) || 'Research Inquiry'}${safeDocTitle}`)})\n  /Subject (${escapePdfText('Research Assessment Intelligence & Semantic Extraction')})\n  /Author (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')})\n  /Creator (${escapePdfText('RAISE Semantic Research Platform')})\n  /Producer (${escapePdfText('RAISE PDF Engine 1.4 (ISO A4 Justified)')})\n  /CreationDate (${pdfDate})\n  /ModDate (${pdfDate})\n  /Keywords (${escapePdfText(keywordsStr)})\n>>\nendobj\n`
   );
 
   // Cross Reference Table

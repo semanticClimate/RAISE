@@ -12,8 +12,12 @@ from .graph import router as graph_router
 from .search import router as search_router
 from .agent import router as agent_router
 from .system import router as system_router
+from .auth import router as auth_router
+from .commands import router as commands_router
 
 __all__ = [
+    "auth_router",
+    "commands_router",
     "health_router",
     "developer_router",
     "chat_router",

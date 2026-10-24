@@ -16,12 +16,20 @@ import { Tooltip } from '../components/Tooltip';
 import { platformAdapter } from '../services/platformAdapter';
 import { detectEnvCredentials } from '../services/envDetector';
 import { useControlCenterStore } from '../store/useControlCenterStore';
+import { useDynamicModels } from '../../../hooks/useDynamicModels';
 import type { DynamicLLMModel } from '../types';
 
 export const EngineStep: React.FC = () => {
   const { config, updateConfig, addApiKey, updateApiKey, removeApiKey, setKeyVerification, syncEnvCredentials } =
     useControlCenterStore();
   const envData = detectEnvCredentials();
+
+  const {
+    models: liveDiscoveredLLMs,
+    activeModel: liveActiveModel,
+    isLoading: isLoadingLiveModels,
+    refetch: refetchLiveModels,
+  } = useDynamicModels();
 
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [focusedKeyId, setFocusedKeyId] = useState<string | null>(null);
@@ -98,6 +106,9 @@ export const EngineStep: React.FC = () => {
     try {
       const res = await platformAdapter.pingApiKey(provider, key);
       setKeyVerification(id, res.available, res.latencyMs, res.error);
+      if (res.available) {
+        refetchLiveModels();
+      }
     } catch (err: any) {
       setKeyVerification(id, false, undefined, err?.message || 'Connection failed');
     } finally {
@@ -223,11 +234,14 @@ export const EngineStep: React.FC = () => {
             </div>
           )}
 
-          <div className="text-xs">
+          <div className="flex items-center justify-between text-xs">
             <span className="text-slate-300 font-medium">Configured API Keys:</span>
+            <span className="text-[11px] font-mono text-slate-400">
+              Supports Google Developer (Gemini Pro), Groq, NVIDIA, Mistral
+            </span>
           </div>
 
-          <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+          <div className="space-y-2.5">
             {(config.apiKeys || []).map((item, index) => {
               const show = !!showKeys[item.id];
               const isTesting = testingKeyId === item.id;
@@ -305,7 +319,7 @@ export const EngineStep: React.FC = () => {
                     <div className="relative flex-1">
                       <input
                         type="text"
-                        placeholder="Enter API key (e.g. gsk_..., AIzaSy..., nvapi-..., sk-...)"
+                        placeholder="Enter API key (Google AI Studio AIzaSy..., Groq gsk_..., nvapi-..., sk-...)"
                         value={displayValue}
                         onFocus={() => setFocusedKeyId(item.id)}
                         onBlur={() => setFocusedKeyId(null)}
@@ -363,6 +377,78 @@ export const EngineStep: React.FC = () => {
                 Add Key
               </button>
             )}
+
+            {/* Live Dynamically Discovered Models */}
+            <div className="pt-3 border-t border-white/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 flex-wrap">
+                  <span>Dynamic Model Catalog:</span>
+                  <span className="text-[11px] font-mono text-emerald-400">
+                    {liveDiscoveredLLMs.length} active
+                  </span>
+                  {liveActiveModel && (
+                    <span className="text-[10px] font-mono text-slate-400">
+                      • {liveActiveModel}
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => refetchLiveModels()}
+                  disabled={isLoadingLiveModels}
+                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Rescan active providers"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isLoadingLiveModels ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              {liveDiscoveredLLMs.length === 0 ? (
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                  <span>
+                    No active cloud models detected yet. Add a valid API key above to activate real-time inference.
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {liveDiscoveredLLMs.map((m) => (
+                    <div
+                      key={`${m.provider}-${m.model}`}
+                      className={`p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
+                        m.isActive
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                          : 'bg-[#131622] border-white/10 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            m.isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+                          }`}
+                        />
+                        <span className="font-semibold truncate">{m.displayName}</span>
+                        <code className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-300">
+                          {m.model}
+                        </code>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {m.tier && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
+                            {m.tier}
+                          </span>
+                        )}
+                        {m.isActive && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

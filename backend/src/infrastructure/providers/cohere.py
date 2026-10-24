@@ -23,7 +23,8 @@ logger = logging.getLogger("raise.infrastructure.providers.cohere")
 DEFAULT_COHERE_ENDPOINT = "https://api.cohere.com"
 DEFAULT_COHERE_CHAT_MODEL = "command-r-plus-08-2024"
 DEFAULT_COHERE_EMBED_MODEL = "embed-english-v3.0"
-DEFAULT_COHERE_RERANK_MODEL = "rerank-english-v3.0"
+DEFAULT_COHERE_RERANK_MODEL = "rerank-v3.5"
+CANDIDATE_COHERE_RERANK_MODELS = ["rerank-v3.5", "rerank-english-v3.0"]
 
 
 class CohereProvider(LLMProvider, EmbeddingProvider, RerankerProvider):
@@ -134,22 +135,35 @@ class CohereProvider(LLMProvider, EmbeddingProvider, RerankerProvider):
         if not key:
             raise ProviderHTTPError("Cohere API key is not configured.", classification="NOT_CONFIGURED")
 
-        payload = {
-            "model": self.rerank_model,
-            "query": query,
-            "documents": documents,
-            "top_n": min(top_n, len(documents)),
-        }
+        candidates = [self.rerank_model] + [m for m in CANDIDATE_COHERE_RERANK_MODELS if m != self.rerank_model]
         headers = {"Authorization": f"Bearer {key}"}
+        last_error = None
+        for cand in candidates:
+            payload = {
+                "model": cand,
+                "query": query,
+                "documents": documents,
+                "top_n": min(top_n, len(documents)),
+            }
+            try:
+                resp, _ = safe_http_request(
+                    f"{self.base_url}/v1/rerank",
+                    payload=payload,
+                    headers=headers,
+                    timeout=30.0,
+                )
+                self.rerank_model = cand
+                results = resp.get("results", [])
+                return [(r["index"], float(r["relevance_score"])) for r in results]
+            except Exception as e:
+                last_error = e
+                continue
 
-        resp, _ = safe_http_request(
-            f"{self.base_url}/v1/rerank",
-            payload=payload,
-            headers=headers,
-            timeout=30.0,
-        )
-        results = resp.get("results", [])
-        return [(r["index"], float(r["relevance_score"])) for r in results]
+        if last_error:
+            if isinstance(last_error, ProviderHTTPError):
+                raise last_error
+            raise ProviderHTTPError(f"Cohere rerank failed: {last_error}", classification="MODEL_UNAVAILABLE")
+        return []
 
     # 4. Diagnostic Health Check
     def health_check(self, timeout: float = 5.0) -> ProviderHealth:

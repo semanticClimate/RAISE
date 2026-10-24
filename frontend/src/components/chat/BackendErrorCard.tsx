@@ -193,7 +193,7 @@ export const BackendErrorCard: React.FC<BackendErrorCardProps> = ({
             <button
               type="button"
               onClick={onOpenSettings}
-              aria-label="Configure Gateway & Tunnel"
+              aria-label="Configure Gateway Connection"
               className="px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white/80 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-lg transition-all cursor-pointer"
             >
               Settings
@@ -314,7 +314,7 @@ export const BackendErrorCard: React.FC<BackendErrorCardProps> = ({
             onClick={onOpenSettings}
             className="px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white/80 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-lg transition-all cursor-pointer"
           >
-            Configure Gateway & Tunnel
+            Configure Gateway Connection
           </button>
         )}
       </div>

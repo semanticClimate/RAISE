@@ -1,9 +1,11 @@
 import type React from 'react';
 import { useState } from 'react';
+import { useUiStore } from '../../../stores/uiStore';
 import { aboutContent } from './aboutContent';
 
 export const AboutTab: React.FC = () => {
   const [showAsciiView, setShowAsciiView] = useState(false);
+  const { viewMode, setViewMode } = useUiStore();
   const { header, asciiBlueprint, routerNode, modes, substrateSpecs } = aboutContent;
   const { fastMode, expertMode } = modes;
 
@@ -188,6 +190,36 @@ export const AboutTab: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Developer Diagnostic Mode Toggle */}
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-[#282a2c] border border-slate-200/80 dark:border-[#37393b] space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5 min-w-0">
+            <h4 className="text-xs font-semibold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+              <span>Developer Diagnostic Commands</span>
+            </h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              Show diagnostic commands (/audit, /graph, /synthesize, /bench, /help) in the / autocomplete menu.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={viewMode === 'developer'}
+            onClick={() => setViewMode(viewMode === 'developer' ? 'user' : 'developer')}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              viewMode === 'developer' ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                viewMode === 'developer' ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
         </div>
       </div>
     </div>

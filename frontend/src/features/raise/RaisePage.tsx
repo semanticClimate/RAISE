@@ -21,7 +21,6 @@ import { systemService } from '../../services/SystemService';
 import { useFilterStore } from '../../stores/filterStore';
 import { useModeStore } from '../../stores/modeStore';
 import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../../types';
-import { ensureMinimumDuration } from '../../utils/async';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
 import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { formatBytes } from '../../utils/formatters';
@@ -30,6 +29,8 @@ import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
 import { terminalLogger } from '../../utils/terminalLogger';
 import { formatSessionDate, generateUUID, truncateSessionTitle } from '../../utils/uuid';
 import { useControlCenterStore } from '../control-center/store/useControlCenterStore';
+import { detectEnvCredentials } from '../control-center/services/envDetector';
+import { platformAdapter } from '../control-center/services/platformAdapter';
 import { Header as MainHeader, UnconfiguredNotice } from '../header';
 import { settingsJunction, useSettingsJunction } from '../settings/junction';
 import { Sidebar as MainSidebar } from '../sidebar/Sidebar';
@@ -139,6 +140,52 @@ export const RaisePage: React.FC = () => {
     }
   };
   const isControlCenterOpen = useControlCenterStore((s) => s.isOpen);
+  const ccConfig = useControlCenterStore((s) => s.config);
+  const openControlCenter = useControlCenterStore((s) => s.setOpen);
+  const setControlCenterTab = useControlCenterStore((s) => s.setActiveTab);
+
+  const [dynamicLlms, setDynamicLlms] = useState<Array<{ provider: string; status?: string }>>([]);
+
+  useEffect(() => {
+    if (appMode !== 'connected') return;
+    platformAdapter
+      .getDynamicLLMs()
+      .then((models) => {
+        if (Array.isArray(models)) {
+          setDynamicLlms(models);
+        }
+      })
+      .catch(() => {});
+  }, [appMode]);
+
+  const isLlmConfigured = useMemo(() => {
+    // 1. If backend dynamic LLM endpoint reports active providers ready
+    if (dynamicLlms.some((m) => m.status === 'READY' || m.status === 'ACTIVE')) {
+      return true;
+    }
+    // 2. If local mode, check selected model
+    if (ccConfig.llmDeployment === 'local') {
+      return Boolean(ccConfig.selectedLocalModel);
+    }
+    // 3. If cloud mode, check saved API keys in store
+    const hasConfiguredKey = ccConfig.apiKeys?.some(
+      (k) => k.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+    );
+    if (hasConfiguredKey) return true;
+    // 4. Check client-side environment credentials (.env)
+    const envCreds = detectEnvCredentials();
+    return envCreds.llmKeys.length > 0;
+  }, [dynamicLlms, ccConfig.llmDeployment, ccConfig.selectedLocalModel, ccConfig.apiKeys]);
+
+  const handleOpenConfigureLlm = useCallback(() => {
+    if (appMode !== 'connected') {
+      setControlCenterTab('platform');
+    } else {
+      setControlCenterTab('models');
+    }
+    openControlCenter(true);
+  }, [appMode, openControlCenter, setControlCenterTab]);
+
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -152,8 +199,8 @@ export const RaisePage: React.FC = () => {
   }, []);
 
   // Control Center will ONLY show when there is a backend connected with it,
-  // so that the workstation can download the required modules and initialize the RAISE pipeline.
-  // On the web or when offline (no backend Rust daemon connected), it will NOT show up.
+  // so that the system can download the required modules and initialize the RAISE pipeline.
+  // On the web or when offline (no backend daemon connected), it will NOT show up.
   useEffect(() => {
     if (appMode !== 'connected') return;
 
@@ -1072,10 +1119,22 @@ export const RaisePage: React.FC = () => {
   const selectedDocs = sourceDocs.filter((doc) => doc.selected);
   const activeSourcesCount = selectedDocs.length;
 
-  const handleOpenPdfViewer = (filename: string, pageNumber: number = 1, _heading?: string) => {
+  const handleOpenPdfViewer = (
+    filename: string,
+    pageNumber: number = 1,
+    _heading?: string,
+    mode?: 'page' | 'full' | 'view'
+  ) => {
     if (typeof window !== 'undefined' && filename) {
-      const url = sourceService.getPdfUrl(filename, pageNumber);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      const safePage = Math.max(1, pageNumber || 1);
+      let targetUrl: string;
+      if (mode === 'page' || mode === 'view') {
+        targetUrl = sourceService.getSinglePageViewUrl(filename, safePage);
+      } else {
+        // mode === 'full' or default
+        targetUrl = sourceService.getPdfUrl(filename, safePage);
+      }
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -1087,12 +1146,55 @@ export const RaisePage: React.FC = () => {
   const isUserAbortingRef = useRef<boolean>(false);
   const isUnmountedRef = useRef<boolean>(false);
   const latestStreamedTextRef = useRef<string>('');
+  const streamRafRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
+
+  // Batched 60 FPS streaming flush to React conversation state
+  const flushStreamToConversation = (
+    targetIndex: number | 'last',
+    accumulatedText: string
+  ) => {
+    latestStreamedTextRef.current = accumulatedText;
+    if (streamRafRef.current !== null) return;
+
+    streamRafRef.current = requestAnimationFrame(() => {
+      streamRafRef.current = null;
+      if (isUnmountedRef.current) return;
+      const currentText = latestStreamedTextRef.current;
+      setConversation((prev) => {
+        const updated = [...prev];
+        const idx = targetIndex === 'last' ? updated.length - 1 : targetIndex;
+        if (idx >= 0 && updated[idx] && updated[idx].role === 'assistant') {
+          if (updated[idx].text === currentText) return prev;
+          updated[idx] = {
+            ...updated[idx],
+            text: currentText,
+          };
+          return updated;
+        }
+        if (targetIndex === 'last' && (!updated[idx] || updated[idx].role !== 'assistant')) {
+          return [...updated, { role: 'assistant', text: currentText }];
+        }
+        return prev;
+      });
+    });
+  };
+
+  const cancelPendingStreamRaf = () => {
+    if (streamRafRef.current !== null) {
+      cancelAnimationFrame(streamRafRef.current);
+      streamRafRef.current = null;
+    }
+  };
 
   // Clean unmount cancellation without showing error UI
   useEffect(() => {
     return () => {
       isUnmountedRef.current = true;
+      if (streamRafRef.current !== null) {
+        cancelAnimationFrame(streamRafRef.current);
+        streamRafRef.current = null;
+      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -2221,6 +2323,11 @@ export const RaisePage: React.FC = () => {
     const q = (typeof overrideQuery === 'string' ? overrideQuery : query).trim();
     if (!q || isLoading) return;
 
+    if (!isLlmConfigured) {
+      handleOpenConfigureLlm();
+      return;
+    }
+
     if (isListening) {
       stopVoiceListening();
     }
@@ -2263,6 +2370,10 @@ export const RaisePage: React.FC = () => {
     const executionStartTime = performance.now();
 
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
+    const isCompareCmd = /^\/(?:compare|diff|versus|vs)\b/i.test(q);
+    if (isCompareCmd && activeDocNames.length < 2) {
+      setIsSourcesDrawerOpen(true);
+    }
     const {
       hops: filterHops,
       topK: filterTopK,
@@ -2291,23 +2402,13 @@ export const RaisePage: React.FC = () => {
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
-          // Live progressive stream token updates into conversation
-          const cleanText = sanitizeStreamText(fullAccumulated);
-          latestStreamedTextRef.current = cleanText;
-          setConversation((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.role === 'assistant') {
-              return [...prev.slice(0, -1), { ...last, text: cleanText }];
-            }
-            return [...prev, { role: 'assistant', text: cleanText }];
-          });
+          // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
+          flushStreamToConversation('last', fullAccumulated);
         }
       );
 
-      const res =
-        appMode === 'connected'
-          ? await ensureMinimumDuration(queryTask, 1000, controller.signal)
-          : await queryTask;
+      const res = await queryTask;
+      cancelPendingStreamRaf();
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -2343,19 +2444,47 @@ export const RaisePage: React.FC = () => {
             durationSec: elapsedSec,
           };
         } else {
-          const errorDetails = createErrorDetails(res.error, null);
-          if (!errorDetails.isOffline) {
-            showErrorPopup(errorDetails.title, errorDetails.message, async () => {
-              if (appMode !== 'connected') {
-                await runCapabilityProbe();
+          const isNoLlm =
+            res.error?.code === 'NO_LLM_CONFIGURED' ||
+            (typeof res.error?.message === 'string' &&
+              (res.error.message.includes('NO_LLM_CONFIGURED') ||
+                res.error.message.includes('No LLM configured') ||
+                res.error.message.includes('No active LLM provider')));
+
+          const isQuotaOrAuthExhausted =
+            res.error?.status === 429 ||
+            res.error?.status === 401 ||
+            res.error?.status === 402 ||
+            res.error?.code === 'RATE_LIMIT_EXCEEDED' ||
+            (typeof res.error?.message === 'string' &&
+              /quota|rate limit|exhausted|resource_exhausted|credit/i.test(res.error.message));
+
+          if (isNoLlm) {
+            handleOpenConfigureLlm();
+          } else if (isQuotaOrAuthExhausted) {
+            const errorDetails = createErrorDetails(res.error, null);
+            showErrorPopup(
+              'LLM Quota or Key Required',
+              `${errorDetails.message}\n\nTip: Connect your Google Developer Programme Premium (Gemini Pro) account in the Control Center for uninterrupted high-quota inference.`,
+              async () => {
+                handleOpenConfigureLlm();
               }
-              handleRegenerateResponse(updatedConversation.length);
-            });
+            );
+          } else {
+            const errorDetails = createErrorDetails(res.error, null);
+            if (!errorDetails.isOffline) {
+              showErrorPopup(errorDetails.title, errorDetails.message, async () => {
+                if (appMode !== 'connected') {
+                  await runCapabilityProbe();
+                }
+                handleRegenerateResponse(updatedConversation.length);
+              });
+            }
           }
           assistantMsg = {
             role: 'assistant',
             text: '',
-            error: errorDetails,
+            error: createErrorDetails(res.error, null),
             durationSec: elapsedSec,
           };
         }
@@ -2424,13 +2553,24 @@ export const RaisePage: React.FC = () => {
         setConversation(finalMessages);
       } else {
         const errorDetails = createErrorDetails(null, err);
-        if (!errorDetails.isOffline) {
-          showErrorPopup(errorDetails.title, errorDetails.message, async () => {
-            if (appMode !== 'connected') {
-              await runCapabilityProbe();
-            }
-            handleRegenerateResponse(updatedConversation.length);
-          });
+        const isNoLlm =
+          err?.code === 'NO_LLM_CONFIGURED' ||
+          (typeof err?.message === 'string' &&
+            (err.message.includes('NO_LLM_CONFIGURED') ||
+              err.message.includes('No LLM configured') ||
+              err.message.includes('No active LLM provider')));
+
+        if (isNoLlm) {
+          handleOpenConfigureLlm();
+        } else {
+          if (!errorDetails.isOffline) {
+            showErrorPopup(errorDetails.title, errorDetails.message, async () => {
+              if (appMode !== 'connected') {
+                await runCapabilityProbe();
+              }
+              handleRegenerateResponse(updatedConversation.length);
+            });
+          }
         }
         const errorAssistantMsg: ChatMessage = {
           role: 'assistant',
@@ -2596,25 +2736,13 @@ export const RaisePage: React.FC = () => {
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
-          const cleanText = sanitizeStreamText(fullAccumulated);
-          latestStreamedTextRef.current = cleanText;
-          setConversation((prev) => {
-            const updated = [...prev];
-            if (updated[assistantIndex] && updated[assistantIndex].role === 'assistant') {
-              updated[assistantIndex] = {
-                ...updated[assistantIndex],
-                text: cleanText,
-              };
-            }
-            return updated;
-          });
+          // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
+          flushStreamToConversation(assistantIndex, fullAccumulated);
         }
       );
 
-      const res =
-        appMode === 'connected'
-          ? await ensureMinimumDuration(queryTask, 1000, controller.signal)
-          : await queryTask;
+      const res = await queryTask;
+      cancelPendingStreamRaf();
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -2929,25 +3057,13 @@ export const RaisePage: React.FC = () => {
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
-          const cleanText = sanitizeStreamText(fullAccumulated);
-          latestStreamedTextRef.current = cleanText;
-          setConversation((prev) => {
-            const updated = [...prev];
-            if (updated[assistantIndex] && updated[assistantIndex].role === 'assistant') {
-              updated[assistantIndex] = {
-                ...updated[assistantIndex],
-                text: cleanText,
-              };
-            }
-            return updated;
-          });
+          // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
+          flushStreamToConversation(assistantIndex, fullAccumulated);
         }
       );
 
-      const res =
-        appMode === 'connected'
-          ? await ensureMinimumDuration(queryTask, 1000, controller.signal)
-          : await queryTask;
+      const res = await queryTask;
+      cancelPendingStreamRaf();
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -3333,22 +3449,31 @@ export const RaisePage: React.FC = () => {
         }}
       />
 
-      {/* Upper Side Notification: Gateway Disconnected / Offline Notice with Retry */}
-      {isTunnelConfigured && appMode === 'offline' && (
+      {/* Upper Side Notification: Gateway Disconnected / Offline Notice with Retry & Connect */}
+      {appMode === 'offline' && (
         <div className="fixed top-14 sm:top-16 left-0 sm:left-16 right-0 z-30 flex justify-center px-[clamp(0.5rem,2vw,1rem)] pt-1 pointer-events-none animate-in fade-in slide-in-from-top-1 duration-200">
           <div
             data-testid="gateway-disconnected-notice"
             className="pointer-events-auto inline-flex items-center gap-1.5 sm:gap-2 py-1 px-3 rounded-full bg-rose-500/15 dark:bg-rose-950/75 border border-rose-500/30 text-rose-950 dark:text-rose-200 shadow-sm backdrop-blur-md text-[clamp(10px,2.4vw,12px)] max-w-[calc(100vw-1.5rem)] sm:max-w-none text-center sm:text-left"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 animate-pulse" />
-            <span className="leading-tight truncate sm:whitespace-normal">
-              Gateway not connected properly.
+            <span className="leading-tight truncate sm:whitespace-normal font-medium">
+              Backend Gateway not connected.
             </span>
+            <button
+              type="button"
+              aria-label="Connect Gateway"
+              onClick={handleOpenConfigureLlm}
+              className="font-bold underline hover:text-rose-950 dark:hover:text-white cursor-pointer ml-1 inline-flex items-center gap-1 shrink-0"
+            >
+              Connect Gateway
+            </button>
+            <span className="text-rose-300 dark:text-rose-600">·</span>
             <button
               type="button"
               aria-label="Retry Connection"
               onClick={() => runCapabilityProbe()}
-              className="font-semibold underline hover:text-rose-950 dark:hover:text-white cursor-pointer ml-1 inline-flex items-center gap-1 shrink-0"
+              className="font-medium underline hover:text-rose-950 dark:hover:text-white cursor-pointer inline-flex items-center gap-1 shrink-0"
             >
               <svg
                 className="w-3 h-3"
@@ -3362,15 +3487,6 @@ export const RaisePage: React.FC = () => {
                 <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
               </svg>
               Retry
-            </button>
-            <span className="text-rose-300 dark:text-rose-600">·</span>
-            <button
-              type="button"
-              aria-label="Open Settings"
-              onClick={() => settingsJunction.open('gateway')}
-              className="font-medium underline hover:text-rose-950 dark:hover:text-white cursor-pointer shrink-0"
-            >
-              Settings
             </button>
           </div>
         </div>
@@ -3455,7 +3571,7 @@ export const RaisePage: React.FC = () => {
         <title>{pageDocumentTitle}</title>
         <meta
           name="description"
-          content="Academic research intelligence workstation for multi-hop institutional report synthesis and citation provenance."
+          content="Academic research intelligence platform for multi-hop institutional report synthesis and citation provenance."
         />
 
         <main
@@ -3497,7 +3613,7 @@ export const RaisePage: React.FC = () => {
                   const totalQVers = qVersions.length;
 
                   return (
-                    <div key={`user-turn-${i}`} className="flex flex-col items-end group/query">
+                    <div key={`user-turn-${i}`} className="content-visibility-auto flex flex-col items-end group/query">
                       {editingMessageIndex === i ? (
                         /* Inline Question Editor */
                         <div className="w-full max-w-[85%] bg-white dark:bg-[#131622] border border-indigo-400 dark:border-indigo-500/50 rounded-2xl rounded-tr-sm p-3.5 shadow-md dark:shadow-xl transition-all">
@@ -3793,7 +3909,7 @@ export const RaisePage: React.FC = () => {
 
                   if (msg.error && !isCurrentlyActive && !isStopped) {
                     return (
-                      <div key={`assistant-turn-${i}`} className="w-full mb-4">
+                      <div key={`assistant-turn-${i}`} className="content-visibility-auto w-full mb-4">
                         <BackendErrorCard
                           error={msg.error}
                           targetUrl={apiBaseUrl}
@@ -3848,7 +3964,7 @@ export const RaisePage: React.FC = () => {
                   return (
                     <div
                       key={`assistant-turn-${i}`}
-                      className="flex flex-col items-start group/response w-full mb-5"
+                      className="content-visibility-auto flex flex-col items-start group/response w-full mb-5"
                     >
                       {/* Unified Single-Line Thinking & Searching Tracker while active; Thought Duration when complete */}
                       {isCurrentlyActive ? (

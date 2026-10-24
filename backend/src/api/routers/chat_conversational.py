@@ -328,7 +328,7 @@ async def handle_conversational_chat(
                     redis_cache.save_session_message(session_id, "user", message, mode=mode)
                     redis_cache.save_session_message(session_id, "assistant", complete_text, mode=mode)
 
-            yield f"data: {json.dumps({'status': 'completed', 'sources': [], 'citations': []})}\n\n"
+            yield f"data: {json.dumps({'status': 'SUCCESS', 'query': message, 'answer': complete_text, 'thread_id': session_id, 'session_id': session_id, 'citations': [], 'suggestions': [], 'sources': []})}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(
@@ -391,19 +391,22 @@ async def handle_conversational_chat(
 
     return JSONResponse(
         content={
+            "status": "SUCCESS",
+            "query": message,
+            "answer": full_reply,
+            "thread_id": session_id,
+            "session_id": session_id,
+            "citations": [],
+            "suggestions": [],
             "reply": full_reply,
             "grounded_answer": full_reply,
-            "answer": full_reply,
             "sources": [],
-            "citations": [],
             "verified_claims": [],
             "subgraph": {"nodes": [], "edges": []},
             "quality_gate_decision": "accept",
             "execution_time": elapsed,
             "latency_sec": elapsed,
             "mode_used": mode,
-            "thread_id": session_id,
-            "session_id": session_id,
         },
         headers={"X-Process-Time-Ms": str(round(elapsed * 1000, 1)), **rate_headers},
     )

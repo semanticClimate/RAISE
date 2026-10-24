@@ -1,11 +1,9 @@
-import { Check, Cpu, Database, Laptop, Network, RefreshCw, X, Zap } from 'lucide-react';
+import { Check, Cpu, Laptop, RefreshCw, X, Zap } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { setStoredTunnelUrl } from '../../app/config';
+import { useScrollLock } from '../../hooks';
 import { useModeStore } from '../../stores/modeStore';
-import { sanitizeTunnelUrl, validateTunnelUrl } from '../../utils/urlValidation';
 import { platformAdapter } from './services/platformAdapter';
-import { DatabaseStep } from './steps/DatabaseStep';
 import { EngineStep } from './steps/EngineStep';
 import { LaunchStep } from './steps/LaunchStep';
 import { PlatformStep } from './steps/PlatformStep';
@@ -26,7 +24,7 @@ export const ControlCenterModal: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const { testConnection, setBaseUrl, apiBaseUrl, appMode, latencyMs } = useModeStore();
+  const { testConnection, appMode } = useModeStore();
   const isConnected = appMode === 'connected';
 
   // Load live hardware telemetry on mount or open
@@ -46,178 +44,60 @@ export const ControlCenterModal: React.FC = () => {
           cpuCores: hw.cpu_cores || 8,
           hasMetalOrCuda: hw.has_metal_or_cuda ?? true,
         });
-        // Auto-correct if on Mac but previously persisted as 'ios'
-        if (config.targetPlatform === 'ios' && detected === 'macos') {
-          updateConfig({ targetPlatform: 'macos' });
+        // Auto-correct if previously persisted as 'web', 'ios', or 'android'
+        if (
+          config.targetPlatform === 'web' ||
+          config.targetPlatform === 'ios' ||
+          config.targetPlatform === 'android'
+        ) {
+          updateConfig({ targetPlatform: detected });
         }
       });
     }
   }, [isOpen]);
 
-  // Pre-flight Neural Assets Verification and Download Gate
-  useEffect(() => {
-    if (!isOpen || config.targetPlatform === 'web') return;
-    const { setDownloadProgress, setIsDownloading, setPreflightAssets } =
-      useControlCenterStore.getState();
-
-    let cancelled = false;
-
-    // Honest probe of on-device preflight assets from backend
-    platformAdapter.getPreflightAssets().then(async (res) => {
-      if (cancelled) return;
-      if (Array.isArray(res.assets) && res.assets.length > 0) {
-        setPreflightAssets(res.assets, res.total_footprint);
-      }
-      if (res.all_verified) {
-        setDownloadProgress(100, res.download_speed || 'All Neural Assets Verified');
-        setIsDownloading(false);
-      } else {
-        setIsDownloading(true);
-        setDownloadProgress(
-          res.download_progress || 10,
-          res.download_speed || 'Synchronizing neural models...'
-        );
-        try {
-          await platformAdapter.downloadNeuralAssets((percent, status) => {
-            if (!cancelled) {
-              setDownloadProgress(percent, status);
-            }
-          });
-        } catch {
-          // If streaming fails, fall back to offline verification
-        }
-        if (!cancelled) {
-          const finalCheck = await platformAdapter.getPreflightAssets();
-          if (Array.isArray(finalCheck.assets) && finalCheck.assets.length > 0) {
-            setPreflightAssets(finalCheck.assets, finalCheck.total_footprint);
-          }
-          if (finalCheck.all_verified) {
-            setDownloadProgress(100, 'All Neural Assets Verified');
-          } else {
-            setDownloadProgress(100, 'Pre-flight verified');
-          }
-          setIsDownloading(false);
-        }
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, config.targetPlatform]);
+  // Lock background body scroll while Control Center modal is open
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 
+  // Streamlined 3-step setup: Platform -> Engine -> Launch
   const tabs: {
-    id: 'platform' | 'models' | 'databases' | 'launch';
+    id: 'platform' | 'models' | 'launch';
     label: string;
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
-    { id: 'platform', label: '1. Device & OS', icon: Laptop },
+    { id: 'platform', label: '1. Platform & Device', icon: Laptop },
     { id: 'models', label: '2. Intelligence Engine', icon: Cpu },
-    { id: 'databases', label: '3. Databases & Storage', icon: Database },
-    { id: 'launch', label: '4. Summary & Launch', icon: Zap },
+    { id: 'launch', label: '3. Summary & Launch', icon: Zap },
   ];
 
-  const isWebTarget = config.targetPlatform === 'web';
-  const visibleTabs = isWebTarget ? tabs.slice(0, 1) : tabs;
-  const currentTabIdx = visibleTabs.findIndex((t) => t.id === activeTab);
-
-  // Validation gating logic per step
-  const isCurrentStepValid = (): boolean => {
-    if (activeTab === 'platform') {
-      if (isWebTarget) {
-        return isConnected;
-      }
-      return !!config.targetPlatform;
-    }
-    if (activeTab === 'models') {
-      const isCloud = config.llmDeployment
-        ? config.llmDeployment === 'cloud'
-        : !config.llmMode || config.llmMode.startsWith('cloud');
-      if (isCloud) {
-        const configuredKeys = (config.apiKeys || []).filter(
-          (k) => k?.key && k.key.trim().length > 0
-        );
-        // User MUST have configured at least one key, and all configured keys must be verified by backend
-        if (configuredKeys.length === 0) return false;
-        return configuredKeys.every((k) => k.verified === true);
-      }
-      return !!config.selectedLocalModel;
-    }
-    if (activeTab === 'databases') {
-      const substratesToCheck = [
-        { cfg: config.knowledgeGraph, legacyMode: config.neo4jMode },
-        { cfg: config.sessionMemory, legacyMode: config.postgresMode },
-        { cfg: config.cacheAndSignals, legacyMode: config.redisMode },
-      ];
-      for (const item of substratesToCheck) {
-        const mode = item.cfg?.mode || item.legacyMode;
-        if (mode === 'cloud') {
-          // Gating: Cloud substrates require verified healthy connection before proceeding
-          if (!item.cfg?.tested || item.cfg?.online !== true) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-    if (activeTab === 'launch') {
-      if (isWebTarget) return true;
-      return useControlCenterStore.getState().downloadProgress >= 100;
-    }
-    return true;
-  };
-
-  const canProceed = isCurrentStepValid();
+  const currentTabIdx = tabs.findIndex((t) => t.id === activeTab);
 
   const handleNext = () => {
-    if (!canProceed) return;
-    if (currentTabIdx < visibleTabs.length - 1) {
-      setActiveTab(visibleTabs[currentTabIdx + 1].id);
+    if (currentTabIdx < tabs.length - 1) {
+      setActiveTab(tabs[currentTabIdx + 1].id);
     } else {
       handleFinalStart();
     }
   };
 
-  const handleWebConnect = async () => {
-    const rawTunnel = (config.tunnelUrl || '').trim();
-    const targetUrl = rawTunnel || apiBaseUrl || 'http://localhost:8000';
-
-    if (rawTunnel) {
-      const validation = validateTunnelUrl(rawTunnel);
-      if (!validation.isValid) {
-        setConnectNotice(validation.error || 'Invalid URL format');
-        setTimeout(() => setConnectNotice(null), 4000);
-        return;
-      }
+  const handleBack = () => {
+    if (currentTabIdx > 0) {
+      setActiveTab(tabs[currentTabIdx - 1].id);
     }
+  };
 
-    const sanitizedUrl = sanitizeTunnelUrl(targetUrl);
-    setBaseUrl(sanitizedUrl);
-    setStoredTunnelUrl(sanitizedUrl);
-    updateConfig({ tunnelUrl: sanitizedUrl });
-
-    // If already verified connected to this target, proceed immediately
-    if (isConnected && sanitizedUrl === apiBaseUrl) {
-      completeFirstRun();
-      setOpen(false);
-      return;
-    }
-
+  const handleProbeBackend = async () => {
     setIsConnecting(true);
-    setConnectNotice('Testing gateway connection...');
-
+    setConnectNotice('Probing local backend (127.0.0.1:8000)...');
     try {
-      const result = await testConnection(sanitizedUrl);
+      const result = await testConnection('http://127.0.0.1:8000');
       if (result.success) {
-        setConnectNotice('Connected to pipeline gateway!');
-        completeFirstRun();
-        setTimeout(() => {
-          setOpen(false);
-        }, 400);
+        setConnectNotice('Connected to local backend!');
+        setTimeout(() => setConnectNotice(null), 1500);
       } else {
-        setConnectNotice(result.error || 'Connection attempt failed. Check terminal for details.');
+        setConnectNotice(result.error || 'Backend offline on 127.0.0.1:8000');
         setTimeout(() => setConnectNotice(null), 5000);
       }
     } catch (err: any) {
@@ -225,12 +105,6 @@ export const ControlCenterModal: React.FC = () => {
       setTimeout(() => setConnectNotice(null), 5000);
     } finally {
       setIsConnecting(false);
-    }
-  };
-
-  const handleBack = () => {
-    if (currentTabIdx > 0) {
-      setActiveTab(visibleTabs[currentTabIdx - 1].id);
     }
   };
 
@@ -245,7 +119,6 @@ export const ControlCenterModal: React.FC = () => {
         }
       }
 
-      // Determine active primary provider and mode
       const primaryCloudProvider =
         (config.apiKeys || []).find((k) => k?.key && k.key.trim())?.provider || 'groq';
       const activeBackend = isCloud ? primaryCloudProvider : 'ollama';
@@ -265,37 +138,35 @@ export const ControlCenterModal: React.FC = () => {
         openrouter_api_key: keyMap['openrouter'],
         selected_local_model: config.selectedLocalModel,
         ollama_model: config.selectedLocalModel,
-        neo4j_mode: config.knowledgeGraph.mode,
-        neo4j_uri: config.knowledgeGraph.uri,
-        neo4j_user: config.knowledgeGraph.user,
-        neo4j_password: config.knowledgeGraph.password,
-        postgres_mode: config.sessionMemory.mode,
-        postgres_uri: config.sessionMemory.uri,
-        postgres_url: config.sessionMemory.uri,
-        redis_mode: config.cacheAndSignals.mode,
-        redis_uri: config.cacheAndSignals.uri,
-        redis_url: config.cacheAndSignals.uri,
         tunnel_url: config.tunnelUrl,
       });
+    } catch {
+      // Do not block app launch even if config sync encounters offline endpoint
     } finally {
       setIsSaving(false);
       completeFirstRun();
+      setOpen(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      {/* Centered Uniform Modal Window (860px x 640px) */}
-      <div className="relative w-[860px] max-w-[95vw] h-[640px] max-h-[90vh] flex flex-col rounded-2xl bg-[#0e1017] border border-white/10 shadow-[0_0_50px_-10px_rgba(99,102,241,0.25)] overflow-hidden text-slate-100 font-sans shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
+      {/* Centered Modal Window */}
+      <div className="relative w-full max-w-3xl max-h-[88vh] flex flex-col rounded-2xl bg-[#0e1017] border border-white/10 shadow-[0_0_50px_-10px_rgba(99,102,241,0.25)] overflow-hidden text-slate-100 font-sans shrink-0">
         {/* Top Header */}
-        <div className="h-16 px-6 border-b border-white/10 bg-[#131622] shrink-0 flex items-center justify-between">
+        <div className="h-14 sm:h-16 px-5 sm:px-6 border-b border-white/10 bg-[#131622] shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center text-white shrink-0">
-              <Network className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+              <Zap className="w-4 h-4" />
             </div>
-            <h2 className="text-sm font-bold tracking-tight text-white uppercase font-mono leading-none">
-              Control Center
-            </h2>
+            <div>
+              <h2 className="text-sm font-bold tracking-tight text-white uppercase font-mono leading-none">
+                Control Center
+              </h2>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                Research Workstation Setup
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -308,56 +179,40 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Stepper Navigation */}
-        <div className="h-12 border-b border-white/10 bg-[#10121b] px-6 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
-          {visibleTabs.map((tab, idx) => {
+        <div className="h-12 border-b border-white/10 bg-[#10121b] px-4 sm:px-6 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
+          {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
-            const isPassed = currentTabIdx > idx;
-            const isWebTunnel = config.targetPlatform === 'web';
-            // In local mode, user cannot skip intermediate steps until tunnel URL is provided
-            const canClickTab =
-              idx <= currentTabIdx || isWebTunnel || (idx === currentTabIdx + 1 && canProceed);
 
             return (
               <button
                 key={tab.id}
-                disabled={!canClickTab}
-                onClick={() => {
-                  if (canClickTab) {
-                    setActiveTab(tab.id);
-                  }
-                }}
-                className={`h-8 flex items-center gap-2 px-3.5 text-xs font-semibold rounded-lg transition-all shrink-0 ${
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`h-8 flex items-center gap-2 px-3.5 text-xs font-semibold rounded-lg transition-all shrink-0 cursor-pointer ${
                   isActive
                     ? 'bg-white text-black font-bold shadow-sm'
-                    : isPassed
-                      ? 'text-white hover:bg-white/10 cursor-pointer'
-                      : canClickTab
-                        ? 'text-slate-400 hover:text-slate-200 cursor-pointer'
-                        : 'text-slate-600 opacity-60 cursor-not-allowed'
+                    : 'text-slate-400 hover:text-white hover:bg-white/10'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                {tab.label}
+                <span>{tab.label}</span>
               </button>
             );
           })}
         </div>
 
         {/* Scrollable Step Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#0e1017] min-h-0">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 sm:space-y-6 bg-[#0e1017] min-h-0">
           {activeTab === 'platform' && <PlatformStep />}
           {activeTab === 'models' && <EngineStep />}
-          {activeTab === 'databases' && <DatabaseStep />}
           {activeTab === 'launch' && <LaunchStep />}
         </div>
 
-        {/* Bottom Navigation Footer with Gated Next Button */}
-        <div className="h-16 flex items-center justify-between px-6 border-t border-white/10 bg-[#131622] shrink-0">
-          <div />
-
-          <div className="flex items-center gap-3">
-            {activeTab !== 'platform' && !isWebTarget && (
+        {/* Bottom Navigation Footer */}
+        <div className="h-16 flex items-center justify-between px-4 sm:px-6 border-t border-white/10 bg-[#131622] shrink-0">
+          <div>
+            {currentTabIdx > 0 && (
               <button
                 type="button"
                 onClick={handleBack}
@@ -366,80 +221,75 @@ export const ControlCenterModal: React.FC = () => {
                 &larr; Back
               </button>
             )}
+          </div>
 
-            {isWebTarget ? (
-              (() => {
-                return (
-                  <div className="flex items-center gap-3">
-                    {connectNotice ? (
-                      <span
-                        className={`text-xs font-mono font-medium max-w-[260px] truncate ${
-                          connectNotice.includes('Connected')
-                            ? 'text-emerald-400'
-                            : connectNotice.includes('Testing')
-                              ? 'text-amber-400 animate-pulse'
-                              : 'text-rose-400'
-                        }`}
-                        title={connectNotice}
-                      >
-                        {connectNotice}
-                      </span>
-                    ) : isConnected ? (
-                      <span className="text-xs font-mono font-medium text-emerald-400 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-                        Connected {latencyMs ? `(${latencyMs}ms)` : ''}
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={isConnecting}
-                      onClick={handleWebConnect}
-                      className={`px-6 py-2 rounded-xl text-xs transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 ${
-                        isConnecting ? 'opacity-70 cursor-wait' : ''
-                      } ${
-                        isConnected
-                          ? 'font-bold bg-white hover:bg-slate-200 text-black shadow-sm'
-                          : 'font-semibold border border-white/40 hover:border-white/70 text-white bg-transparent hover:bg-white/5'
-                      }`}
-                    >
-                      {isConnecting ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
-                      ) : isConnected ? (
-                        <Check className="w-3.5 h-3.5 text-black stroke-[3]" />
-                      ) : (
-                        <Zap className="w-3.5 h-3.5 text-white" />
-                      )}
-                      {isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Connect'}
-                    </button>
-                  </div>
-                );
-              })()
-            ) : activeTab !== 'launch' ? (
-              <button
-                type="button"
-                disabled={!canProceed}
-                onClick={handleNext}
-                className={`px-6 py-2 rounded-xl text-xs transition-all font-bold ${
-                  canProceed
-                    ? 'bg-white hover:bg-slate-200 text-black cursor-pointer shadow-sm active:scale-95'
-                    : 'border border-white/40 text-white/50 bg-transparent cursor-not-allowed opacity-60'
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {connectNotice && (
+              <span
+                className={`text-xs font-mono font-medium max-w-[200px] truncate ${
+                  connectNotice.includes('Connected')
+                    ? 'text-emerald-400'
+                    : connectNotice.includes('Testing') || connectNotice.includes('Probing')
+                      ? 'text-amber-400 animate-pulse'
+                      : 'text-rose-400'
                 }`}
               >
-                Next &rarr;
+                {connectNotice}
+              </span>
+            )}
+
+            {activeTab === 'platform' && !isConnected && (
+              <button
+                type="button"
+                disabled={isConnecting}
+                onClick={handleProbeBackend}
+                className={`px-3.5 py-2 rounded-xl text-xs transition-all font-bold cursor-pointer active:scale-95 flex items-center gap-1.5 border border-white/20 bg-white/10 hover:bg-white/15 text-white ${
+                  isConnecting ? 'opacity-70 cursor-wait' : ''
+                }`}
+              >
+                {isConnecting ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 fill-white text-white" />
+                )}
+                <span>{isConnecting ? 'Probing...' : 'Probe Localhost (:8000)'}</span>
+              </button>
+            )}
+
+            {/* Quick Launch shortcut available on all steps */}
+            {activeTab !== 'launch' && (
+              <button
+                type="button"
+                onClick={handleFinalStart}
+                className="px-3.5 py-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-semibold transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                title="Launch directly with current settings"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                <span className="hidden sm:inline">Quick Launch</span>
+              </button>
+            )}
+
+            {activeTab !== 'launch' ? (
+              <button
+                type="button"
+                onClick={handleNext}
+                className="px-5 py-2 rounded-xl text-xs transition-all font-bold bg-white hover:bg-slate-200 text-black cursor-pointer shadow-sm active:scale-95"
+              >
+                {activeTab === 'platform' ? 'Configure Engine \u2192' : 'Next \u2192'}
               </button>
             ) : (
               <button
                 type="button"
                 disabled={isSaving}
                 onClick={handleFinalStart}
-                className="px-8 py-2 rounded-xl bg-white hover:bg-slate-200 text-black font-bold text-xs transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-2 disabled:opacity-50"
+                className="px-6 py-2 rounded-xl bg-white hover:bg-slate-200 text-black font-bold text-xs transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-2 disabled:opacity-50"
               >
                 {isSaving ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
                 ) : (
                   <Zap className="w-3.5 h-3.5 fill-black text-black" />
                 )}
-                Start
+                <span>Launch App</span>
               </button>
             )}
           </div>

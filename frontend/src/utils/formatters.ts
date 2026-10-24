@@ -47,8 +47,12 @@ export function getDetectedSystemName(): string {
     return 'System';
   }
   const ua = (navigator.userAgent || '').toLowerCase();
+  const navData =
+    'userAgentData' in navigator
+      ? (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData
+      : undefined;
   const platform = (
-    (navigator as any).userAgentData?.platform ||
+    navData?.platform ||
     navigator.platform ||
     ''
   ).toLowerCase();

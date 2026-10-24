@@ -22,6 +22,7 @@ Key Capabilities:
 
 from __future__ import annotations
 
+import re
 import json
 import logging
 from pathlib import Path
@@ -94,6 +95,22 @@ def hydrate_macro_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             )
 
             c_copy = dict(c)
+            # If the parent chunk text ends mid-sentence across a page boundary (e.g. trailing fragment or sentence cut off by page break),
+            # stitch the next consecutive parent chunk to prevent metric/patent truncation.
+            m_pid = re.search(r"^(.*_parent_)(\d+)$", parent_id)
+            if m_pid and (not parent_text.rstrip().endswith((".", "!", "?", '"', "'", ";")) or "preamble" in str(meta.get("heading", "")).lower()):
+                p_prefix = m_pid.group(1)
+                p_idx = int(m_pid.group(2))
+                next_pid = f"{p_prefix}{p_idx+1:03d}"
+                if next_pid in parents_map:
+                    next_p = parents_map[next_pid]
+                    next_txt = next_p.get("plain_text") or next_p.get("text") or ""
+                    parent_text = parent_text.rstrip() + " " + next_txt.lstrip()
+                    next_pages = next_p.get("source_pages") or ([next_p.get("primary_page")] if next_p.get("primary_page") else [])
+                    if next_pages:
+                        cur_pages = meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else [])
+                        meta["source_pages"] = sorted(list(set(cur_pages + next_pages)))
+
             c_copy["text"] = parent_text
             c_copy["plain_text"] = parent_text
             meta["parent_chunk_id"] = parent_id
@@ -104,6 +121,24 @@ def hydrate_macro_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 meta["primary_page"] = p_obj["primary_page"]
             if "printed_page" not in meta and p_obj.get("printed_page"):
                 meta["printed_page"] = p_obj["printed_page"]
+
+            # Also check for embedded folio headers (e.g. document title/folio pipes: "Title | 43" or "43 | Title")
+            folio_matches = re.findall(
+                r"(?:[A-Za-z0-9\s\-–]{2,40}\s*\|\s*(\d{1,4})|(\d{1,4})\s*\|\s*[A-Za-z0-9\s\-–]{2,40}|\|\s*(\d{1,4})\s*\|)",
+                parent_text,
+                re.IGNORECASE,
+            )
+            if folio_matches:
+                cur_pages = meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else [])
+                for fm in folio_matches:
+                    for g in fm:
+                        if g and g.isdigit():
+                            p_val = int(g)
+                            if 1 <= p_val <= 400:
+                                cur_pages.append(p_val)
+                meta["source_pages"] = sorted(list(set(cur_pages)))
+                c_copy["source_pages"] = meta["source_pages"]
+
             c_copy["metadata"] = meta
             hydrated.append(c_copy)
         else:

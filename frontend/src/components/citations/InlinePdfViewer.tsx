@@ -25,7 +25,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
   useEffect(() => {
     setActivePage(citation.primary_page || 1);
     setLoadError(false);
-  }, [citation.primary_page, citation.pdf_filename]);
+  }, [citation.primary_page]);
 
   const pdfUrl =
     streamMode === 'single'
@@ -78,7 +78,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
             activePage !== citation.primary_page && (
               <button
                 type="button"
-                onClick={() => setActivePage(citation.primary_page!)}
+                onClick={() => setActivePage(citation.primary_page || 1)}
                 className="px-2.5 py-1 text-[11px] font-semibold text-indigo-600 dark:text-[#a8c7fa] bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                 title={`Return to cited page ${citation.primary_page}`}
               >

@@ -21,7 +21,7 @@ export const SearchResultItemSchema = z.object({
   chunk_id: z.string(),
   text: z.string(),
   similarity: z.number().default(0),
-  metadata: z.record(z.any()).default({}),
+  metadata: z.record(z.string(), z.any()).default({}),
 });
 
 export type SearchResultItem = z.infer<typeof SearchResultItemSchema>;

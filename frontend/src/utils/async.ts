@@ -26,7 +26,7 @@ export async function ensureMinimumDuration<T>(
     );
   });
 
-  let errorToThrow: any = null;
+  let errorToThrow: unknown = null;
   let hasError = false;
 
   const wrappedTask = task

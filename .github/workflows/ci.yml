@@ -31,6 +31,10 @@ jobs:
           cache: "pip"
           cache-dependency-path: backend/requirements-core.txt
 
+      - name: Install CPU-only PyTorch
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+
       - name: Install Backend Core Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -89,7 +93,7 @@ jobs:
       - name: TypeScript Typecheck
         run: npm run typecheck
 
-      - name: Production Vite Build
+      - name: Compile Vite Build
         run: npm run build
 
   repository-hygiene:

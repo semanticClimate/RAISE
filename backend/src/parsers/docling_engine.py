@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Suppress harmless TableFormer orphan cell recovery logs in production console
+# Suppress harmless TableFormer orphan cell recovery logs in runtime console
 logging.getLogger("MatchingPostProcessor").setLevel(logging.ERROR)
 logging.getLogger("docling").setLevel(logging.ERROR)
 
@@ -135,11 +135,10 @@ class DoclingParserEngine:
                     with pymupdf.open(str(pdf_path)) as _chk_doc:
                         if len(_chk_doc) > doc_pages:
                             temp_slice_path = pdf_path.parent / f"_temp_docling_slice_{doc_pages}_{pdf_path.name}"
-                            sub_doc = pymupdf.open()
-                            for p in range(doc_pages):
-                                sub_doc.insert_pdf(_chk_doc, from_page=p, to_page=p)
-                            sub_doc.save(str(temp_slice_path))
-                            sub_doc.close()
+                            with pymupdf.open() as sub_doc:
+                                for p in range(doc_pages):
+                                    sub_doc.insert_pdf(_chk_doc, from_page=p, to_page=p)
+                                sub_doc.save(str(temp_slice_path))
                             convert_path = temp_slice_path
                 except Exception:
                     pass

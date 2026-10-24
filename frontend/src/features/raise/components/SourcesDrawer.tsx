@@ -294,7 +294,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
                         </span>
                       </div>
                       <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
-                        Pre-indexed GraphRAG docs
+                        Library documents
                       </div>
                     </div>
                   </button>
@@ -465,7 +465,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
                       <span>•</span>
                       {isProcessing ? (
                         <span className="text-amber-600 dark:text-amber-400 font-medium animate-pulse truncate">
-                          Uploading & parsing in GraphRAG... ({Math.round(progress)}%)
+                          Processing document... ({Math.round(progress)}%)
                         </span>
                       ) : (
                         <>

@@ -26,6 +26,8 @@ from typing import Optional, Set, Dict, Any
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from fastapi.responses import ORJSONResponse
 from starlette.websockets import WebSocketState
 import redis.asyncio as aioredis
 
@@ -246,9 +248,10 @@ async def server_lifespan(app: FastAPI):
         handshake_mgr = None
 
     # Start middleware background telemetry queue worker
-    if hasattr(app.state, "asgi_shield"):
-        app.state.asgi_shield.redis = redis_client
-        app.state.asgi_shield.start_background_worker()
+    active_shield = getattr(app.state, "asgi_shield", None) or PureASGISecurityShieldMiddleware._active_instance
+    if active_shield:
+        active_shield.redis = redis_client
+        active_shield.start_background_worker()
 
     # 3. Subprocess Tunnel Watchdog (Optional, default disabled for direct local operation)
     enable_tunnel = (
@@ -288,8 +291,9 @@ async def server_lifespan(app: FastAPI):
         except (asyncio.CancelledError, Exception):
             pass
 
-    if hasattr(app.state, "asgi_shield"):
-        await app.state.asgi_shield.stop_background_worker()
+    active_shield = getattr(app.state, "asgi_shield", None) or PureASGISecurityShieldMiddleware._active_instance
+    if active_shield:
+        await active_shield.stop_background_worker()
 
     if tunnel_mgr:
         await tunnel_mgr.stop()
@@ -311,6 +315,7 @@ app = FastAPI(
     title="RAISE Master Edge Gateway",
     version="1.0.0",
     description="Enterprise edge gateway for Research Assessment Intelligence & Semantic Extraction",
+    default_response_class=ORJSONResponse,
     lifespan=server_lifespan
 )
 
@@ -323,6 +328,7 @@ app.add_middleware(
 )
 
 app.add_middleware(PureASGISecurityShieldMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Attach Pure ASGI Security Shield Reference on state
 shield_middleware = PureASGISecurityShieldMiddleware(app=app, redis_client=None)

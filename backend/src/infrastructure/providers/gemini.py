@@ -16,7 +16,7 @@ from src.infrastructure.providers.http_client import safe_http_request, Provider
 logger = logging.getLogger("raise.infrastructure.providers.gemini")
 
 DEFAULT_GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai"
-DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 
 
 class GeminiProvider(LLMProvider):
@@ -52,21 +52,31 @@ class GeminiProvider(LLMProvider):
         if not key:
             raise ProviderHTTPError("Gemini API key is not configured.", classification="NOT_CONFIGURED")
 
-        # Try native GenerativeLanguage API first for maximum reliability
-        try:
-            native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={key}"
-            full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-            payload = {
-                "contents": [{"parts": [{"text": full_prompt}]}],
-                "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}
-            }
-            resp, _ = safe_http_request(native_url, payload=payload, timeout=kwargs.get("timeout", 60.0))
-            parts = resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-            text_parts = [p.get("text", "") for p in parts if "text" in p]
-            if text_parts:
-                return "".join(text_parts).strip()
-        except Exception as native_err:
-            logger.debug(f"Native Gemini endpoint exception: {native_err}. Trying OpenAI compatible endpoint.")
+        # Try native GenerativeLanguage API first with multiple candidate model names
+        candidate_models = [self.model_name, "gemini-flash-latest", "gemini-2.5-flash", "gemini-pro-latest"]
+        full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+        payload = {
+            "contents": [{"parts": [{"text": full_prompt}]}],
+            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}
+        }
+
+        for cand_m in candidate_models:
+            try:
+                native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_m}:generateContent?key={key}"
+                resp, _ = safe_http_request(native_url, payload=payload, timeout=kwargs.get("timeout", 12.0), max_retries=1)
+                parts = resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                text_parts = [p.get("text", "") for p in parts if "text" in p]
+                if text_parts:
+                    self.model_name = cand_m
+                    return "".join(text_parts).strip()
+            except ProviderHTTPError as pe:
+                if pe.status_code in (429, 401, 403, 402):
+                    raise pe
+                logger.debug(f"Gemini model {cand_m} failed: {pe}")
+                continue
+            except Exception as native_err:
+                logger.debug(f"Gemini model {cand_m} failed: {native_err}")
+                continue
 
         messages = []
         if system_prompt:
@@ -85,7 +95,8 @@ class GeminiProvider(LLMProvider):
             f"{self.base_url}/chat/completions",
             payload=payload,
             headers=headers,
-            timeout=kwargs.get("timeout", 60.0),
+            timeout=kwargs.get("timeout", 15.0),
+            max_retries=1,
         )
         return resp["choices"][0]["message"]["content"]
 

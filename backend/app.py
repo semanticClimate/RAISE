@@ -80,7 +80,9 @@ from src.api.dependencies import set_dependencies
 
 from src.api.routers import (
     agent_router,
+    auth_router,
     chat_router,
+    commands_router,
     developer_router,
     documents_router,
     graph_router,
@@ -268,15 +270,19 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         502: "BAD_GATEWAY",
         503: "SERVICE_UNAVAILABLE",
     }
-    code = code_map.get(exc.status_code, f"HTTP_{exc.status_code}")
-    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    if isinstance(exc.detail, dict):
+        code = exc.detail.get("code", code_map.get(exc.status_code, f"HTTP_{exc.status_code}"))
+        detail_msg = exc.detail.get("message", str(exc.detail))
+    else:
+        code = code_map.get(exc.status_code, f"HTTP_{exc.status_code}")
+        detail_msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
             "error": {
                 "code": code,
-                "message": detail,
+                "message": detail_msg,
             }
         },
         headers=getattr(exc, "headers", None) or {}
@@ -293,6 +299,8 @@ DEFAULT_ORIGINS = [
     "https://semanticclimate.github.io",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
     "http://localhost:3000",
     "http://localhost:8080",
 ]
@@ -307,13 +315,25 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Redis-Cache", "X-RateLimit-Remaining", "X-Process-Time-Ms", "X-Request-ID", "Accept-Ranges", "Content-Disposition", "Content-Range"],
+    expose_headers=[
+        "Content-Type",
+        "Cache-Control",
+        "X-Accel-Buffering",
+        "X-Redis-Cache",
+        "X-RateLimit-Remaining",
+        "X-Process-Time-Ms",
+        "X-Request-ID",
+        "Accept-Ranges",
+        "Content-Disposition",
+        "Content-Range",
+    ],
 )
 
 
 # ---------------------------------------------------------------------------
 # Mount Domain Routers
 # ---------------------------------------------------------------------------
+app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(developer_router)
 app.include_router(chat_router)
@@ -324,45 +344,7 @@ app.include_router(graph_router)
 app.include_router(search_router)
 app.include_router(agent_router)
 app.include_router(system_router)
-
-
-# ---------------------------------------------------------------------------
-# Handshake Endpoints (Two-Step Handshake Contract Alignment)
-# ---------------------------------------------------------------------------
-@app.post("/api/v1/auth/handshake", operation_id="auth_handshake_api_v1")
-@app.post("/session/handshake", operation_id="auth_handshake_session")
-async def create_auth_handshake(request: Request):
-    """
-    Step 1 of Two-Step Security Handshake:
-    Generates an ephemeral single-use token (5-min TTL) in Redis or standalone fallback.
-    Guarantees app.py standalone execution matches server.py gateway contract.
-    """
-    mgr = getattr(app.state, "handshake_mgr", None) or getattr(getattr(request, "app", None), "state", None) and getattr(request.app.state, "handshake_mgr", None)
-    client_ip = "127.0.0.1"
-    try:
-        from src.security import resolve_client_ip
-        client_ip = resolve_client_ip(dict(request.scope))
-    except Exception:
-        pass
-
-    if not mgr or not getattr(mgr, "redis", None):
-        import secrets
-        mock_token = f"standalone_{secrets.token_urlsafe(24)}"
-        return {
-            "token": mock_token,
-            "expires_in": 300,
-            "status": "active",
-            "mode": "standalone",
-            "client_ip": client_ip,
-        }
-
-    token = await mgr.create_handshake_token(metadata={"client_ip": client_ip})
-    return {
-        "token": token,
-        "expires_in": 300,
-        "status": "active",
-        "client_ip": client_ip,
-    }
+app.include_router(commands_router)
 
 
 

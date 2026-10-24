@@ -92,40 +92,56 @@ class QueryService:
     def _format_frontend_payload(
         self, raw_result: Dict[str, Any], query: str, thread_id: str
     ) -> Dict[str, Any]:
-        """
-        Format clean, user-focused response for the Research Assistant interface:
-        - Transmits synthesized markdown answers and verified citations (with single-page PDF links)
-        - Excludes internal backend developer debugging structures (Neo4j subgraphs, raw graph nodes/edges,
-          internal quality gate reports, mathematical verification tables, and abstention codes)
-        - Preserves schema compatibility with safe empty defaults for frontend parsers
-        """
         grounded_ans = raw_result.get("grounded_answer") or raw_result.get("answer", "")
         citations = raw_result.get("citations", [])
         suggestions = raw_result.get("suggestions") or raw_result.get("follow_up_inquiries", [])
 
-        # If evidence is lacking, present a natural explanation instead of internal refusal error codes
-        if "INSUFFICIENT_EVIDENCE" in grounded_ans or raw_result.get("quality_gate_decision") == "unable_to_verify":
+        # Determine authentic quality gate decision
+        raw_decision = str(raw_result.get("quality_gate_decision", "accept")).lower().strip()
+        is_insufficient = "INSUFFICIENT_EVIDENCE" in grounded_ans or raw_decision in ("unable_to_verify", "refusal")
+
+        if is_insufficient:
             if "INSUFFICIENT_EVIDENCE" in grounded_ans:
                 grounded_ans = grounded_ans.replace("INSUFFICIENT_EVIDENCE:", "").strip()
             if not grounded_ans:
                 grounded_ans = f"The uploaded documents in your library do not contain sufficient evidence to answer: '{query}'."
+            quality_decision = "unable_to_verify"
+        elif raw_decision in ("accept", "retry", "empty_workspace"):
+            quality_decision = raw_decision
+        else:
+            quality_decision = "accept"
 
         return {
             "status": "SUCCESS",
             "query": query,
+            "original_query": raw_result.get("original_query", query),
+            "resolved_query": raw_result.get("resolved_query") or raw_result.get("standalone_query") or query,
             "answer": grounded_ans,
             "grounded_answer": grounded_ans,
             "citations": citations,
+            "data_lineage": raw_result.get("data_lineage", []),
             "suggestions": suggestions,
             "follow_up_inquiries": suggestions,
             "thread_id": thread_id,
             "session_id": thread_id,
             "pipeline_stages": raw_result.get("pipeline_stages", []),
-            # Clean safe defaults ensuring frontend Zod schemas parse smoothly
-            "subgraph": {"nodes": [], "edges": []},
-            "verified_claims": [],
-            "top_chunks": [],
-            "quality_gate_decision": "accept",
+            # Preserve authentic GraphRAG evidence structures
+            "subgraph": raw_result.get("subgraph") or {"nodes": [], "edges": []},
+            "verified_claims": raw_result.get("verified_claims") or [],
+            "top_chunks": raw_result.get("top_chunks") or [],
+            "quality_gate_decision": quality_decision,
+            "traceability_score": raw_result.get("traceability_score", 0.95),
+            "execution_time": raw_result.get("execution_time", 0.0),
+            "latency_sec": raw_result.get("latency_sec", 0.0),
+            "routing_strategy": raw_result.get("routing_strategy", "GraphRAG"),
+            "selected_tools": raw_result.get("selected_tools", []),
+            "decomposed_queries": raw_result.get("decomposed_queries") or [query],
+            "standalone_query": raw_result.get("standalone_query") or query,
+            "quality_gate_report": raw_result.get("quality_gate_report"),
+            "persisted": bool(thread_id is not None),
+            "saved": bool(thread_id is not None),
+            "persistence_status": "saved" if thread_id else "ephemeral",
+            "persistence_error": None,
         }
 
     async def stream_query_events(
@@ -216,6 +232,7 @@ class QueryService:
                 "query": query,
                 "grounded_answer": "Please upload or attach an academic PDF to begin your research.",
                 "answer": "Please upload or attach an academic PDF to begin your research.",
+                "grounded": False,
                 "citations": [],
                 "suggestions": [],
                 "follow_up_inquiries": [],

@@ -24,6 +24,11 @@ docker-compose*.yml
 !docker-compose.example.yml
 
 # ------------------------------------------------------------------------------
+# Local Development Guidelines (Preserved locally, excluded from repository)
+# ------------------------------------------------------------------------------
+DEVELOPER_WORKFLOW_RULES.md
+
+# ------------------------------------------------------------------------------
 # 3. Operating System Metadata
 # ------------------------------------------------------------------------------
 .DS_Store
@@ -161,8 +166,9 @@ dev_main.py
 backend/dev_main.py
 
 # ------------------------------------------------------------------------------
-# 12. Local Launcher Temporary Logs
+# 12. Local Launcher Temporary Logs & Workspaces
 # ------------------------------------------------------------------------------
 *.tmp
 *.log
-
+helper/
+RAG/
