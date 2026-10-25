@@ -24,28 +24,48 @@ export const AgentQueryRequestSchema = z.object({
 
 export type AgentQueryRequest = z.infer<typeof AgentQueryRequestSchema>;
 
-export const CitationSchema = z.object({
-  citation_index: z.number().int().default(1),
-  chunk_id: z.string().default(''),
-  document_id: z.string().default(''),
-  pdf_filename: z.string().default(''),
-  primary_page: z
-    .number()
-    .int()
-    .or(z.string().transform((v) => parseInt(v, 10)))
-    .nullable()
-    .optional(),
-  heading: z.string().default(''),
-  plain_text: z.string().default(''),
-  university: z.string().default(''),
-  similarity: z.number().default(0),
-  printed_page: z.union([z.string(), z.number()]).nullable().optional(),
-  page_url: z.string().optional(),
-  page_image_url: z.string().optional(),
-  page_view_url: z.string().optional(),
-  source_type: z.string().optional(),
-  url: z.string().optional(),
-});
+export const CitationSchema = z
+  .object({
+    citation_index: z.number().int().default(1),
+    chunk_id: z.string().default(''),
+    document_id: z.string().default(''),
+    doc_id: z.string().optional(),
+    pdf_filename: z.string().default(''),
+    filename: z.string().optional(),
+    primary_page: z
+      .number()
+      .int()
+      .or(z.string().transform((v) => parseInt(v, 10)))
+      .nullable()
+      .optional(),
+    page: z
+      .number()
+      .int()
+      .or(z.string().transform((v) => parseInt(v, 10)))
+      .nullable()
+      .optional(),
+    page_number: z
+      .number()
+      .int()
+      .or(z.string().transform((v) => parseInt(v, 10)))
+      .nullable()
+      .optional(),
+    heading: z.string().default(''),
+    plain_text: z.string().default(''),
+    snippet: z.string().optional(),
+    text: z.string().optional(),
+    university: z.string().default(''),
+    similarity: z.number().default(0),
+    score: z.number().optional(),
+    printed_page: z.union([z.string(), z.number()]).nullable().optional(),
+    page_url: z.string().optional(),
+    page_image_url: z.string().optional(),
+    page_view_url: z.string().optional(),
+    source_type: z.string().optional(),
+    url: z.string().optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  })
+  .passthrough();
 
 export type Citation = z.infer<typeof CitationSchema>;
 
@@ -124,58 +144,66 @@ export const QualityGateDecisionSchema = z
 
 export type QualityGateDecision = z.infer<typeof QualityGateDecisionSchema>;
 
-export const SubgraphQueryResponseSchema = z.object({
-  query: z.string(),
-  routing_strategy: z.string().optional(),
-  query_type: z.string().optional(),
-  selected_tools: z.array(z.string()).default([]),
-  cypher_status: z.string().optional(),
-  cypher_repair_count: z.number().int().default(0),
-  path_critic_expanded: z.boolean().default(false),
-  grounded_answer: z.string().default(''),
-  traceability_score: z.number().default(0),
-  verified_claims: z.array(VerifiedClaimSchema).default([]),
-  citations: z.array(CitationSchema).default([]),
-  answer_contract: z.record(z.string(), z.any()).nullable().optional(),
-  subgraph: SubgraphDataSchema.default({ nodes: [], edges: [] }),
-  top_chunks: z.array(TopChunkSchema).default([]),
-  quality_gate_decision: QualityGateDecisionSchema.default('accept'),
-  quality_gate_report: QualityGateReportSchema.optional(),
-  retry_count: z.number().int().default(0),
-  execution_time: z.number().default(0),
-  message: z.string().optional(),
-  command: z.string().optional(),
-  meta: z.record(z.string(), z.any()).optional(),
+export const SubgraphQueryResponseSchema = z
+  .object({
+    query: z.string(),
+    answer: z.string().optional(),
+    routing_strategy: z.string().optional(),
+    query_type: z.string().optional(),
+    selected_tools: z.array(z.string()).default([]),
+    cypher_status: z.string().optional(),
+    cypher_repair_count: z.number().int().default(0),
+    path_critic_expanded: z.boolean().default(false),
+    grounded_answer: z.string().default(''),
+    traceability_score: z.number().default(0),
+    verified_claims: z.array(VerifiedClaimSchema).default([]),
+    citations: z.array(CitationSchema).default([]),
+    answer_contract: z.record(z.string(), z.any()).nullable().optional(),
+    subgraph: SubgraphDataSchema.default({ nodes: [], edges: [] }),
+    top_chunks: z.array(TopChunkSchema).default([]),
+    quality_gate_decision: QualityGateDecisionSchema.default('accept'),
+    quality_gate_report: QualityGateReportSchema.optional(),
+    retry_count: z.number().int().default(0),
+    execution_time: z.number().default(0),
+    message: z.string().optional(),
+    command: z.string().optional(),
+    meta: z.record(z.string(), z.any()).optional(),
 
-  // Dynamic Follow-Up Inquiries & Suggestions from Gateway / LLM Node
-  follow_up_inquiries: z.array(z.string()).optional(),
-  suggestions: z.array(z.string()).optional(),
+    // Dynamic Follow-Up Inquiries & Suggestions from Gateway / LLM Node
+    follow_up_inquiries: z.array(z.string()).optional(),
+    suggestions: z.array(z.string()).optional(),
 
-  // LangGraph Query Intake & Reformulation Pipeline State Fields
-  standalone_query: z.string().optional(),
-  decomposed_queries: z.array(z.string()).default([]),
-  intent_route: z.string().optional(),
-  latency_sec: z.number().optional(),
-  error_log: z.string().nullable().optional(),
-  thread_id: z.string().optional(),
-  persisted: z.boolean().optional(),
-  saved: z.boolean().optional(),
-  persistence_status: z.string().optional(),
-  persistence_error: z.string().nullable().optional(),
-});
+    // LangGraph Query Intake & Reformulation Pipeline State Fields
+    standalone_query: z.string().optional(),
+    decomposed_queries: z.array(z.string()).default([]),
+    intent_route: z.string().optional(),
+    latency_sec: z.number().optional(),
+    error_log: z.string().nullable().optional(),
+    thread_id: z.string().optional(),
+    persisted: z.boolean().optional(),
+    saved: z.boolean().optional(),
+    persistence_status: z.string().optional(),
+    persistence_error: z.string().nullable().optional(),
+  })
+  .passthrough();
 
 export type SubgraphQueryResponse = z.infer<typeof SubgraphQueryResponseSchema>;
 
-export const AgentQueryResponseSchema = z.object({
-  query: z.string(),
-  query_type: z.string().optional(),
-  selected_tools: z.array(z.string()).default([]),
-  grounded_answer: z.string().default(''),
-  traceability_score: z.number().default(0),
-  verified_claims: z.array(VerifiedClaimSchema).default([]),
-  citations: z.array(CitationSchema).default([]),
-  answer_contract: z.record(z.string(), z.any()).nullable().optional(),
-});
+export const AgentQueryResponseSchema = z
+  .object({
+    query: z.string(),
+    query_type: z.string().optional(),
+    selected_tools: z.array(z.string()).default([]),
+    grounded_answer: z.string().default(''),
+    answer: z.string().optional(),
+    response: z.string().optional(),
+    tool_calls: z.array(z.any()).optional(),
+    traceability_score: z.number().default(0),
+    verified_claims: z.array(VerifiedClaimSchema).default([]),
+    citations: z.array(CitationSchema).default([]),
+    answer_contract: z.record(z.string(), z.any()).nullable().optional(),
+  })
+  .passthrough();
 
 export type AgentQueryResponse = z.infer<typeof AgentQueryResponseSchema>;
 

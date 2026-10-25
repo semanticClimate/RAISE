@@ -101,6 +101,7 @@ export function resolveCitationDetail(
 
   const isWeb =
     cit?.source_type === 'EXTERNAL_PUBLIC_RECORD' ||
+    cit?.source_type?.toLowerCase() === 'web' ||
     Boolean(validRawUrl) ||
     Boolean(validFileNameUrl);
 

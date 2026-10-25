@@ -43,7 +43,7 @@ jobs:
       - name: Initialize Biome Configuration
         run: |
           if [ ! -f biome.json ] && [ ! -f biome.jsonc ]; then
-            printf '{"$schema":"https://biomejs.dev/schemas/2.5.15/schema.json","formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"recommended":false,"correctness":{"recommended":true},"suspicious":{"recommended":true,"noExplicitAny":"off","noArrayIndexKey":"off","noAssignInExpressions":"off","noControlCharactersInRegex":"off"}}},"assist":{"enabled":false},"css":{"parser":{"tailwindDirectives":true}}}' > biome.json
+            printf '{"$schema":"https://biomejs.dev/schemas/2.6.3/schema.json","formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"none","correctness":{"preset":"recommended"},"suspicious":{"preset":"recommended","noExplicitAny":"off","noArrayIndexKey":"off","noAssignInExpressions":"off","noControlCharactersInRegex":"off"}}},"assist":{"enabled":false},"css":{"parser":{"tailwindDirectives":true}}}' > biome.json
           fi
 
       - name: Run Biome Lint & Correctness Checks
