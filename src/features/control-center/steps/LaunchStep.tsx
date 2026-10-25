@@ -12,7 +12,9 @@ export const LaunchStep: React.FC = () => {
     ? config.llmDeployment === 'cloud'
     : !config.llmMode || config.llmMode.startsWith('cloud');
 
-  const validKeys = (config.apiKeys || []).filter((k) => k?.key && k.key.trim().length > 0);
+  const validKeys = (config.apiKeys || []).filter(
+    (k) => k?.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+  );
   const providers =
     Array.from(new Set(validKeys.map((k) => k.providerName))).join(', ') ||
     'Default / Auto-detected';

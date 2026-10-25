@@ -29,6 +29,35 @@ export interface CitationItemDetail {
   webUrl?: string;
 }
 
+export function isSafeHttpUrl(urlString?: string): boolean {
+  if (!urlString || typeof urlString !== 'string') return false;
+  const trimmed = urlString.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function isSafeUrl(urlString?: string): boolean {
+  if (!urlString || typeof urlString !== 'string') return false;
+  const trimmed = urlString.trim();
+  if (trimmed === '#' || trimmed.startsWith('#')) return false;
+  try {
+    const parsed = new URL(
+      trimmed,
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'http://localhost'
+    );
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'blob:';
+  } catch {
+    return false;
+  }
+}
+
 export function resolveCitationDetail(
   cit?: Citation,
   fallbackIndex: number = 1
@@ -62,36 +91,39 @@ export function resolveCitationDetail(
 
   const rawUrl =
     typeof cit?.url === 'string'
-      ? cit.url
+      ? cit.url.trim()
       : typeof citRecord?.url === 'string'
-        ? (citRecord.url as string)
+        ? (citRecord.url as string).trim()
         : undefined;
+
+  const validRawUrl = isSafeHttpUrl(rawUrl) ? rawUrl : undefined;
+  const validFileNameUrl = isSafeHttpUrl(rawFileName) ? rawFileName : undefined;
 
   const isWeb =
     cit?.source_type === 'EXTERNAL_PUBLIC_RECORD' ||
-    Boolean(rawUrl) ||
-    Boolean(
-      rawFileName &&
-        (rawFileName.startsWith('http://') || rawFileName.startsWith('https://'))
-    );
+    Boolean(validRawUrl) ||
+    Boolean(validFileNameUrl);
 
-  const webUrl =
-    rawUrl ||
-    (rawFileName &&
-    (rawFileName.startsWith('http://') || rawFileName.startsWith('https://'))
-      ? rawFileName
-      : undefined);
+  const webUrl = validRawUrl || validFileNameUrl;
 
   let fileName = rawFileName || 'Audited Document';
 
   if (isWeb) {
-    if (cit?.heading) {
-      fileName = cit.heading;
+    if (cit?.heading && cit.heading.trim().length > 0) {
+      fileName = cit.heading.trim();
     } else if (webUrl) {
       try {
         const u = new URL(webUrl);
         const lastPart = u.pathname.split('/').filter(Boolean).pop();
-        fileName = lastPart ? decodeURIComponent(lastPart).replace(/_/g, ' ') : u.hostname;
+        if (lastPart) {
+          try {
+            fileName = decodeURIComponent(lastPart).replace(/_/g, ' ');
+          } catch {
+            fileName = lastPart.replace(/_/g, ' ');
+          }
+        } else {
+          fileName = u.hostname;
+        }
       } catch {
         fileName = 'Public Web Source';
       }
@@ -164,15 +196,17 @@ export function resolveCitationDetail(
       : undefined;
 
   // Primary URL prioritizes external web URL for web records, otherwise interactive single-page view or full PDF
-  const primaryUrl =
+  const candidatePrimaryUrl =
     (isWeb && webUrl
       ? webUrl
       : (pageNumber && pageNumber > 0 ? singlePageViewUrl || singlePagePdfUrl : undefined) ||
-        pdfUrl) || '#';
+        pdfUrl);
+
+  const primaryUrl = isSafeUrl(candidatePrimaryUrl) ? (candidatePrimaryUrl as string) : '#';
 
   return {
     index: cit?.citation_index ?? fallbackIndex,
-    pageNumber,
+    pageNumber: isWeb ? undefined : pageNumber,
     fileName,
     pdfUrl,
     singlePagePdfUrl,
@@ -217,40 +251,55 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
     };
   }, []);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.stopPropagation();
     if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+      e.preventDefault();
       onViewPdf(item.fileName, item.pageNumber || 1, 'page');
       return;
     }
-    if (item.primaryUrl && item.primaryUrl !== '#' && typeof window !== 'undefined') {
-      window.open(item.primaryUrl, '_blank', 'noopener,noreferrer');
+    if (!item.primaryUrl || item.primaryUrl === '#' || !isSafeUrl(item.primaryUrl)) {
+      e.preventDefault();
     }
   };
 
-  const handleOpenPageOnly = (e: React.MouseEvent) => {
+  const handleOpenPageOnly = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.stopPropagation();
     if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+      e.preventDefault();
       onViewPdf(item.fileName, item.pageNumber || 1, 'page');
       return;
     }
     const target = item.isWeb
       ? item.webUrl || item.primaryUrl
       : item.singlePageViewUrl || item.singlePagePdfUrl || item.pdfUrl;
-    if (target && typeof window !== 'undefined') {
-      window.open(target, '_blank', 'noopener,noreferrer');
+    if (!target || target === '#' || !isSafeUrl(target)) {
+      e.preventDefault();
     }
   };
 
-  const handleOpenFullPdf = (e: React.MouseEvent) => {
+  const handleOpenFullPdfFromDiv = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
       onViewPdf(item.fileName, item.pageNumber || 1, 'full');
       return;
     }
     const target = item.isWeb ? item.webUrl || item.primaryUrl : item.pdfUrl;
-    if (target && typeof window !== 'undefined') {
+    if (target && target !== '#' && isSafeUrl(target) && typeof window !== 'undefined') {
       window.open(target, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleOpenFullPdfFromLink = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.stopPropagation();
+    if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+      e.preventDefault();
+      onViewPdf(item.fileName, item.pageNumber || 1, 'full');
+      return;
+    }
+    const target = item.isWeb ? item.webUrl || item.primaryUrl : item.pdfUrl;
+    if (!target || target === '#' || !isSafeUrl(target)) {
+      e.preventDefault();
     }
   };
 
@@ -265,8 +314,12 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
         onMouseLeave={handleMouseLeave}
         onFocus={handleMouseEnter}
         onBlur={handleMouseLeave}
-        aria-label={`Citation [${item.index}]: ${item.fileName}${item.pageNumber ? `, page ${item.pageNumber}` : ''}`}
-        title={`Click to open ${item.fileName}${item.pageNumber ? ` at Page ${item.pageNumber}` : ''} in a new tab`}
+        aria-label={`Citation [${item.index}]: ${item.fileName}${!item.isWeb && item.pageNumber ? `, page ${item.pageNumber}` : ''}`}
+        title={
+          item.isWeb
+            ? `Click to open external web article: ${item.fileName}`
+            : `Click to open ${item.fileName}${item.pageNumber ? ` at Page ${item.pageNumber}` : ''} in a new tab`
+        }
         className={`inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 text-[11px] font-mono font-semibold rounded-md border transition-all duration-150 cursor-pointer shadow-2xs hover:scale-105 active:scale-95 select-none no-underline group ${
           item.isWeb
             ? 'bg-cyan-50/95 hover:bg-cyan-100/95 text-cyan-700 hover:text-cyan-900 dark:bg-cyan-950/60 dark:hover:bg-cyan-900/80 dark:text-cyan-300 dark:hover:text-cyan-100 border-cyan-200/90 hover:border-cyan-400 dark:border-cyan-700/60 dark:hover:border-cyan-500'
@@ -274,14 +327,8 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
         }`}
       >
         <span>[{item.index}]</span>
-        {item.pageNumber !== undefined && item.pageNumber > 0 && (
-          <span
-            className={`ml-0.5 px-1 py-0.2 rounded text-[9px] font-mono font-semibold ${
-              item.isWeb
-                ? 'bg-cyan-200/70 dark:bg-cyan-900/70 text-cyan-900 dark:text-cyan-200'
-                : 'bg-blue-200/70 dark:bg-blue-900/70 text-blue-900 dark:text-blue-200'
-            }`}
-          >
+        {!item.isWeb && item.pageNumber !== undefined && item.pageNumber > 0 && (
+          <span className="ml-0.5 px-1 py-0.2 rounded text-[9px] font-mono font-semibold bg-blue-200/70 dark:bg-blue-900/70 text-blue-900 dark:text-blue-200">
             p.{item.pageNumber}
           </span>
         )}
@@ -302,7 +349,7 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
           {/* Header with Document Name & Page Badge */}
           <div className="flex items-center justify-between gap-1.5 pb-1.5 border-b border-white/10">
             <div
-              onClick={handleOpenFullPdf}
+              onClick={handleOpenFullPdfFromDiv}
               className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-100 hover:text-cyan-300 transition-colors cursor-pointer min-w-0"
               title={
                 item.isWeb
@@ -365,7 +412,7 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
             ) : (
               <>
                 <a
-                  href={item.singlePageViewUrl || item.singlePagePdfUrl || item.pdfUrl}
+                  href={item.singlePageViewUrl || item.singlePagePdfUrl || item.pdfUrl || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={handleOpenPageOnly}
@@ -380,7 +427,7 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
                   href={item.pdfUrl || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={handleOpenFullPdf}
+                  onClick={handleOpenFullPdfFromLink}
                   className="inline-flex items-center justify-center gap-1 px-2 py-1 text-[10.5px] font-medium font-sans bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 rounded-md shadow-2xs hover:scale-[1.02] active:scale-95 transition-all text-center cursor-pointer no-underline"
                   title="Open complete PDF document in new tab"
                 >

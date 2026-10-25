@@ -79,7 +79,9 @@ export const ControlCenterModal: React.FC = () => {
   const hasConfiguredKey =
     config.llmDeployment === 'local'
       ? Boolean(config.selectedLocalModel)
-      : (config.apiKeys || []).some((k) => k.key && k.key.trim().length > 0);
+      : (config.apiKeys || []).some(
+          (k) => k?.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+        );
 
   const tabs = [
     {
@@ -160,7 +162,9 @@ export const ControlCenterModal: React.FC = () => {
       }
 
       const primaryCloudProvider =
-        (config.apiKeys || []).find((k) => k?.key && k.key.trim())?.provider || 'groq';
+        (config.apiKeys || []).find(
+          (k) => k?.key && k.key.trim() && k.provider !== 'unknown'
+        )?.provider || 'groq';
       const activeBackend = isCloud ? primaryCloudProvider : 'ollama';
       const activeLlmMode = isCloud ? `cloud_${primaryCloudProvider}` : 'local_ollama';
 
