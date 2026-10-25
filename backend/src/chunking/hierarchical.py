@@ -24,6 +24,13 @@ from .models import (
     Proposition,
 )
 
+try:
+    from llama_index.core.node_parser import HierarchicalNodeParser
+    from llama_index.core.schema import Document as LlamaDocument
+    HAS_LLAMA_INDEX = True
+except ImportError:
+    HAS_LLAMA_INDEX = False
+
 
 class PropositionExtractor:
     """
@@ -256,3 +263,100 @@ class HierarchicalChunkAssembler:
                 child_chunks[idx].next_chunk_id = child_chunks[idx + 1].chunk_id
 
         return child_chunks, parent_chunks, all_propositions
+
+
+class LlamaIndexHierarchicalChunker:
+    """
+    Standard Parent-Child Chunker backed by LlamaIndex (MIT License).
+    Generates Parent Chunks (default 1024 tokens) and Child Chunks (default 256 tokens)
+    with explicit bidirectional parent-child references.
+    """
+
+    def __init__(self, parent_chunk_size: int = 1024, child_chunk_size: int = 256):
+        self.parent_size = parent_chunk_size
+        self.child_size = child_chunk_size
+        if HAS_LLAMA_INDEX:
+            self._parser = HierarchicalNodeParser.from_defaults(
+                chunk_sizes=[self.parent_size, self.child_size]
+            )
+        else:
+            self._parser = None
+
+    def chunk_document(
+        self,
+        text: str,
+        doc_id: str,
+        primary_page: int = 1,
+        filename: Optional[str] = None,
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Parses document text into linked parent and child chunk records.
+        Child chunks include parent_node reference pointing to their enclosing parent chunk.
+        """
+        if not text or not text.strip():
+            return []
+
+        base_meta = {
+            **(extra_metadata or {}),
+            "doc_id": doc_id,
+            "primary_page": primary_page,
+            "pdf_filename": filename or doc_id,
+        }
+
+        if not HAS_LLAMA_INDEX or self._parser is None:
+            words = text.split()
+            chunks = []
+            for idx in range(0, len(words), self.child_size):
+                chunk_words = words[idx : idx + self.child_size]
+                cid = f"{doc_id}_p{primary_page}_c{idx // self.child_size + 1}"
+                chunks.append({
+                    "chunk_id": cid,
+                    "plain_text": " ".join(chunk_words),
+                    "text": " ".join(chunk_words),
+                    "primary_page": primary_page,
+                    "document_id": doc_id,
+                    "metadata": {
+                        **base_meta,
+                        "chunk_id": cid,
+                    },
+                })
+            return chunks
+
+        llama_doc = LlamaDocument(text=text, metadata=base_meta)
+        nodes = self._parser.get_nodes_from_documents([llama_doc])
+
+        result_chunks = []
+        for n in nodes:
+            parent_id = n.parent_node.node_id if n.parent_node else None
+            is_parent = parent_id is None
+            cid = f"{doc_id}_{n.node_id[:8]}"
+            meta = {
+                **base_meta,
+                **n.metadata,
+                "chunk_id": cid,
+                "node_id": n.node_id,
+                "parent_chunk_id": f"{doc_id}_{parent_id[:8]}" if parent_id else None,
+                "is_parent": is_parent,
+                "level": "parent" if is_parent else "child",
+            }
+            result_chunks.append({
+                "chunk_id": cid,
+                "plain_text": n.text,
+                "text": n.text,
+                "primary_page": primary_page,
+                "document_id": doc_id,
+                "parent_chunk_id": meta["parent_chunk_id"],
+                "is_parent": is_parent,
+                "metadata": meta,
+            })
+        return result_chunks
+
+    def split_text(self, text: str, doc_id: str = "doc") -> List[Dict[str, Any]]:
+        """Convenience alias for chunk_document."""
+        return self.chunk_document(text=text, doc_id=doc_id)
+
+    def chunk_text(self, text: str, doc_id: str = "doc") -> List[Dict[str, Any]]:
+        """Convenience alias for chunk_document."""
+        return self.chunk_document(text=text, doc_id=doc_id)
+

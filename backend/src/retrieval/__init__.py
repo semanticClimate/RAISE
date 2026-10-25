@@ -8,6 +8,7 @@ from .fusion import (
 from .parallel_retriever import AsyncParallelRetriever, SelfContainedBM25
 from .pipeline import StandaloneRAGPipeline, query_graph_rag
 from .hyde import HyDEGenerator, get_hyde_generator
+from .multihop_engine import MultiHopAdaptiveRetriever, AdvancedLexicalIndex
 from .crag_evaluator import (
     CorrectiveRAGEvaluator,
     CRAGDecision,
@@ -27,6 +28,8 @@ __all__ = [
     "query_graph_rag",
     "HyDEGenerator",
     "get_hyde_generator",
+    "MultiHopAdaptiveRetriever",
+    "AdvancedLexicalIndex",
     "CorrectiveRAGEvaluator",
     "CRAGDecision",
     "CRAGAction",

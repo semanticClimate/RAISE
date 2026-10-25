@@ -98,7 +98,6 @@ async def health_check(request: Request):
         'message': 'Backend is running',
         'version': '1.0.0',
         'api_version': '1.0.0',
-        'auth_mode': 'redis' if rd_ready else 'standalone',
         'network': {
             'lan_ipv4': lan_ip,
             'port': port,

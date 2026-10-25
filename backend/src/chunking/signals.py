@@ -35,6 +35,7 @@ except ImportError:
 
 from .config import ChunkingConfig
 from .models import CandidateUnit, SignalResult
+from .graph_signals import compute_community_continuity_signal, compute_cross_section_signal
 
 logger = logging.getLogger("raise.chunking.signals")
 
@@ -339,82 +340,17 @@ class SignalAvailabilityComputer:
                 )
 
         # 7. Community Continuity
-        if config.ablation_disable_community_continuity:
-            signals["community_continuity"] = SignalResult(
-                name="community_continuity",
-                value=0.0,
-                available=False,
-                method="ablation_disabled",
-                missing_reason="ablation_flag_active",
-            )
-        elif not node_to_community:
-            signals["community_continuity"] = SignalResult(
-                name="community_continuity",
-                value=None,
-                available=False,
-                method="louvain_community_membership",
-                evidence_count=0,
-                quality=0.0,
-                missing_reason="community_detection_unavailable_or_empty",
-            )
-        else:
-            comm_a = node_to_community.get(unit_a.candidate_id)
-            comm_b = node_to_community.get(unit_b.candidate_id)
-            if comm_a and comm_b:
-                signals["community_continuity"] = SignalResult(
-                    name="community_continuity",
-                    value=1.0 if comm_a == comm_b else 0.0,
-                    available=True,
-                    method="louvain_community_membership",
-                    evidence_count=1,
-                    quality=1.0,
-                )
-            else:
-                signals["community_continuity"] = SignalResult(
-                    name="community_continuity",
-                    value=None,
-                    available=False,
-                    method="louvain_community_membership",
-                    evidence_count=0,
-                    quality=0.0,
-                    missing_reason="candidate_unit_not_in_community_map",
-                )
+        signals["community_continuity"] = compute_community_continuity_signal(
+            unit_a=unit_a,
+            unit_b=unit_b,
+            config=config,
+            node_to_community=node_to_community,
+        )
 
         # 8. Cross-Section Dependency
-        ent_ids_a = {e["id"] for e in unit_a.entities if "id" in e}
-        ent_ids_b = {e["id"] for e in unit_b.entities if "id" in e}
-        rel_targets_a = {r.get("target_id") or r.get("target") for r in unit_a.relationships if (r.get("target_id") or r.get("target"))}
-        rel_targets_b = {r.get("target_id") or r.get("target") for r in unit_b.relationships if (r.get("target_id") or r.get("target"))}
-        shared_ents = ent_ids_a & ent_ids_b
-        cross_rel = (ent_ids_a & rel_targets_b) | (ent_ids_b & rel_targets_a)
-
-        if unit_a.section_id != unit_b.section_id:
-            if shared_ents or cross_rel:
-                signals["cross_section"] = SignalResult(
-                    name="cross_section",
-                    value=0.9,
-                    available=True,
-                    method="cross_section_entity_bridge",
-                    evidence_count=len(shared_ents) + len(cross_rel),
-                    quality=1.0,
-                )
-            else:
-                signals["cross_section"] = SignalResult(
-                    name="cross_section",
-                    value=0.0,
-                    available=True,
-                    method="cross_section_no_bridge",
-                    evidence_count=0,
-                    quality=1.0,
-                )
-        else:
-            signals["cross_section"] = SignalResult(
-                name="cross_section",
-                value=0.0,
-                available=True,
-                method="same_section_no_cross_dependency",
-                evidence_count=0,
-                quality=1.0,
-            )
+        signals["cross_section"] = compute_cross_section_signal(
+            unit_a=unit_a,
+            unit_b=unit_b,
+        )
 
         return signals

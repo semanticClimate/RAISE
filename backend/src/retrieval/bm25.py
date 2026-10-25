@@ -52,22 +52,46 @@ class SelfContainedBM25:
     def _tokenize(self, text: str) -> list:
         return re.findall(r'\b\w+\b', text.lower())
         
-    def search(self, query: str, top_k: int = 6, active_docs: Optional[List[str]] = None) -> list:
+    def search(
+        self,
+        query: str,
+        top_k: int = 6,
+        active_docs: Optional[List[str]] = None,
+        doc_filter: Optional[str] = None,
+    ) -> list:
         # Strict drawer isolation: If active_docs is explicitly empty, return zero hits
         if active_docs is not None and len(active_docs) == 0:
             return []
-        query_tokens = [t for t in self._tokenize(query) if len(t) > 2]
+        stop_words = {
+            "the", "and", "for", "with", "from", "that", "this", "what", "which",
+            "are", "was", "were", "been", "have", "has", "had", "does", "did",
+            "show", "tell", "give", "list", "how", "why", "who", "when", "where",
+            "into", "about", "above", "below", "between", "under", "again",
+            "further", "then", "once", "here", "there", "all", "any", "both",
+            "each", "few", "more", "most", "other", "some", "such", "only",
+            "own", "same", "than", "too", "very", "can", "will", "just", "should",
+            "now", "is", "in", "it", "to", "of", "at", "by", "an", "as", "or",
+            "on", "if", "be", "do", "so", "no", "up", "my"
+        }
+        query_tokens = [
+            t for t in self._tokenize(query)
+            if len(t) >= 2 and t not in stop_words
+        ]
         if not query_tokens:
             return []
             
         scores = []
+        filter_targets = list(active_docs or [])
+        if doc_filter and doc_filter != "ALL":
+            filter_targets.append(doc_filter)
+
         for i in range(self.corpus_size):
             chunk = self.chunks[i]
-            if active_docs:
+            if filter_targets:
                 doc_name = str(chunk.get("pdf_filename") or (chunk.get("metadata") or {}).get("pdf_filename") or chunk.get("document_id") or (chunk.get("metadata") or {}).get("doc_id") or "")
                 clean_doc = re.sub(r"[^a-zA-Z0-9]", "", doc_name.lower())
                 matched_doc = False
-                for ad in active_docs:
+                for ad in filter_targets:
                     clean_ad = re.sub(r"[^a-zA-Z0-9]", "", str(ad).lower())
                     clean_stem = re.sub(r"[^a-zA-Z0-9]", "", Path(ad).stem.lower())
                     if clean_ad in clean_doc or clean_doc in clean_ad or clean_stem in clean_doc or clean_doc in clean_stem:

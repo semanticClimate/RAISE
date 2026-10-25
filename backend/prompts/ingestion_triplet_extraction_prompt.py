@@ -1,10 +1,10 @@
 """
-Ingestion Engine: Structured Knowledge Triplet Extraction Prompt for Qwen 2.5 7B
-Calibrated for sentence-transformers/all-MiniLM-L6-v2 dense vector embeddings
+Ingestion Engine: Structured Knowledge Triplet Extraction Prompt
+Calibrated for dense vector embeddings and graph extraction
 """
 
-INGESTION_TRIPLET_EXTRACTION_PROMPT = """You are an expert academic knowledge graph engineer and institutional data extraction specialist.
-Your task is to analyze the provided document passage from a university/institutional annual report and extract all factual entities, attributes, and directed relational triplets strictly conforming to the institutional graph schema.
+INGESTION_TRIPLET_EXTRACTION_PROMPT = """You are an expert knowledge graph engineer and institutional data extraction specialist.
+Your task is to analyze the provided document passage from an institutional annual report and extract all factual entities, attributes, and directed relational triplets strictly conforming to the institutional graph schema.
 
 ### 1. Extraction Principles & Grounding Rules:
 1. Zero Hallucination & Strict Schema Adherence:
@@ -12,7 +12,7 @@ Your task is to analyze the provided document passage from a university/institut
    - Use ONLY allowed node labels, relationship types, and properties defined in the Graph Schema.
    - Do NOT invent or infer unseen entities or relationships.
 2. Entity Normalization:
-   - Standardize entity names (e.g., abbreviations such as "IITM" -> "IIT Madras", "DST" -> "Department of Science and Technology (DST)").
+   - Standardize entity names (e.g., abbreviations such as "NIPGR" -> "National Institute of Plant Genome Research", "DST" -> "Department of Science and Technology (DST)").
    - Strip leading honorifics into the designation property if applicable (e.g., "Prof. John Doe" -> name: "John Doe", designation: "Professor").
 3. Numeric & Currency Precision:
    - Preserve exact figures, fiscal years (e.g., "2024-25"), and currency units (e.g., amount_inr_lakh, corpus_value, cost).
@@ -50,12 +50,12 @@ EXPECTED JSON OUTPUT FORMAT
 {
   "entities": [
     {
-      "id": "inst_iit_madras",
+      "id": "inst_nipgr",
       "label": "Institution",
-      "name": "IIT Madras",
+      "name": "NIPGR",
       "properties": {
-        "location": "Chennai, Tamil Nadu",
-        "type": "University"
+        "location": "New Delhi, India",
+        "type": "Research Institute"
       },
       "provenance": {
         "page_number": 12,
@@ -65,9 +65,9 @@ EXPECTED JSON OUTPUT FORMAT
   ],
   "triplets": [
     {
-      "source_id": "inst_iit_madras",
+      "source_id": "inst_nipgr",
       "relationship": "SECURED_GRANT",
-      "target_id": "grant_dst_quantum_2024",
+      "target_id": "grant_dst_genomics_2024",
       "properties": {},
       "provenance": {
         "page_number": 12,

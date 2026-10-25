@@ -18,7 +18,6 @@ from .llm import (
 from .gemini import GeminiProvider
 from .groq import GroqProvider
 from .mistral import MistralProvider
-from .vercel import VercelAIGatewayProvider
 from .universal import UniversalCloudProvider
 from .deepseek import DeepSeekProvider
 from .nvidia import NvidiaNIMProvider
@@ -39,7 +38,6 @@ __all__ = [
     "GeminiProvider",
     "GroqProvider",
     "MistralProvider",
-    "VercelAIGatewayProvider",
     "UniversalCloudProvider",
     "DeepSeekProvider",
     "NvidiaNIMProvider",

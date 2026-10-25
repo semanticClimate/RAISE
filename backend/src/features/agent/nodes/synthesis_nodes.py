@@ -153,12 +153,41 @@ class SynthesisNodesMixin:
         }
 
     # =========================================================================
-    # NODE 14: Unverified Responder Node (Controlled Refusal on Failure)
+    # NODE 14: Unverified Responder Node (Graduated Response & Controlled Refusal)
     # =========================================================================
     def _unverified_responder_node(self, state: GraphRAGState) -> Dict[str, Any]:
         telemetry = state.get("telemetry")
         if telemetry:
-            telemetry.complete_stage("COMPLETED", "Refusal response delivered due to unverified claims")
+            telemetry.complete_stage("COMPLETED", "Delivering response via graduated quality gate")
+
+        draft_answer = (
+            state.get("grounded_answer")
+            or state.get("answer")
+            or state.get("draft_answer")
+            or ""
+        )
+        citations = state.get("citations") or []
+        verified_claims = state.get("verified_claims") or []
+        gate_report = state.get("quality_gate_report") or {}
+        faithfulness_score = gate_report.get("faithfulness_score", 0.0)
+
+        # Graduated Warning instead of Total Refusal:
+        # If there is substantive answer text with partial/moderate grounding (f_score >= 0.40 or valid citations),
+        # return the synthesized answer with an explicit inline disclaimer rather than wiping out citations and response.
+        if draft_answer and draft_answer != RuntimeFaithfulnessQualityGate.UNVERIFIED_REFUSAL_MESSAGE and (
+            faithfulness_score >= 0.40 or len(citations) > 0 or len(verified_claims) > 0
+        ):
+            disclaimer = (
+                "> ⚠️ **Advisory Notice:** Some claims in the summary below could not be strictly verified "
+                "with full confidence against the source excerpts. Please review the cited source passages.\n\n"
+            )
+            graduated_answer = disclaimer + draft_answer
+            return {
+                "grounded_answer": graduated_answer,
+                "traceability_score": max(0.50, faithfulness_score),
+                "citations": citations,
+                "verified_claims": verified_claims,
+            }
 
         return {
             "grounded_answer": RuntimeFaithfulnessQualityGate.UNVERIFIED_REFUSAL_MESSAGE,

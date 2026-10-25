@@ -21,25 +21,20 @@ logger = logging.getLogger("raise.ingestion.institution_resolver")
 
 
 def identify_institution(pdf_path: Path, first_page_text: str) -> Tuple[str, str]:
-    """Determine canonical institution name and academic/reporting year."""
+    """Dynamically determine canonical institution or organization name and academic/reporting year (zero hardcoded entities)."""
     combined_text = (pdf_path.name + " " + first_page_text[:1000]).lower()
 
-    if re.search(r"\b(iit madras research park|iitmrp)\b", combined_text):
-        uni = "IIT Madras Research Park (IITMRP)"
-    elif re.search(r"\b(indian institute of technology madras|iit madras|iitm)\b", combined_text):
-        uni = "Indian Institute of Technology Madras (IIT Madras)"
-    elif re.search(r"\b(biotechnology research and innovation council|bric)\b", combined_text):
-        uni = "Biotechnology Research and Innovation Council (BRIC)"
-    elif re.search(r"\b(national institute of plant genome research|nipgr)\b", combined_text):
-        uni = "National Institute of Plant Genome Research (NIPGR)"
-    elif re.search(r"\b(astrabio innovations council|astrabio)\b", combined_text):
-        uni = "AstraBio Innovations Council"
-    elif re.search(r"\b(panjab university|\(pu\))\b", combined_text):
-        uni = "Panjab University"
-    elif re.search(r"\b(delhi university|university of delhi|\(du\))\b", combined_text):
-        uni = "Delhi University"
-    elif re.search(r"\b(national stock exchange|nse)\b", combined_text):
-        uni = "National Stock Exchange of India (NSE)"
+    # Dynamic extraction: identify capitalized organizational entities from cover page
+    inst_match = re.search(
+        r"\b([A-Z][a-zA-Z\s&]{4,60}?(?:University|Institute(?:\s+of\s+[A-Za-z\s]+)?|Council(?:\s+of\s+[A-Za-z\s]+)?|Research Park|Foundation|Center|Centre|Laboratory|College|Corporation|Board))\b",
+        first_page_text[:1500]
+    )
+    if inst_match and len(inst_match.group(1).strip()) > 5:
+        uni = inst_match.group(1).strip()
+        # Optional parenthetical acronym e.g. (NIPGR), (BRIC), (MIT)
+        acro_match = re.search(rf"{re.escape(uni)}\s*\(([A-Z]{{2,8}})\)", first_page_text[:1800], re.IGNORECASE)
+        if acro_match:
+            uni = f"{uni} ({acro_match.group(1).upper()})"
     else:
         uni = pdf_path.stem.replace("_", " ").replace("-", " ").title()
 

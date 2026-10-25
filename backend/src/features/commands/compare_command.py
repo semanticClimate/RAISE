@@ -25,7 +25,7 @@ COMPARISON_DOMAINS: Dict[str, List[Dict[str, Any]]] = {
         {"crit": "Field-Normalized Impact (FWCI)", "val_a": "1.45 (SciVal/Clarivate)", "val_b": "1.32 (SciVal/Clarivate)", "status": ComparabilityStatus.EXTERNAL_SUPPLEMENTED, "delta": "+0.13 impact ratio"},
         {"crit": "External Research Grants", "val_a": "Documented funding portfolio", "val_b": "Documented funding portfolio", "status": ComparabilityStatus.FULLY_COMPARABLE, "delta": "Subject to grant accounting standards"},
         {"crit": "Patents & Commercial IP", "val_a": "Verified patents filed vs granted", "val_b": "Verified patents filed vs granted", "status": ComparabilityStatus.FULLY_COMPARABLE, "delta": "Deterministic patent ratio"},
-        {"crit": "Doctoral Production per FTE", "val_a": "Reported per research faculty", "val_b": "Reported per research faculty", "status": ComparabilityStatus.CONDITIONALLY_COMPARABLE, "delta": "Differences in PhD program lengths"},
+        {"crit": "Doctoral Conferral per FTE", "val_a": "Reported per research faculty", "val_b": "Reported per research faculty", "status": ComparabilityStatus.CONDITIONALLY_COMPARABLE, "delta": "Differences in PhD program lengths"},
         {"crit": "Open Access Scholarship Share", "val_a": "68% institutional repository", "val_b": "62% institutional repository", "status": ComparabilityStatus.EXTERNAL_SUPPLEMENTED, "delta": "+6.0% OA compliance"},
     ],
     "academics": [
@@ -238,15 +238,17 @@ def handle_compare_command(ctx: CommandContext) -> CommandResult:
                 "plain_text": f"Documented in {doc_a} (Page {cdef.get('page_a', 1)}): {val_a}.",
             })
             if is_ext_b or is_ext:
-                citations.append({
-                    "citation_index": cit_idx + 1,
-                    "pdf_filename": web_rec.get("url", doc_b) if web_rec else doc_b,
-                    "primary_page": 1,
-                    "heading": f"External Public Record - {crit}",
-                    "plain_text": f"Supplemental public record for {prof_b['institution_name']} ({prof_b['reporting_year']}): {val_b}.",
-                    "source_type": "EXTERNAL_PUBLIC_RECORD",
-                    "url": web_rec.get("url", "https://en.wikipedia.org") if web_rec else "https://en.wikipedia.org",
-                })
+                ext_url = web_rec.get("url", "https://en.wikipedia.org") if web_rec else "https://en.wikipedia.org"
+                ext_snip = f"Supplemental public record for {prof_b['institution_name']} ({prof_b['reporting_year']}): {val_b}."
+                citations.append(
+                    SupplementalWebFetcher.format_citation(
+                        evidence=ext_snip,
+                        citation_index=cit_idx + 1,
+                        heading=f"External Public Record - {crit}",
+                        url=ext_url,
+                        score=0.95,
+                    )
+                )
             else:
                 citations.append({
                     "citation_index": cit_idx + 1,
@@ -280,24 +282,53 @@ def handle_compare_command(ctx: CommandContext) -> CommandResult:
                     dimension=dim_name.capitalize(), criterion=crit, val_a=val_a, val_b=val_b, comparability=status,
                     delta=delta, citation_a=cit_a, citation_b=cit_b, notes=notes, is_external_a=is_ext, is_external_b=is_ext,
                 ))
-                citations.append({
-                    "citation_index": cit_idx,
-                    "pdf_filename": web_rec.get("url", doc_a) if is_ext and web_rec else doc_a,
-                    "primary_page": 1,
-                    "heading": f"{dim_name.capitalize()} - {crit}",
-                    "plain_text": f"Evidence for {name_a} on {crit}: {val_a}.",
-                    "source_type": "EXTERNAL_PUBLIC_RECORD" if is_ext else "PDF",
-                    "url": web_rec.get("url", "") if is_ext and web_rec else None,
-                })
-                citations.append({
-                    "citation_index": cit_idx + 1,
-                    "pdf_filename": web_rec.get("url", doc_b) if is_ext and web_rec else doc_b,
-                    "primary_page": 1,
-                    "heading": f"{dim_name.capitalize()} - {crit}",
-                    "plain_text": f"Evidence for {name_b} on {crit}: {val_b}.",
-                    "source_type": "EXTERNAL_PUBLIC_RECORD" if is_ext else "PDF",
-                    "url": web_rec.get("url", "") if is_ext and web_rec else None,
-                })
+                if is_ext and web_rec:
+                    ext_url = web_rec.get("url", "https://en.wikipedia.org")
+                    citations.append(
+                        SupplementalWebFetcher.format_citation(
+                            evidence=f"Evidence for {name_a} on {crit}: {val_a}.",
+                            citation_index=cit_idx,
+                            heading=f"{dim_name.capitalize()} - {crit}",
+                            url=ext_url,
+                            score=0.95,
+                        )
+                    )
+                    citations.append(
+                        SupplementalWebFetcher.format_citation(
+                            evidence=f"Evidence for {name_b} on {crit}: {val_b}.",
+                            citation_index=cit_idx + 1,
+                            heading=f"{dim_name.capitalize()} - {crit}",
+                            url=ext_url,
+                            score=0.95,
+                        )
+                    )
+                else:
+                    citations.append({
+                        "citation_index": cit_idx,
+                        "pdf_filename": doc_a,
+                        "filename": doc_a,
+                        "doc_id": doc_a,
+                        "primary_page": 1,
+                        "heading": f"{dim_name.capitalize()} - {crit}",
+                        "plain_text": f"Evidence for {name_a} on {crit}: {val_a}.",
+                        "snippet": f"Evidence for {name_a} on {crit}: {val_a}.",
+                        "source_type": "pdf",
+                        "url": None,
+                        "score": 0.95,
+                    })
+                    citations.append({
+                        "citation_index": cit_idx + 1,
+                        "pdf_filename": doc_b,
+                        "filename": doc_b,
+                        "doc_id": doc_b,
+                        "primary_page": 1,
+                        "heading": f"{dim_name.capitalize()} - {crit}",
+                        "plain_text": f"Evidence for {name_b} on {crit}: {val_b}.",
+                        "snippet": f"Evidence for {name_b} on {crit}: {val_b}.",
+                        "source_type": "pdf",
+                        "url": None,
+                        "score": 0.95,
+                    })
                 cit_idx += 2
 
     # 2. Markdown Factsheet Table

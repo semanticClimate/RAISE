@@ -110,20 +110,20 @@ class CandidateKnowledgeExtractor:
         except Exception:
             pass
 
-        # 3. Dedicated startup / organization mentions heuristic if text describes deep-tech / products
-        startup_matches = re.findall(
-            r"\b(XYMA Analytics|Mindgrove Technologies|NeoMotion|AgniKul Cosmos|Agnikul|NeoFly|NeoBolt|TMAP)\b",
-            text,
-            re.IGNORECASE
+        # 3. Dynamic organization & technology venture entity extraction (domain-agnostic)
+        org_pattern = (
+            r"\b([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*\s+"
+            r"(?:Analytics|Technologies|Technology|Dynamics|Cosmos|Robotics|Therapeutics|Biosciences|Biotech|Labs|AI|Systems|Software|Health|Pharma|Solutions|Ventures))\b"
         )
-        for sm in set(startup_matches):
-            canon_name = sm.title()
-            eid = f"startup_{re.sub(r'[^a-zA-Z0-9]', '_', canon_name.lower())}"
+        found_orgs = re.findall(org_pattern, text)
+        for sm in set(found_orgs):
+            canon_name = sm.strip()
+            eid = f"org_{re.sub(r'[^a-zA-Z0-9]', '_', canon_name.lower())}"
             if not any(e["id"] == eid for e in entities):
                 entities.append({
                     "id": eid,
                     "name": canon_name,
-                    "label": "Startup",
+                    "label": "Organization",
                     "properties": {"name": canon_name},
                 })
 

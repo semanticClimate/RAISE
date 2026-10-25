@@ -122,11 +122,63 @@ def sanitize_rag_text(text: str) -> str:
         flags=re.IGNORECASE,
     )
 
-    # Normalize colon followed immediately by text or newline
+        # Normalize colon followed immediately by text or newline
+
     cleaned = re.sub(r':\s*\n+', ':\n\n', cleaned)
 
+
+
+    # Clean delimiter artifacts like ---:### or ---:#### or ---:
+
+    cleaned = re.sub(r'^[ \t]*---:+\s*(#{1,4})\s*', r'\n\n\1 ', cleaned, flags=re.MULTILINE)
+
+    cleaned = re.sub(r'^[ \t]*---:+\s*', r'\n\n---\n\n', cleaned, flags=re.MULTILINE)
+
+    cleaned = re.sub(r'\n---:+#*', r'\n\n### ', cleaned)
+
+
+
+    # Clean floating period on its own line (e.g. "alleles \n.")
+
+    cleaned = re.sub(r'([A-Za-z0-9\)\"])[ \t]*\n+[ \t]*\.', r'\1.', cleaned)
+
+    cleaned = re.sub(r'[ \t]*\n+[ \t]*\.', r'.', cleaned)
+
+    cleaned = re.sub(r'\s+\.', '.', cleaned)
+
+
+
+    # Clean Key:Value without space after colon (e.g. cultivars:Deciphered -> cultivars: Deciphered)
+
+    cleaned = re.sub(r'([A-Za-z0-9\)])\:([A-Z])', r'\1: \2', cleaned)
+
+
+
+    # Clean [Verified Knowledge Graph Facts] and other non-standard bracket tags
+
+    cleaned = re.sub(r'\s*\[Verified Knowledge Graph[^\]]*\]', '', cleaned)
+
+    cleaned = re.sub(r'\s*\[Knowledge Graph[^\]]*\]', '', cleaned)
+
+
+
+    # Clean noisy OCR conference quotes like "inSTITUTE AFU L"
+
+    cleaned = re.sub(r'\s*\(\s*e\.g\.,\s*["\']inSTITUTE AFU L["\']\s*\)', '', cleaned, flags=re.IGNORECASE)
+
+
+
+    # Normalize standalone section markers like "A. Genome Analysis" into clean H4 markdown
+
+    cleaned = re.sub(r'^[ \t]*([A-Z]\.\s+[A-Za-z0-9\s,–—\-]+)$', r'#### \1', cleaned, flags=re.MULTILINE)
+
+
+
     # Convert existing bullets to unicode bullet '• ' which triggers frontend rich card renderer
+
     cleaned = re.sub(r'(^|\n)\s*[\-\*\+]\s+', r'\1• ', cleaned)
+
+
 
     lines = [l.strip() for l in cleaned.split('\n')]
     processed = []
@@ -134,10 +186,41 @@ def sanitize_rag_text(text: str) -> str:
     in_entity_list = False
     entity_bullets = []
 
+    under_intro = False
     while i < len(lines):
         line = lines[i]
         if not line:
+            under_intro = False
             processed.append('')
+            i += 1
+            continue
+
+        if line.startswith(('#', '---', '```', '>')):
+            under_intro = False
+            in_entity_list = False
+            processed.append(line)
+            i += 1
+            continue
+
+        if line.endswith(':') and not line.startswith(('•', '*', '-', '#')):
+            under_intro = True
+            in_entity_list = True
+            processed.append(line)
+            i += 1
+            continue
+
+        # Format "Key: Value" items into clean bullet points
+        m_kv = re.match(r'^([A-Z][A-Za-z0-9\s/–—\-]+?):\s+([A-Z][\s\S]+)$', line)
+        if m_kv and not line.startswith(('•', '*', '-', '#', '>')) and len(m_kv.group(1)) < 60:
+            line = f"• **{m_kv.group(1)}**: {m_kv.group(2)}"
+            under_intro = False
+            in_entity_list = True
+            processed.append(line)
+            i += 1
+            continue
+        elif under_intro and not line.startswith(('•', '*', '-', '#', '>')) and len(line) > 10:
+            line = f"• {line}"
+            processed.append(line)
             i += 1
             continue
 
@@ -147,9 +230,10 @@ def sanitize_rag_text(text: str) -> str:
         # Check if previous line ended with a colon indicating an introductory list header
         prev_was_intro = bool(processed and any(processed[-j].endswith(':') for j in range(1, min(4, len(processed)+1)) if processed[-j]))
 
-        # Detect standalone entity/name lines
+        # Detect standalone entity/name lines (do NOT match headings)
         is_entity_line = (
             not is_bullet and 
+            not line.startswith('#') and
             (prev_was_intro or in_entity_list) and 
             len(line) < 80 and 
             (not line.endswith('.') or any(line.startswith(h) for h in ["Dr.", "Prof.", "Mr.", "Ms.", "Mrs.", "Shri", "Thiru."]))
@@ -223,6 +307,7 @@ STRICT FORMATTING AND CITATION RULES:
 1. CITATIONS & ANTI-REPETITION:
    - CRITICAL CITATION RULE: You MUST ground every factual claim, metric, or entity with an inline citation bracket referencing the source chunk index, e.g., "The institute established 4 new Centres of Excellence [1]."
    - Cite sources using simple numeric ASCII bracket markers ONLY: [1], [2], or multi-citation [1, 2].
+   - NEVER cite '[Verified Knowledge Graph Facts]' or any non-numeric citation tag. Use ONLY numeric ASCII brackets: [1], [2].
    - Do NOT use bold unicode numbers (e.g. do NOT use [𝟏]). Use only standard ASCII brackets: [1], [2].
    - ANTI-REPETITION RULE: If an entire bullet list or series of points originates from the same source excerpt, cite the introductory statement or section header ONCE (e.g., "Key initiatives established [1]:"). Do NOT append identical citation tags (e.g., [1]) to every single bullet point in the list.
    - Attach citations to individual bullet points ONLY if different points cite different excerpts (e.g., Point A [1], Point B [2]).
@@ -230,6 +315,9 @@ STRICT FORMATTING AND CITATION RULES:
    - Do not add standalone citation summaries or bibliography blocks.
 
 2. STRUCTURE & READABILITY:
+   - CRITICAL SYNTAX RULE: NEVER output delimiter prefixes like '---:###' or '---:####' or '---:'. Headings MUST start strictly with markdown hashes e.g. '### Heading Name'. Never prepend dashes or colons to headings.
+   - Always put a space after colons when introducing descriptions (e.g. '• **Topic**: Description', never 'Topic:Description').
+   - NEVER leave a period on its own line. Concluding punctuation must directly follow the last word or citation.
    - Provide a natural, synthesized response. Do NOT simply dump raw context chunks.
    - Group related findings into clear thematic headings (### Heading) or formatted bullet points (`• `).
    - When listing persons, organizations, roles, recommendations, or key facts, ALWAYS format each entry as a bullet point starting with `• **Name/Title**: Description [citation]` on its own line.
@@ -259,7 +347,27 @@ STRICT FORMATTING AND CITATION RULES:
    - In scanned OCR text, numbers and years may contain OCR noise: e.g., '31st March 2023' may appear in headers as 'Slst MARCH 2025' or 'Slst MARCH 2u2J', '53,55.00,000' as '53,55.00,Uuu', '48,50,00,000' as '48.S0_C)_(JL' or '48.50.0u.Uuu' (where 'S' is 5, representing 48,50,00,000 / 48.50 crore, NOT 48.80 crore). The source document metadata defines the true fiscal year. Extract figures from the relevant columns accordingly.
    - When asked to compare figures across years or calculate the difference/change, provide the reported figures for each year and accurately compute the arithmetic difference (Current Year minus Previous Year) without guessing.
    - Present the direct factual figures with bullet points and clear calculations. Do NOT append speculative meta-notes or trailing paragraphs discussing OCR transcription or artifact noise.
-"""
+
+8. ENTITY BINDING & EXACT TERMINOLOGY INTEGRITY:
+   - When answering about a specific named entity, gene, molecule, protein, investigator, organization, or metric:
+     * Focus strictly and exclusively on the specific entity queried. Do NOT conflate traits, mechanisms, investigators, or outcomes from adjacent paragraphs or neighboring table rows.
+     * Retain specific scientific, technical, numerical, and legal terminology verbatim from the text (including units, mutations, chemical formulas, dosages, identifiers, codes, and exact phrasing).
+     * Report quantitative counts, statistics, and legal/patent statuses using the exact qualifying language stated in the verified source excerpts.
+
+9. DETERMINISTIC STEP-BY-STEP ARITHMETIC:
+   - When the user asks for differences, percentage changes, ratios, multiples, or combined totals:
+     * Perform and show the exact step-by-step calculation using the verified figures extracted from the text:
+       - Percentage change: ((New Value - Baseline Value) / Baseline Value) * 100%
+       - Ratio / Multiple: Numerator / Denominator
+       - Percentage of total: (Subset / Total) * 100%
+       - Net Difference / Remainder: Total - Subsets
+       - Combined Sum: Sum of all specified component metrics
+     * State the exact resulting numerical value clearly in the answer.
+
+10. DIRECT BREVITY & TOKEN CONCISENESS (HIGH TOKEN F1):
+   - Never output generic introductory boilerplate such as "Based on the verified excerpts provided above...", "According to the uploaded documents...", or "Here is the information you requested:".
+   - Start immediately with the direct, substantive answer in the very first sentence.
+   - For multi-item queries (e.g., counts (a) through (i)), list each requested metric concisely on its own bullet point with its exact number."""
 
 
 def get_synthesis_system_prompt() -> str:

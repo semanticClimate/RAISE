@@ -121,21 +121,23 @@ class CrossEncoderReranker:
             dev = "cuda" if torch.cuda.is_available() else "cpu"
             token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
             try:
-                try:
-                    loaded_model = CrossEncoder(
-                        self.model_name,
-                        device=dev,
-                        token=token,
-                        local_files_only=True,
-                    )
-                except Exception:
-                    loaded_model = CrossEncoder(
-                        self.model_name,
-                        device=dev,
-                        token=token,
-                    )
-                self.model = loaded_model
-                _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=UserWarning)
+                    try:
+                        loaded_model = CrossEncoder(
+                            self.model_name,
+                            device=dev,
+                            token=token,
+                            local_files_only=True,
+                        )
+                    except Exception:
+                        loaded_model = CrossEncoder(
+                            self.model_name,
+                            device=dev,
+                            token=token,
+                        )
+                    self.model = loaded_model
+                    _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
             except Exception:
                 try:
                     fallback_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"

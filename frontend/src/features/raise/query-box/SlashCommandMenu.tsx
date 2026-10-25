@@ -4,6 +4,7 @@ import {
   Command,
   FileCheck2,
   FileSearch,
+  Globe,
   HelpCircle,
   Network,
   Scale,
@@ -31,6 +32,11 @@ const getCategoryColor = (category: string) => {
       return {
         bg: 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60',
         icon: <Scale className="w-3.5 h-3.5 text-indigo-500" />,
+      };
+    case 'research':
+      return {
+        bg: 'bg-cyan-50 dark:bg-cyan-950/50 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800/60',
+        icon: <Globe className="w-3.5 h-3.5 text-cyan-500" />,
       };
     case 'verification':
       return {

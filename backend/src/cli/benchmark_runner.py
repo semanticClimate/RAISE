@@ -251,16 +251,37 @@ def run_dev_benchmark(
     bench_type_lower = benchmark_type.strip().lower()
     if bench_type_lower in ("raise", "raise-bench", "raisebench"):
         dataset_path = BASE_DIR / "evaluation" / "benchmark_qa.json"
+        if not dataset_path.exists():
+            default_candidates = [
+                BASE_DIR / "evaluation" / "datasets" / "RAISE_annual_report_benchmark 26sep" / "RAISE_annual_report_benchmark_oracle.jsonl",
+                BASE_DIR / "evaluation" / "datasets" / "RAISE_annual_report_benchmark 26sep" / "RAISE_annual_report_benchmark_public.jsonl",
+            ]
+            for cand in default_candidates:
+                if cand.exists():
+                    dataset_path = cand
+                    break
         suite_title = "RAISE INSTITUTIONAL BENCHMARK SUITE (RAISE-Bench-V1)"
     elif bench_type_lower in ("frames", "frames-bench", "framesbench"):
         return run_dev_frames_benchmark(pipeline, memory, session, limit=limit)
     else:
         candidate_path = Path(benchmark_type)
         if candidate_path.exists():
+            if candidate_path.is_dir():
+                # Auto-resolve public benchmark or qa json
+                for c_cand in [
+                    candidate_path / "RAISE_annual_report_benchmark_public.jsonl",
+                    candidate_path / "RAISE_annual_report_benchmark_oracle.jsonl",
+                    candidate_path / "benchmark_qa.json",
+                    candidate_path / "samples_300.jsonl",
+                    candidate_path / "samples_300.json",
+                ]:
+                    if c_cand.exists():
+                        candidate_path = c_cand
+                        break
             dataset_path = candidate_path
             suite_title = f"CUSTOM BENCHMARK SUITE ({candidate_path.name})"
         else:
-            print(f"{C.DANGER}❌ Unknown benchmark suite: '{benchmark_type}'. Options: 'raise', 'frames', or path to JSON.{C.RESET}")
+            print(f"{C.DANGER}❌ Unknown benchmark suite: '{benchmark_type}'. Options: 'raise', 'frames', or path to JSON/JSONL.{C.RESET}")
             return
 
     if not dataset_path.exists():
@@ -268,12 +289,19 @@ def run_dev_benchmark(
         return
 
     try:
-        data = json.loads(dataset_path.read_text(encoding="utf-8"))
+        raw_content = dataset_path.read_text(encoding="utf-8").strip()
+        if dataset_path.suffix.lower() == ".jsonl" or "\n" in raw_content and raw_content.startswith("{"):
+            questions = []
+            for ln in raw_content.splitlines():
+                if ln.strip():
+                    questions.append(json.loads(ln.strip()))
+        else:
+            data = json.loads(raw_content)
+            questions = data.get("questions", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
     except Exception as e:
-        print(f"{C.DANGER}❌ Failed to load benchmark dataset JSON: {e}{C.RESET}")
+        print(f"{C.DANGER}❌ Failed to load benchmark dataset: {e}{C.RESET}")
         return
 
-    questions = data.get("questions", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
     if not questions:
         print(f"{C.WARN}⚠️ No questions found in {dataset_path.name}.{C.RESET}")
         return
@@ -296,7 +324,7 @@ def run_dev_benchmark(
     t_suite_start = time.time()
 
     for idx, q_item in enumerate(questions, 1):
-        q_id = q_item.get("q_id", f"Q{idx:03d}")
+        q_id = q_item.get("question_id") or q_item.get("q_id", f"Q{idx:03d}")
         tier = int(q_item.get("tier", 1))
         q_text = q_item.get("question") or q_item.get("query") or ""
         gt_answer = q_item.get("ground_truth_answer") or q_item.get("expected_answer") or ""
@@ -306,9 +334,14 @@ def run_dev_benchmark(
 
         exp_pages: List[int] = []
         for pc in page_citations:
-            found = re.findall(r"Page\s+(\d+)", str(pc), re.IGNORECASE)
-            for f in found:
-                exp_pages.append(int(f))
+            if isinstance(pc, int):
+                exp_pages.append(pc)
+            elif str(pc).isdigit():
+                exp_pages.append(int(pc))
+            else:
+                found = re.findall(r"Page\s+(\d+)", str(pc), re.IGNORECASE)
+                for f in found:
+                    exp_pages.append(int(f))
 
         exp_figures: Dict[str, str] = {}
         for kw in req_keywords:

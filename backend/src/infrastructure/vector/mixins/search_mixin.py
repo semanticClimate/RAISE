@@ -68,14 +68,17 @@ class VectorSearchMixin:
 
         if col is not None and total_items > 0:
             try:
-                # Robust canonical mapping for document filenames across formats
-                doc_name_map = {
-                    "annualreport202122": "Annual Report 2021-22.pdf",
-                    "annualreport202223": "Annual Report 2022-23.pdf",
-                    "annualreport202324": "Annual Report 2023-24.pdf",
-                    "bricannualreport2025": "BRIC-Annual-Report-2025.pdf",
-                    "bric2025": "BRIC-Annual-Report-2025.pdf",
-                }
+                # Dynamic canonical mapping for document filenames across formats via Knowledge Catalog
+                doc_name_map = {}
+                try:
+                    from src.features.catalog.knowledge_catalog import KnowledgeCatalogRegistry
+                    for prof in KnowledgeCatalogRegistry.get_instance().get_all_profiles():
+                        c_key = re.sub(r"[^a-zA-Z0-9]", "", prof.filename.lower())
+                        doc_name_map[c_key] = prof.filename
+                        if prof.document_id:
+                            doc_name_map[re.sub(r"[^a-zA-Z0-9]", "", prof.document_id.lower())] = prof.filename
+                except Exception:
+                    pass
 
                 def _canonical_names(val: str) -> List[str]:
                     c_clean = re.sub(r"[^a-zA-Z0-9]", "", str(val).lower())

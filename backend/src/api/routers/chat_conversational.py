@@ -151,11 +151,30 @@ async def handle_conversational_chat(
             "Please attach an academic document in your drawer when you wish to begin research."
         )
 
+    # Fast-path for pure introductory greetings (sub-10ms response)
+    q_norm = re.sub(r"[^\w\s]", "", message.lower()).strip()
+    is_pure_greeting = q_norm in {
+        "hi", "hello", "hey", "greetings", "howdy", "hi there", "hello there", "hey there",
+        "good morning", "good afternoon", "good evening", "good day", "yo", "sup"
+    }
+
     # A. Plain-Text Stream Response
     if req.stream and (req.format == "raw" or "text/plain" in request.headers.get("accept", "").lower()):
         async def conv_raw_stream():
             full_response_parts = []
             stream_succeeded = False
+
+            if is_pure_greeting:
+                fb = get_fallback_reply()
+                yield fb
+                if session_id:
+                    if postgres_manager:
+                        postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
+                        postgres_manager.save_message(session_id, "assistant", fb, mode=mode, sources=[])
+                    if redis_cache:
+                        redis_cache.save_session_message(session_id, "user", message, mode=mode)
+                        redis_cache.save_session_message(session_id, "assistant", fb, mode=mode)
+                return
 
             # --- ATTEMPT 1: Cloud / Primary LLM Router (Groq, Gemini, Mistral, etc.) ---
             try:
@@ -249,6 +268,27 @@ async def handle_conversational_chat(
             full_response_parts = []
             stream_succeeded = False
 
+            if is_pure_greeting:
+                fb = get_fallback_reply()
+                words = re.findall(r"\S+|\s+", fb)
+                chunk_size = 4
+                for i in range(0, len(words), chunk_size):
+                    if await request.is_disconnected():
+                        return
+                    w = "".join(words[i:i + chunk_size])
+                    yield f"data: {json.dumps({'token': w})}\n\n"
+                    await asyncio.sleep(0.001)
+                if session_id:
+                    if postgres_manager:
+                        postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
+                        postgres_manager.save_message(session_id, "assistant", fb, mode=mode, sources=[])
+                    if redis_cache:
+                        redis_cache.save_session_message(session_id, "user", message, mode=mode)
+                        redis_cache.save_session_message(session_id, "assistant", fb, mode=mode)
+                yield f"data: {json.dumps({'status': 'completed', 'sources': [], 'citations': []})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
             # --- ATTEMPT 1: Cloud / Primary LLM Router (Groq, Gemini, Mistral, etc.) ---
             try:
                 from src.infrastructure.providers.router import get_provider_router, InferenceTask
@@ -328,7 +368,7 @@ async def handle_conversational_chat(
                     redis_cache.save_session_message(session_id, "user", message, mode=mode)
                     redis_cache.save_session_message(session_id, "assistant", complete_text, mode=mode)
 
-            yield f"data: {json.dumps({'status': 'SUCCESS', 'query': message, 'answer': complete_text, 'thread_id': session_id, 'session_id': session_id, 'citations': [], 'suggestions': [], 'sources': []})}\n\n"
+            yield f"data: {json.dumps({'status': 'completed', 'sources': [], 'citations': []})}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(
@@ -338,6 +378,35 @@ async def handle_conversational_chat(
         )
 
     # C. Non-Streaming Response
+    if is_pure_greeting:
+        full_reply = get_fallback_reply()
+        elapsed = round(time.perf_counter() - t_start, 3)
+        if session_id and full_reply:
+            if postgres_manager:
+                postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
+                postgres_manager.save_message(session_id, "assistant", full_reply, mode=mode, sources=[])
+            if redis_cache:
+                redis_cache.save_session_message(session_id, "user", message, mode=mode)
+                redis_cache.save_session_message(session_id, "assistant", full_reply, mode=mode)
+        return JSONResponse(
+            content={
+                "reply": full_reply,
+                "grounded_answer": full_reply,
+                "answer": full_reply,
+                "sources": [],
+                "citations": [],
+                "verified_claims": [],
+                "subgraph": {"nodes": [], "edges": []},
+                "quality_gate_decision": "accept",
+                "execution_time": elapsed,
+                "latency_sec": elapsed,
+                "mode_used": mode,
+                "thread_id": session_id,
+                "session_id": session_id,
+            },
+            headers={"X-Process-Time-Ms": str(round(elapsed * 1000, 1)), **rate_headers},
+        )
+
     full_reply = ""
     try:
         from src.infrastructure.providers.router import get_provider_router, InferenceTask
@@ -391,22 +460,19 @@ async def handle_conversational_chat(
 
     return JSONResponse(
         content={
-            "status": "SUCCESS",
-            "query": message,
-            "answer": full_reply,
-            "thread_id": session_id,
-            "session_id": session_id,
-            "citations": [],
-            "suggestions": [],
             "reply": full_reply,
             "grounded_answer": full_reply,
+            "answer": full_reply,
             "sources": [],
+            "citations": [],
             "verified_claims": [],
             "subgraph": {"nodes": [], "edges": []},
             "quality_gate_decision": "accept",
             "execution_time": elapsed,
             "latency_sec": elapsed,
             "mode_used": mode,
+            "thread_id": session_id,
+            "session_id": session_id,
         },
         headers={"X-Process-Time-Ms": str(round(elapsed * 1000, 1)), **rate_headers},
     )

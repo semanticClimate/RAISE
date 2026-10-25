@@ -16,12 +16,7 @@ from src.infrastructure.providers.http_client import safe_http_request, Provider
 logger = logging.getLogger("raise.infrastructure.providers.groq")
 
 DEFAULT_GROQ_ENDPOINT = "https://api.groq.com/openai/v1"
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
-CANDIDATE_GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "deepseek-r1-distill-llama-70b",
-]
+DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b"
 
 
 class GroqProvider(LLMProvider):
@@ -62,42 +57,21 @@ class GroqProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        candidates = [self.model_name] + [m for m in CANDIDATE_GROQ_MODELS if m != self.model_name]
-        last_error = None
-        for cand in candidates:
-            payload = {
-                "model": cand,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            headers = {"Authorization": f"Bearer {key}"}
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        headers = {"Authorization": f"Bearer {key}"}
 
-            try:
-                resp, _ = safe_http_request(
-                    f"{self.base_url}/chat/completions",
-                    payload=payload,
-                    headers=headers,
-                    timeout=kwargs.get("timeout", 45.0),
-                )
-                self.model_name = cand
-                return resp["choices"][0]["message"]["content"]
-            except ProviderHTTPError as pe:
-                last_error = pe
-                if pe.status_code in (429, 401, 403, 402):
-                    raise pe
-                logger.debug(f"Groq candidate {cand} failed: {pe}")
-                continue
-            except Exception as ex:
-                last_error = ex
-                logger.debug(f"Groq candidate {cand} exception: {ex}")
-                continue
-
-        if last_error:
-            if isinstance(last_error, ProviderHTTPError):
-                raise last_error
-            raise ProviderHTTPError(f"Groq completion failed across candidates: {last_error}", classification="MODEL_UNAVAILABLE")
-        raise ProviderHTTPError("Groq completion failed with no candidates available.", classification="MODEL_UNAVAILABLE")
+        resp, _ = safe_http_request(
+            f"{self.base_url}/chat/completions",
+            payload=payload,
+            headers=headers,
+            timeout=kwargs.get("timeout", 45.0),
+        )
+        return resp["choices"][0]["message"]["content"]
 
     async def complete_stream(
         self,
@@ -183,67 +157,55 @@ class GroqProvider(LLMProvider):
                 cost_mode=self.cost_mode,
             )
 
-        candidates = [self.model_name] + [m for m in CANDIDATE_GROQ_MODELS if m != self.model_name]
-        last_http_err = None
-        for cand in candidates:
-            payload = {
-                "model": cand,
-                "messages": [{"role": "user", "content": "Return exactly: PROVIDER_TEST_OK"}],
-                "max_tokens": 5,
-                "temperature": 0.0,
-            }
-            headers = {"Authorization": f"Bearer {key}"}
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": "Return exactly: PROVIDER_TEST_OK"}],
+            "max_tokens": 5,
+            "temperature": 0.0,
+        }
+        headers = {"Authorization": f"Bearer {key}"}
 
-            try:
-                resp, latency_ms = safe_http_request(
-                    f"{self.base_url}/chat/completions",
-                    payload=payload,
-                    headers=headers,
-                    timeout=timeout,
-                    max_retries=0,
-                )
-                self.model_name = cand
-                content = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
-                return ProviderHealth(
-                    provider=self.name,
-                    configured=True,
-                    credential_valid=True,
-                    endpoint_reachable=True,
-                    model_available=True,
-                    functional_test="PROVIDER_TEST_OK" in content or len(content) > 0,
-                    status="READY",
-                    latency_ms=round(latency_ms, 1),
-                    cost_mode=self.cost_mode,
-                )
-            except ProviderHTTPError as e:
-                last_http_err = e
-                if e.classification in ("AUTH_FAILED", "RATE_LIMITED", "BILLING_EXHAUSTED"):
-                    break
-                continue
-            except Exception as e:
-                last_http_err = e
-                continue
-
-        if isinstance(last_http_err, ProviderHTTPError):
+        try:
+            resp, latency_ms = safe_http_request(
+                f"{self.base_url}/chat/completions",
+                payload=payload,
+                headers=headers,
+                timeout=timeout,
+                max_retries=0,
+            )
+            content = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
             return ProviderHealth(
                 provider=self.name,
                 configured=True,
-                credential_valid=(last_http_err.classification != "AUTH_FAILED"),
-                endpoint_reachable=(last_http_err.classification != "ENDPOINT_UNREACHABLE"),
-                model_available=(last_http_err.classification != "MODEL_UNAVAILABLE"),
-                functional_test=False,
-                status=last_http_err.classification,
-                error_message=str(last_http_err),
+                credential_valid=True,
+                endpoint_reachable=True,
+                model_available=True,
+                functional_test="PROVIDER_TEST_OK" in content or len(content) > 0,
+                status="READY",
+                latency_ms=round(latency_ms, 1),
                 cost_mode=self.cost_mode,
             )
-        return ProviderHealth(
-            provider=self.name,
-            configured=True,
-            credential_valid=False,
-            endpoint_reachable=False,
-            model_available=False,
-            functional_test=False,
-            status="UNKNOWN",
-            error_message=f"Error: {type(last_http_err).__name__}" if last_http_err else "No candidates responded",
-            cost_mode=self.cost_mode,
-        )
+        except ProviderHTTPError as e:
+            return ProviderHealth(
+                provider=self.name,
+                configured=True,
+                credential_valid=(e.classification != "AUTH_FAILED"),
+                endpoint_reachable=(e.classification != "ENDPOINT_UNREACHABLE"),
+                model_available=(e.classification != "MODEL_UNAVAILABLE"),
+                functional_test=False,
+                status=e.classification,
+                error_message=str(e),
+                cost_mode=self.cost_mode,
+            )
+        except Exception as e:
+            return ProviderHealth(
+                provider=self.name,
+                configured=True,
+                credential_valid=False,
+                endpoint_reachable=False,
+                model_available=False,
+                functional_test=False,
+                status="UNKNOWN",
+                error_message=f"Error: {type(e).__name__}",
+                cost_mode=self.cost_mode,
+            )

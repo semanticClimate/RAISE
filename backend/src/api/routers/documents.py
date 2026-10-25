@@ -190,14 +190,39 @@ async def load_vault_defaults(rag_engine: Any = Depends(get_rag_engine)):
 
 
 @router.get("/api/pdf/{filename}")
-@router.get("/api/documents/{filename}/pdf")
 async def get_pdf_file(filename: str):
     """
     Serves physical PDF for deep-linked in-browser viewing with #page=N.
     Enforces HTTP 206 Partial Content byte ranges, inline display, and long-term caching.
-    Guaranteed containment strictly within DOCUMENTS_DIR with zero host path traversal.
     """
-    target_path = _resolve_document_file(filename)
+    import os
+    import urllib.parse
+
+    clean_name = urllib.parse.unquote(filename).strip()
+
+    # Search candidates: DOWNLOAD_DIR, DOCUMENTS_DIR, user Downloads
+    candidates = [
+        DOWNLOAD_DIR / clean_name,
+        DOCUMENTS_DIR / clean_name,
+        Path(os.path.expanduser(f"~/Downloads/{clean_name}")),
+    ]
+
+    target_path = None
+    for cand in candidates:
+        if cand.exists() and cand.is_file():
+            target_path = cand
+            break
+
+    if not target_path:
+        for parent_dir in (DOWNLOAD_DIR, DOCUMENTS_DIR):
+            if parent_dir.exists():
+                for f in parent_dir.glob("*.pdf"):
+                    if f.name.lower() == clean_name.lower():
+                        target_path = f
+                        break
+            if target_path:
+                break
+
     if not target_path or not target_path.exists():
         raise HTTPException(status_code=404, detail=f"Document '{filename}' not found.")
 
@@ -213,26 +238,18 @@ async def get_pdf_file(filename: str):
 
 
 def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
-    """
-    Resolves raw filename, URI-encoded name, stem, or document ID to a physical PDF file path.
-    Guarantees strict containment within DOCUMENTS_DIR and completely neutralizes
-    directory traversal attacks (e.g. '../../', null bytes, leading slashes).
-    """
+    """Resolves raw filename, URI-encoded name, stem, or document ID to a physical PDF file path."""
     import urllib.parse
 
-    clean_raw = str(urllib.parse.unquote(doc_identifier)).replace("\x00", "").strip()
-    # Strip any directory traversal components, path separators, or drive letters
-    clean_base = clean_raw.replace("\\", "/").rstrip("/").split("/")[-1]
-    clean = Path(clean_base).name
+    clean_raw = urllib.parse.unquote(doc_identifier).strip()
+    clean = Path(clean_raw).name  # Neutralizes ../ and leading slashes
     if not clean or clean in (".", ".."):
         return None
 
-    doc_dir_resolved = DOCUMENTS_DIR.resolve()
-
-    # 1. Direct path check strictly within DOCUMENTS_DIR
-    direct_cand = (DOCUMENTS_DIR / clean).resolve()
-    if direct_cand.is_relative_to(doc_dir_resolved) and direct_cand.exists() and direct_cand.is_file():
-        return direct_cand
+    # 1. Direct path check in DOCUMENTS_DIR / DOWNLOAD_DIR
+    for p in (DOCUMENTS_DIR / clean, DOWNLOAD_DIR / clean):
+        if p.exists() and p.is_file():
+            return p
 
     # 2. Check manifest for matching id, filename, or stem
     if MANIFEST_FILE.exists():
@@ -242,23 +259,18 @@ def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
                 d_id = str(doc.get("id") or "")
                 d_fn = str(doc.get("filename") or "")
                 if clean in (d_id, d_fn, Path(d_fn).stem):
-                    manifest_fn = Path(d_fn.replace("\\", "/").rstrip("/").split("/")[-1]).name
-                    cand = (DOCUMENTS_DIR / manifest_fn).resolve()
-                    if cand.is_relative_to(doc_dir_resolved) and cand.exists() and cand.is_file():
+                    cand = DOCUMENTS_DIR / Path(d_fn).name
+                    if cand.exists() and cand.is_file():
                         return cand
         except Exception:
             pass
 
-    # 3. Case-insensitive search strictly across DOCUMENTS_DIR
-    if DOCUMENTS_DIR.exists():
-        for f in DOCUMENTS_DIR.glob("*.pdf"):
-            try:
-                f_res = f.resolve()
-                if f_res.is_relative_to(doc_dir_resolved) and f_res.is_file():
-                    if f.name.lower() == clean.lower() or f.stem.lower() == clean.lower() or f.name.lower() == f"{clean.lower()}.pdf":
-                        return f_res
-            except (ValueError, RuntimeError):
-                continue
+    # 3. Case-insensitive search across candidate directories
+    for parent in (DOCUMENTS_DIR, DOWNLOAD_DIR):
+        if parent.exists():
+            for f in parent.glob("*.pdf"):
+                if f.name.lower() == clean.lower() or f.stem.lower() == clean.lower() or f.name.lower() == f"{clean.lower()}.pdf":
+                    return f
 
     return None
 

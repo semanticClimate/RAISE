@@ -66,10 +66,10 @@ export function generateContextualFollowUps(params: {
   citations?: Citation[];
   activeDocs?: string[];
   backendSuggestions?: (DynamicSuggestion | string)[];
-  backendFollowUps?: string[];
-  backendDecomposed?: string[];
+  backendFollowUps?: string[] | null;
+  backendDecomposed?: string[] | null;
 }): string[] {
-  const { backendFollowUps = [] } = params;
+  const backendFollowUps = params.backendFollowUps || [];
 
   // STRICT RULE: Only show suggestions if provided explicitly by backend follow_up_inquiries
   // If the backend did not return follow_up_inquiries, return [] (no suggestions shown)

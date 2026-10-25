@@ -27,10 +27,11 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
     setLoadError(false);
   }, [citation.primary_page]);
 
+  const safePdfFilename = citation.pdf_filename || '';
   const pdfUrl =
     streamMode === 'single'
-      ? sourceService.getSinglePagePdfUrl(citation.pdf_filename, activePage)
-      : sourceService.getPdfUrl(citation.pdf_filename, activePage);
+      ? sourceService.getSinglePagePdfUrl(safePdfFilename, activePage)
+      : sourceService.getPdfUrl(safePdfFilename, activePage);
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden shadow-sm">
@@ -38,8 +39,8 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-100 dark:bg-[#1e212d] border-b border-slate-200 dark:border-white/10 text-xs shrink-0">
         <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-semibold truncate min-w-0 max-w-sm">
           <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-          <span className="truncate" title={citation.pdf_filename}>
-            {citation.pdf_filename}
+          <span className="truncate" title={citation.pdf_filename || undefined}>
+            {citation.pdf_filename || 'Audited Document'}
           </span>
         </div>
 

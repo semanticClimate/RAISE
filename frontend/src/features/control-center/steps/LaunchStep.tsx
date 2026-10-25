@@ -1,10 +1,10 @@
-import { CheckCircle2, Cpu, Laptop, Sparkles, Zap } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Cpu, Laptop, Sparkles, Zap } from 'lucide-react';
 import type React from 'react';
-import { useControlCenterStore } from '../store/useControlCenterStore';
 import { useModeStore } from '../../../stores/modeStore';
+import { useControlCenterStore } from '../store/useControlCenterStore';
 
 export const LaunchStep: React.FC = () => {
-  const { config, hardware } = useControlCenterStore();
+  const { config, hardware, setActiveTab } = useControlCenterStore();
   const { appMode, apiBaseUrl, latencyMs } = useModeStore();
   const isConnected = appMode === 'connected';
 
@@ -12,8 +12,13 @@ export const LaunchStep: React.FC = () => {
     ? config.llmDeployment === 'cloud'
     : !config.llmMode || config.llmMode.startsWith('cloud');
 
-  const validKeys = (config.apiKeys || []).filter((k) => k?.key && k.key.trim().length > 0);
-  const providers = Array.from(new Set(validKeys.map((k) => k.providerName))).join(', ') || 'Default / Auto-detected';
+  const validKeys = (config.apiKeys || []).filter(
+    (k) => k?.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+  );
+  const providers =
+    Array.from(new Set(validKeys.map((k) => k.providerName))).join(', ') ||
+    'Default / Auto-detected';
+  const hasConfiguredKey = isCloud ? validKeys.length > 0 : Boolean(config.selectedLocalModel);
 
   const clientOSLabel =
     hardware?.osName ||
@@ -26,18 +31,43 @@ export const LaunchStep: React.FC = () => {
           : 'macOS (Desktop)');
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-200" data-testid="control-center-launch-step">
-      {/* Ready Banner */}
-      <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-start gap-3">
-        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <h4 className="text-sm font-bold text-white">Research Workstation Ready to Launch</h4>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Your text-first research environment is configured. All comparative matrix analysis, citation audits,
-            and document retrieval are ready for execution.
-          </p>
+    <div
+      className="space-y-5 animate-in fade-in duration-200"
+      data-testid="control-center-launch-step"
+    >
+      {/* Ready / Incomplete Status Banner */}
+      {hasConfiguredKey ? (
+        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-start gap-3">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-white">Research Workstation Ready to Launch</h4>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Your text-first research environment is configured. All comparative matrix analysis,
+              citation audits, and document retrieval are ready for execution.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1 flex-1">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-white">AI Engine Configuration Required</h4>
+              <button
+                type="button"
+                onClick={() => setActiveTab('models')}
+                className="text-xs font-bold text-amber-300 hover:text-white underline underline-offset-2 cursor-pointer"
+              >
+                Configure Now &rarr;
+              </button>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Please enter your API key (Gemini, Groq, Mistral, OpenAI) or select a local model in
+              Step 2 before launching.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -62,7 +92,9 @@ export const LaunchStep: React.FC = () => {
           <div className="text-sm font-bold text-white flex items-center gap-1.5">
             <span
               className={`w-2 h-2 rounded-full ${
-                isConnected ? 'bg-emerald-400 ring-2 ring-emerald-400/20' : 'bg-amber-400 animate-pulse'
+                isConnected
+                  ? 'bg-emerald-400 ring-2 ring-emerald-400/20'
+                  : 'bg-amber-400 animate-pulse'
               }`}
             />
             <span>{isConnected ? 'Active & Connected' : 'Local Loopback'}</span>
@@ -96,7 +128,7 @@ export const LaunchStep: React.FC = () => {
           </div>
           <div className="text-sm font-bold text-white">Slash Commands & Auditing</div>
           <div className="text-[11px] font-mono text-slate-400">
-            /compare, /audit, /synthesize, /bench, /help
+            /compare, /browser, /audit, /synthesize, /bench, /help
           </div>
         </div>
       </div>

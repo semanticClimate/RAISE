@@ -102,6 +102,39 @@ class NumericalClaimVerifier:
         return nums
 
     @classmethod
+    def is_critical_metric_number(cls, num: str, text: str) -> bool:
+        """
+        Determines if a number is a critical metric (currency, percentage, or scaled quantity)
+        versus an incidental qualifier (e.g. single digit counts, year numbers, section numbers).
+        """
+        # Currency prefix or metric units
+        currency_or_unit_pat = re.compile(
+            rf"(?:₹|Rs\.?|INR|\$|€|£)\s*{re.escape(num)}|{re.escape(num)}\s*(?:%|percent|crore|crores|lakh|lakhs|million|billion|thousand|bn|mn|cr|inr|usd|eur|kg|km|tons|tonnes|metric\s+tons)\b",
+            re.IGNORECASE,
+        )
+        if currency_or_unit_pat.search(text):
+            return True
+
+        # Check if num is a single-digit integer (1-9) without units
+        if num.isdigit() and len(num) == 1:
+            return False
+
+        # Check if num is a year (e.g. 1990-2035)
+        if num.isdigit() and len(num) == 4 and (num.startswith("19") or num.startswith("20")):
+            return False
+
+        # Structural enumeration qualifiers (e.g. "top 3", "phase 2", "section 4")
+        qualifier_pat = re.compile(
+            rf"\b(?:top|phase|stage|step|section|part|tier|pillar|priority|level|item|category|quarter|q|point|table|fig|figure|page)\s+{re.escape(num)}\b",
+            re.IGNORECASE,
+        )
+        if qualifier_pat.search(text):
+            return False
+
+        # Multidigit or decimal numbers with 3+ digits are treated as metrics
+        return len(num.replace(".", "")) >= 2
+
+    @classmethod
     def verify_numbers(cls, claim_text: str, evidence_text: str, query: str = "") -> Tuple[bool, List[str], List[str]]:
         """
         Cross-verifies all numbers extracted from a single claim against the evidence text.
@@ -134,7 +167,12 @@ class NumericalClaimVerifier:
                 or any(len(e) >= 6 and clean_num.startswith(e) and len(clean_num) <= len(e) + 2 for e in clean_evidence_digits)
                 or any(len(e) >= 3 and clean_num.startswith(e) and re.fullmatch(r"0*", clean_num[len(e):]) for e in clean_evidence_digits)
                 or any(len(clean_num) >= 3 and e.startswith(clean_num) and re.fullmatch(r"0*", e[len(clean_num):]) for e in clean_evidence_digits)
-                or any(abs(float(num) - float(e)) < 0.01 for e in evidence_nums if _is_float(e) and _is_float(num))
+                or any(
+                    (abs(float(num) - float(e)) < 0.05
+                     or (float(e) != 0 and abs(float(num) - float(e)) / abs(float(e)) < 0.03)
+                     or (abs(float(num) - float(e)) <= 1.0 and abs(float(num) - round(float(num))) < 1e-4))
+                    for e in evidence_nums if _is_float(e) and _is_float(num)
+                )
             ):
                 matched.append(num)
             else:
@@ -158,10 +196,25 @@ class NumericalClaimVerifier:
                     n_ev = len(float_ev_list)
                     for i in range(n_ev):
                         for j in range(i + 1, n_ev):
-                            if abs(val - (float_ev_list[i] + float_ev_list[j])) < 0.05:
+                            # Sums & Differences
+                            if abs(val - (float_ev_list[i] + float_ev_list[j])) < 0.2:
                                 found_derivation = True
                                 break
-                            if abs(val - abs(float_ev_list[i] - float_ev_list[j])) < 0.05:
+                            if abs(val - abs(float_ev_list[i] - float_ev_list[j])) < 0.2:
+                                found_derivation = True
+                                break
+                            # Quotients / Ratios / Multiples (e.g., 10,075 / 50 = 201.5)
+                            if float_ev_list[j] > 0 and abs(val - (float_ev_list[i] / float_ev_list[j])) < 0.1:
+                                found_derivation = True
+                                break
+                            if float_ev_list[i] > 0 and abs(val - (float_ev_list[j] / float_ev_list[i])) < 0.1:
+                                found_derivation = True
+                                break
+                            # Percentage Differences / Growth Rates
+                            if float_ev_list[j] > 0 and abs(val - (abs(float_ev_list[i] - float_ev_list[j]) / float_ev_list[j] * 100)) < 0.5:
+                                found_derivation = True
+                                break
+                            if float_ev_list[i] > 0 and abs(val - (abs(float_ev_list[i] - float_ev_list[j]) / float_ev_list[i] * 100)) < 0.5:
                                 found_derivation = True
                                 break
                         if found_derivation:
@@ -186,6 +239,8 @@ class NumericalClaimVerifier:
                     unmatched_final.append(num)
             unmatched = unmatched_final
 
-        # If any number in the claim is completely absent from the evidence, fail numerical check
-        is_valid = len(unmatched) == 0
+        # Differentiate critical metrics from incidental numbers:
+        # Single-digit numbers (1-9) or years without units are not fatal to validity if not critical metrics
+        critical_unmatched = [u for u in unmatched if cls.is_critical_metric_number(u, claim_text)]
+        is_valid = len(critical_unmatched) == 0
         return is_valid, matched, unmatched

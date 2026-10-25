@@ -299,8 +299,6 @@ DEFAULT_ORIGINS = [
     "https://semanticclimate.github.io",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
     "http://localhost:3000",
     "http://localhost:8080",
 ]
@@ -315,18 +313,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=[
-        "Content-Type",
-        "Cache-Control",
-        "X-Accel-Buffering",
-        "X-Redis-Cache",
-        "X-RateLimit-Remaining",
-        "X-Process-Time-Ms",
-        "X-Request-ID",
-        "Accept-Ranges",
-        "Content-Disposition",
-        "Content-Range",
-    ],
+    expose_headers=["X-Redis-Cache", "X-RateLimit-Remaining", "X-Process-Time-Ms", "X-Request-ID", "Accept-Ranges", "Content-Disposition", "Content-Range"],
 )
 
 

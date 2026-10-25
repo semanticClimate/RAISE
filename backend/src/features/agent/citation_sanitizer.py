@@ -82,12 +82,9 @@ def build_evidence_citations(
         raw_pdf_name = (
             meta.get("pdf_filename")
             or meta.get("filename")
-            or c.get("pdf_filename")
-            or c.get("filename")
-            or (active_doc_list[0] if active_doc_list else "Annual Report.pdf")
+            or (active_doc_list[0] if active_doc_list else "Document")
         )
-        clean_base = str(raw_pdf_name or "").replace("\\", "/").rstrip("/").split("/")[-1]
-        pdf_name = Path(clean_base).name if clean_base else "Document.pdf"
+        pdf_name = Path(raw_pdf_name).name
         d_page = meta.get("printed_page")
         page_key = (pdf_name, p_page)
 
@@ -112,7 +109,11 @@ def build_evidence_citations(
             "chunk_ids": [cid],
             "document_id": meta.get("doc_id") or meta.get("document_id") or Path(pdf_name).stem,
             "pdf_filename": pdf_name,
+            "filename": pdf_name,
+            "file_name": pdf_name,
             "primary_page": p_page,
+            "page": p_page,
+            "page_number": p_page,
             "source_pages": [int(sp) for sp in source_pages if str(sp).isdigit()],
             "printed_page": d_page if (d_page and str(d_page).strip() != "") else None,
             "heading": meta.get("heading") or f"Section (Page {p_page})",
@@ -139,13 +140,17 @@ def renumber_and_sanitize_citations(
     enforces temporal document scoping, budgets citations to prevent dilution,
     and returns sanitized answer text and aligned citations list.
     """
-    # Strip negative meta-commentary explaining omitted/irrelevant passages
+        # Strip negative meta-commentary explaining omitted/irrelevant passages
     cleaned_answer = re.sub(
         r'(?:(?:Excerpts?|Passages?|Sources?|References?)\s*(?:\[\d+\][,\s&and–-]*)+[^.\n]*(?:omitted|excluded|not\s+(?:used|relevant)|do\s+not\s+pertain|pertain\s+to|refer\s+to|irrelevant)[^.\n]*[.\n]?)',
         '',
         raw_answer,
         flags=re.IGNORECASE,
     ).strip()
+    # Strip literal knowledge graph tags and OCR anomalies early
+    cleaned_answer = re.sub(r'\s*\[Verified Knowledge Graph[^\]]*\]', '', cleaned_answer)
+    cleaned_answer = re.sub(r'\s*\[Knowledge Graph[^\]]*\]', '', cleaned_answer)
+    cleaned_answer = re.sub(r'\s*\(\s*e\.g\.,\s*["\']inSTITUTE AFU L["\']\s*\)', '', cleaned_answer, flags=re.IGNORECASE)
 
     # Dynamic Open Knowledge Format (OKF) document scoping: Discard citations from wrong documents for single-document queries
     target_doc = None
@@ -230,24 +235,9 @@ def renumber_and_sanitize_citations(
                     sp_copy["primary_page"] = sp
                     final_cits.append(sp_copy)
 
-    # Re-index final citations to 1..N and enforce strict clean path / URL consistency
-    import urllib.parse
+    # Re-index final citations to 1..N
     for i, c in enumerate(final_cits, 1):
         c["citation_index"] = i
-        raw_pdf = c.get("pdf_filename") or c.get("filename") or c.get("document")
-        clean_base = str(raw_pdf or "").replace("\\", "/").rstrip("/").split("/")[-1]
-        pdf_name = Path(clean_base).name if clean_base else "Document.pdf"
-        c["pdf_filename"] = pdf_name
-        p_page = c.get("primary_page") or 1
-        try:
-            p_page = int(p_page)
-        except (ValueError, TypeError):
-            p_page = 1
-        c["primary_page"] = p_page
-        encoded_name = urllib.parse.quote(pdf_name)
-        c["page_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/pdf"
-        c["page_view_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/view"
-        c["page_image_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/image"
 
     if cleaned_answer:
         try:

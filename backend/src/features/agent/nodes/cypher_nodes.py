@@ -53,7 +53,21 @@ class CypherNodesMixin:
             except Exception as e:
                 error = str(e)
         else:
-            records = [{"status": "in_memory_ok"}]
+            # Embedded openCypher execution fallback via Kùzu
+            try:
+                from src.graph.kuzu_graph import get_kuzu_engine
+                kuzu_eng = get_kuzu_engine()
+                if kuzu_eng and kuzu_eng._initialized:
+                    # Execute on local embedded Kùzu graph
+                    kuzu_res = kuzu_eng.query(cypher)
+                    if kuzu_res and "error" in kuzu_res[0]:
+                        error = str(kuzu_res[0]["error"])
+                    else:
+                        records = kuzu_res
+                else:
+                    records = [{"status": "in_memory_ok"}]
+            except Exception as e:
+                records = [{"status": "in_memory_fallback", "detail": str(e)}]
 
         status = "FAILED" if error else "SUCCESS"
         return {

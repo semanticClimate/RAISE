@@ -144,7 +144,7 @@ def get_llm_telemetry() -> Dict[str, Any]:
         },
         "groq": {
             "configured": bool(os.getenv("GROQ_API_KEY")),
-            "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "model": os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
         },
         "cohere": {
             "configured": bool(os.getenv("COHERE_API_KEY")),

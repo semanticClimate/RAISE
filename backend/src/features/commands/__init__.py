@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from .browser_command import handle_browser_command
 from .compare_command import handle_compare_command
 from .core_commands import (
     handle_audit_command,
     handle_bench_command,
-    handle_browser_command,
     handle_graph_command,
     handle_help_command,
     handle_synthesize_command,
@@ -73,7 +73,7 @@ def _init_default_commands(registry: CommandRegistry) -> None:
         examples=["/browser NIRF Rankings IIT Madras", "/browser https://en.wikipedia.org/wiki/Harvard_University"],
         aliases=["web", "fetch", "internet"],
         category="Research",
-        is_dev_only=True,
+        is_dev_only=False,
     )(handle_browser_command)
 
     registry.register(
@@ -150,5 +150,6 @@ __all__ = [
     "execute_slash_command",
     "extract_pdf_institutional_profile",
     "get_command_registry",
+    "handle_browser_command",
     "is_slash_command",
 ]

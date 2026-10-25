@@ -258,7 +258,8 @@ def execute_dev_purge_all(pipeline: StandaloneRAGPipeline, memory: ReasoningMemo
     print("   1. Neo4j Knowledge Graph (MATCH (n) DETACH DELETE n)")
     print("   2. ChromaDB Dense Vector Collections")
     print("   3. Chunks, Triples, and Ingestion Caches")
-    print("   4. Conversational Reasoning Trajectories\n")
+    print("   4. Conversational Reasoning Trajectories")
+    print("   5. Open Knowledge Format (OKF) Catalogs & Routing Profiles\n")
 
     try:
         token_input = getpass.getpass("🔐 Developer authentication required. Enter token: ").strip()
@@ -287,5 +288,5 @@ def execute_dev_purge_all(pipeline: StandaloneRAGPipeline, memory: ReasoningMemo
 
     print(f"\n{C.SUCCESS}✅ [SYSTEM HARD RESET COMPLETED SUCCESSFULLY]{C.RESET}")
     print(f"   • {C.MUTED}{res.get('message')}{C.RESET}")
-    print(f"   • {C.MUTED}Removed {res.get('files_removed', 0)} chunk/graph files, {res.get('raw_documents_deleted', 0)} raw documents.{C.RESET}\n")
+    print(f"   • {C.MUTED}Removed {res.get('files_removed', 0)} chunk/graph files, {res.get('catalogs_purged', 0)} OKF catalogs, {res.get('raw_documents_deleted', 0)} raw documents.{C.RESET}\n")
     return True

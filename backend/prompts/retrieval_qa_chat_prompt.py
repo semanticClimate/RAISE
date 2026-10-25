@@ -11,7 +11,7 @@ GRAPH SCHEMA DEFINITION
 1. NODE LABELS & PROPERTIES:
 
    - Institution: 
-       • name: String (e.g., "IIT Madras", "BRIC", "Harvard University", "NUS", "IIT (ISM) Dhanbad")
+       • name: String (e.g., "NIPGR", "BRIC", "National Institute of Plant Genome Research", "NUS")
        • type: String (e.g., "University", "Research Council", "Foundation")
        • location: String
 
@@ -95,7 +95,7 @@ GRAPH SCHEMA DEFINITION
        • amount: Float
 
    - Incubator: 
-       • name: String (e.g., "IITM Incubation Cell", "Bio-Incubator Hub")
+       • name: String (e.g., "Bio-Incubator Hub", "Innovation Cell")
 
    - Startup: 
        • name: String (e.g., "Ather Energy", "The ePlane Company", "Mindgrove", "Xyma Analytics", "VinMax Biotech")
@@ -268,7 +268,7 @@ GRAPH SCHEMA DEFINITION
       • (:Institution)-[:EARNED_ROYALTY]->(:FinancialStream) — Links technology licensing actions to institutional royalty and IP revenue streams.
 
    6. Entrepreneurship, Incubation & Spin-off Startups:
-      • (:Institution)-[:OPERATES_INCUBATOR]->(:Incubator) — Links an institution to its technology business incubator or research park (e.g., IITM Incubation Cell).
+      • (:Institution)-[:OPERATES_INCUBATOR]->(:Incubator) — Links an institution to its technology business incubator or research park (e.g., Bio-Incubator Hub).
       • (:Incubator)-[:INCUBATED]->(:Startup) — Connects an incubator to deep-tech spin-off startups nurtured during the fiscal year.
       • (:Person)-[:FOUNDED]->(:Startup) — Connects faculty, alumni, or student founders to spin-off ventures.
       • (:Startup)-[:ORIGINATED_FROM]->(:Technology) — Links a deep-tech startup to the foundational core research or patent developed at the institution.
@@ -320,9 +320,9 @@ INSTRUCTIONS & COMPLIANCE RULES
 
 4. ENTITY RESOLUTION, TYPO CORRECTION & FUZZY MATCHING:
    - Correct common entity typos, spelling errors, or name variants prior to matching.
-   - Standardize institutional abbreviations and acronyms (e.g., "IITM" / "IIT Madras" -> "IIT Madras", "BRIC" -> "Biotechnology Research and Innovation Council", "NUS" -> "National University of Singapore").
+   - Standardize institutional abbreviations and acronyms (e.g., "NIPGR" -> "National Institute of Plant Genome Research", "BRIC" -> "Biotechnology Research and Innovation Council", "NUS" -> "National University of Singapore").
    - Use CASE-INSENSITIVE and Partial Matching for string property comparisons using `toLower()` or regex matching. Example:
-     `WHERE toLower(p.name) CONTAINS toLower("panigrahi")` or `WHERE inst.name =~ '(?i).*iit madras.*'`
+     `WHERE toLower(p.name) CONTAINS toLower("panigrahi")` or `WHERE inst.name =~ '(?i).*nipgr.*'`
 
 5. CYPHER SYNTAX, TRAVERSAL & PERFORMANCE GUARDRAILS:
    - Respect Directed Edge Directions as defined in the schema. Do not reverse edge arrows.

@@ -840,8 +840,8 @@ export const RaisePage: React.FC = () => {
       citations: resp?.citations || [],
       activeDocs: activeDocNames,
       backendSuggestions: dynamicSuggestions,
-      backendFollowUps: resp?.follow_up_inquiries || resp?.suggestions,
-      backendDecomposed: resp?.decomposed_queries,
+      backendFollowUps: (resp?.follow_up_inquiries || resp?.suggestions) ?? undefined,
+      backendDecomposed: resp?.decomposed_queries ?? undefined,
     });
   }, [conversation, activeDocNames, dynamicSuggestions]);
 

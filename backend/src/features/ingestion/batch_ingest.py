@@ -63,21 +63,8 @@ class BatchReportIngestor:
         year = year_m.group(1) if year_m else "2024-25"
 
         # University / Institution detection
-        name_lower = fname.lower()
-        if "bric" in name_lower:
-            uni = "Biotechnology Research and Innovation Council (BRIC)"
-        elif "nipgr" in name_lower:
-            uni = "National Institute of Plant Genome Research (NIPGR)"
-        elif "astrabio" in name_lower or "taxonomy" in name_lower:
-            uni = "AstraBio Innovations Council"
-        elif "pu" in name_lower or "panjab" in name_lower:
-            uni = "Panjab University"
-        elif "du" in name_lower or "delhi" in name_lower:
-            uni = "Delhi University"
-        elif "annual report" in name_lower:
-            uni = "National Biotechnology Innovation Council"
-        else:
-            uni = fname.replace("_", " ").replace("-", " ").title()
+        clean_name = fname[:-4] if fname.lower().endswith(".pdf") else fname
+        uni = clean_name.replace("_", " ").replace("-", " ").title()
 
         return uni, year
 

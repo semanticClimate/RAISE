@@ -29,7 +29,7 @@ logger = logging.getLogger("raise.router.vault_batch")
 BASE_DIR = Path(__file__).resolve().parents[3]
 
 
-def execute_load_vault_defaults(rag_engine: Any) -> Dict[str, Any]:
+def execute_load_vault_defaults(rag_engine: Any, max_pages_per_doc: Optional[int] = None) -> Dict[str, Any]:
     """Ingests or loads all available academic reports from DOCUMENTS_DIR directory."""
     try:
         # If DOCUMENTS_DIR has no PDFs, auto-seed from tests/Test pdf
@@ -63,7 +63,7 @@ def execute_load_vault_defaults(rag_engine: Any) -> Dict[str, Any]:
             }
 
         with AcademicPipelineIngestor(download_dir=DOCUMENTS_DIR) as academic_pipeline:
-            summary = academic_pipeline.process_all_downloads(max_pages_per_doc=25)
+            summary = academic_pipeline.process_all_downloads(max_pages_per_doc=max_pages_per_doc)
             for doc in summary.get("documents", []):
                 fname = doc.get("document") or doc.get("pdf_filename") or doc.get("filename")
                 if fname:
@@ -71,9 +71,9 @@ def execute_load_vault_defaults(rag_engine: Any) -> Dict[str, Any]:
                     size_mb = round(dest_path.stat().st_size / (1024 * 1024), 2) if dest_path.exists() else 0.5
                     record_ready_document(
                         filename=fname,
-                        pages=doc.get("pages_processed", 25),
+                        pages=doc.get("pages_processed", 0),
                         size_mb=size_mb,
-                        chunks_count=doc.get("chunks_count", 20),
+                        chunks_count=doc.get("chunks_count", 0),
                     )
         if rag_engine:
             rag_engine._load_processed_data()
@@ -88,11 +88,11 @@ def execute_load_vault_defaults(rag_engine: Any) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-def execute_ingest_download_folder(postgres_manager: Any, rag_engine: Any) -> Dict[str, Any]:
+def execute_ingest_download_folder(postgres_manager: Any, rag_engine: Any, max_pages_per_doc: Optional[int] = None) -> Dict[str, Any]:
     """Batch-ingests all PDF reports from Download/ directory."""
     try:
         academic_pipeline = AcademicPipelineIngestor(download_dir=DOWNLOAD_DIR)
-        res = academic_pipeline.process_all_downloads(max_pages_per_doc=25)
+        res = academic_pipeline.process_all_downloads(max_pages_per_doc=max_pages_per_doc)
         doc_list = res.get("documents", res.get("reports", []))
         for report in doc_list:
             fname = report.get("filename") or report.get("document")

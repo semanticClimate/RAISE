@@ -11,6 +11,13 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
 
+try:
+    import duckdb
+    HAS_DUCKDB = True
+except ImportError:
+    duckdb = None
+    HAS_DUCKDB = False
+
 
 @dataclass
 class MathComputationResult:
@@ -36,7 +43,7 @@ class DeterministicMathEngine:
         "SUM": r"\b(calculate\s+(?:the\s+)?(?:total|sum)|compute\s+(?:the\s+)?(?:total|sum)|sum\s+of\b|total\s+(?:combined|sum|revenue|amount|expenditure)|combined\s+(?:sum|total|revenue)|total\b|sum\b|add\s+(?:up|together))\b",
         "AVERAGE": r"\b(calculate\s+(?:the\s+)?average|compute\s+(?:the\s+)?average|average\s+per\s+faculty|mean\s+per\s+department)\b",
         "DIFFERENCE": r"\b(calculate\s+(?:the\s+)?difference|compute\s+(?:the\s+)?difference|net\s+change\s+between|delta\s+between)\b",
-        "RATIO": r"\b(calculate\s+(?:the\s+)?ratio|compute\s+(?:the\s+)?ratio|student\s+faculty\s+ratio)\b",
+        "RATIO": r"\b(calculate\s+(?:the\s+)?ratio|compute\s+(?:the\s+)?ratio|student\s+faculty\s+ratio|ratio\s+of|ratio\b|per\s+(?:crore|lakh|unit|startup|share|individual|student|faculty)|how\s+many\s+times\s+(?:larger|more|greater))\b",
     }
 
     @classmethod
@@ -123,15 +130,15 @@ class DeterministicMathEngine:
             denom = clean_vals[1]
             if denom != 0:
                 ratio = clean_vals[0] / denom
-                formula = f"{clean_vals[0]:g} / {clean_vals[1]:g} = {ratio:.2f}:1"
-                formatted = f"{ratio:.2f}:1"
+                formatted = f"{ratio:g}" if round(ratio, 2) == ratio else f"{ratio:.2f}"
+                formula = f"{clean_vals[0]:g} / {clean_vals[1]:g} = {formatted}"
                 return MathComputationResult(
                     operation="RATIO",
                     input_values=[clean_vals[0], clean_vals[1]],
                     calculated_value=round(ratio, 4),
                     formatted_result=formatted,
                     formula_expression=formula,
-                    units="ratio",
+                    units="ratio/multiple",
                 )
 
         return None
@@ -158,3 +165,24 @@ class DeterministicMathEngine:
             f"• Deterministic Result: {result.formatted_result} {result.units or ''}\n"
             f"[INSTRUCTION FOR QWEN 2.5 7B: Cite the exact calculated value above. Do NOT perform independent mental arithmetic.]\n"
         )
+
+    @classmethod
+    def execute_duckdb_sql(cls, expression_or_query: str) -> Optional[float]:
+        """
+        Executes deterministic mathematical SQL expressions via DuckDB.
+        e.g. 'SELECT (154.20 - 120.50) / 120.50 * 100' or arbitrary mathematical formulas.
+        Returns exact floating point result with zero arithmetic hallucination.
+        """
+        if not HAS_DUCKDB:
+            return None
+        try:
+            sql = expression_or_query.strip()
+            if not sql.upper().startswith("SELECT"):
+                sql = f"SELECT {sql}"
+            con = duckdb.connect(database=":memory:")
+            res = con.execute(sql).fetchone()
+            if res and res[0] is not None:
+                return float(res[0])
+        except Exception:
+            pass
+        return None

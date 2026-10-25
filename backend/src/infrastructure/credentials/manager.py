@@ -25,8 +25,6 @@ PROVIDER_ENV_MAPPING: Dict[str, List[str]] = {
     "gemini": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
     "groq": ["GROQ_API_KEY"],
     "mistral": ["MISTRAL_API_KEY"],
-    "typesafe": ["TYPESAFE_API_KEY", "TYPESAFE_AI_KEY"],
-    "vercel": ["VERCEL_AI_KEY", "VERCEL_API_KEY", "VERCEL_TOKEN"],
     "deepseek": ["DEEPSEEK_API_KEY"],
     "nvidia": ["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY"],
     "cohere": ["COHERE_API_KEY"],

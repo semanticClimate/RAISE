@@ -97,6 +97,12 @@ class SubprocessTunnelManager:
                 if not line:
                     break
                 text = line.decode("utf-8", errors="replace").strip()
+                if "failed to request quick Tunnel" in text or "context deadline exceeded" in text or "connection refused" in text:
+                    logger.warning(f"Cloudflare Tunnel Error: {text}")
+                    print(f"\n\033[1;91m❌ [Cloudflare Tunnel Error]: {text}\033[0m")
+                    print(f"\033[93m💡 Tip: Cloudflare quick tunnel endpoint is currently unreachable or blocked on this network.\033[0m")
+                    print(f"\033[97m   Your backend is fully accessible locally at: http://localhost:{self.port} (or LAN: http://{self.port})\033[0m\n", flush=True)
+
                 match = url_regex.search(text)
                 if match:
                     found_url = match.group(0).strip()

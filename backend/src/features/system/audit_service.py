@@ -36,10 +36,6 @@ class SystemAuditMixin:
         Detects if any document exists in one database but was omitted in another.
         """
         disk_files = [f.name for f in self.docs_dir.glob("*.pdf")] if self.docs_dir.exists() else []
-        if not disk_files:
-            test_dir = settings.project_root / "tests" / "Test pdf"
-            if test_dir.exists():
-                disk_files = [f.name for f in test_dir.glob("*.pdf")]
         pg_docs = [d.get("filename") for d in self.postgres.list_documents() if d.get("filename")]
 
         # Ingested manifest check

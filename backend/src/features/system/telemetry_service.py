@@ -15,17 +15,21 @@ from typing import Any, Dict
 
 def get_hardware_telemetry() -> Dict[str, Any]:
     """Dynamically probes host CPU, RAM, GPU, and local inference engine liveness."""
-    import psutil
-
-    # 1. CPU
-    cpu_cores_logical = psutil.cpu_count(logical=True) or 1
-    cpu_cores_physical = psutil.cpu_count(logical=False) or 1
-    cpu_percent = psutil.cpu_percent(interval=0.05)
-
-    # 2. RAM
-    mem = psutil.virtual_memory()
-    total_ram_gb = round(mem.total / (1024**3), 1)
-    available_ram_gb = round(mem.available / (1024**3), 1)
+    # 1. CPU & RAM Probes (with safe fallback defaults for stripped containers)
+    try:
+        import psutil
+        cpu_cores_logical = psutil.cpu_count(logical=True) or 4
+        cpu_cores_physical = psutil.cpu_count(logical=False) or 4
+        cpu_percent = psutil.cpu_percent(interval=0.05)
+        mem = psutil.virtual_memory()
+        total_ram_gb = round(mem.total / (1024**3), 1)
+        available_ram_gb = round(mem.available / (1024**3), 1)
+    except Exception:
+        cpu_cores_logical = 4
+        cpu_cores_physical = 4
+        cpu_percent = 15.0
+        total_ram_gb = 8.0
+        available_ram_gb = 4.0
 
     # 3. GPU (CUDA check)
     gpu_detected = False
@@ -52,9 +56,13 @@ def get_hardware_telemetry() -> Dict[str, Any]:
             pass
 
     # 5. Disk Space Probe
-    disk = shutil.disk_usage(Path.cwd())
-    free_disk_gb = round(disk.free / (1024**3), 1)
-    total_disk_gb = round(disk.total / (1024**3), 1)
+    try:
+        disk = shutil.disk_usage(Path.cwd())
+        free_disk_gb = round(disk.free / (1024**3), 1)
+        total_disk_gb = round(disk.total / (1024**3), 1)
+    except Exception:
+        free_disk_gb = 50.0
+        total_disk_gb = 250.0
 
     # Recommended profile based on hardware & disk
     if total_ram_gb >= 16 or vram_gb >= 8:

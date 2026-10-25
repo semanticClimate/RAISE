@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("raise.retrieval.entity_filtering")
 
@@ -60,28 +60,36 @@ def get_library_institutions() -> Dict[str, List[str]]:
     return {}
 
 
+def _norm_entity(text: str) -> str:
+    import re
+    return re.sub(r"[\W_]+", " ", text).lower().strip()
+
+
 def filter_entity_mismatches(
     query: str,
     candidates: List[Dict[str, Any] | Any],
+    institutions: Optional[Dict[str, List[str]]] = None,
 ) -> List[Dict[str, Any] | Any]:
     """
     Enforces strict institutional/entity boundary filtering.
     If the user's query specifically targets an institution, prunes candidate chunks
     that explicitly belong to a conflicting institution not mentioned in the query.
-    Institutions are dynamically resolved from the active Library manifest.
+    Institutions are dynamically resolved from the active Library manifest or optional argument.
+    Zero hardcoded institution names.
     """
     if not candidates or not query:
         return candidates
 
     q_lower = query.lower()
-    institutions = get_library_institutions()
+    if institutions is None:
+        institutions = get_library_institutions()
     if not institutions:
         return candidates
 
     # Detect which institutions are targeted by the query
     targeted = set()
     for inst_key, aliases in institutions.items():
-        if any(alias in q_lower for alias in aliases):
+        if any(_norm_entity(alias) in _norm_entity(q_lower) for alias in aliases if alias):
             targeted.add(inst_key)
 
     # If no specific institution is targeted, or multiple conflicting ones are requested, preserve all
@@ -92,23 +100,33 @@ def filter_entity_mismatches(
     for c in candidates:
         if hasattr(c, "metadata"):
             meta = c.metadata or {}
-            c_text = str(getattr(c, "page_content", "")).lower()
+            c_text = str(getattr(c, "page_content", ""))
         else:
             meta = c.get("metadata") or {} if isinstance(c, dict) else {}
-            c_text = (c.get("text") or c.get("plain_text") or meta.get("contextualized_content") or "").lower()
+            c_text = c.get("text") or c.get("plain_text") or meta.get("contextualized_content") or ""
 
-        pdf_name = (meta.get("pdf_filename") or (c.get("pdf_filename") if isinstance(c, dict) else "") or "").lower()
-        doc_id = (meta.get("document_id") or (c.get("document_id") if isinstance(c, dict) else "") or "").lower()
+        pdf_name = meta.get("pdf_filename") or (c.get("pdf_filename") if isinstance(c, dict) else "") or ""
+        doc_id = meta.get("document_id") or (c.get("document_id") if isinstance(c, dict) else "") or ""
+
+        norm_pdf = _norm_entity(pdf_name)
+        norm_doc = _norm_entity(doc_id)
+        norm_text = _norm_entity(c_text)
 
         # Check for conflict with an institution NOT in targeted
         is_conflict = False
         for inst_key, aliases in institutions.items():
             if inst_key not in targeted:
-                if any(alias in pdf_name for alias in aliases) or any(alias in doc_id for alias in aliases):
-                    is_conflict = True
-                    break
-                if any(f"institution: {alias}" in c_text for alias in aliases):
-                    is_conflict = True
+                for alias in aliases:
+                    n_alias = _norm_entity(alias)
+                    if not n_alias:
+                        continue
+                    if n_alias in norm_pdf or n_alias in norm_doc:
+                        is_conflict = True
+                        break
+                    if n_alias in norm_text:
+                        is_conflict = True
+                        break
+                if is_conflict:
                     break
 
         if not is_conflict:
@@ -121,22 +139,39 @@ def filter_entity_mismatches(
 def filter_subgraph_entity_mismatches(
     query: str,
     subgraph: Dict[str, Any],
+    institutions: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, Any]:
     """
     Filters Neo4j subgraph nodes and edges to prune entities belonging to conflicting institutions.
-    Dynamically loads institutional aliases from the library manifest.
+    Dynamically loads institutional aliases from the library manifest, caller arguments, or node labels.
     """
+    import re
     if not subgraph or not query or not isinstance(subgraph, dict):
         return subgraph
 
     q_lower = query.lower()
-    institutions = get_library_institutions()
+    if institutions is None:
+        institutions = dict(get_library_institutions())
+    else:
+        institutions = dict(institutions)
+
+    # Dynamically discover any institutions present directly in subgraph nodes
+    if subgraph and isinstance(subgraph, dict):
+        for n in subgraph.get("nodes", []):
+            if str(n.get("label", "")).lower() in ("institution", "organization", "university"):
+                name = str(n.get("name", "")).strip()
+                if name:
+                    n_key = name.lower()
+                    if n_key not in institutions:
+                        parts = [p.lower() for p in re.findall(r"\b[A-Za-z0-9]+\b", name) if len(p) >= 3]
+                        institutions[n_key] = list(set([n_key] + parts))
+
     if not institutions:
         return subgraph
 
     targeted = set()
     for inst_key, aliases in institutions.items():
-        if any(alias in q_lower for alias in aliases):
+        if any(_norm_entity(alias) in _norm_entity(q_lower) for alias in aliases if alias):
             targeted.add(inst_key)
 
     if not targeted:
@@ -145,14 +180,17 @@ def filter_subgraph_entity_mismatches(
     conflict_aliases = []
     for inst_key, aliases in institutions.items():
         if inst_key not in targeted:
-            conflict_aliases.extend(aliases)
+            for alias in aliases:
+                n_alias = _norm_entity(alias)
+                if n_alias:
+                    conflict_aliases.append(n_alias)
 
     nodes = subgraph.get("nodes", [])
     valid_nodes = []
     for n in nodes:
-        name = str(n.get("name", "")).lower()
-        nid = str(n.get("id", "")).lower()
-        lbl = str(n.get("label", "")).lower()
+        name = _norm_entity(str(n.get("name", "")))
+        nid = _norm_entity(str(n.get("id", "")))
+        lbl = _norm_entity(str(n.get("label", "")))
         if any(alias in name or alias in nid or alias in lbl for alias in conflict_aliases):
             continue
         valid_nodes.append(n)
@@ -160,8 +198,8 @@ def filter_subgraph_entity_mismatches(
     edges = subgraph.get("edges", [])
     valid_edges = []
     for e in edges:
-        src = str(e.get("source", "")).lower()
-        tgt = str(e.get("target", "")).lower()
+        src = _norm_entity(str(e.get("source", "")))
+        tgt = _norm_entity(str(e.get("target", "")))
         if any(alias in src or alias in tgt for alias in conflict_aliases):
             continue
         valid_edges.append(e)

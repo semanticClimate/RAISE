@@ -85,7 +85,7 @@ def _background_download_worker(repo_ids: List[str]):
             try:
                 from huggingface_hub import snapshot_download
                 logger.info(f"Pre-flight downloading {repo_id}...")
-                snapshot_download(repo_id=repo_id)
+                snapshot_download(repo_id=repo_id, resume_download=True)
             except Exception as e:
                 logger.warning(f"Failed to snapshot download {repo_id}: {e}")
             _ASSET_DOWNLOAD_PROGRESS = round(((idx + 1) / total) * 100, 1)

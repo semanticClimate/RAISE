@@ -3,7 +3,7 @@ RAISE Document Parsing Quality & Normalization Subsystem
 =========================================================
 Purpose:
   Provides text normalization, semantic markdown section coalescing,
-  and an industrial quality gate for evaluating parsed PDF text prior
+  and a quality gate for evaluating parsed PDF text prior
   to downstream embedding, vectorization, and knowledge graph ingestion.
 
 Architecture:
@@ -106,7 +106,7 @@ def coalesce_markdown_sections(
 
 class TextQualityGate:
     """
-    Industrial Quality Gate evaluating parsed PDF text prior to embedding and indexing:
+    Quality gate evaluating parsed PDF text prior to embedding and indexing:
       - garbled_token_ratio: ratio of non-printable or corrupted character tokens
       - avg_word_length: detects single-letter fragmentation (< 1.8) or run-together text (> 24.0)
       - repetition_ratio: flags OCR hallucination loops (e.g. repeated words)
@@ -115,7 +115,7 @@ class TextQualityGate:
     @staticmethod
     def assess(text: str) -> Dict[str, Any]:
         """
-        Assesses string content against industrial quality standards.
+        Assesses string content against quality standards.
         Returns a dictionary containing boolean 'is_acceptable' flag, failure reasons,
         and statistical text attributes.
         """

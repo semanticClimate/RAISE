@@ -13,6 +13,7 @@ Maintainability: Keep under 150 lines with full exception safety.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -52,28 +53,44 @@ def sync_and_persist_artifacts(
         }, indent=2), encoding="utf-8"
     )
 
-    # 2b. Write structured markdown extract directly to data/library/
+    # 2b. Write structured Enterprise OKF (.md) artifact directly to data/library/
     try:
         lib_dir = output_dir.parent / "library"
         lib_dir.mkdir(parents=True, exist_ok=True)
-        md_lines = [
-            f"# Extracted Knowledge Artifact: {pdf_path.name}",
-            f"- Document ID: `{doc_id}`",
-            f"- Ingestion Timestamp: `{time.strftime('%Y-%m-%d %H:%M:%S')}`",
-            f"- Total Chunks: {len(all_chunks)}",
-            f"- Entities Discovered: {len(unique_entities)}",
-            f"- Relations Extracted: {len(unique_relations)}",
-            "",
-            "## Structured Document Sections & Content\n",
-        ]
-        for c in all_chunks:
-            pno = c.get("primary_page", 1)
-            h = c.get("heading", f"Page {pno}")
-            txt = c.get("plain_text", "")
-            md_lines.append(f"### [Page {pno}] {h}\n\n{txt}\n")
-        (lib_dir / f"{doc_id}_extracted.md").write_text("\n".join(md_lines), encoding="utf-8")
+
+        inst_candidates = [e.name for e in unique_entities.values() if getattr(e, "label", "") in ("Institution", "University", "Organization")]
+        institution = inst_candidates[0] if inst_candidates else pdf_path.stem.replace("_", " ")
+        year_matches = re.findall(r"\b(20\d\d(?:-\d\d)?)\b", pdf_path.stem)
+        reporting_period = year_matches[0] if year_matches else "Current Period"
+        fact_metrics = [e for e in unique_entities.values() if getattr(e, "label", "") in ("MetricFact", "FinancialMetric", "Metric")]
+
+        okf_content = generate_enhanced_okf_markdown(
+            doc_id=doc_id,
+            pdf_path=pdf_path,
+            institution=institution,
+            reporting_period=reporting_period,
+            all_chunks=all_chunks,
+            unique_entities=unique_entities,
+            unique_relations=unique_relations,
+            fact_metrics=fact_metrics,
+        )
+        (lib_dir / f"{doc_id}_extracted.md").write_text(okf_content, encoding="utf-8")
     except Exception as lib_err:
         print(f"        -> Library Markdown Export Notice: {lib_err}")
+
+    # 2c. Generate & register agent-ready Open Knowledge Format (.okf.md) catalog
+    try:
+        from src.features.catalog.catalog_extractor import extract_okf_profile_from_pdf
+        extract_okf_profile_from_pdf(
+            pdf_path=pdf_path,
+            chunks=all_chunks,
+            entities=list(unique_entities.values()),
+            facts=fact_metrics,
+            institution_name=institution,
+            reporting_period=reporting_period,
+        )
+    except Exception as okf_err:
+        print(f"        -> OKF Catalog Export Notice: {okf_err}")
 
     # 3. Ingest to ChromaDB Vector Store
     vector_count = vector_engine.ingest_chunks(all_chunks, doc_id=doc_id)
@@ -148,3 +165,90 @@ def sync_and_persist_artifacts(
     )
 
     return unique_entities, unique_relations, vector_count, neo4j_res, consistency_audit
+
+
+def generate_enhanced_okf_markdown(
+    doc_id: str,
+    pdf_path: Path,
+    institution: str,
+    reporting_period: str,
+    all_chunks: List[Dict[str, Any]],
+    unique_entities: Dict[str, Any],
+    unique_relations: Dict[str, Any],
+    fact_metrics: List[Any],
+) -> str:
+    """Generates an Enterprise Open Knowledge File (.md) artifact."""
+    lines = []
+    # 1. Frontmatter
+    lines.extend([
+        "---",
+        f"id: \"{doc_id}\"",
+        f"title: \"{pdf_path.stem.replace('_', ' ')}\"",
+        f"institution: \"{institution}\"",
+        f"reporting_period: \"{reporting_period}\"",
+        f"total_chunks: {len(all_chunks)}",
+        f"total_entities: {len(unique_entities)}",
+        f"total_relations: {len(unique_relations)}",
+        f"generated_at: \"{time.strftime('%Y-%m-%dT%H:%M:%SZ')}\"",
+        "schema_version: \"okf-v2.0\"",
+        "---",
+        "",
+        f"# {institution} — Annual Research & Knowledge Manifest ({reporting_period})",
+        "",
+        "## 1. Executive Summary & Document Abstract",
+        f"Comprehensive semantified representation of `{pdf_path.name}` covering institutional governance, "
+        f"financial allocations, research outputs, patents, and incubated ventures.",
+        "",
+        "## 2. Quantitative Metric Fact Register",
+        "| Metric Name | Value | Unit | Primary Page | Provenance Chunk |",
+        "| :--- | :--- | :--- | :--- | :--- |",
+    ])
+
+    for f in fact_metrics[:50]:
+        val = getattr(f, "raw_value", "") or (f.get("raw_value", "") if isinstance(f, dict) else "")
+        m_name = getattr(f, "metric_name", "") or (f.get("metric_name", "") if isinstance(f, dict) else "")
+        m_name = str(m_name).replace("_", " ").title()
+        unit = getattr(f, "unit", "-") or (f.get("unit", "-") if isinstance(f, dict) else "-")
+        pno = getattr(f, "page_number", 1) or (f.get("page_number", 1) if isinstance(f, dict) else 1)
+        cid = getattr(f, "chunk_id", f"{doc_id}_p{pno}") or (f.get("chunk_id", f"{doc_id}_p{pno}") if isinstance(f, dict) else f"{doc_id}_p{pno}")
+        lines.append(f"| {m_name} | **{val}** | {unit} | Page {pno} | `{cid}` |")
+
+    lines.extend([
+        "",
+        "## 3. Knowledge Graph Entity & Ontological Glossary",
+        "| Entity Name | Ontological Type | Mentions | Linked Relations |",
+        "| :--- | :--- | :--- | :--- |",
+    ])
+
+    for e in list(unique_entities.values())[:60]:
+        name = getattr(e, "name", "") or (e.get("name", "") if isinstance(e, dict) else "")
+        etype = getattr(e, "label", "Entity") or (e.get("label", "Entity") if isinstance(e, dict) else "Entity")
+        prov = getattr(e, "provenance", {}) or (e.get("provenance", {}) if isinstance(e, dict) else {})
+        pno = prov.get("page_number", 1) if isinstance(prov, dict) else 1
+        eid = getattr(e, "entity_id", "") or (e.get("entity_id", "") if isinstance(e, dict) else "")
+        lines.append(f"| {name} | `{etype}` | Page {pno} | `{eid}` |")
+
+    lines.extend([
+        "",
+        "## 4. Structured Contextual Chunks & Tabular Passages",
+        "",
+    ])
+
+    for c in all_chunks:
+        pno = c.get("primary_page", 1)
+        cid = c.get("chunk_id", "")
+        h = c.get("heading", f"Section Page {pno}")
+        txt = c.get("plain_text", "")
+
+        lines.extend([
+            f"<a id=\"{cid}\"></a>",
+            f"### Chunk `{cid}` — [Page {pno}] {h}",
+            f"> **Context Breadcrumb:** `{institution}` ➔ `{reporting_period}` ➔ `{h}`",
+            "",
+            txt,
+            "",
+            "---",
+            "",
+        ])
+
+    return "\n".join(lines)

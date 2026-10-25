@@ -28,9 +28,11 @@ Maintainability: Keep under 250 lines with defensive filesystem error handling.
 from __future__ import annotations
 import json
 import logging
+import os
 import re
+import shutil
 from pathlib import Path
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Optional, Set, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.retrieval.pipeline import StandaloneRAGPipeline
@@ -151,6 +153,16 @@ def purge_document(pipeline: "StandaloneRAGPipeline", doc_identifier: str) -> Di
     except Exception as e:
         logger.warning("Failed to delete PostgreSQL document during purge: %s", e)
 
+    # 7c. Remove OKF Catalog Profile
+    catalogs_purged = []
+    try:
+        from src.features.catalog.knowledge_catalog import KnowledgeCatalogRegistry
+        reg = KnowledgeCatalogRegistry.get_instance()
+        catalogs_purged = reg.remove_profile(target_filename)
+        removed_files.extend(catalogs_purged)
+    except Exception as e:
+        logger.warning("Failed to remove OKF catalog profile: %s", e)
+
     # 8. Clean reasoning memory trajectories
     trajs_removed = pipeline.reasoning_memory.remove_document_trajectories(target_filename)
 
@@ -166,7 +178,11 @@ def purge_document(pipeline: "StandaloneRAGPipeline", doc_identifier: str) -> Di
     }
 
 
-def purge_all_documents(pipeline: "StandaloneRAGPipeline", delete_raw_files: bool = True) -> Dict[str, Any]:
+def purge_all_documents(
+    pipeline: "StandaloneRAGPipeline",
+    delete_raw_files: bool = True,
+    preserved_filenames: Optional[Set[str]] = None,
+) -> Dict[str, Any]:
     """
     Completely resets and wipes the entire research vault:
     1. Clears ChromaDB vector collection
@@ -257,14 +273,28 @@ def purge_all_documents(pipeline: "StandaloneRAGPipeline", delete_raw_files: boo
         except Exception as e:
             logger.warning("Failed to reset manifest: %s", e)
 
+    # 7b. Clear all OKF Knowledge Catalogs
+    catalogs_purged = 0
+    try:
+        from src.features.catalog.knowledge_catalog import KnowledgeCatalogRegistry
+        reg = KnowledgeCatalogRegistry.get_instance()
+        catalogs_purged = reg.clear_all_catalogs()
+        removed_count += catalogs_purged
+    except Exception as e:
+        logger.warning("Failed to clear OKF catalogs: %s", e)
+
     # 8. Delete non-core raw document files if requested
     raw_files_deleted = 0
-    core_docs = {"bric-annual-report-2025.pdf", "annual report 2023-24.pdf"}
+    core_docs = {f.lower() for f in (preserved_filenames or [])}
+    env_preserved = os.getenv("VAULT_PRESERVED_DOCUMENTS", "")
+    if env_preserved:
+        core_docs.update(f.strip().lower() for f in env_preserved.split(",") if f.strip())
+
     if delete_raw_files:
         docs_dir = settings.documents_dir
         if docs_dir.exists():
             for f in docs_dir.glob("*"):
-                if f.is_file() and f.name.lower() not in core_docs:
+                if f.is_file() and (not core_docs or f.name.lower() not in core_docs):
                     try:
                         f.unlink()
                         raw_files_deleted += 1
@@ -283,7 +313,8 @@ def purge_all_documents(pipeline: "StandaloneRAGPipeline", delete_raw_files: boo
 
     return {
         "status": "success",
-        "message": f"Complete vault purge successful. Wiped all vectors, graph nodes, chunks, postgres records, and {raw_files_deleted} non-core raw files.",
+        "message": f"Complete vault purge successful. Wiped all vectors, graph nodes, chunks, postgres records, {catalogs_purged} OKF catalogs, and {raw_files_deleted} non-core raw files.",
         "files_removed": removed_count,
+        "catalogs_purged": catalogs_purged,
         "raw_documents_deleted": raw_files_deleted,
     }

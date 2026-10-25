@@ -16,12 +16,7 @@ from src.infrastructure.providers.http_client import safe_http_request, Provider
 logger = logging.getLogger("raise.infrastructure.providers.nvidia")
 
 DEFAULT_NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1"
-DEFAULT_NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
-CANDIDATE_NVIDIA_MODELS = [
-    "meta/llama-3.3-70b-instruct",
-    "meta/llama-3.2-11b-vision-instruct",
-    "deepseek-ai/deepseek-r1",
-]
+DEFAULT_NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct"
 
 
 class NvidiaNIMProvider(LLMProvider):
@@ -62,41 +57,21 @@ class NvidiaNIMProvider(LLMProvider):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        candidates = [self.model_name] + [m for m in CANDIDATE_NVIDIA_MODELS if m != self.model_name]
-        last_error = None
-        for cand in candidates:
-            payload = {
-                "model": cand,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            headers = {"Authorization": f"Bearer {key}"}
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        headers = {"Authorization": f"Bearer {key}"}
 
-            try:
-                resp, _ = safe_http_request(
-                    f"{self.base_url}/chat/completions",
-                    payload=payload,
-                    headers=headers,
-                    timeout=kwargs.get("timeout", 60.0),
-                )
-                self.model_name = cand
-                return resp["choices"][0]["message"]["content"]
-            except ProviderHTTPError as pe:
-                last_error = pe
-                if pe.status_code in (429, 401, 403, 402):
-                    raise pe
-                logger.debug(f"NVIDIA candidate {cand} failed: {pe}")
-                continue
-            except Exception as ex:
-                last_error = ex
-                continue
-
-        if last_error:
-            if isinstance(last_error, ProviderHTTPError):
-                raise last_error
-            raise ProviderHTTPError(f"NVIDIA completion failed across candidates: {last_error}", classification="MODEL_UNAVAILABLE")
-        raise ProviderHTTPError("NVIDIA completion failed with no candidates available.", classification="MODEL_UNAVAILABLE")
+        resp, _ = safe_http_request(
+            f"{self.base_url}/chat/completions",
+            payload=payload,
+            headers=headers,
+            timeout=kwargs.get("timeout", 60.0),
+        )
+        return resp["choices"][0]["message"]["content"]
 
     async def complete_stream(
         self,

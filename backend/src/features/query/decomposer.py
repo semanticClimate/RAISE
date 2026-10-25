@@ -17,7 +17,14 @@ import logging
 import os
 import re
 import urllib.request
-from typing import List, Optional
+from typing import Any, List, Optional
+
+try:
+    from llama_index.core.question_gen.types import SubQuestion
+    HAS_LLAMA_INDEX = True
+except ImportError:
+    SubQuestion = None
+    HAS_LLAMA_INDEX = False
 
 logger = logging.getLogger("raise.query.decomposer")
 
@@ -33,6 +40,16 @@ class QueryDecomposerNode:
 
     def decompose(self, query: str) -> List[str]:
         q_clean = query.strip()
+
+        # 0. Comparative Multi-Entity Decomposition
+        cmp_match = re.match(r"(?i)^compare\s+(.+?)\s+(?:with|to|vs\.?|versus|and)\s+(.+?)$", q_clean)
+        if cmp_match:
+            entity1, entity2 = cmp_match.group(1).strip(), cmp_match.group(2).strip()
+            if len(entity1) > 4 and len(entity2) > 4:
+                return [
+                    f"What were the metrics and details for {entity1}?",
+                    f"What were the metrics and details for {entity2}?",
+                ]
 
         is_compound = False
         conjunctions = [" and ", " as well as ", " along with ", "; ", "? "]
@@ -63,6 +80,18 @@ class QueryDecomposerNode:
             return reconstructed
 
         return [q_clean]
+
+    def decompose_subquestions(self, query: str) -> List[Any]:
+        """
+        Decomposes query into LlamaIndex SubQuestion objects for parallel sub-question execution.
+        """
+        str_queries = self.decompose(query)
+        if HAS_LLAMA_INDEX and SubQuestion is not None:
+            return [
+                SubQuestion(sub_question=sq, tool_name=f"document_engine_{idx+1}")
+                for idx, sq in enumerate(str_queries)
+            ]
+        return [{"sub_question": sq, "tool_name": f"document_engine_{idx+1}"} for idx, sq in enumerate(str_queries)]
 
     def _query_vllm_decomposition(self, query: str) -> Optional[List[str]]:
         try:

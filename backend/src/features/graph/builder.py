@@ -143,13 +143,9 @@ def build_from_chunks(
         )
         graph.add_edge(doc_id, cid, relation="CONTAINS_SECTION")
 
-        # Entity Extraction: Standard and regex discovered organizations
+        # Entity Extraction: Dynamic regex discovered organizations (domain-agnostic)
         current_section_orgs = []
-        standard_orgs = [
-            "BRIC", "CDFD", "NIPGR", "DBT", "AstraBio Innovations Council", "Indian Institute of Technology Madras",
-            "IIT Madras Research Park", "Panjab University", "Delhi University", "JNU", "CSIR", "ICMR", "DST", "AIIMS"
-        ]
-        discovered_orgs = set(standard_orgs)
+        discovered_orgs = set()
         found_insts = re.findall(r"\b([A-Z][A-Za-z\s&]{3,40}(?:Institute|Council|University|Foundation|Centre|Center|Laboratory|Board))\b", text)
         for inst in found_insts:
             clean_inst = inst.strip()

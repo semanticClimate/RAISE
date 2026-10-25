@@ -24,26 +24,45 @@ export const AgentQueryRequestSchema = z.object({
 
 export type AgentQueryRequest = z.infer<typeof AgentQueryRequestSchema>;
 
-export const CitationSchema = z.object({
-  citation_index: z.number().int().default(1),
-  chunk_id: z.string().default(''),
-  document_id: z.string().default(''),
-  pdf_filename: z.string().default(''),
-  primary_page: z
-    .number()
-    .int()
-    .or(z.string().transform((v) => parseInt(v, 10)))
-    .nullable()
-    .optional(),
-  heading: z.string().default(''),
-  plain_text: z.string().default(''),
-  university: z.string().default(''),
-  similarity: z.number().default(0),
-  printed_page: z.union([z.string(), z.number()]).nullable().optional(),
-  page_url: z.string().optional(),
-  page_image_url: z.string().optional(),
-  page_view_url: z.string().optional(),
-});
+export const CitationSchema = z
+  .object({
+    citation_index: z.number().int().default(1),
+    chunk_id: z.string().default(''),
+    document_id: z.string().nullish().default(''),
+    doc_id: z.string().nullish(),
+    pdf_filename: z.string().nullish().default(''),
+    filename: z.string().nullish(),
+    primary_page: z
+      .number()
+      .int()
+      .or(z.string().transform((v) => parseInt(v, 10)))
+      .nullish(),
+    page: z
+      .number()
+      .int()
+      .or(z.string().transform((v) => parseInt(v, 10)))
+      .nullish(),
+    page_number: z
+      .number()
+      .int()
+      .or(z.string().transform((v) => parseInt(v, 10)))
+      .nullish(),
+    heading: z.string().default(''),
+    plain_text: z.string().default(''),
+    snippet: z.string().nullish(),
+    text: z.string().nullish(),
+    university: z.string().default(''),
+    similarity: z.number().default(0),
+    score: z.number().nullish(),
+    printed_page: z.union([z.string(), z.number()]).nullish(),
+    page_url: z.string().nullish(),
+    page_image_url: z.string().nullish(),
+    page_view_url: z.string().nullish(),
+    source_type: z.string().nullish(),
+    url: z.string().nullish(),
+    metadata: z.record(z.string(), z.any()).nullish(),
+  })
+  .passthrough();
 
 export type Citation = z.infer<typeof CitationSchema>;
 
@@ -122,106 +141,120 @@ export const QualityGateDecisionSchema = z
 
 export type QualityGateDecision = z.infer<typeof QualityGateDecisionSchema>;
 
-export const SubgraphQueryResponseSchema = z.object({
-  query: z.string(),
-  routing_strategy: z.string().optional(),
-  query_type: z.string().optional(),
-  selected_tools: z.array(z.string()).default([]),
-  cypher_status: z.string().optional(),
-  cypher_repair_count: z.number().int().default(0),
-  path_critic_expanded: z.boolean().default(false),
-  grounded_answer: z.string().default(''),
-  traceability_score: z.number().default(0),
-  verified_claims: z.array(VerifiedClaimSchema).default([]),
-  citations: z.array(CitationSchema).default([]),
-  answer_contract: z.record(z.string(), z.any()).nullable().optional(),
-  subgraph: SubgraphDataSchema.default({ nodes: [], edges: [] }),
-  top_chunks: z.array(TopChunkSchema).default([]),
-  quality_gate_decision: QualityGateDecisionSchema.default('accept'),
-  quality_gate_report: QualityGateReportSchema.optional(),
-  retry_count: z.number().int().default(0),
-  execution_time: z.number().default(0),
-  message: z.string().optional(),
-  command: z.string().optional(),
-  meta: z.record(z.string(), z.any()).optional(),
+export const SubgraphQueryResponseSchema = z
+  .object({
+    query: z.string(),
+    answer: z.string().nullish(),
+    routing_strategy: z.string().nullish(),
+    query_type: z.string().nullish(),
+    selected_tools: z.array(z.string()).default([]),
+    cypher_status: z.string().nullish(),
+    cypher_repair_count: z.number().int().default(0),
+    path_critic_expanded: z.boolean().default(false),
+    grounded_answer: z.string().default(''),
+    traceability_score: z.number().default(0),
+    verified_claims: z.array(VerifiedClaimSchema).default([]),
+    citations: z.array(CitationSchema).default([]),
+    answer_contract: z.record(z.string(), z.any()).nullish(),
+    subgraph: SubgraphDataSchema.default({ nodes: [], edges: [] }),
+    top_chunks: z.array(TopChunkSchema).default([]),
+    quality_gate_decision: QualityGateDecisionSchema.default('accept'),
+    quality_gate_report: QualityGateReportSchema.nullish(),
+    retry_count: z.number().int().default(0),
+    execution_time: z.number().default(0),
+    message: z.string().nullish(),
+    command: z.string().nullish(),
+    meta: z.record(z.string(), z.any()).nullish(),
 
-  // Dynamic Follow-Up Inquiries & Suggestions from Gateway / LLM Node
-  follow_up_inquiries: z.array(z.string()).optional(),
-  suggestions: z.array(z.string()).optional(),
+    // Dynamic Follow-Up Inquiries & Suggestions from Gateway / LLM Node
+    follow_up_inquiries: z.array(z.string()).nullish(),
+    suggestions: z.array(z.string()).nullish(),
 
-  // LangGraph Query Intake & Reformulation Pipeline State Fields
-  standalone_query: z.string().optional(),
-  decomposed_queries: z.array(z.string()).default([]),
-  intent_route: z.string().optional(),
-  latency_sec: z.number().optional(),
-  error_log: z.string().nullable().optional(),
-  thread_id: z.string().optional(),
-  persisted: z.boolean().optional(),
-  saved: z.boolean().optional(),
-  persistence_status: z.string().optional(),
-  persistence_error: z.string().nullable().optional(),
-});
+    // LangGraph Query Intake & Reformulation Pipeline State Fields
+    standalone_query: z.string().nullish(),
+    decomposed_queries: z.array(z.string()).default([]),
+    intent_route: z.string().nullish(),
+    latency_sec: z.number().nullish(),
+    error_log: z.string().nullish(),
+    thread_id: z.string().nullish(),
+    persisted: z.boolean().nullish(),
+    saved: z.boolean().nullish(),
+    persistence_status: z.string().nullish(),
+    persistence_error: z.string().nullish(),
+  })
+  .passthrough();
 
 export type SubgraphQueryResponse = z.infer<typeof SubgraphQueryResponseSchema>;
 
-export const AgentQueryResponseSchema = z.object({
-  query: z.string(),
-  query_type: z.string().optional(),
-  selected_tools: z.array(z.string()).default([]),
-  grounded_answer: z.string().default(''),
-  traceability_score: z.number().default(0),
-  verified_claims: z.array(VerifiedClaimSchema).default([]),
-  citations: z.array(CitationSchema).default([]),
-  answer_contract: z.record(z.string(), z.any()).nullable().optional(),
-});
+export const AgentQueryResponseSchema = z
+  .object({
+    query: z.string().nullish(),
+    query_type: z.string().nullish(),
+    selected_tools: z.array(z.string()).default([]),
+    grounded_answer: z.string().default(''),
+    answer: z.string().nullish(),
+    response: z.string().nullish(),
+    tool_calls: z.array(z.any()).nullish(),
+    traceability_score: z.number().default(0),
+    verified_claims: z.array(VerifiedClaimSchema).default([]),
+    citations: z.array(CitationSchema).default([]),
+    answer_contract: z.record(z.string(), z.any()).nullish(),
+  })
+  .passthrough();
 
 export type AgentQueryResponse = z.infer<typeof AgentQueryResponseSchema>;
 
 // ─── Cross-Session Chat Persistence Schemas ─────────────────────────────────
 
-export const PersistedChatSessionSchema = z.object({
-  thread_id: z.string(),
-  session_id: z.string().optional(),
-  username: z.string().default(''),
-  title: z.string().default('New Chat'),
-  messages: z.array(z.any()).default([]),
-  created_at: z.string().optional(),
-  updated_at: z.string().optional(),
-  selectedSourceIds: z.array(z.string()).optional(),
-  sources: z.array(z.any()).optional(),
-  attached_docs: z.array(z.string()).optional(),
-  is_saved: z.boolean().optional().default(false),
-});
+export const PersistedChatSessionSchema = z
+  .object({
+    thread_id: z.string(),
+    session_id: z.string().nullish(),
+    username: z.string().default(''),
+    title: z.string().default('New Chat'),
+    messages: z.array(z.any()).default([]),
+    created_at: z.string().nullish(),
+    updated_at: z.string().nullish(),
+    selectedSourceIds: z.array(z.string()).nullish(),
+    sources: z.array(z.any()).nullish(),
+    attached_docs: z.array(z.string()).nullish(),
+    is_saved: z.boolean().optional().default(false),
+  })
+  .passthrough();
 
 export type PersistedChatSession = z.infer<typeof PersistedChatSessionSchema>;
 
-export const ChatHistoryResponseSchema = z.object({
-  thread_id: z.string(),
-  session_id: z.string().optional(),
-  username: z.string().optional().default(''),
-  title: z.string().optional().default('Chat Session'),
-  messages: z.array(z.any()).default([]),
-  created_at: z.string().optional(),
-  updated_at: z.string().optional(),
-  selectedSourceIds: z.array(z.string()).optional(),
-  sources: z.array(z.any()).optional(),
-  is_saved: z.boolean().optional().default(false),
-});
+export const ChatHistoryResponseSchema = z
+  .object({
+    thread_id: z.string(),
+    session_id: z.string().nullish(),
+    username: z.string().nullish().default(''),
+    title: z.string().nullish().default('Chat Session'),
+    messages: z.array(z.any()).default([]),
+    created_at: z.string().nullish(),
+    updated_at: z.string().nullish(),
+    selectedSourceIds: z.array(z.string()).nullish(),
+    sources: z.array(z.any()).nullish(),
+    is_saved: z.boolean().optional().default(false),
+  })
+  .passthrough();
 
 export type ChatHistoryResponse = z.infer<typeof ChatHistoryResponseSchema>;
 
-export const ChatSessionSummarySchema = z.object({
-  id: z.string(),
-  thread_id: z.string().optional(),
-  session_id: z.string().optional(),
-  username: z.string().optional().default(''),
-  title: z.string(),
-  timestamp: z.string().optional(),
-  created_at: z.string().optional(),
-  updated_at: z.string().optional(),
-  is_saved: z.boolean().optional().default(false),
-  message_count: z.number().int().optional(),
-});
+export const ChatSessionSummarySchema = z
+  .object({
+    id: z.string(),
+    thread_id: z.string().nullish(),
+    session_id: z.string().nullish(),
+    username: z.string().nullish().default(''),
+    title: z.string(),
+    timestamp: z.string().nullish(),
+    created_at: z.string().nullish(),
+    updated_at: z.string().nullish(),
+    is_saved: z.boolean().optional().default(false),
+    message_count: z.number().int().nullish(),
+  })
+  .passthrough();
 
 export type ChatSessionSummary = z.infer<typeof ChatSessionSummarySchema>;
 

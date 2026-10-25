@@ -4,11 +4,20 @@ RAISE LiteLLM Unified Multi-Provider LLM Router
 Unified Multi-Provider LLM Proxy, Dynamic Failover & Routing Engine.
 Architecture Layer: LLM Infrastructure / Provider Routing & Resiliency
 
-Zero Hardcoded Models Policy:
------------------------------
-- Dynamically discovers active models on user accounts and local engines via live APIs.
-- Automatically builds dynamic fallback order from configured credentials.
-- Inspects real-time API response envelopes to identify the exact model that generated the response.
+Why LiteLLM:
+------------
+  - Standardizes 100+ LLM APIs into a unified OpenAI-compatible request/response envelope.
+  - Built-in exponential backoff, rate-limit retries (429), and failover groups.
+  - Automatically handles model-specific parameter quirks (temperature ranges, token limits).
+  - Built-in latency timing and token usage telemetry.
+
+Providers Supported:
+-------------------
+  • Local vLLM (OpenAI-compatible)
+  • Groq (ultra-low latency Qwen 2.5 / Llama 3.3)
+  • Cohere (Command-R+ enterprise grounding)
+  • Google Gemini (Gemini 2.5 Flash)
+  • NVIDIA NIM (Llama 3.2 11B / DeepSeek)
 """
 
 from __future__ import annotations
@@ -17,8 +26,6 @@ import logging
 import os
 import time
 from typing import Any, Dict, List, Optional
-
-from src.infrastructure.llm.model_discovery import get_model_discovery_engine
 
 logger = logging.getLogger("raise.infrastructure.llm.litellm")
 
@@ -35,48 +42,23 @@ except ImportError:
 class LiteLLMRouter:
     """
     Unified multi-provider LLM proxy engine powered by LiteLLM.
-    Zero hardcoded models: dynamically discovers models from provider APIs,
-    constructs dynamic failover chains, and captures the exact generating model.
+    Handles dynamic provider failover, retry budgets, and token usage accounting.
     """
+
+    DEFAULT_FALLBACK_ORDER = [
+        {"model": "groq/qwen/qwen3.8-27b", "api_key": "GROQ_API_KEY"},
+        {"model": "cohere/command-r-plus-08-2024", "api_key": "COHERE_API_KEY"},
+        {"model": "gemini/gemini-2.5-flash", "api_key": "GEMINI_API_KEY"},
+        {"model": "nvidia/meta/llama-3.2-11b-vision-instruct", "api_key": "NVIDIA_API_KEY"},
+    ]
 
     def __init__(self, default_model: Optional[str] = None):
         self.has_litellm = HAS_LITELLM
-        self.discovery_engine = get_model_discovery_engine()
-        self._explicit_default_model = default_model or os.getenv("DEFAULT_LLM_MODEL")
-        self._cached_fallback_order: List[Dict[str, str]] = []
-        self._cached_default_model: str = ""
-        self.refresh_fallback_order()
-
-    def refresh_fallback_order(self) -> None:
-        """Dynamically discovers and caches models from live APIs."""
-        discovered = self.discovery_engine.build_dynamic_fallback_order()
-        if discovered:
-            self._cached_fallback_order = discovered
+        self.default_model = default_model or os.getenv("DEFAULT_LLM_MODEL", "groq/qwen/qwen3.8-27b")
+        if HAS_LITELLM:
+            logger.info(f"LiteLLM router initialized with default target: {self.default_model}")
         else:
-            groq_m = self.discovery_engine.get_preferred_model("groq", "llama-3.3-70b-versatile")
-            gemini_m = self.discovery_engine.get_preferred_model("gemini", "gemini-2.0-flash")
-            self._cached_fallback_order = [
-                {"model": f"groq/{groq_m}", "api_key": "GROQ_API_KEY"},
-                {"model": f"gemini/{gemini_m}", "api_key": "GEMINI_API_KEY"},
-            ]
-        self._cached_default_model = (
-            self._explicit_default_model
-            or (self._cached_fallback_order[0]["model"] if self._cached_fallback_order else "groq/llama-3.3-70b-versatile")
-        )
-
-    @property
-    def default_model(self) -> str:
-        """Instant sub-microsecond resolution of active default model."""
-        return self._cached_default_model
-
-    @property
-    def DEFAULT_FALLBACK_ORDER(self) -> List[Dict[str, str]]:
-        """Instant sub-microsecond resolution of dynamic fallback order."""
-        return self._cached_fallback_order
-
-    def get_fallback_order(self) -> List[Dict[str, str]]:
-        """Returns the dynamic fallback order."""
-        return self._cached_fallback_order
+            logger.warning("LiteLLM not installed; operating in passthrough mode.")
 
     def completion(
         self,
@@ -88,8 +70,7 @@ class LiteLLMRouter:
         fallbacks: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Executes unified LLM completion with dynamic API discovery and telemetry.
-        Returns the exact model that generated the output.
+        Executes unified LLM completion with automatic retries and fallback failover.
         """
         if not self.has_litellm:
             return {
@@ -103,13 +84,10 @@ class LiteLLMRouter:
         target_model = model or self.default_model
         t0 = time.time()
 
-        # Build dynamic fallback list if not explicitly supplied
-        if fallbacks is None:
-            active_fallbacks = [
-                f["model"] for f in self.get_fallback_order() if f["model"] != target_model
-            ]
-        else:
-            active_fallbacks = fallbacks
+        # Build fallback list if not supplied
+        active_fallbacks = fallbacks or [
+            f["model"] for f in self.DEFAULT_FALLBACK_ORDER if f["model"] != target_model
+        ]
 
         try:
             resp = litellm.completion(
@@ -124,16 +102,10 @@ class LiteLLMRouter:
             latency_ms = round((time.time() - t0) * 1000.0, 2)
             content = resp.choices[0].message.content or ""
             usage = resp.usage.model_dump() if hasattr(resp.usage, "model_dump") else dict(resp.usage or {})
-            
-            # Extract the EXACT generating model directly from the API response envelope
-            actual_generating_model = getattr(resp, "model", None) or resp.get("model", target_model)
-
-            logger.info(f"LiteLLM completion succeeded via model: {actual_generating_model} ({latency_ms}ms)")
 
             return {
                 "content": content,
-                "model": actual_generating_model,       # Exact generating model reported by the API!
-                "target_model": target_model,           # Initial requested target
+                "model": getattr(resp, "model", target_model),
                 "usage": usage,
                 "latency_ms": latency_ms,
                 "status": "success",

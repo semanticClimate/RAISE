@@ -22,6 +22,7 @@ from .table_chunker import (
     DoclingTablePreservingChunker,
     MarkdownTablePreservingChunker,
 )
+from .hierarchical import LlamaIndexHierarchicalChunker
 from .pipeline import AdaptiveChunkingPipeline
 from .rust_bridge import (
     assemble_hierarchy_rust,
@@ -39,6 +40,7 @@ from .rust_bridge import (
 
 __all__ = [
     "AdaptiveChunkingPipeline",
+    "LlamaIndexHierarchicalChunker",
     "TablePreservingChunker",
     "DoclingTablePreservingChunker",
     "MarkdownTablePreservingChunker",

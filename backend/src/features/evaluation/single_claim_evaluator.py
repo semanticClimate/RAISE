@@ -53,13 +53,20 @@ def verify_single_claim(
     retrieval_relevance = None
 
     if citations_list and cit_refs:
-        ref_idx = cit_refs[0]
-        if 1 <= ref_idx <= len(citations_list):
-            c_info = citations_list[ref_idx - 1]
-            bound_chunk_id = c_info.get("chunk_id") or c_info.get("id")
-            primary_page = int(c_info.get("primary_page", 1)) if c_info.get("primary_page") is not None else None
-            bound_chunk_text = str(c_info.get("plain_text") or c_info.get("text") or "")
-            retrieval_relevance = c_info.get("cross_encoder_score") or c_info.get("score") or c_info.get("rrf_score")
+        bound_chunks = []
+        for ref_idx in cit_refs:
+            if 1 <= ref_idx <= len(citations_list):
+                c_info = citations_list[ref_idx - 1]
+                bound_chunks.append(c_info)
+
+        if bound_chunks:
+            primary_c = bound_chunks[0]
+            bound_chunk_id = primary_c.get("chunk_id") or primary_c.get("id")
+            primary_page = int(primary_c.get("primary_page", 1)) if primary_c.get("primary_page") is not None else None
+            retrieval_relevance = primary_c.get("cross_encoder_score") or primary_c.get("score") or primary_c.get("rrf_score")
+            # Concatenate all cited chunk texts to prevent single-citation premise starvation
+            chunk_texts = [str(c.get("plain_text") or c.get("text") or "").strip() for c in bound_chunks]
+            bound_chunk_text = "\n\n".join(t for t in chunk_texts if t)
 
     premise_text = bound_chunk_text if bound_chunk_text else evidence_text
 
@@ -84,25 +91,29 @@ def verify_single_claim(
     # Tier 1: Deterministic checks (Numbers & Dates)
     num_valid, matched_nums, unmatched_nums = NumericalClaimVerifier.verify_numbers(c_text, evidence_text, query=query)
     if not num_valid and not is_negative_assertion:
-        reason = f"Numerical mismatch: Values {unmatched_nums} not found in evidence."
-        notes.append(reason)
-        res = ClaimVerificationResult(
-            claim_id=cid,
-            text=c_text,
-            is_supported=False,
-            status="NUMERICAL_MISMATCH",
-            extracted_numbers=unmatched_nums,
-            matched_numbers=matched_nums,
-            citations_found=cit_refs,
-            notes=notes,
-            verification_tier="TIER1_NUMERIC",
-            bound_chunk_id=bound_chunk_id,
-            primary_page=primary_page,
-            retrieval_relevance_score=retrieval_relevance,
-            verification_path="DETERMINISTIC",
-            decision_reason=reason,
-        )
-        return res, False, True, False
+        critical_unmatched = [un for un in unmatched_nums if NumericalClaimVerifier.is_critical_metric_number(un, c_text)]
+        if critical_unmatched:
+            reason = f"Numerical mismatch: Critical metric values {critical_unmatched} not found in evidence."
+            notes.append(reason)
+            res = ClaimVerificationResult(
+                claim_id=cid,
+                text=c_text,
+                is_supported=False,
+                status="NUMERICAL_MISMATCH",
+                extracted_numbers=critical_unmatched,
+                matched_numbers=matched_nums,
+                citations_found=cit_refs,
+                notes=notes,
+                verification_tier="TIER1_NUMERIC",
+                bound_chunk_id=bound_chunk_id,
+                primary_page=primary_page,
+                retrieval_relevance_score=retrieval_relevance,
+                verification_path="DETERMINISTIC",
+                decision_reason=reason,
+            )
+            return res, False, True, False
+        else:
+            notes.append(f"Incidental numerical divergence noted for {unmatched_nums}; escalating to semantic verification.")
 
     # Negative assertion handling
     if is_negative_assertion:
@@ -218,6 +229,24 @@ def verify_single_claim(
             premise=premise_text[:2048] if len(premise_text) > 2048 else premise_text,
             hypothesis=clean_claim,
         )
+        # Dual-verification fallback: If bound premise yields neutral/unsupported, test broad retrieved evidence
+        if (
+            not nli_eval.get("is_entailed", False)
+            and not nli_eval.get("is_contradiction", False)
+            and nli_eval.get("entailment_prob", 0.0) < 0.55
+            and premise_text != evidence_text
+            and evidence_text.strip()
+        ):
+            ev_nli_eval = active_nli.classify_pair(
+                premise=evidence_text[:2048] if len(evidence_text) > 2048 else evidence_text,
+                hypothesis=clean_claim,
+            )
+            if ev_nli_eval.get("is_entailed", False) or ev_nli_eval.get("entailment_prob", 0.0) >= 0.50:
+                nli_eval = ev_nli_eval
+                nli_eval["decision_reason"] = (
+                    f"Entailed via broad retrieved evidence context fallback (P(E)={nli_eval.get('entailment_prob', 0.0):.2f})."
+                )
+
         ent_prob = nli_eval.get("entailment_prob", 0.0)
         con_prob = nli_eval.get("contradiction_prob", 0.0)
         neu_prob = nli_eval.get("neutral_prob", 0.0)

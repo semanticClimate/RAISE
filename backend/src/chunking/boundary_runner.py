@@ -132,10 +132,10 @@ def evaluate_candidate_boundaries(
                             dec = BoundaryDecision.SPLIT
                             reasons.append(f"+ distinct headings '{u_a.heading}' != '{u_b.heading}'")
                             reason_codes.append("STRUCTURAL_HEADING_SHIFT")
-                        elif combined_toks > config.max_child_tokens:
+                        elif combined_toks > config.max_parent_tokens:
                             dec = BoundaryDecision.PRESERVE
-                            reasons.append(f"= over-merge prevented: combined tokens {combined_toks} > max child {config.max_child_tokens}")
-                            reason_codes.append("REJECTED_MERGE_MAX_CHILD_EXCEEDED")
+                            reasons.append(f"= over-merge prevented: combined tokens {combined_toks} > max parent {config.max_parent_tokens}")
+                            reason_codes.append("REJECTED_MERGE_MAX_PARENT_EXCEEDED")
                         elif not has_entity_cohesion and not has_semantic_cohesion:
                             dec = BoundaryDecision.PRESERVE
                             reasons.append(f"= over-merge prevented: insufficient entity cohesion ({ent_cont:.2f}) and semantic similarity ({sem_sim:.2f})")

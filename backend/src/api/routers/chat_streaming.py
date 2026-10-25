@@ -148,7 +148,25 @@ def create_cached_sse_stream(
 
         cits = cached.get("citations", []) or []
         cached_suggestions = cached.get("suggestions") or cached.get("follow_up_inquiries", []) or []
-        yield f"data: {json.dumps({'status': 'SUCCESS', 'query': cached.get('query', ''), 'answer': cached_ans, 'thread_id': session_id, 'session_id': session_id, 'citations': cits, 'suggestions': cached_suggestions, 'sources': cached.get('sources', []), 'follow_up_inquiries': cached_suggestions, 'subgraph': cached.get('subgraph', {'nodes': [], 'edges': []})})}\n\n"
+        meta_out = {
+            'status': cached.get('status', 'SUCCESS'),
+            'query': cached.get('query', ''),
+            'answer': cached_ans,
+            'thread_id': session_id,
+            'session_id': session_id,
+            'citations': cits,
+            'suggestions': cached_suggestions,
+            'sources': cached.get('sources', []),
+            'follow_up_inquiries': cached_suggestions,
+            'subgraph': cached.get('subgraph', {'nodes': [], 'edges': []}),
+            'quality_gate_decision': cached.get('quality_gate_decision', 'accept'),
+            'traceability_score': cached.get('traceability_score', 0.95),
+            'command': cached.get('command'),
+            'verified_claims': cached.get('verified_claims', []),
+            'top_chunks': cached.get('top_chunks', []),
+            'execution_time': cached.get('execution_time', 0.0),
+        }
+        yield f"data: {json.dumps(meta_out)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -258,33 +276,17 @@ def create_chat_sse_stream(
         try:
             yield f"event: stage\ndata: {json.dumps({'stage': 'QUERY_INTAKE', 'node': 'query_intake', 'status': 'active', 'detail': 'Analyzing research query intent & resolving entities'})}\n\n"
 
-            query_task = asyncio.create_task(
-                asyncio.to_thread(
-                    rag_engine.query_subgraph_graphrag,
-                    query=message,
-                    hops=req.hops or (1 if mode == "fast" else 2),
-                    top_k=req.top_k or (4 if mode == "fast" else 8),
-                    document_filter=req.document_filter,
-                    active_docs=req.active_docs,
-                    mode=mode,
-                    thread_id=session_id,
-                    chat_history=req.chat_history,
-                )
+            result = await asyncio.to_thread(
+                rag_engine.query_subgraph_graphrag,
+                query=message,
+                hops=req.hops or (1 if mode == "fast" else 2),
+                top_k=req.top_k or (4 if mode == "fast" else 8),
+                document_filter=req.document_filter,
+                active_docs=req.active_docs,
+                mode=mode,
+                thread_id=session_id,
+                chat_history=req.chat_history,
             )
-
-            # Keep-Alive Pings: Emit ': ping\n\n' every 3s to keep reverse proxies (Cloudflare/Nginx) from dropping idle SSE connections
-            while not query_task.done():
-                try:
-                    await asyncio.wait_for(asyncio.shield(query_task), timeout=3.0)
-                except asyncio.TimeoutError:
-                    if await request.is_disconnected() or is_aborted(session_id, request_id):
-                        query_task.cancel()
-                        yield f"event: error\ndata: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user'}})}\n\n"
-                        yield "data: [DONE]\n\n"
-                        return
-                    yield ": ping\n\n"
-
-            result = await query_task
             elapsed = round(time.perf_counter() - t_start, 3)
             record_query_metric(elapsed, success=True)
 

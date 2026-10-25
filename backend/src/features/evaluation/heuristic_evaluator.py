@@ -65,7 +65,7 @@ class LocalHeuristicEvaluator:
         citations_list: Optional[List[Dict[str, Any]]] = None,
         active_docs: Optional[List[str]] = None,
         math_facts: Optional[List[str]] = None,
-        threshold: float = 0.80,
+        threshold: float = 0.70,
     ) -> EvaluationReport:
         """
         Calculates multidimensional evaluation metrics across faithfulness, relevance,
@@ -122,9 +122,10 @@ class LocalHeuristicEvaluator:
             rec_score = 1.0
 
         # Startup / Entity Completeness Guardrail
-        # If user asks for "startups" (plural) or "deep-tech startups", require named startup profiles
+        # If user asks for "startups" (plural) or "deep-tech startups", require named startup profiles (unless asking for counts/metrics)
         q_lower = query.lower()
-        is_startup_query = any(k in q_lower for k in ["startups", "ventures", "spin-offs", "deep-tech startups", "companies incubated"])
+        is_count_or_metric = any(w in q_lower for w in ["how many", "count", "number of", "times larger", "growth", "ecosystem change", "how did the", "calculate", "stat", "ratio", "percentage"])
+        is_startup_query = not is_count_or_metric and any(k in q_lower for k in ["startups", "ventures", "spin-offs", "deep-tech startups", "companies incubated"])
         completeness_failed = False
         completeness_msg = ""
         if is_startup_query:

@@ -16,6 +16,8 @@ class SystemConfigRequest(BaseModel):
     llm_mode: str = Field(default="cloud_groq", description="cloud_groq, cloud_gemini, or local_ollama")
     groq_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
     nvidia_api_key: Optional[str] = None
     cohere_api_key: Optional[str] = None
     mistral_api_key: Optional[str] = None

@@ -7,10 +7,13 @@ and atomic sub-query retrieval across multi-document repositories.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict
 from ..state import GraphRAGState
 from src.retrieval.fusion import hydrate_macro_chunks
+
+logger = logging.getLogger("raise.agent.routing_planner")
 
 
 class RoutingPlannerNodesMixin:
@@ -37,10 +40,20 @@ class RoutingPlannerNodesMixin:
             telemetry.start_stage("ROUTING")
             telemetry.complete_stage("ROUTING", f"Routed to {strategy} for query: '{query[:60]}'")
 
+        # Dynamic Open Knowledge Format (OKF) document scoping: Resolves target report without hardcoding
+        doc_filter = state.get("document_filter")
+        if not doc_filter:
+            try:
+                from src.features.catalog.knowledge_catalog import KnowledgeCatalogRegistry
+                doc_filter = KnowledgeCatalogRegistry.get_instance().match_document_for_query(query)
+            except Exception as _cat_err:
+                logger.debug("Knowledge catalog resolution fallback: %s", _cat_err)
+
         return {
             "routing_strategy": strategy,
             "query_intent": plan.query_type,
             "selected_tools": plan.selected_tools,
+            "document_filter": doc_filter,
             "cypher_repair_count": 0,
             "path_critic_expanded": False,
         }
@@ -183,11 +196,20 @@ class RoutingPlannerNodesMixin:
             active_docs=active_docs,
         )
 
-        reranked = dense_chunks
+        bm25_chunks = []
+        if hasattr(self, "_get_bm25_index"):
+            bm25_idx = self._get_bm25_index()
+            if bm25_idx:
+                bm25_chunks = bm25_idx.search(sub_query, top_k=top_k, active_docs=active_docs, doc_filter=doc_filter)
+
+        from src.retrieval.fusion import reciprocal_rank_fusion
+        fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True) if bm25_chunks else dense_chunks
+
+        reranked = fused
         if hasattr(self.rag_engine, "agent_router") and hasattr(self.rag_engine.agent_router, "reranker"):
             reranked = self.rag_engine.agent_router.reranker.rerank(
                 query=sub_query,
-                candidates=dense_chunks,
+                candidates=fused,
                 text_key="text",
                 top_n=top_k,
             )
@@ -212,6 +234,36 @@ class RoutingPlannerNodesMixin:
                 seen_ids.add(cid)
                 existing_chunks.append(c)
 
+        # Query connected Neo4j subgraph for hybrid grounding
+        existing_sub = state.get("subgraph") or {"nodes": [], "edges": []}
+        nodes_map = {n.get("id"): n for n in existing_sub.get("nodes", []) if isinstance(n, dict)}
+        edges_list = list(existing_sub.get("edges", []))
+        if self.rag_engine.neo4j_db and self.rag_engine.neo4j_db.connected and hydrated:
+            try:
+                retrieved_chunk_ids = list({str(c.get("id") or c.get("chunk_id")).split("_prop_")[0] for c in hydrated if (c.get("id") or c.get("chunk_id"))})
+                chunk_cypher = """
+                    MATCH (c:Chunk)-[r:MENTIONS]-(e:Entity)
+                    WHERE c.id IN $chunk_ids
+                      AND NOT (e:Chunk) AND NOT (e:Section)
+                    OPTIONAL MATCH (e)-[r2]-(m)
+                    WHERE NOT (m:Chunk) AND NOT (m:Section)
+                    RETURN DISTINCT coalesce(e.id, elementId(e)) AS id, coalesce(e.name, e.label, e.id) AS name, labels(e)[0] AS type,
+                                    type(r2) AS rel_type, coalesce(m.name, m.label, m.id) AS target_name
+                    LIMIT 40
+                """
+                raw_recs = self.rag_engine.neo4j_db.run_cypher(chunk_cypher, {"chunk_ids": retrieved_chunk_ids[:25]})
+                for r in (raw_recs or []):
+                    if not isinstance(r, dict) or "error" in r:
+                        continue
+                    nid = str(r.get("id"))
+                    if nid not in nodes_map:
+                        nodes_map[nid] = {"id": nid, "name": r.get("name"), "label": r.get("type", "Entity")}
+                    if r.get("rel_type") and r.get("target_name"):
+                        edges_list.append({"source": r.get("name"), "type": r.get("rel_type"), "target": r.get("target_name")})
+            except Exception as _ge:
+                logger.debug("Neo4j subgraph extraction in sub-query retriever: %s", _ge)
+        updated_subgraph = {"nodes": list(nodes_map.values()), "edges": edges_list}
+
         if telemetry:
             telemetry.complete_stage("HYBRID_RETRIEVAL", f"Retrieved {len(hydrated)} chunks for sub-query: '{sub_query[:40]}'")
 
@@ -219,6 +271,7 @@ class RoutingPlannerNodesMixin:
             "accumulated_context": accumulated,
             "relevant_chunks": existing_chunks,
             "top_chunks": existing_chunks,
+            "subgraph": updated_subgraph,
         }
 
     def _route_multi_hop(self, state: GraphRAGState) -> str:

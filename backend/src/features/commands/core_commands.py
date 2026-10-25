@@ -96,113 +96,8 @@ def handle_synthesize_command(ctx: CommandContext) -> CommandResult:
     )
 
 
-def handle_browser_command(ctx: CommandContext) -> CommandResult:
-    """
-    Executes `/browser`: Retrieves live supplemental facts from the internet
-    via SupplementalWebFetcher when PDF evidence is missing or external verification is needed.
-    """
-    query = ctx.raw_args.strip()
-    if not query:
-        return CommandResult(
-            command="/browser",
-            answer=(
-                "### 🌐 Browser & Web Intelligence Retrieval\n\n"
-                "Please provide a search topic or web URL to fetch external evidence.\n\n"
-                "**Usage:**\n"
-                "* `/browser https://en.wikipedia.org/wiki/Harvard_University` (Direct URL fetch)\n"
-                "* `/browser NIRF 2024 IIT Madras` (Institutional registry search)\n"
-                "* `/browser QS World University Rankings 2025 MIT` (Benchmark search)"
-            ),
-            quality_gate_decision="accept",
-            traceability_score=1.0,
-        )
+from .browser_command import handle_browser_command
 
-    from .web_fetcher import SupplementalWebFetcher
-
-    # If input is a direct URL:
-    if query.startswith("http://") or query.startswith("https://"):
-        text = SupplementalWebFetcher.fetch_url_text(query, max_chars=1200)
-        if not text:
-            return CommandResult(
-                command="/browser",
-                answer=f"### 🌐 External Web Fetch Notice\n\nCould not fetch content from `{query}`. Ensure the URL is valid and accessible.",
-                quality_gate_decision="unable_to_verify",
-                traceability_score=0.0,
-            )
-        citations = [{
-            "citation_index": 1,
-            "pdf_filename": query,
-            "primary_page": 1,
-            "heading": f"External Web Source - {query[:45]}",
-            "plain_text": text[:200] + "...",
-            "source_type": "EXTERNAL_PUBLIC_RECORD",
-            "url": query,
-        }]
-        answer = (
-            f"### 🌐 Audited External Web Extraction\n\n"
-            f"**Target URL:** `{query}`  \n"
-            f"**Comparability Status:** `🌐 EXTERNAL_SUPPLEMENTED`  \n"
-            f"**Attribution:** Public Web Registry [1]\n\n"
-            f"{text[:1000]}\n\n"
-            f"*Extracted with strict provenance preservation and HTML sanitization.*"
-        )
-        return CommandResult(
-            command="/browser",
-            answer=answer,
-            citations=citations,
-            quality_gate_decision="accept",
-            traceability_score=0.96,
-            follow_up_inquiries=[
-                f"/audit {query}",
-                "/compare",
-            ],
-        )
-
-    # If input is a search topic / query:
-    rec = SupplementalWebFetcher.query_supplemental_evidence("Institution", query)
-    if not rec:
-        return CommandResult(
-            command="/browser",
-            answer=f"### 🌐 External Web Search\n\nNo verified public registry results found for `{query}`.",
-            quality_gate_decision="accept",
-            traceability_score=0.8,
-        )
-
-    page_url = rec.get("url", "")
-    title = rec.get("title", query)
-    snippet = rec.get("snippet", "")
-
-    citations = [{
-        "citation_index": 1,
-        "pdf_filename": page_url,
-        "primary_page": 1,
-        "heading": f"External Public Record - {title}",
-        "plain_text": snippet,
-        "source_type": "EXTERNAL_PUBLIC_RECORD",
-        "url": page_url,
-    }]
-
-    answer = (
-        f"### 🌐 Audited External Research Evidence\n\n"
-        f"**Search Topic:** `{query}`  \n"
-        f"**Entity / Source:** `{title}`  \n"
-        f"**Comparability Status:** `🌐 EXTERNAL_SUPPLEMENTED`  \n"
-        f"**Reference:** [{title}]({page_url}) [1]\n\n"
-        f"> {snippet}\n\n"
-        f"*Provenance: Verified via external public records repository.*"
-    )
-    return CommandResult(
-        command="/browser",
-        answer=answer,
-        citations=citations,
-        quality_gate_decision="accept",
-        traceability_score=0.96,
-        follow_up_inquiries=[
-            f"/compare {query}",
-            f"/audit {title}",
-            "/synthesize",
-        ],
-    )
 
 
 def handle_graph_command(ctx: CommandContext) -> CommandResult:
@@ -304,3 +199,14 @@ def handle_help_command(ctx: CommandContext) -> CommandResult:
             "/bench",
         ],
     )
+
+
+__all__ = [
+    "handle_audit_command",
+    "handle_bench_command",
+    "handle_browser_command",
+    "handle_graph_command",
+    "handle_help_command",
+    "handle_synthesize_command",
+]
+

@@ -39,10 +39,18 @@ async def agent_query(
 
         ready_docs = get_ready_documents_list()
         if not ready_docs:
+            empty_msg = "Please upload an academic PDF to begin your research."
             resp = {
-                "response": "Please upload an academic PDF to begin your research.",
+                "status": "SUCCESS",
+                "query": query,
+                "answer": empty_msg,
+                "grounded_answer": empty_msg,
+                "response": empty_msg,
                 "tool_calls": [],
-                "citations": []
+                "selected_tools": [],
+                "citations": [],
+                "verified_claims": [],
+                "traceability_score": 1.0,
             }
             if session_id:
                 resp["session_id"] = session_id

@@ -1,5 +1,5 @@
 """
-RAISE — Master Terminal & Interactive Research Studio (v1.0.0 Production)
+RAISE — Master Terminal & Interactive Research Studio (v1.0.0 Enterprise-Tier)
 ======================================================================
 High-performance terminal CLI runner providing:
 1. Subsystem Diagnostics & Health Monitoring (Neo4j, ChromaDB, vLLM, Redis)
@@ -64,7 +64,7 @@ logger.setLevel(getattr(logging, log_level_str, logging.INFO))
 
 if not logger.handlers:
     file_handler = RotatingFileHandler(
-        str(LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        str(LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8", delay=True
     )
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)

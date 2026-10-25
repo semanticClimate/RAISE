@@ -165,12 +165,13 @@ class MarkdownTablePreservingChunker:
             return []
 
         total_rows = len(data_rows)
-        header_cols = [c.strip() for c in header_line.split("|") if c.strip()]
+        header_cols = [c.strip() for c in header_line.strip().strip("|").split("|")]
 
         def _extract_md_cells(rows: List[str], headers: List[str], offset: int) -> List[Dict[str, Any]]:
             cells = []
             for r_idx, r_line in enumerate(rows):
-                tokens = [c.strip() for c in r_line.split("|") if c.strip()]
+                raw_cells = r_line.strip().strip("|").split("|")
+                tokens = [c.strip() for c in raw_cells]
                 for c_idx, col_name in enumerate(headers):
                     val = tokens[c_idx] if c_idx < len(tokens) else ""
                     cells.append({

@@ -66,32 +66,40 @@ class VectorEmbeddingsMixin:
         """
         if getattr(self, "embed_model", None) is None:
             try:
-                from sentence_transformers import SentenceTransformer
-                cache_folder = os.getenv("HF_HOME", str(Path.home() / ".cache" / "huggingface" / "hub"))
-                import torch
-                if getattr(self, "device_override", None):
-                    dev = self.device_override
-                else:
-                    dev = "cuda" if torch.cuda.is_available() else "cpu"
-                token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
-                # Security Policy (CVE-2026-45829): Whitelist parameters and ban trust_remote_code
-                try:
-                    self.embed_model = SentenceTransformer(
-                        self.model_path,
-                        cache_folder=cache_folder,
-                        local_files_only=True,
-                        device=dev,
-                        token=token,
-                        trust_remote_code=False,
-                    )
-                except Exception:
-                    self.embed_model = SentenceTransformer(
-                        self.model_path,
-                        cache_folder=cache_folder,
-                        device=dev,
-                        token=token,
-                        trust_remote_code=False,
-                    )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message=".*unauthenticated requests.*")
+                    warnings.filterwarnings("ignore", category=UserWarning)
+                    try:
+                        import huggingface_hub.utils.logging as hl
+                        hl.set_verbosity_error()
+                    except Exception:
+                        pass
+                    from sentence_transformers import SentenceTransformer
+                    cache_folder = os.getenv("HF_HOME", str(Path.home() / ".cache" / "huggingface" / "hub"))
+                    import torch
+                    if getattr(self, "device_override", None):
+                        dev = self.device_override
+                    else:
+                        dev = "cuda" if torch.cuda.is_available() else "cpu"
+                    token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+                    # Security Policy (CVE-2026-45829): Whitelist parameters and ban trust_remote_code
+                    try:
+                        self.embed_model = SentenceTransformer(
+                            self.model_path,
+                            cache_folder=cache_folder,
+                            local_files_only=True,
+                            device=dev,
+                            token=token,
+                            trust_remote_code=False,
+                        )
+                    except Exception:
+                        self.embed_model = SentenceTransformer(
+                            self.model_path,
+                            cache_folder=cache_folder,
+                            device=dev,
+                            token=token,
+                            trust_remote_code=False,
+                        )
             except Exception as e:
                 print(f"SentenceTransformer fallback notice: {e}")
                 self.embed_model = None

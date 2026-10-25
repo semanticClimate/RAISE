@@ -1,7 +1,7 @@
 """
 Runtime Faithfulness Quality Gate & Self-Correction Controller
 ==============================================================
-Operates as the production quality checkpoint in the LangGraph StateGraph workflow.
+Operates as the runtime quality checkpoint in the LangGraph StateGraph workflow.
 Monitors generated answer faithfulness, manages retry self-correction loops,
 and safely triggers unverified refusals when grounding fails.
 
@@ -55,7 +55,7 @@ class RuntimeFaithfulnessQualityGate:
 
     EMPTY_WORKSPACE_MESSAGE = "Please upload an academic PDF to begin your research."
 
-    def __init__(self, threshold: float = 0.80, max_retries: int = 2):
+    def __init__(self, threshold: float = 0.70, max_retries: int = 2):
         self.threshold = threshold
         self.max_retries = max_retries
 

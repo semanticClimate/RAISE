@@ -46,9 +46,9 @@ def safe_http_request(
     url: str,
     payload: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, str]] = None,
-    timeout: float = 30.0,
-    max_retries: int = 3,
-    backoff_seconds: float = 3.0,
+    timeout: float = 20.0,
+    max_retries: int = 1,
+    backoff_seconds: float = 1.0,
     method: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], float]:
     """
@@ -103,9 +103,12 @@ def safe_http_request(
             if "timed out" in reason_str or isinstance(e, TimeoutError):
                 classification = "ENDPOINT_UNREACHABLE"
                 msg = "Connection timed out"
+                # Fail fast on timeouts so router switches to next healthy provider immediately
+                raise ProviderHTTPError(msg, status_code=None, classification=classification)
             elif "getaddrinfo failed" in reason_str or "name or service not known" in reason_str:
                 classification = "ENDPOINT_UNREACHABLE"
                 msg = "DNS resolution failure"
+                raise ProviderHTTPError(msg, status_code=None, classification=classification)
             else:
                 classification = "ENDPOINT_UNREACHABLE"
                 msg = f"Network connection refused: {getattr(e, 'reason', e)}"

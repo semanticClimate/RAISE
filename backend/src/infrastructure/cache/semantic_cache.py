@@ -22,12 +22,19 @@ import time
 import logging
 from typing import Any, Dict, List, Optional
 
+try:
+    import gptcache
+    HAS_GPTCACHE = True
+except Exception:
+    gptcache = None
+    HAS_GPTCACHE = False
+
 logger = logging.getLogger("raise.infrastructure.cache.semantic")
 
 
 class SemanticCacheMixin:
     """
-    Mixin adding semantic similarity caching capabilities to RedisCacheManager.
+    Mixin adding GPTCache and vector similarity caching capabilities to RedisCacheManager.
     """
 
     def semantic_get(

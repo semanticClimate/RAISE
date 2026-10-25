@@ -49,7 +49,7 @@ if (-not (Test-Path (Join-Path $frontendDir "package.json"))) {
     exit 1
 }
 
-# 2. Check Port Availability (Ports 8000 and 5173)
+# 2. Release Ports 8000 & 5173
 function Free-Port {
     param([int]$Port)
     try {
@@ -89,6 +89,47 @@ if (-not $pythonExe) {
     exit 1
 }
 
+# Auto-provision isolated virtual environment on clean repository clone
+if ((-not (Test-Path $venvPython)) -and (-not (Test-Path $rootVenvPython))) {
+    Write-Info "Provisioning isolated virtual environment (backend\.venv)..." "Cyan"
+    $targetVenv = Join-Path $backendDir ".venv"
+    if (Get-Command "uv" -ErrorAction SilentlyContinue) {
+        & uv venv $targetVenv --python $pythonExe 2>$null | Out-Null
+    } else {
+        & $pythonExe -m venv $targetVenv 2>$null | Out-Null
+    }
+    if (Test-Path $venvPython) {
+        $pythonExe = $venvPython
+    }
+}
+
+# Ensure backend core dependencies are installed
+$coreDepsOk = $false
+try {
+    $chk = & $pythonExe -c "import fastapi, uvicorn, pydantic; print('OK')" 2>$null
+    if ($chk -match "OK") { $coreDepsOk = $true }
+} catch {}
+
+if (-not $coreDepsOk) {
+    Write-Info "Installing backend core dependencies..." "Yellow"
+    $reqFile = Join-Path $backendDir "requirements-core.txt"
+    if (Get-Command "uv" -ErrorAction SilentlyContinue) {
+        & uv pip install -r $reqFile --python $pythonExe
+    } else {
+        & $pythonExe -m pip install -r $reqFile
+    }
+}
+
+# Native Rust acceleration engine check
+$rustDll = Join-Path $backendDir "rust\raise_engine\target\release\raise_engine.dll"
+if ((-not (Test-Path $rustDll)) -and (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
+    $cargoToml = Join-Path $backendDir "rust\raise_engine\Cargo.toml"
+    if (Test-Path $cargoToml) {
+        Write-Info "Compiling native Rust acceleration engine (raise_engine)..." "Cyan"
+        & cargo build --manifest-path $cargoToml --release 2>&1 | Out-Null
+    }
+}
+
 # 4. Locate Node.js & npm Runtime
 $nodeExe = $null
 if (Get-Command "node" -ErrorAction SilentlyContinue) {
@@ -112,10 +153,16 @@ if (-not $nodeExe) {
     exit 1
 }
 
-# 5. Ensure Environment Config (.env)
+# 5. Ensure Environment Config (.env) & First-Time Detection
 $rootEnv = Join-Path $repoRoot ".env"
 $rootEnvEx = Join-Path $repoRoot ".env.example"
 $backendEnv = Join-Path $backendDir ".env"
+$runtimeDir = Join-Path $repoRoot ".runtime"
+if (-not (Test-Path $runtimeDir)) { New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null }
+$setupMarker = Join-Path $runtimeDir "setup_completed"
+$backendMarker = Join-Path $backendDir ".runtime\setup_completed"
+
+$hasMarker = (Test-Path $setupMarker) -or (Test-Path $backendMarker)
 
 if (-not (Test-Path $backendEnv)) {
     if (Test-Path $rootEnv) {
@@ -124,6 +171,27 @@ if (-not (Test-Path $backendEnv)) {
         Copy-Item -Path $rootEnvEx -Destination $backendEnv -Force
     }
 }
+if (-not (Test-Path $rootEnv) -and (Test-Path $backendEnv)) {
+    Copy-Item -Path $backendEnv -Destination $rootEnv -Force
+}
+
+# Inspect active .env file for configured Cloud/Local AI keys
+$hasConfiguredProvider = $false
+$envToCheck = if (Test-Path $backendEnv) { $backendEnv } elseif (Test-Path $rootEnv) { $rootEnv } else { $null }
+if ($envToCheck) {
+    $envContent = Get-Content -Path $envToCheck -Raw -ErrorAction SilentlyContinue
+    if ($envContent) {
+        $hasCloudKey = $envContent -match "(?m)^[ \t]*(?:GROQ_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|MISTRAL_API_KEY|DEEPSEEK_API_KEY|NVIDIA_API_KEY|ANTHROPIC_API_KEY|COHERE_API_KEY)[ \t]*=[ \t]*['""]?([a-zA-Z0-9_\-]{8,})"
+        $hasSetupFlag = $envContent -match "(?m)^[ \t]*SETUP_COMPLETED[ \t]*=[ \t]*['""]?true"
+        $hasLocalLlm = ($hasMarker -or $hasSetupFlag) -and ($envContent -match "(?m)^[ \t]*LLM_BACKEND[ \t]*=[ \t]*['""]?(ollama|vllm)")
+        if ($hasCloudKey -or $hasLocalLlm -or $hasSetupFlag) {
+            $hasConfiguredProvider = $true
+        }
+    }
+}
+
+# First-time launch occurs when neither the completion marker nor a configured provider exists
+$isFirstLaunch = (-not $hasMarker -and -not $hasConfiguredProvider)
 
 # 6. Launch Backend Server
 Write-Info "Launching backend on http://localhost:8000..." "Green"
@@ -185,7 +253,7 @@ while ($swF.Elapsed.TotalSeconds -lt 30) {
     Start-Sleep -Seconds 1
 }
 
-# 8. Ready Notification
+# 8. Ready Notification & Browser Launch
 Write-Host ""
 Write-Info "Services are running:" "Green"
 Write-Host "  - Backend:  http://localhost:8000 (API & Docs: http://localhost:8000/docs)" -ForegroundColor White
@@ -196,10 +264,22 @@ Write-Host ""
 
 $rawArgs = if ($env:RAISE_CLI_ARGS) { $env:RAISE_CLI_ARGS } else { [string]::Join(" ", $args) }
 if ($rawArgs -match "(?i)--no-browser") { $NoBrowser = $true }
+if ($rawArgs -match "(?i)--setup|--control-center") { $isFirstLaunch = $true }
+
+$targetUrl = if ($isFirstLaunch) {
+    "http://localhost:5173/?setup=true"
+} else {
+    "http://localhost:5173"
+}
 
 if (-not $NoBrowser) {
     try {
-        Start-Process "http://localhost:5173"
+        if ($isFirstLaunch) {
+            Write-Info "Opening RAISE Control Center for first-time workstation configuration ($targetUrl)..." "Green"
+        } else {
+            Write-Info "Opening RAISE workstation in default browser ($targetUrl)..." "Green"
+        }
+        Start-Process $targetUrl
     } catch {}
 }
 

@@ -248,10 +248,9 @@ async def server_lifespan(app: FastAPI):
         handshake_mgr = None
 
     # Start middleware background telemetry queue worker
-    active_shield = getattr(app.state, "asgi_shield", None) or PureASGISecurityShieldMiddleware._active_instance
-    if active_shield:
-        active_shield.redis = redis_client
-        active_shield.start_background_worker()
+    if hasattr(app.state, "asgi_shield"):
+        app.state.asgi_shield.redis = redis_client
+        app.state.asgi_shield.start_background_worker()
 
     # 3. Subprocess Tunnel Watchdog (Optional, default disabled for direct local operation)
     enable_tunnel = (
@@ -291,9 +290,8 @@ async def server_lifespan(app: FastAPI):
         except (asyncio.CancelledError, Exception):
             pass
 
-    active_shield = getattr(app.state, "asgi_shield", None) or PureASGISecurityShieldMiddleware._active_instance
-    if active_shield:
-        await active_shield.stop_background_worker()
+    if hasattr(app.state, "asgi_shield"):
+        await app.state.asgi_shield.stop_background_worker()
 
     if tunnel_mgr:
         await tunnel_mgr.stop()

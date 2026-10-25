@@ -3,7 +3,7 @@ RAISE Features Layer — Canonical Domain Capabilities
 """
 from .documents import DocumentService
 from .ingestion import AcademicPipelineIngestor
-from .chunking import AdaptiveChunkingPipeline
+from src.chunking import AdaptiveChunkingPipeline
 from .verification import ClaimVerifier, DeterministicMathEngine
 from .comparison import ComparisonService
 from .sessions import SessionService, SessionMemoryManager, ReasoningMemory

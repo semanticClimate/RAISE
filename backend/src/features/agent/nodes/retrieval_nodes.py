@@ -39,7 +39,7 @@ class RetrievalNodesMixin:
             active_docs=state.get("active_docs"),
         )
         bm25_idx = self._get_bm25_index()
-        bm25_chunks = bm25_idx.search(query, top_k=state.get("top_k", 6), active_docs=state.get("active_docs")) if bm25_idx else []
+        bm25_chunks = bm25_idx.search(query, top_k=state.get("top_k", 6), active_docs=state.get("active_docs"), doc_filter=state.get("document_filter")) if bm25_idx else []
         fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True)
         reranked = self.rag_engine.agent_router.reranker.rerank(
             query=query,
@@ -103,10 +103,11 @@ class RetrievalNodesMixin:
 
         dense_chunks = []
         seen_chunk_keys = set()
+        retrieval_k = max(state.get("top_k", 16), 16)
         for q_sub in queries_to_search:
             chunks = self.rag_engine.vector_engine.search(
                 query=q_sub,
-                top_k=state.get("top_k", 10),
+                top_k=retrieval_k,
                 doc_filter=state.get("document_filter"),
                 active_docs=state.get("active_docs"),
             )
@@ -125,7 +126,7 @@ class RetrievalNodesMixin:
         bm25_idx = self._get_bm25_index()
         if bm25_idx:
             for q_sub in queries_to_search:
-                raw_bm25 = bm25_idx.search(q_sub, top_k=state.get("top_k", 10), active_docs=state.get("active_docs"))
+                raw_bm25 = bm25_idx.search(q_sub, top_k=retrieval_k, active_docs=state.get("active_docs"), doc_filter=state.get("document_filter"))
                 for b in raw_bm25:
                     doc_f = state.get("document_filter")
                     b_pdf = b.get("pdf_filename") or (b.get("metadata") or {}).get("pdf_filename", "")
@@ -169,40 +170,59 @@ class RetrievalNodesMixin:
         subgraph = {"nodes": list(nodes_map.values()), "edges": edges_list}
         try:
             stop_words = {"for", "the", "year", "identify", "which", "what", "does", "have", "with", "this", "from", "these", "that", "financial", "reports", "report", "under", "both", "current", "previous", "about", "show", "tell", "when", "where", "into", "also"}
-            tokens = [t for t in re.sub(r"[^a-zA-Z0-9\s]", " ", state.get("query", "").lower()).split() if len(t) > 3 and t not in stop_words][:8]
+            tokens = [t for t in re.sub(r"[^a-zA-Z0-9\s]", " ", state.get("query", "").lower()).split() if len(t) >= 2 and t not in stop_words][:8]
             doc_filter = state.get("document_filter")
             if self.rag_engine.neo4j_db and self.rag_engine.neo4j_db.connected:
-                cypher = """
-                    MATCH (n)
-                    WHERE (n:Entity OR any(l IN labels(n) WHERE NOT l IN ['Chunk', 'Section']))
-                      AND (size($tokens) = 0 OR any(tok IN $tokens WHERE toLower(coalesce(n.label, n.name, n.id, '')) CONTAINS tok))
-                    WITH n, [tok IN $tokens WHERE toLower(coalesce(n.label, n.name, n.id, '')) CONTAINS tok] AS hits
-                    ORDER BY size(hits) DESC
-                    LIMIT 20
-                    MATCH (n)-[r]-(m)
-                    WHERE NOT type(r) IN ['MENTIONS', 'CONTAINS_CHUNK']
-                      AND ($doc_filter IS NULL 
-                           OR coalesce(n.document_id, '') IN ['global_doc', ''] 
-                           OR toLower(coalesce(n.document_id, '')) CONTAINS toLower($doc_filter)
-                           OR coalesce(m.document_id, '') IN ['global_doc', ''] 
-                           OR toLower(coalesce(m.document_id, '')) CONTAINS toLower($doc_filter))
-                    WITH n, r, m, size(hits) AS score
-                    ORDER BY score DESC
-                    LIMIT 30
-                    OPTIONAL MATCH (m)-[r2]-(k)
-                    WHERE NOT type(r2) IN ['MENTIONS', 'CONTAINS_CHUNK']
-                      AND ($doc_filter IS NULL 
-                           OR coalesce(k.document_id, '') IN ['global_doc', ''] 
-                           OR toLower(coalesce(k.document_id, '')) CONTAINS toLower($doc_filter))
-                    RETURN coalesce(n.id, elementId(n)) AS id, coalesce(n.label, n.name, n.id) AS name, labels(n)[0] AS type,
-                           type(r) AS rel_type, coalesce(m.label, m.name, m.id) AS target_name,
-                           type(r2) AS rel2_type, coalesce(k.label, k.name, k.id) AS k_target_name
-                    LIMIT 40
-                """
-                raw_recs = self.rag_engine.neo4j_db.run_cypher(cypher, {"tokens": tokens, "doc_filter": doc_filter})
+                retrieved_chunk_ids = list({str(c.get("id") or c.get("chunk_id")).split("_prop_")[0] for c in (dense_chunks[:16] + bm25_chunks[:16]) if (c.get("id") or c.get("chunk_id"))})
+                raw_recs = []
+                if retrieved_chunk_ids:
+                    chunk_cypher = """
+                        MATCH (c:Chunk)-[r:MENTIONS]-(e:Entity)
+                        WHERE c.id IN $chunk_ids
+                          AND NOT (e:Chunk) AND NOT (e:Section)
+                        OPTIONAL MATCH (e)-[r2]-(m)
+                        WHERE NOT (m:Chunk) AND NOT (m:Section)
+                        RETURN DISTINCT coalesce(e.id, elementId(e)) AS id, coalesce(e.name, e.label, e.id) AS name, labels(e)[0] AS type,
+                                        type(r2) AS rel_type, coalesce(m.name, m.label, m.id) AS target_name
+                        LIMIT 40
+                    """
+                    raw_recs = self.rag_engine.neo4j_db.run_cypher(chunk_cypher, {"chunk_ids": retrieved_chunk_ids[:25]})
+
+                if not raw_recs or (isinstance(raw_recs, list) and "error" in raw_recs[0]):
+                    cypher = """
+                        MATCH (n)
+                        WHERE (n:Entity OR any(l IN labels(n) WHERE NOT l IN ['Chunk', 'Section']))
+                          AND (size($tokens) = 0 OR any(tok IN $tokens WHERE toLower(coalesce(n.label, n.name, n.id, '')) CONTAINS tok))
+                        WITH n, [tok IN $tokens WHERE toLower(coalesce(n.label, n.name, n.id, '')) CONTAINS tok] AS hits
+                        ORDER BY size(hits) DESC
+                        LIMIT 20
+                        MATCH (n)-[r]-(m)
+                        WHERE NOT type(r) IN ['CONTAINS_CHUNK']
+                          AND ($doc_filter IS NULL 
+                               OR coalesce(n.document_id, '') IN ['global_doc', ''] 
+                               OR toLower(coalesce(n.document_id, '')) CONTAINS toLower($doc_filter)
+                               OR coalesce(m.document_id, '') IN ['global_doc', ''] 
+                               OR toLower(coalesce(m.document_id, '')) CONTAINS toLower($doc_filter))
+                        WITH n, r, m, size(hits) AS score
+                        ORDER BY score DESC
+                        LIMIT 30
+                        OPTIONAL MATCH (m)-[r2]-(k)
+                        WHERE NOT type(r2) IN ['CONTAINS_CHUNK']
+                          AND ($doc_filter IS NULL 
+                               OR coalesce(k.document_id, '') IN ['global_doc', ''] 
+                               OR toLower(coalesce(k.document_id, '')) CONTAINS toLower($doc_filter))
+                        RETURN coalesce(n.id, elementId(n)) AS id, coalesce(n.label, n.name, n.id) AS name, labels(n)[0] AS type,
+                               type(r) AS rel_type, coalesce(m.label, m.name, m.id) AS target_name,
+                               type(r2) AS rel2_type, coalesce(k.label, k.name, k.id) AS k_target_name
+                        LIMIT 40
+                    """
+                    raw_recs = self.rag_engine.neo4j_db.run_cypher(cypher, {"tokens": tokens, "doc_filter": doc_filter})
+
                 nodes_map = {}
                 edges_list = []
-                for r in raw_recs:
+                for r in (raw_recs or []):
+                    if not isinstance(r, dict) or "error" in r:
+                        continue
                     nid = str(r.get("id"))
                     if nid not in nodes_map:
                         nodes_map[nid] = {"id": nid, "name": r.get("name"), "label": r.get("type", "Entity")}
@@ -211,6 +231,26 @@ class RetrievalNodesMixin:
                     if r.get("rel2_type") and r.get("k_target_name") and r.get("target_name"):
                         edges_list.append({"source": r.get("target_name"), "type": r.get("rel2_type"), "target": r.get("k_target_name")})
                 subgraph = {"nodes": list(nodes_map.values()), "edges": edges_list}
+            else:
+                # Kùzu embedded graph traversal fallback when Neo4j is offline
+                try:
+                    from src.graph.kuzu_graph import get_kuzu_engine
+                    kuzu_eng = get_kuzu_engine()
+                    if kuzu_eng and kuzu_eng._initialized:
+                        for tok in tokens:
+                            k_edges = kuzu_eng.find_neighborhood(tok, max_hops=2)
+                            for ke in k_edges:
+                                if "error" not in ke:
+                                    src = ke.get("source")
+                                    tgt = ke.get("target")
+                                    rel = ke.get("relation", "RELATES_TO")
+                                    if src and tgt:
+                                        nodes_map[src] = {"id": src, "name": src, "label": "Entity"}
+                                        nodes_map[tgt] = {"id": tgt, "name": tgt, "label": "Entity"}
+                                        edges_list.append({"source": src, "type": rel, "target": tgt})
+                        subgraph = {"nodes": list(nodes_map.values()), "edges": edges_list}
+                except Exception as _k_err:
+                    logger.debug("Kuzu embedded graph fallback skipped: %s", _k_err)
         except Exception:
             subgraph = {"nodes": [], "edges": []}
 
@@ -254,9 +294,11 @@ class RetrievalNodesMixin:
             "figures reported", "row", "financial accounts", "statement of", "breakdown"
         ]
         has_table_intent = any(kw in q_text for kw in table_intent_keywords)
+        has_exact_identifier = bool(re.search(r"\b[A-Za-z0-9\-_]{3,}\b", q_text) and any(c.isupper() or c.isdigit() for c in state.get("query", "")))
+        bm25_weight = 1.30 if has_exact_identifier else (1.20 if any(c.isdigit() for c in q_text) else 1.05)
 
         candidate_channels = [dense_chunks, bm25_chunks]
-        channel_weights = [1.0, 1.15 if any(c.isdigit() for c in q_text) else 1.0]
+        channel_weights = [1.0, bm25_weight]
         if graph_chunks:
             candidate_channels.append(graph_chunks)
             channel_weights.append(1.05)
@@ -273,11 +315,14 @@ class RetrievalNodesMixin:
             telemetry.start_stage("RERANKING")
 
         rerank_query = state.get("standalone_query") or state.get("query", "")
+        rerank_top_n = max(state.get("top_k", 10), 10)
+        is_fast_mode = (state.get("mode") or "fast").lower() == "fast"
+        rerank_pool = fused_candidates[:16] if (is_fast_mode and len(fused_candidates) > 16) else fused_candidates
         reranked = self.rag_engine.agent_router.reranker.rerank(
             query=rerank_query,
-            candidates=fused_candidates,
+            candidates=rerank_pool,
             text_key="text",
-            top_n=state.get("top_k", 8),
+            top_n=rerank_top_n,
         )
 
         # GraphRAG Macro-Chunk Hydration: Expand small fragmented chunks into rich parent sections
