@@ -1,4 +1,4 @@
-import { ExternalLink, FileText } from 'lucide-react';
+import { ExternalLink, FileText, Globe } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { getApiBaseUrl } from '../../app/config';
@@ -25,6 +25,8 @@ export interface CitationItemDetail {
   primaryUrl: string;
   heading?: string;
   plainText?: string;
+  isWeb?: boolean;
+  webUrl?: string;
 }
 
 export function resolveCitationDetail(
@@ -58,67 +60,115 @@ export function resolveCitationDetail(
                     ? citMeta.filename
                     : undefined;
 
-  // Clean directory paths if present (e.g. /app/documents/BRIC.pdf -> BRIC.pdf)
-  if (typeof rawFileName === 'string') {
+  const rawUrl =
+    typeof cit?.url === 'string'
+      ? cit.url
+      : typeof citRecord?.url === 'string'
+        ? (citRecord.url as string)
+        : undefined;
+
+  const isWeb =
+    cit?.source_type === 'EXTERNAL_PUBLIC_RECORD' ||
+    Boolean(rawUrl) ||
+    Boolean(
+      rawFileName &&
+        (rawFileName.startsWith('http://') || rawFileName.startsWith('https://'))
+    );
+
+  const webUrl =
+    rawUrl ||
+    (rawFileName &&
+    (rawFileName.startsWith('http://') || rawFileName.startsWith('https://'))
+      ? rawFileName
+      : undefined);
+
+  let fileName = rawFileName || 'Audited Document';
+
+  if (isWeb) {
+    if (cit?.heading) {
+      fileName = cit.heading;
+    } else if (webUrl) {
+      try {
+        const u = new URL(webUrl);
+        const lastPart = u.pathname.split('/').filter(Boolean).pop();
+        fileName = lastPart ? decodeURIComponent(lastPart).replace(/_/g, ' ') : u.hostname;
+      } catch {
+        fileName = 'Public Web Source';
+      }
+    } else {
+      fileName = 'Public Web Record';
+    }
+  } else if (typeof rawFileName === 'string') {
+    // Clean directory paths if present (e.g. /app/documents/BRIC.pdf -> BRIC.pdf)
     rawFileName = rawFileName.trim();
     const lastSlash = Math.max(rawFileName.lastIndexOf('/'), rawFileName.lastIndexOf('\\'));
     if (lastSlash >= 0) {
       rawFileName = rawFileName.slice(lastSlash + 1).trim();
     }
-  }
-
-  // If still generic or missing, recover from chunk_id
-  if (!rawFileName || rawFileName === 'Document' || rawFileName === 'Audited Document') {
-    const chunkId =
-      typeof cit?.chunk_id === 'string'
-        ? cit.chunk_id
-        : typeof citRecord?.id === 'string'
-          ? citRecord.id
-          : typeof citMeta?.chunk_id === 'string'
-            ? citMeta.chunk_id
-            : undefined;
-    if (typeof chunkId === 'string') {
-      const stemMatch = chunkId.match(/^([a-zA-Z0-9_\-\s]+?)(?:_p\d+|_parent|\.pdf|$)/i);
-      if (
-        stemMatch?.[1] &&
-        stemMatch[1].length > 3 &&
-        !stemMatch[1].startsWith('chk_') &&
-        !stemMatch[1].startsWith('cit-')
-      ) {
-        rawFileName = stemMatch[1].endsWith('.pdf') ? stemMatch[1] : `${stemMatch[1]}.pdf`;
+    // If still generic or missing, recover from chunk_id
+    if (!rawFileName || rawFileName === 'Document' || rawFileName === 'Audited Document') {
+      const chunkId =
+        typeof cit?.chunk_id === 'string'
+          ? cit.chunk_id
+          : typeof citRecord?.id === 'string'
+            ? citRecord.id
+            : typeof citMeta?.chunk_id === 'string'
+              ? citMeta.chunk_id
+              : undefined;
+      if (typeof chunkId === 'string') {
+        const stemMatch = chunkId.match(/^([a-zA-Z0-9_\-\s]+?)(?:_p\d+|_parent|\.pdf|$)/i);
+        if (
+          stemMatch?.[1] &&
+          stemMatch[1].length > 3 &&
+          !stemMatch[1].startsWith('chk_') &&
+          !stemMatch[1].startsWith('cit-')
+        ) {
+          rawFileName = stemMatch[1].endsWith('.pdf') ? stemMatch[1] : `${stemMatch[1]}.pdf`;
+        }
       }
     }
+    fileName = rawFileName || 'Audited Document';
   }
 
-  const fileName = rawFileName || 'Audited Document';
   const base = getApiBaseUrl().replace(/\/+$/, '');
   const safePage = pageNumber && pageNumber > 0 ? pageNumber : 1;
 
-  const singlePagePdfUrl = cit?.page_url
-    ? `${base}${cit.page_url.startsWith('/') ? '' : '/'}${cit.page_url}`
+  const singlePagePdfUrl = isWeb
+    ? undefined
+    : cit?.page_url
+      ? `${base}${cit.page_url.startsWith('/') ? '' : '/'}${cit.page_url}`
+      : rawFileName
+        ? sourceService.getSinglePagePdfUrl(rawFileName, safePage)
+        : undefined;
+
+  const singlePageImageUrl = isWeb
+    ? undefined
+    : cit?.page_image_url
+      ? `${base}${cit.page_image_url.startsWith('/') ? '' : '/'}${cit.page_image_url}`
+      : rawFileName
+        ? sourceService.getSinglePageImageUrl(rawFileName, safePage)
+        : undefined;
+
+  const singlePageViewUrl = isWeb
+    ? undefined
+    : cit?.page_view_url
+      ? `${base}${cit.page_view_url.startsWith('/') ? '' : '/'}${cit.page_view_url}`
+      : rawFileName
+        ? sourceService.getSinglePageViewUrl(rawFileName, safePage)
+        : undefined;
+
+  const pdfUrl = isWeb
+    ? undefined
     : rawFileName
-      ? sourceService.getSinglePagePdfUrl(rawFileName, safePage)
+      ? sourceService.getPdfUrl(rawFileName, pageNumber)
       : undefined;
 
-  const singlePageImageUrl = cit?.page_image_url
-    ? `${base}${cit.page_image_url.startsWith('/') ? '' : '/'}${cit.page_image_url}`
-    : rawFileName
-      ? sourceService.getSinglePageImageUrl(rawFileName, safePage)
-      : undefined;
-
-  const singlePageViewUrl = cit?.page_view_url
-    ? `${base}${cit.page_view_url.startsWith('/') ? '' : '/'}${cit.page_view_url}`
-    : rawFileName
-      ? sourceService.getSinglePageViewUrl(rawFileName, safePage)
-      : undefined;
-
-  const pdfUrl = rawFileName ? sourceService.getPdfUrl(rawFileName, pageNumber) : undefined;
-
-  // Primary URL prioritizes interactive single-page view if page is known, otherwise full PDF
+  // Primary URL prioritizes external web URL for web records, otherwise interactive single-page view or full PDF
   const primaryUrl =
-    (pageNumber && pageNumber > 0 ? singlePageViewUrl || singlePagePdfUrl : undefined) ||
-    pdfUrl ||
-    '#';
+    (isWeb && webUrl
+      ? webUrl
+      : (pageNumber && pageNumber > 0 ? singlePageViewUrl || singlePagePdfUrl : undefined) ||
+        pdfUrl) || '#';
 
   return {
     index: cit?.citation_index ?? fallbackIndex,
@@ -131,6 +181,8 @@ export function resolveCitationDetail(
     primaryUrl,
     heading: cit?.heading,
     plainText: cit?.plain_text,
+    isWeb,
+    webUrl,
   };
 }
 
@@ -167,7 +219,7 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+    if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
       onViewPdf(item.fileName, item.pageNumber || 1, 'page');
       return;
     }
@@ -178,11 +230,13 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
 
   const handleOpenPageOnly = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+    if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
       onViewPdf(item.fileName, item.pageNumber || 1, 'page');
       return;
     }
-    const target = item.singlePageViewUrl || item.singlePagePdfUrl || item.pdfUrl;
+    const target = item.isWeb
+      ? item.webUrl || item.primaryUrl
+      : item.singlePageViewUrl || item.singlePagePdfUrl || item.pdfUrl;
     if (target && typeof window !== 'undefined') {
       window.open(target, '_blank', 'noopener,noreferrer');
     }
@@ -190,12 +244,13 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
 
   const handleOpenFullPdf = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+    if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
       onViewPdf(item.fileName, item.pageNumber || 1, 'full');
       return;
     }
-    if (item.pdfUrl && typeof window !== 'undefined') {
-      window.open(item.pdfUrl, '_blank', 'noopener,noreferrer');
+    const target = item.isWeb ? item.webUrl || item.primaryUrl : item.pdfUrl;
+    if (target && typeof window !== 'undefined') {
+      window.open(target, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -212,15 +267,29 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
         onBlur={handleMouseLeave}
         aria-label={`Citation [${item.index}]: ${item.fileName}${item.pageNumber ? `, page ${item.pageNumber}` : ''}`}
         title={`Click to open ${item.fileName}${item.pageNumber ? ` at Page ${item.pageNumber}` : ''} in a new tab`}
-        className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 text-[11px] font-mono font-semibold rounded-md bg-blue-50/95 hover:bg-blue-100/95 text-blue-700 hover:text-blue-900 dark:bg-blue-950/60 dark:hover:bg-blue-900/80 dark:text-blue-300 dark:hover:text-blue-100 border border-blue-200/90 hover:border-blue-400 dark:border-blue-700/60 dark:hover:border-blue-500 transition-all duration-150 cursor-pointer shadow-2xs hover:scale-105 active:scale-95 select-none no-underline group"
+        className={`inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 text-[11px] font-mono font-semibold rounded-md border transition-all duration-150 cursor-pointer shadow-2xs hover:scale-105 active:scale-95 select-none no-underline group ${
+          item.isWeb
+            ? 'bg-cyan-50/95 hover:bg-cyan-100/95 text-cyan-700 hover:text-cyan-900 dark:bg-cyan-950/60 dark:hover:bg-cyan-900/80 dark:text-cyan-300 dark:hover:text-cyan-100 border-cyan-200/90 hover:border-cyan-400 dark:border-cyan-700/60 dark:hover:border-cyan-500'
+            : 'bg-blue-50/95 hover:bg-blue-100/95 text-blue-700 hover:text-blue-900 dark:bg-blue-950/60 dark:hover:bg-blue-900/80 dark:text-blue-300 dark:hover:text-blue-100 border-blue-200/90 hover:border-blue-400 dark:border-blue-700/60 dark:hover:border-blue-500'
+        }`}
       >
         <span>[{item.index}]</span>
         {item.pageNumber !== undefined && item.pageNumber > 0 && (
-          <span className="ml-0.5 px-1 py-0.2 rounded text-[9px] font-mono font-semibold bg-blue-200/70 dark:bg-blue-900/70 text-blue-900 dark:text-blue-200">
+          <span
+            className={`ml-0.5 px-1 py-0.2 rounded text-[9px] font-mono font-semibold ${
+              item.isWeb
+                ? 'bg-cyan-200/70 dark:bg-cyan-900/70 text-cyan-900 dark:text-cyan-200'
+                : 'bg-blue-200/70 dark:bg-blue-900/70 text-blue-900 dark:text-blue-200'
+            }`}
+          >
             p.{item.pageNumber}
           </span>
         )}
-        <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+        {item.isWeb ? (
+          <Globe className="w-2.5 h-2.5 ml-0.5 opacity-60 group-hover:opacity-100 transition-opacity text-cyan-500" />
+        ) : (
+          <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+        )}
       </a>
 
       {showTooltip && (
@@ -234,13 +303,25 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
           <div className="flex items-center justify-between gap-1.5 pb-1.5 border-b border-white/10">
             <div
               onClick={handleOpenFullPdf}
-              className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-100 hover:text-blue-300 transition-colors cursor-pointer min-w-0"
-              title="Click to open full PDF document in new tab"
+              className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-100 hover:text-cyan-300 transition-colors cursor-pointer min-w-0"
+              title={
+                item.isWeb
+                  ? 'Click to open web page in new tab'
+                  : 'Click to open full PDF document in new tab'
+              }
             >
-              <FileText className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+              {item.isWeb ? (
+                <Globe className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+              )}
               <span className="truncate">{item.fileName}</span>
             </div>
-            {item.pageNumber !== undefined && item.pageNumber > 0 ? (
+            {item.isWeb ? (
+              <span className="inline-flex items-center text-[10px] font-mono font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.2 rounded shrink-0">
+                Web Record
+              </span>
+            ) : item.pageNumber !== undefined && item.pageNumber > 0 ? (
               <span className="inline-flex items-center text-[10px] font-mono font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1.5 py-0.2 rounded shrink-0">
                 Page {item.pageNumber}
               </span>
@@ -254,43 +335,60 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
           {/* Heading */}
           {item.heading && (
             <div className="text-[11px] font-medium text-slate-300 mt-2 line-clamp-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
               <span className="truncate">{item.heading}</span>
             </div>
           )}
 
           {/* Excerpt Quote */}
           {item.plainText && (
-            <blockquote className="text-[10.5px] leading-relaxed text-slate-300 line-clamp-3 mt-1.5 italic bg-white/[0.04] p-2 rounded-lg border-l-2 border-blue-500">
+            <blockquote className="text-[10.5px] leading-relaxed text-slate-300 line-clamp-3 mt-1.5 italic bg-white/[0.04] p-2 rounded-lg border-l-2 border-cyan-500">
               "{item.plainText}"
             </blockquote>
           )}
 
-          {/* Explicit Quick Action Buttons - Both Open in New Tab */}
+          {/* Explicit Quick Action Buttons */}
           <div className="grid grid-cols-2 gap-1.5 pt-2 mt-2 border-t border-white/10">
-            <a
-              href={item.singlePageViewUrl || item.singlePagePdfUrl || item.pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={handleOpenPageOnly}
-              className="inline-flex items-center justify-center gap-1 px-2 py-1 text-[10.5px] font-medium font-sans bg-blue-600 hover:bg-blue-500 text-white rounded-md shadow-2xs hover:scale-[1.02] active:scale-95 transition-all text-center cursor-pointer no-underline"
-              title="Open isolated single page view in new tab"
-            >
-              <span>⚡ Page {item.pageNumber || 1}</span>
-              <ExternalLink className="w-2.5 h-2.5" />
-            </a>
+            {item.isWeb ? (
+              <a
+                href={item.webUrl || item.primaryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleOpenPageOnly}
+                className="col-span-2 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10.5px] font-medium font-sans bg-cyan-600 hover:bg-cyan-500 text-white rounded-md shadow-2xs hover:scale-[1.01] active:scale-95 transition-all text-center cursor-pointer no-underline"
+                title="Open public web article in new tab"
+              >
+                <Globe className="w-3 h-3" />
+                <span>Open Public Web Article</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+            ) : (
+              <>
+                <a
+                  href={item.singlePageViewUrl || item.singlePagePdfUrl || item.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={handleOpenPageOnly}
+                  className="inline-flex items-center justify-center gap-1 px-2 py-1 text-[10.5px] font-medium font-sans bg-blue-600 hover:bg-blue-500 text-white rounded-md shadow-2xs hover:scale-[1.02] active:scale-95 transition-all text-center cursor-pointer no-underline"
+                  title="Open isolated single page view in new tab"
+                >
+                  <span>⚡ Page {item.pageNumber || 1}</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
 
-            <a
-              href={item.pdfUrl || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={handleOpenFullPdf}
-              className="inline-flex items-center justify-center gap-1 px-2 py-1 text-[10.5px] font-medium font-sans bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 rounded-md shadow-2xs hover:scale-[1.02] active:scale-95 transition-all text-center cursor-pointer no-underline"
-              title="Open complete PDF document in new tab"
-            >
-              <span>📖 Full PDF</span>
-              <ExternalLink className="w-2.5 h-2.5" />
-            </a>
+                <a
+                  href={item.pdfUrl || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={handleOpenFullPdf}
+                  className="inline-flex items-center justify-center gap-1 px-2 py-1 text-[10.5px] font-medium font-sans bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 rounded-md shadow-2xs hover:scale-[1.02] active:scale-95 transition-all text-center cursor-pointer no-underline"
+                  title="Open complete PDF document in new tab"
+                >
+                  <span>📖 Full PDF</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </>
+            )}
           </div>
 
           {/* Caret */}

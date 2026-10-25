@@ -21,7 +21,7 @@ export type CommandsResponse = z.infer<typeof CommandsResponseSchema>;
 
 /**
  * Standard default slash commands available even when offline or before initial probe.
- * Regular user interface strictly presents /compare.
+ * User interface presents /compare and /browser as core research commands.
  */
 export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
   {
@@ -31,6 +31,15 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
     category: 'Comparison',
     examples: ['/compare', '/compare research', '/compare finance'],
     aliases: ['/diff', '/versus', '/vs'],
+    is_dev_only: false,
+  },
+  {
+    name: '/browser',
+    syntax: '/browser [url or search topic]',
+    description: 'Extract supplemental research facts and public data from the internet.',
+    category: 'Research',
+    examples: ['/browser NIRF Rankings IIT Madras', '/browser https://en.wikipedia.org/wiki/Harvard_University'],
+    aliases: ['/web', '/fetch', '/internet'],
     is_dev_only: false,
   },
 ];

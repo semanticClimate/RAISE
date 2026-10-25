@@ -43,6 +43,8 @@ export const CitationSchema = z.object({
   page_url: z.string().optional(),
   page_image_url: z.string().optional(),
   page_view_url: z.string().optional(),
+  source_type: z.string().optional(),
+  url: z.string().optional(),
 });
 
 export type Citation = z.infer<typeof CitationSchema>;

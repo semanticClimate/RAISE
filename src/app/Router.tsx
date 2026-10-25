@@ -1,13 +1,48 @@
 import type React from 'react';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppSkeleton } from '../components/ui/AppSkeleton';
+import { useControlCenterStore } from '../features/control-center/store/useControlCenterStore';
 
 const RaisePage = lazy(() =>
   import('../features/raise').then((module) => ({ default: module.RaisePage }))
 );
 
 export const AppRouter: React.FC = () => {
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      // 1. Detect explicit ?setup=true or ?control_center=true from standard query or hash routing
+      const urlParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash || '';
+      const hashQuery = hash.includes('?') ? hash.substring(hash.indexOf('?')) : '';
+      const hashParams = new URLSearchParams(hashQuery);
+
+      const isExplicitSetup =
+        urlParams.get('setup') === 'true' ||
+        urlParams.get('control_center') === 'true' ||
+        hashParams.get('setup') === 'true' ||
+        hashParams.get('control_center') === 'true';
+
+      // 2. Detect first-time visit via localStorage
+      const hasCompletedOnboarding =
+        localStorage.getItem('raise_onboarding_completed') === 'true';
+
+      const store = useControlCenterStore.getState();
+      if (isExplicitSetup || (!hasCompletedOnboarding && !store.config.firstRunCompleted)) {
+        store.setOpen(true);
+        const hasKey = store.config.apiKeys?.some(
+          (k) => k.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+        );
+        if (!hasKey) {
+          store.setActiveTab('models');
+        }
+      }
+    } catch {
+      // Graceful fallback for restricted browser storage sandboxes
+    }
+  }, []);
+
   return (
     <HashRouter>
       <Suspense fallback={<AppSkeleton />}>
@@ -19,4 +54,3 @@ export const AppRouter: React.FC = () => {
     </HashRouter>
   );
 };
-
