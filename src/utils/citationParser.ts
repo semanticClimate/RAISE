@@ -197,6 +197,7 @@ export function normalizeCitation(
   // Handle case where citation is passed as a string filename or "Doc.pdf (Page X)"
   if (typeof raw === 'string') {
     const cleanStr = raw.trim();
+    const isWebStr = cleanStr.startsWith('http://') || cleanStr.startsWith('https://');
     const pageFromStr = extractVerifiedPageNumber(cleanStr);
     const cleanFile = cleanStr
       .replace(/\s*\(.*?\)/, '')
@@ -213,6 +214,10 @@ export function normalizeCitation(
       plain_text: '',
       university: '',
       similarity: 0.95,
+      source_type: isWebStr ? 'EXTERNAL_PUBLIC_RECORD' : undefined,
+      url: isWebStr ? cleanStr : undefined,
+      page_url: isWebStr ? cleanStr : undefined,
+      page_view_url: isWebStr ? cleanStr : undefined,
     };
   }
 
@@ -268,31 +273,58 @@ export function normalizeCitation(
   const safePage = page && page > 0 ? page : 1;
   const encodedName = encodeURIComponent(filename);
 
+  const isWebSource =
+    raw.source_type === 'EXTERNAL_PUBLIC_RECORD' ||
+    raw.source_type?.toLowerCase() === 'web' ||
+    Boolean(raw.url) ||
+    (typeof filename === 'string' && (filename.startsWith('http://') || filename.startsWith('https://')));
+
+  const rawUrl =
+    typeof raw.url === 'string' && raw.url.trim()
+      ? raw.url.trim()
+      : typeof raw.metadata?.url === 'string' && raw.metadata.url.trim()
+        ? raw.metadata.url.trim()
+        : typeof filename === 'string' && (filename.startsWith('http://') || filename.startsWith('https://'))
+          ? filename
+          : undefined;
+
   const pageUrl =
-    raw.page_url || raw.metadata?.page_url || `/api/pdf/${encodedName}/pages/${safePage}/pdf`;
+    raw.page_url ||
+    raw.metadata?.page_url ||
+    (isWebSource && rawUrl ? rawUrl : `/api/pdf/${encodedName}/pages/${safePage}/pdf`);
   const pageViewUrl =
     raw.page_view_url ||
     raw.metadata?.page_view_url ||
-    `/api/pdf/${encodedName}/pages/${safePage}/view`;
+    (isWebSource && rawUrl ? rawUrl : `/api/pdf/${encodedName}/pages/${safePage}/view`);
   const pageImageUrl =
     raw.page_image_url ||
     raw.metadata?.page_image_url ||
-    `/api/pdf/${encodedName}/pages/${safePage}/image`;
+    (isWebSource ? undefined : `/api/pdf/${encodedName}/pages/${safePage}/image`);
 
   return {
     citation_index: citIdx,
     chunk_id: chunkId || `chk-${citIdx}`,
     document_id: raw.document_id || raw.doc_id || raw.metadata?.doc_id || filename,
+    doc_id: raw.doc_id || raw.document_id || raw.metadata?.doc_id,
     pdf_filename: filename,
+    filename: raw.filename || raw.pdf_filename || raw.metadata?.filename || filename,
     primary_page: page && page > 0 ? page : (undefined as any),
+    page: page && page > 0 ? page : undefined,
+    page_number: page && page > 0 ? page : undefined,
     heading: raw.heading || raw.metadata?.heading || raw.title || '',
     plain_text: raw.plain_text || raw.text || raw.content || raw.snippet || '',
+    snippet: raw.snippet || raw.plain_text || raw.text,
+    text: raw.text || raw.plain_text || raw.content,
     university: raw.university || raw.metadata?.university || '',
     similarity: typeof raw.similarity === 'number' ? raw.similarity : 0.9,
+    score: typeof raw.score === 'number' ? raw.score : (typeof raw.similarity === 'number' ? raw.similarity : undefined),
     printed_page: raw.printed_page || raw.metadata?.printed_page,
     page_url: pageUrl,
     page_image_url: pageImageUrl,
     page_view_url: pageViewUrl,
+    source_type: raw.source_type || raw.metadata?.source_type || (isWebSource ? 'EXTERNAL_PUBLIC_RECORD' : undefined),
+    url: rawUrl,
+    metadata: raw.metadata,
   };
 }
 
