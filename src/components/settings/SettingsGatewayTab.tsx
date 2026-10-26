@@ -1,6 +1,7 @@
-import { Radio, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { Radio, RefreshCw, RotateCcw, ThumbsDown, ThumbsUp } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { setApiBaseUrl } from '../../app/config';
 import { chatService } from '../../services/ChatService';
 import { useModeStore } from '../../stores/modeStore';
 import type { FeedbackStats } from '../../types';
@@ -138,6 +139,26 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
       setStatusNotice(
         'No local backend detected on ports 8000/8080. Ensure local FastAPI is running.'
       );
+    }
+    setTimeout(() => setStatusNotice(null), 5000);
+  };
+
+  // Sid says: One-click instant reset to local FastAPI engine on http://127.0.0.1:8000
+  const handleResetToLocalhost = async () => {
+    const localhostUrl = 'http://127.0.0.1:8000';
+    setApiBaseUrl(localhostUrl, false);
+    setBaseUrl(localhostUrl);
+    setUrlInput(localhostUrl);
+    try {
+      localStorage.removeItem('raise_tunnel_url');
+      localStorage.removeItem('raise_gateway_url');
+    } catch {}
+    setStatusNotice('Reset to Localhost (http://127.0.0.1:8000). Probing connection...');
+    const result = await testConnection(localhostUrl);
+    if (result.success) {
+      setStatusNotice('Connected successfully to localhost (http://127.0.0.1:8000)!');
+    } else {
+      setStatusNotice('Reset to localhost complete. Ensure backend is running on 127.0.0.1:8000.');
     }
     setTimeout(() => setStatusNotice(null), 5000);
   };
@@ -566,6 +587,19 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
             className={`w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 ${isScanningLocal ? 'animate-pulse' : ''}`}
           />
           <span>{isScanningLocal ? 'Scanning Local Ports...' : 'Scan Local Backend'}</span>
+        </button>
+
+        {/* Sid says: One-click Reset to Localhost button ensuring users can revert instantly from cloud tunnels */}
+        <button
+          type="button"
+          disabled={isProbing}
+          onClick={handleResetToLocalhost}
+          data-testid="gateway-reset-localhost-btn"
+          title="Reset connection to local FastAPI backend (http://127.0.0.1:8000)"
+          className="py-2.5 px-4 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10 transition-all cursor-pointer shadow-2xs active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+          <span>Reset to Localhost (http://127.0.0.1:8000)</span>
         </button>
       </div>
 

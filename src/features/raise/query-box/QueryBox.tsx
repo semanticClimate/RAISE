@@ -3,7 +3,7 @@ import { VoiceInputButton } from '../../../components/input/VoiceInputButton';
 import { useSlashCommands } from '../../../hooks';
 import type { DynamicSuggestion, SourceDocument } from '../../../types';
 import { AddSourceButton, AttachedDocChips, FastExpertToggle } from '../query-controls';
-import { SlashCommandMenu } from './SlashCommandMenu';
+import { getCommandIcon, SlashCommandMenu } from './SlashCommandMenu';
 
 export interface QueryBoxProps {
   /** Current text query entered by the user */
@@ -123,6 +123,9 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
     },
     selectedDocCount: selectedDocs.length,
   });
+
+  const activeCmdMatch = query.match(/^(\/[a-zA-Z0-9_-]+)/);
+  const activeCmdName = activeCmdMatch ? activeCmdMatch[1].toLowerCase() : null;
 
   return (
     <section
@@ -253,6 +256,14 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
                 )}
               </div>
             )}
+            {/* Active Slash Command Indicator Chip */}
+            {activeCmdName && (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mb-1.5 rounded-lg bg-indigo-500/15 dark:bg-indigo-500/20 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-xs font-mono font-medium shrink-0 select-none animate-in fade-in">
+                {getCommandIcon(activeCmdName)}
+                <span>{activeCmdName}</span>
+              </div>
+            )}
+
             <textarea
               ref={textareaRef}
               value={query}
@@ -411,8 +422,8 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
                 formatVoiceDuration={formatVoiceDuration}
               />
 
-              {/* Right-Aligned Action: Submit / Stop Button (Hidden until user types something, attaches sources, or while loading) */}
-              {(query.trim().length > 0 || selectedDocs.length > 0 || isLoading) && (
+              {/* Right-Aligned Action: Submit / Stop Button (Only visible when user has typed text or while loading) */}
+              {(query.trim().length > 0 || isLoading) && (
                 <button
                   type="submit"
                   title={isLoading ? 'Stop generating' : 'Send question'}

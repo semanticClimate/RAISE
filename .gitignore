@@ -42,12 +42,14 @@ tmp/
 *.temp
 *.txt
 *.log
+*demoSession*
 
 # Tests, Mocks & Test Fixtures (never pushed to deployment)
 __tests__/
 **/__tests__/
 *.test.*
 *.spec.*
+test_*.ts
 tests/
 mocks/
 fixtures/

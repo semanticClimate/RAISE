@@ -283,6 +283,7 @@ class ApiClient {
 
     const headers: Record<string, string> = {
       'X-Request-ID': `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      Accept: 'text/event-stream, text/plain; q=0.9, */*; q=0.8',
       ...(options.headers as Record<string, string>),
     };
 
@@ -426,39 +427,57 @@ class ApiClient {
               return;
             }
 
-            // 3. Check for token streaming payloads
+            // 3. Capture completion metadata (citations, subgraph, sources, status, etc.)
+            const isMetadataObject = Boolean(
+              p &&
+                (p.citations !== undefined ||
+                  p.subgraph !== undefined ||
+                  p.sources !== undefined ||
+                  p.verified_claims !== undefined ||
+                  p.status === 'completed' ||
+                  p.status === 'SUCCESS' ||
+                  p.quality_gate_decision !== undefined)
+            );
+
+            if (isMetadataObject && p) {
+              streamMetadata = {
+                ...streamMetadata,
+                ...p,
+              };
+              options.onMetadata?.(p);
+
+              // Sid says: If the SSE stream delivers the final synthesized answer directly in the metadata payload without micro-tokens, unpack it immediately to avoid empty response box
+              if (!fullText.trim()) {
+                const answerInMeta =
+                  getStringField(p, 'grounded_answer') ??
+                  getStringField(p, 'answer') ??
+                  getStringField(p, 'reply') ??
+                  getStringField(p, 'response');
+                if (answerInMeta) {
+                  fullText = sanitizeStreamText(answerInMeta);
+                  onChunk?.(fullText, fullText);
+                }
+              }
+              return;
+            }
+
+            // 4. Check for incremental micro-token streaming payloads
             const deltaObj = asRecord(p?.delta);
             const token =
               getStringField(p, 'token') ??
               getStringField(p, 'text') ??
               getStringField(p, 'content') ??
-              getStringField(p, 'response') ??
               getStringField(deltaObj, 'content') ??
               (typeof p?.delta === 'string' ? p.delta : undefined) ??
-              getStringField(p, 'reply') ??
+              (!fullText.trim()
+                ? (getStringField(p, 'response') ?? getStringField(p, 'reply'))
+                : undefined) ??
               null;
             if (typeof token === 'string') {
               if (token.length > 0) {
                 fullText += token;
                 onChunk?.(token, fullText);
               }
-              return;
-            }
-
-            // 4. Capture completion metadata (citations, subgraph, sources, status, etc.)
-            if (
-              p &&
-              (p.citations !== undefined ||
-                p.subgraph !== undefined ||
-                p.status === 'completed' ||
-                p.sources !== undefined ||
-                p.verified_claims !== undefined)
-            ) {
-              streamMetadata = {
-                ...streamMetadata,
-                ...p,
-              };
-              options.onMetadata?.(p);
               return;
             }
           } catch {
@@ -518,6 +537,19 @@ class ApiClient {
 
       // Final pass: ensure no residual JSON tokens or SSE markers remain
       fullText = sanitizeStreamText(fullText);
+
+      // Sid says: Guard against empty response bug - fallback to answer/grounded_answer/reply in streamMetadata
+      if (!fullText.trim() && streamMetadata) {
+        const fallbackAns =
+          getStringField(streamMetadata, 'grounded_answer') ??
+          getStringField(streamMetadata, 'answer') ??
+          getStringField(streamMetadata, 'reply') ??
+          '';
+        if (fallbackAns) {
+          fullText = sanitizeStreamText(fallbackAns);
+          onChunk?.(fullText, fullText);
+        }
+      }
 
       logToTerminal({
         type: 'RES',

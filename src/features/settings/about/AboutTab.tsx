@@ -202,7 +202,7 @@ export const AboutTab: React.FC = () => {
               <span>Developer Diagnostic Commands</span>
             </h4>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-              Show diagnostic commands (/audit, /graph, /synthesize, /bench, /help) in the / autocomplete menu.
+              Show diagnostic commands (/audit, /help) in the / autocomplete menu.
             </p>
           </div>
           <button

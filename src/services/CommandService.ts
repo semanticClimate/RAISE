@@ -4,6 +4,7 @@ import {
   CommandsResponseSchema,
   DEFAULT_SLASH_COMMANDS,
   DEV_SLASH_COMMANDS,
+  DISALLOWED_SLASH_COMMANDS,
   type SlashCommand,
 } from '../schemas/commands';
 
@@ -53,11 +54,16 @@ export class CommandService {
       );
 
       if (res.data?.commands && res.data.commands.length > 0) {
-        CommandService.cachedCommands = res.data.commands;
+        // Sid says: Purge /boost, /synthesize, /graph, /bench from backend responses
+        const sanitized = res.data.commands.filter(
+          (c) => !DISALLOWED_SLASH_COMMANDS.has(c.name.toLowerCase().trim())
+        );
+        const finalCommands = sanitized.length > 0 ? sanitized : fallbackCommands;
+        CommandService.cachedCommands = finalCommands;
         CommandService.cachedIncludeDev = includeDev;
         CommandService.lastFetchTime = now;
         return {
-          data: res.data.commands,
+          data: finalCommands,
           error: null,
           status: res.status,
           isMock: res.isMock,

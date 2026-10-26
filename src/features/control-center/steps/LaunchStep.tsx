@@ -128,7 +128,7 @@ export const LaunchStep: React.FC = () => {
           </div>
           <div className="text-sm font-bold text-white">Slash Commands & Auditing</div>
           <div className="text-[11px] font-mono text-slate-400">
-            /compare, /browser, /audit, /synthesize, /bench, /help
+            /compare, /browser, /audit, /help
           </div>
         </div>
       </div>

@@ -19,6 +19,9 @@ export const CommandsResponseSchema = z.object({
 
 export type CommandsResponse = z.infer<typeof CommandsResponseSchema>;
 
+// Sid says: Disallowed commands explicitly purged per UI cleanup specifications
+export const DISALLOWED_SLASH_COMMANDS = new Set(['/boost', '/synthesize', '/graph', '/bench']);
+
 /**
  * Standard default slash commands available even when offline or before initial probe.
  * User interface presents /compare and /browser as core research commands.
@@ -27,7 +30,7 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
   {
     name: '/compare',
     syntax: '/compare [focus: research|academics|finance|faculty|sustainability]',
-    description: 'Side-by-side institutional comparison across 17 operational dimensions (requires 2 docs).',
+    description: 'Side-by-side document comparison',
     category: 'Comparison',
     examples: ['/compare', '/compare research', '/compare finance'],
     aliases: ['/diff', '/versus', '/vs'],
@@ -36,7 +39,7 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
   {
     name: '/browser',
     syntax: '/browser [url or search topic]',
-    description: 'Extract supplemental research facts and public data from the internet.',
+    description: 'Search and extract web data',
     category: 'Research',
     examples: ['/browser NIRF Rankings IIT Madras', '/browser https://en.wikipedia.org/wiki/Harvard_University'],
     aliases: ['/web', '/fetch', '/internet'],
@@ -45,53 +48,27 @@ export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
 ];
 
 /**
- * Developer diagnostic commands for developer view mode
+ * Diagnostic commands for developer view mode (/audit and /help)
  */
 export const DEV_SLASH_COMMANDS: SlashCommand[] = [
   ...DEFAULT_SLASH_COMMANDS,
   {
     name: '/audit',
     syntax: '/audit [claim or section]',
-    description: 'Strict anti-hallucination factual audit with numerical cross-checking.',
+    description: 'Verify claims & citations',
     category: 'Verification',
     examples: ['/audit', '/audit patents and publications'],
     aliases: ['/verify', '/factcheck'],
     is_dev_only: true,
   },
   {
-    name: '/synthesize',
-    syntax: '/synthesize [focus]',
-    description: 'Executive institutional synthesis covering accomplishments, publications, and governance.',
-    category: 'Synthesis',
-    examples: ['/synthesize', '/synthesize scientific achievements'],
-    aliases: ['/summary', '/summarize'],
-    is_dev_only: true,
-  },
-  {
-    name: '/graph',
-    syntax: '/graph [entity or topic]',
-    description: 'Traverse knowledge graph entity networks, projects, and relationships.',
-    category: 'Knowledge Graph',
-    examples: ['/graph', '/graph Early Flowering 3a'],
-    aliases: ['/explore', '/network'],
-    is_dev_only: true,
-  },
-  {
-    name: '/bench',
-    syntax: '/bench',
-    description: 'Run live evaluation across the 8-part industry benchmark suite.',
-    category: 'Diagnostics',
-    examples: ['/bench'],
-    aliases: ['/eval', '/benchmark'],
-    is_dev_only: true,
-  },
-  {
     name: '/help',
     syntax: '/help',
-    description: 'Show all available slash commands and usage syntax.',
+    description: 'Usage commands & shortcuts',
     category: 'Help',
     examples: ['/help'],
     aliases: ['/commands'],
     is_dev_only: true,
   },
 ];
+

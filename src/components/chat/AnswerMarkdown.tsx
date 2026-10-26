@@ -1,10 +1,16 @@
-import { BookOpen, ExternalLink, FileText } from 'lucide-react';
-import React, { useState } from 'react';
+import { BookOpen, Check, Copy } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Citation } from '../../types';
+import { sourceService } from '../../services/SourceService';
 import { cleanRagResponseText } from '../../utils/citationParser';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
+import { copyMarkdownToClipboard, splitTableRow } from '../../utils/exportFormats';
+import { formatTableAsMarkdown } from '../../utils/tableFormatter';
 import { CitationBadge, resolveCitationDetail } from '../citations/CitationBadge';
 import { ComparabilityBadge, isComparabilityStatus } from './ComparabilityBadge';
+import { KaTexRenderer } from './KaTexRenderer';
+
+export { formatTableAsMarkdown } from '../../utils/tableFormatter';
 
 export interface AnswerMarkdownProps {
   content: string;
@@ -49,9 +55,144 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
   );
 };
 
+interface TableBlockProps {
+  headers: string[];
+  alignments: string[];
+  rows: string[][];
+  tableIdx: number;
+  renderInline: (text: string, keyPrefix: string) => React.ReactNode;
+}
+
+const TableBlock: React.FC<TableBlockProps> = ({
+  headers,
+  alignments,
+  rows,
+  tableIdx,
+  renderInline,
+}) => {
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const markdown = formatTableAsMarkdown(headers, alignments, rows);
+    if (!markdown) return;
+
+    let success = false;
+    try {
+      success = await copyMarkdownToClipboard(markdown);
+    } catch {
+      success = false;
+    }
+
+    if (success) {
+      setCopied(true);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    }
+  };
+
+  return (
+    <div className="relative group/table my-4 rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-900/50 shadow-xs">
+      {/* ChatGPT-style dedicated copy button in top-right corner */}
+      <div className="absolute top-2.5 right-2.5 z-20">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 bg-white/95 dark:bg-slate-800/95 hover:bg-slate-100 dark:hover:bg-slate-700/80 border border-slate-200/90 dark:border-slate-700/80 shadow-2xs backdrop-blur-xs transition-all cursor-pointer select-none opacity-80 hover:opacity-100 group-hover/table:opacity-100 focus:opacity-100"
+          title={copied ? 'Copied' : 'Copy table'}
+          aria-label={copied ? 'Copied table' : 'Copy table'}
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+              <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-medium">
+                Copied
+              </span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+              <span className="text-slate-600 dark:text-slate-300 text-[11px] font-medium">
+                Copy
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+        <table className="w-full min-w-[640px] text-left text-xs sm:text-sm border-collapse">
+          <thead className="sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-semibold shadow-xs">
+            <tr>
+              {headers.map((h, hIdx) => (
+                <th
+                  key={hIdx}
+                  className={`sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap text-xs sm:text-sm tracking-tight ${
+                    alignments[hIdx] || 'text-left'
+                  } ${hIdx === headers.length - 1 ? 'pr-20' : ''}`}
+                >
+                  {renderInline(h, `th-${tableIdx}-${hIdx}`)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+            {rows.map((row, rIdx) => (
+              <tr
+                key={rIdx}
+                className="hover:bg-slate-50/80 dark:hover:bg-white/[0.04] even:bg-slate-50/30 dark:even:bg-white/[0.015] transition-colors"
+              >
+                {row.map((cell, cIdx) => {
+                  const trimmedCell = cell.trim();
+                  if (isComparabilityStatus(trimmedCell)) {
+                    return (
+                      <td
+                        key={cIdx}
+                        className={`px-4 py-2.5 text-slate-700 dark:text-slate-300 whitespace-nowrap ${
+                          alignments[cIdx] || 'text-left'
+                        }`}
+                      >
+                        <ComparabilityBadge status={trimmedCell} />
+                      </td>
+                    );
+                  }
+                  return (
+                    <td
+                      key={cIdx}
+                      className={`px-4 py-2.5 text-slate-700 dark:text-slate-300 whitespace-nowrap ${
+                        alignments[cIdx] || 'text-left'
+                      }`}
+                    >
+                      {renderInline(cell, `td-${tableIdx}-${rIdx}-${cIdx}`)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 type Block =
   | { type: 'heading'; level: 1 | 2 | 3 | 4; text: string }
   | { type: 'code'; language: string; code: string }
+  | { type: 'math'; formula: string }
   | { type: 'table'; headers: string[]; alignments: string[]; rows: string[][] }
   | { type: 'blockquote'; text: string }
   | { type: 'ordered-list'; items: { num: string; text: string; indent: number }[] }
@@ -60,7 +201,7 @@ type Block =
   | { type: 'callout'; variant: 'info' | 'warning'; text: string }
   | { type: 'paragraph'; text: string };
 
-function parseMarkdownBlocks(text: string): Block[] {
+export function parseMarkdownBlocks(text: string): Block[] {
   const lines = text.split('\n');
   const blocks: Block[] = [];
   let i = 0;
@@ -91,6 +232,39 @@ function parseMarkdownBlocks(text: string): Block[] {
         type: 'code',
         language,
         code: codeLines.join('\n'),
+      });
+      continue;
+    }
+
+    // 2.5 LaTeX Block Math: $$ formula $$
+    if (trimmed.startsWith('$$')) {
+      if (trimmed.length > 4 && trimmed.endsWith('$$')) {
+        blocks.push({
+          type: 'math',
+          formula: trimmed.slice(2, -2).trim(),
+        });
+        i++;
+        continue;
+      }
+      const mathLines: string[] = [];
+      if (trimmed.length > 2) {
+        mathLines.push(trimmed.slice(2));
+      }
+      i++;
+      while (i < lines.length && !lines[i].trim().endsWith('$$') && lines[i].trim() !== '$$') {
+        mathLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) {
+        const lastLine = lines[i].trim();
+        if (lastLine !== '$$') {
+          mathLines.push(lastLine.replace(/\$\$$/, ''));
+        }
+        i++;
+      }
+      blocks.push({
+        type: 'math',
+        formula: mathLines.join('\n').trim(),
       });
       continue;
     }
@@ -211,14 +385,8 @@ function parseMarkdownBlocks(text: string): Block[] {
     if (trimmed.startsWith('|') && trimmed.endsWith('|') && i + 1 < lines.length) {
       const nextLine = lines[i + 1].trim();
       if (/^\|?(\s*:?-+:?\s*\|)+\s*$/.test(nextLine)) {
-        const headers = trimmed
-          .slice(1, -1)
-          .split('|')
-          .map((s) => s.trim());
-        const alignSpecs = nextLine
-          .slice(1, -1)
-          .split('|')
-          .map((s) => s.trim());
+        const headers = splitTableRow(trimmed);
+        const alignSpecs = splitTableRow(nextLine);
         const alignments = alignSpecs.map((spec) => {
           if (spec.startsWith(':') && spec.endsWith(':')) return 'text-center';
           if (spec.endsWith(':')) return 'text-right';
@@ -232,11 +400,7 @@ function parseMarkdownBlocks(text: string): Block[] {
           lines[i].trim().startsWith('|') &&
           lines[i].trim().endsWith('|')
         ) {
-          const cells = lines[i]
-            .trim()
-            .slice(1, -1)
-            .split('|')
-            .map((s) => s.trim());
+          const cells = splitTableRow(lines[i]);
           rows.push(cells);
           i++;
         }
@@ -371,6 +535,7 @@ function parseMarkdownBlocks(text: string): Block[] {
       if (
         nextTrimmed.startsWith('#') ||
         nextTrimmed.startsWith('```') ||
+        nextTrimmed.startsWith('$$') ||
         nextTrimmed.startsWith('>') ||
         /^(-{3,}|\*{3,}|_{3,})$/.test(nextTrimmed) ||
         /^\s*\d+\.\s+/.test(nextLine) ||
@@ -402,10 +567,35 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
   className = '',
   onViewPdf,
 }) => {
-  if (!content) return null;
+  // Sid says: Debounce content flushing via requestAnimationFrame to coalesce micro token bursts and eliminate layout jumps
+  const [displayedContent, setDisplayedContent] = useState(content);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (displayedContent === content) return;
+
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    rafRef.current = requestAnimationFrame(() => {
+      setDisplayedContent(content);
+      rafRef.current = null;
+    });
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [content, displayedContent]);
+
+  const targetContent = displayedContent || content;
+  if (!targetContent) return null;
 
   // Sanitize any raw JSON token fragments or leaked stream tokens
-  const sanitized = sanitizeStreamText(content);
+  const sanitized = sanitizeStreamText(targetContent);
 
   // Clean RAG artifacts, unpack verbose in-text citations, and normalize layout
   const { cleanText: preparedText, citations: enrichedCitations } = cleanRagResponseText(
@@ -428,9 +618,9 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
   const renderInline = (text: string, keyPrefix: string): React.ReactNode => {
     if (!text) return null;
 
-    // Tokenize text into inline elements
+    // Tokenize text into inline elements (including LaTeX inline math $...$ and hash router links)
     const regex =
-      /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\[\d+(?:\s*,\s*\d+)*\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]+)\)|\b(?:FULLY_COMPARABLE|CONDITIONALLY_COMPARABLE|CONTEXT_ADJUSTED|NOT_COMPARABLE|INSUFFICIENT_EVIDENCE|EXTERNAL_SUPPLEMENTED|EXTERNAL_PUBLIC_RECORD)\b|\*[^*\n]+\*|_[^_\n]+_)/g;
+      /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\[\d+(?:\s*,\s*\d+)*\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+|[#/][^\s)]+)\)|\b(?:FULLY_COMPARABLE|CONDITIONALLY_COMPARABLE|CONTEXT_ADJUSTED|NOT_COMPARABLE|INSUFFICIENT_EVIDENCE|EXTERNAL_SUPPLEMENTED|EXTERNAL_PUBLIC_RECORD)\b|\*[^*\n]+\*|_[^_\n]+_|\$[^\$\n]+?\$)/g;
 
     const elements: React.ReactNode[] = [];
     let lastIndex = 0;
@@ -567,6 +757,17 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
           >
             {matchedStr.slice(1, -1)}
           </em>
+        );
+      }
+      // Inline math: $formula$
+      else if (matchedStr.startsWith('$') && matchedStr.endsWith('$') && matchedStr.length > 2) {
+        const formula = matchedStr.slice(1, -1).trim();
+        elements.push(
+          <KaTexRenderer
+            key={`${keyPrefix}-math-${elementIdx++}`}
+            formula={formula}
+            displayMode={false}
+          />
         );
       } else {
         elements.push(<span key={`${keyPrefix}-raw-${elementIdx++}`}>{matchedStr}</span>);
@@ -743,67 +944,30 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
             );
           }
 
+          case 'math': {
+            return (
+              <KaTexRenderer
+                key={idx}
+                formula={block.formula}
+                displayMode={true}
+              />
+            );
+          }
+
           case 'code': {
             return <CodeBlock key={idx} code={block.code} language={block.language} />;
           }
 
           case 'table': {
             return (
-              <div
+              <TableBlock
                 key={idx}
-                className="overflow-x-auto my-4 rounded-xl border border-slate-200/80 dark:border-white/10 shadow-2xs scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700"
-              >
-                <table className="w-full min-w-[640px] text-left text-xs sm:text-sm border-collapse">
-                  <thead className="sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-semibold shadow-xs">
-                    <tr>
-                      {block.headers.map((h, hIdx) => (
-                        <th
-                          key={hIdx}
-                          className={`sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100 ${
-                            block.alignments[hIdx] || 'text-left'
-                          }`}
-                        >
-                          {renderInline(h, `th-${idx}-${hIdx}`)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                    {block.rows.map((row, rIdx) => (
-                      <tr
-                        key={rIdx}
-                        className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
-                      >
-                        {row.map((cell, cIdx) => {
-                          const trimmedCell = cell.trim();
-                          if (isComparabilityStatus(trimmedCell)) {
-                            return (
-                              <td
-                                key={cIdx}
-                                className={`px-4 py-2.5 text-slate-700 dark:text-slate-300 ${
-                                  block.alignments[cIdx] || 'text-left'
-                                }`}
-                              >
-                                <ComparabilityBadge status={trimmedCell} />
-                              </td>
-                            );
-                          }
-                          return (
-                            <td
-                              key={cIdx}
-                              className={`px-4 py-2 text-slate-700 dark:text-slate-300 ${
-                                block.alignments[cIdx] || 'text-left'
-                              }`}
-                            >
-                              {renderInline(cell, `td-${idx}-${rIdx}-${cIdx}`)}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                tableIdx={idx}
+                headers={block.headers}
+                alignments={block.alignments}
+                rows={block.rows}
+                renderInline={renderInline}
+              />
             );
           }
 
@@ -826,124 +990,55 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
         }
       })}
 
-      {/* Grounded Sources & Verified Citations Card */}
+      {/* Vertical Sources list */}
       {showCitations && enrichedCitations && enrichedCitations.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-slate-200/90 dark:border-white/10 select-text">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              <BookOpen className="w-3.5 h-3.5 text-blue-500" />
-              <span>Sources ({enrichedCitations.length})</span>
-            </div>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
-              Click to view in new tab
-            </span>
+        <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400 select-text">
+          <div className="flex items-center gap-1.5 font-medium text-slate-400 dark:text-slate-500 text-[11px] tracking-wide uppercase shrink-0">
+            <BookOpen className="w-3.5 h-3.5 text-blue-500" />
+            <span>Sources:</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="flex flex-col gap-1.5 pl-0.5 min-w-0">
             {enrichedCitations.map((cit, citIdx) => {
               const detail = resolveCitationDetail(cit, citIdx + 1);
+              const targetUrl = detail.isWeb
+                ? (detail.webUrl || detail.primaryUrl)
+                : sourceService.getViewerUrl(detail.fileName, detail.pageNumber || 1, detail.plainText);
+
               return (
-                <div
+                <a
                   key={`${detail.index}-${detail.fileName}-${citIdx}`}
-                  className="p-3 rounded-xl bg-slate-50/90 dark:bg-white/[0.03] border border-slate-200/90 dark:border-white/10 hover:border-blue-400/60 dark:hover:border-blue-500/60 transition-all duration-150 flex flex-col justify-between group shadow-2xs"
+                  href={targetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Open directly in a new browser tab, never as an in-page popup modal
+                    if (
+                      onViewPdf &&
+                      detail.fileName &&
+                      detail.fileName !== 'Audited Document' &&
+                      !detail.isWeb
+                    ) {
+                      e.preventDefault();
+                      onViewPdf(detail.fileName, detail.pageNumber || 1, 'page');
+                      return;
+                    }
+                    if (typeof window !== 'undefined' && targetUrl && targetUrl !== '#') {
+                      e.preventDefault();
+                      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 text-[12px] text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] transition-all no-underline font-normal w-fit"
                 >
-                  <div>
-                    {/* Top row: badge + filename + page pill */}
-                    <div className="flex items-start justify-between gap-1.5 mb-1.5">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="px-1.5 py-0.5 rounded text-[10.5px] font-mono font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 shrink-0">
-                          [{detail.index}]
-                        </span>
-                        <div
-                          className="flex items-center gap-1 text-[12px] font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors"
-                          title={detail.fileName}
-                        >
-                          <FileText className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                          <span className="truncate">{detail.fileName}</span>
-                        </div>
-                      </div>
-
-                      {detail.pageNumber !== undefined && detail.pageNumber > 0 && (
-                        <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 shrink-0">
-                          Page {detail.pageNumber}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Section heading */}
-                    {detail.heading && (
-                      <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1 line-clamp-1">
-                        {detail.heading}
-                      </div>
-                    )}
-
-                    {/* Excerpt */}
-                    {detail.plainText && (
-                      <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2 italic mb-2">
-                        "{detail.plainText}"
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Quick Action Buttons */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
-                    <a
-                      href={detail.singlePageViewUrl || detail.singlePagePdfUrl || detail.pdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (
-                          onViewPdf &&
-                          detail.fileName &&
-                          detail.fileName !== 'Audited Document'
-                        ) {
-                          onViewPdf(detail.fileName, detail.pageNumber || 1, 'page');
-                          return;
-                        }
-                        if (
-                          detail.primaryUrl &&
-                          detail.primaryUrl !== '#' &&
-                          typeof window !== 'undefined'
-                        ) {
-                          window.open(detail.primaryUrl, '_blank', 'noopener,noreferrer');
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors cursor-pointer shadow-2xs no-underline"
-                      title={`Open Page ${detail.pageNumber || 1} in a new tab`}
-                    >
-                      <span>⚡ Open Page {detail.pageNumber || 1}</span>
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-
-                    {detail.pdfUrl && (
-                      <a
-                        href={detail.pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (
-                            onViewPdf &&
-                            detail.fileName &&
-                            detail.fileName !== 'Audited Document'
-                          ) {
-                            onViewPdf(detail.fileName, detail.pageNumber || 1, 'full');
-                            return;
-                          }
-                          if (typeof window !== 'undefined') {
-                            window.open(detail.pdfUrl, '_blank', 'noopener,noreferrer');
-                          }
-                        }}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium bg-slate-200/80 hover:bg-slate-300/80 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-slate-700 dark:text-slate-300 rounded-md transition-colors cursor-pointer no-underline"
-                        title="Open full PDF document in a new tab"
-                      >
-                        <span>📖 Full PDF</span>
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
+                  <span className="font-mono font-semibold shrink-0">[{detail.index}]</span>
+                  <span className="truncate max-w-[400px] sm:max-w-none">{detail.fileName}</span>
+                  {detail.pageNumber !== undefined && detail.pageNumber > 0 && (
+                    <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] shrink-0">
+                      (p.{detail.pageNumber})
+                    </span>
+                  )}
+                </a>
               );
             })}
           </div>

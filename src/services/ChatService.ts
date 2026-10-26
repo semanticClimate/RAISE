@@ -158,7 +158,7 @@ export class ChatService implements ChatServiceInterface {
             request_id: req.request_id,
             active_docs:
               req.active_docs && req.active_docs.length > 0 ? req.active_docs : undefined,
-            format: 'raw',
+            format: 'sse',
             document_filter: req.document_filter,
             hops: req.hops ?? (effectiveMode === 'expert' ? 3 : 1),
             top_k: req.top_k ?? (effectiveMode === 'expert' ? 8 : 4),
@@ -170,8 +170,20 @@ export class ChatService implements ChatServiceInterface {
         onStreamChunk
       );
 
-      // If streaming /api/chat succeeded (status 200)
-      if (streamRes.status === 200 && streamRes.text) {
+      const resolvedStreamText =
+        streamRes.text ||
+        (typeof streamRes.metadata?.grounded_answer === 'string'
+          ? (streamRes.metadata.grounded_answer as string)
+          : '') ||
+        (typeof streamRes.metadata?.answer === 'string'
+          ? (streamRes.metadata.answer as string)
+          : '') ||
+        (typeof streamRes.metadata?.reply === 'string'
+          ? (streamRes.metadata.reply as string)
+          : '');
+
+      // If streaming /api/chat succeeded (status 200) and we have text
+      if (streamRes.status === 200 && resolvedStreamText) {
         const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
         const meta = streamRes.metadata || {};
         let citations: Citation[] = Array.isArray(meta.citations)
@@ -217,7 +229,7 @@ export class ChatService implements ChatServiceInterface {
 
         const synthesizedResp: SubgraphQueryResponse = {
           query: req.query,
-          grounded_answer: streamRes.text,
+          grounded_answer: resolvedStreamText,
           latency_sec: durationSec,
           execution_time: durationSec,
           traceability_score:

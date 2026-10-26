@@ -341,9 +341,9 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
                 type="button"
                 onClick={() => onToggleAllSources(!allSelected)}
                 className="text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 dark:text-[#a8c7fa] border border-indigo-200/80 dark:border-indigo-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
-                title={allSelected ? 'Exclude all documents from search' : 'Include all documents in search'}
+                title={allSelected ? 'Detach all documents from drawer' : 'Attach all documents to drawer'}
               >
-                {allSelected ? 'Deselect All' : 'Select All'}
+                {allSelected ? 'Detach All' : 'Attach All'}
               </button>
             )}
           </div>
@@ -353,15 +353,15 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
             <div className="px-2.5 py-1.5 rounded-xl text-[11px] flex items-center justify-between gap-2 bg-slate-100/70 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/5">
               {activeSourcesCount === 0 ? (
                 <span className="text-slate-500 dark:text-slate-400">
-                  🌐 <strong>Global Scope:</strong> 0 docs selected. Queries search all ready library documents.
+                  🌐 <strong>Global Scope:</strong> 0 documents attached. Queries search all ready library documents.
                 </span>
               ) : activeSourcesCount < sourceDocs.length ? (
                 <span className="text-amber-700 dark:text-amber-300">
-                  🎯 <strong>Filtered Scope:</strong> Searching {activeSourcesCount} of {sourceDocs.length} documents.
+                  🎯 <strong>Filtered Scope:</strong> {activeSourcesCount} documents attached to drawer.
                 </span>
               ) : (
                 <span className="text-emerald-700 dark:text-emerald-300">
-                  ✓ <strong>Full Scope:</strong> All {sourceDocs.length} documents active in retrieval.
+                  ✓ <strong>Full Scope:</strong> All {sourceDocs.length} documents attached to drawer.
                 </span>
               )}
 
@@ -601,7 +601,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
             />
             <span className="text-[11.5px] font-medium text-slate-600 dark:text-slate-300">
               {isOnline
-                ? `${activeSourcesCount} of ${sourceDocs.length} sources enabled`
+                ? `${activeSourcesCount} of ${sourceDocs.length} documents attached`
                 : 'Gateway offline • 0 active documents'}
             </span>
           </div>

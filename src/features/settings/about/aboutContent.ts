@@ -2,9 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * RAISE SETTINGS: ABOUT & ARCHITECTURE CONTENT CONFIGURATION
  * ═══════════════════════════════════════════════════════════════════════════
- * Edit the content in this file to update the About tab in Settings.
- * You can freely change version numbers, descriptions, mode cards, bullet points,
- * and system substrate specs here without modifying any component or CSS code.
+ * Sid says: Reflects the full 7 architecture stages and tri-substrate specifications from README.md
  */
 
 export interface ModeFeatureItem {
@@ -59,7 +57,7 @@ export const aboutContent: AboutContentConfig = {
     title: 'About RAISE GraphRAG',
     version: 'v1.0.0',
     description:
-      'Hybrid Vector + BM25 retrieval with multi-hop Neo4j GraphRAG routing and real-time citation verification.',
+      'Tri-substrate retrieval (Vectors, Lexical BM25, Neo4j Graph) with 7-stage verifiable reasoning and interactive citations.',
     showAsciiText: 'Show ASCII Blueprint',
     hideAsciiText: 'Hide ASCII Blueprint',
   },
@@ -85,7 +83,7 @@ export const aboutContent: AboutContentConfig = {
   // Central Router node above the dual mode tree
   routerNode: {
     category: 'Query Intake & Intent Router',
-    title: 'LangGraph State Machine',
+    title: '15-Node Cyclical LangGraph State Machine',
   },
 
   // Dual Routing Mode specifications
@@ -141,29 +139,39 @@ export const aboutContent: AboutContentConfig = {
     },
   },
 
-  // System Substrate Specifications grid
+  // System Substrate Specifications grid (7-stage pipeline)
   substrateSpecs: {
     sectionTitle: 'System Substrate Specifications',
     items: [
       {
-        label: 'Vector Database',
-        value: 'ChromaDB',
-        detail: 'BGE-Large-EN (1024-dim dense)',
+        label: 'Vector Substrate',
+        value: 'ChromaDB Dense Vectors',
+        detail: 'BGE-Large-EN (1024-dim dense embeddings)',
       },
       {
         label: 'Knowledge Graph',
-        value: 'Neo4j 5.x',
-        detail: 'Bolt Protocol • Cypher Traversal',
+        value: 'Neo4j 5.x Property Graph',
+        detail: 'Bolt Protocol • Cypher Multi-Hop Traversal',
       },
       {
-        label: 'Inference Engine',
-        value: 'Transformer LLM Substrate',
-        detail: 'Grounded Synthesis & Streaming Tokens',
+        label: 'Lexical Search',
+        value: 'BM25 Inverted Index',
+        detail: 'Exact Grant IDs, Monetary & Alphanumeric Codes',
       },
       {
         label: 'Document Ingestion',
-        value: 'IBM Docling Engine',
-        detail: 'Synchronous Multi-Modal Chunking',
+        value: 'IBM Docling Engine (GGAHC)',
+        detail: 'Graph-Guided Adaptive Hierarchical Chunking preserving tables',
+      },
+      {
+        label: 'Dual-Tier Memory',
+        value: 'Redis Cache & Postgres',
+        detail: 'Sub-millisecond fast cache + multi-turn session context',
+      },
+      {
+        label: 'Reasoning & Quality Gate',
+        value: 'Entailment Verification Gate',
+        detail: 'Grounded citation check & 2-pass query retry loop',
       },
     ],
   },

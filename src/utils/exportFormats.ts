@@ -1,3 +1,5 @@
+import katex from 'katex';
+import 'katex/dist/contrib/mhchem.mjs';
 import type { SubgraphQueryResponse } from '../types';
 import { cleanRagResponseText } from './citationParser';
 
@@ -132,7 +134,14 @@ export function formatMarkdownReport(
   lines.push('');
 
   // Clean answer text & format citations
-  const { cleanText } = cleanRagResponseText(answerText, response?.citations || []);
+  const { cleanText, citations: enrichedCitations } = cleanRagResponseText(
+    answerText,
+    response?.citations || []
+  );
+  const citations =
+    enrichedCitations && enrichedCitations.length > 0
+      ? enrichedCitations
+      : response?.citations || [];
 
   // RAISE Synthesis Section
   lines.push('## RAISE : Research Synthesis');
@@ -141,13 +150,13 @@ export function formatMarkdownReport(
   lines.push('');
 
   // Citations & References Section
-  if (response?.citations && response.citations.length > 0) {
+  if (citations && citations.length > 0) {
     lines.push('---');
     lines.push('');
     lines.push('## References & Grounded Citations');
     lines.push('');
 
-    response.citations.forEach((cit) => {
+    citations.forEach((cit) => {
       const idx = cit.citation_index;
       const file = cit.pdf_filename || 'Audited Institutional Document';
       const page = cit.primary_page ? `Page ${cit.primary_page}` : 'Page N/A';
@@ -214,6 +223,575 @@ export function formatDeveloperJson(
 }
 
 /**
+ * Safely escapes HTML special characters to prevent XSS.
+ */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Safely renders a LaTeX formula to KaTeX HTML string (including mhchem chemistry).
+ * Falls back to styled code element if KaTeX fails to parse.
+ */
+export function renderKatexToString(formula: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(formula, {
+      displayMode,
+      throwOnError: false,
+      errorColor: '#dc2626',
+      output: 'htmlAndMathml',
+      strict: false,
+      trust: false,
+    });
+  } catch (err) {
+    console.warn('KaTeX rendering error:', err);
+    const escaped = escapeHtml(formula);
+    if (displayMode) {
+      return `<div class="katex-fallback" style="text-align: center; margin: 12px 0; font-family: monospace; font-size: 13px; color: #b45309; background: #fffbeb; padding: 8px 12px; border-radius: 6px; border: 1px solid #fde68a;">${escaped}</div>`;
+    }
+    return `<code class="katex-fallback" style="font-family: monospace; font-size: 12px; color: #b45309; background: #fffbeb; padding: 2px 5px; border-radius: 4px; border: 1px solid #fde68a;">${escaped}</code>`;
+  }
+}
+
+/**
+ * Converts inline markdown tokens (math, citations, bold, italic, code, links) to HTML.
+ */
+export function formatInlineMarkdown(text: string): string {
+  if (!text) return '';
+
+  const INLINE_REGEX =
+    /(`[^`]+`|\$\$[^\$]+?\$\$|\$([^\$\s](?:[^\$]*?[^\$\s])?)\$|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\[\d+(?:\s*,\s*\d+)*\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+|[#/][^\s)]+)\)|\b(?:FULLY_COMPARABLE|CONDITIONALLY_COMPARABLE|CONTEXT_ADJUSTED|NOT_COMPARABLE|INSUFFICIENT_EVIDENCE|EXTERNAL_SUPPLEMENTED|EXTERNAL_PUBLIC_RECORD)\b|\*[^*\n]+?\*|_[^_\n]+?_|\\\|)/g;
+
+  const parts: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = INLINE_REGEX.exec(text)) !== null) {
+    const matchStart = match.index;
+    const matched = match[0];
+
+    if (matchStart > lastIndex) {
+      parts.push(escapeHtml(text.substring(lastIndex, matchStart)));
+    }
+
+    // Escaped pipe: \|
+    if (matched === '\\|') {
+      parts.push('|');
+    }
+    // Block / Display Math: $$formula$$
+    else if (matched.startsWith('$$') && matched.endsWith('$$') && matched.length > 4) {
+      const formula = matched.slice(2, -2).trim();
+      parts.push(renderKatexToString(formula, true));
+    }
+    // Inline math: $formula$
+    else if (matched.startsWith('$') && matched.endsWith('$') && matched.length > 2) {
+      const formula = matched.slice(1, -1).trim();
+      parts.push(renderKatexToString(formula, false));
+    }
+    // Citation badge: [1] or [1, 2]
+    else if (/^\[\d+(?:\s*,\s*\d+)*\]$/.test(matched)) {
+      parts.push(
+        `<span class="citation-badge" style="display: inline-block; padding: 1px 6px; font-size: 11px; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, monospace; font-weight: 600; color: #0284c7; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 4px; margin: 0 2px; vertical-align: baseline;">${escapeHtml(
+          matched
+        )}</span>`
+      );
+    }
+    // Bold Italic: ***text***
+    else if (matched.startsWith('***') && matched.endsWith('***')) {
+      parts.push(`<strong><em>${formatInlineMarkdown(matched.slice(3, -3))}</em></strong>`);
+    }
+    // Bold: **text** or __text__
+    else if (
+      (matched.startsWith('**') && matched.endsWith('**')) ||
+      (matched.startsWith('__') && matched.endsWith('__'))
+    ) {
+      parts.push(`<strong>${formatInlineMarkdown(matched.slice(2, -2))}</strong>`);
+    }
+    // Italic: *text* or _text_
+    else if (
+      (matched.startsWith('*') && matched.endsWith('*')) ||
+      (matched.startsWith('_') && matched.endsWith('_'))
+    ) {
+      parts.push(`<em>${formatInlineMarkdown(matched.slice(1, -1))}</em>`);
+    }
+    // Code: `code`
+    else if (matched.startsWith('`') && matched.endsWith('`')) {
+      parts.push(
+        `<code style="background: #f1f5f9; color: #0f172a; padding: 2px 5px; border-radius: 4px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; border: 1px solid #e2e8f0;">${escapeHtml(
+          matched.slice(1, -1)
+        )}</code>`
+      );
+    }
+    // Link: [text](url)
+    else if (matched.startsWith('[') && matched.includes('](') && matched.endsWith(')')) {
+      const linkMatch = matched.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+|[#/][^\s)]+)\)$/);
+      if (linkMatch) {
+        parts.push(
+          `<a href="${escapeHtml(
+            linkMatch[2]
+          )}" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: underline;">${escapeHtml(
+            linkMatch[1]
+          )}</a>`
+        );
+      } else {
+        parts.push(escapeHtml(matched));
+      }
+    }
+    // Comparability Status pill
+    else if (
+      /^(?:FULLY_COMPARABLE|CONDITIONALLY_COMPARABLE|CONTEXT_ADJUSTED|NOT_COMPARABLE|INSUFFICIENT_EVIDENCE|EXTERNAL_SUPPLEMENTED|EXTERNAL_PUBLIC_RECORD)$/.test(
+        matched
+      )
+    ) {
+      parts.push(
+        `<span style="display: inline-block; padding: 2px 7px; font-size: 11px; font-weight: 600; border-radius: 9999px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">${escapeHtml(
+          matched
+        )}</span>`
+      );
+    } else {
+      parts.push(escapeHtml(matched));
+    }
+
+    lastIndex = INLINE_REGEX.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(escapeHtml(text.substring(lastIndex)));
+  }
+
+  return parts.join('');
+}
+
+/**
+ * Splits a Markdown table row into trimmed cell strings, respecting:
+ * - Backslash-escaped characters (\|)
+ * - Inline code backticks (`...|...`)
+ * - Math expressions ($...$, $$...$$)
+ */
+export function splitTableRow(line: string): string[] {
+  let trimmed = line.trim();
+
+  // Strip unescaped leading pipe
+  if (trimmed.startsWith('|')) {
+    trimmed = trimmed.slice(1);
+  }
+
+  // Helper to test if char at index is escaped by an odd number of preceding backslashes
+  const isEscaped = (str: string, index: number): boolean => {
+    let count = 0;
+    for (let i = index - 1; i >= 0 && str[i] === '\\'; i--) {
+      count++;
+    }
+    return count % 2 === 1;
+  };
+
+  // Strip unescaped trailing pipe
+  if (trimmed.endsWith('|') && !isEscaped(trimmed, trimmed.length - 1)) {
+    trimmed = trimmed.slice(0, -1);
+  }
+
+  const cells: string[] = [];
+  let currentCell = '';
+  let inCode = false;
+  let inMath = false;
+  let i = 0;
+
+  while (i < trimmed.length) {
+    const char = trimmed[i];
+
+    if (char === '\\' && i + 1 < trimmed.length) {
+      currentCell += char + trimmed[i + 1];
+      i += 2;
+      continue;
+    }
+
+    if (char === '`') {
+      inCode = !inCode;
+      currentCell += char;
+      i++;
+      continue;
+    }
+
+    if (char === '$' && !inCode) {
+      inMath = !inMath;
+      currentCell += char;
+      i++;
+      continue;
+    }
+
+    if (char === '|' && !inCode && !inMath) {
+      cells.push(currentCell.trim());
+      currentCell = '';
+      i++;
+      continue;
+    }
+
+    currentCell += char;
+    i++;
+  }
+
+  cells.push(currentCell.trim());
+  return cells;
+}
+
+/**
+ * Parses Markdown column alignment specifier (:---, :---:, ---:).
+ */
+export function parseAlignment(spec: string): 'left' | 'center' | 'right' {
+  const trimmed = spec.trim();
+  if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'center';
+  if (trimmed.endsWith(':')) return 'right';
+  if (trimmed.startsWith(':')) return 'left';
+  return 'left';
+}
+
+/**
+ * Renders Markdown table data as a beautifully styled HTML table element.
+ */
+export function renderHtmlTable(
+  headers: string[],
+  alignments: ('left' | 'center' | 'right')[],
+  rows: string[][]
+): string {
+  const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
+
+  const normalizedHeaders = [...headers];
+  while (normalizedHeaders.length < colCount) {
+    normalizedHeaders.push('');
+  }
+
+  const thCells = normalizedHeaders
+    .map((h, idx) => {
+      const align = alignments[idx] || 'left';
+      const borderRight = idx < colCount - 1 ? 'border-right: 1px solid #e2e8f0;' : '';
+      return `<th style="padding: 10px 14px; text-align: ${align}; font-weight: 700; color: #0f172a; font-size: 13px; letter-spacing: -0.01em; ${borderRight}">${formatInlineMarkdown(
+        h
+      )}</th>`;
+    })
+    .join('');
+
+  const trRows = rows
+    .map((row, rIdx) => {
+      const bg = rIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const normalizedRow = [...row];
+      while (normalizedRow.length < colCount) {
+        normalizedRow.push('');
+      }
+      const tdCells = normalizedRow
+        .map((cell, cIdx) => {
+          const align = alignments[cIdx] || 'left';
+          const borderRight = cIdx < colCount - 1 ? 'border-right: 1px solid #e2e8f0;' : '';
+          return `<td style="padding: 9px 14px; text-align: ${align}; color: #334155; font-size: 13.5px; line-height: 1.5; ${borderRight}">${formatInlineMarkdown(
+            cell
+          )}</td>`;
+        })
+        .join('');
+      return `<tr style="background: ${bg}; border-bottom: 1px solid #e2e8f0;">${tdCells}</tr>`;
+    })
+    .join('');
+
+  return `
+<div class="table-container" style="overflow-x: auto; margin: 20px 0; border: 1px solid #cbd5e1; border-radius: 8px; break-inside: avoid; page-break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+  <table style="width: 100%; border-collapse: collapse; font-size: 13.5px; text-align: left; background: #ffffff;">
+    <thead>
+      <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+        ${thCells}
+      </tr>
+    </thead>
+    <tbody>
+      ${trRows}
+    </tbody>
+  </table>
+</div>`;
+}
+
+/**
+ * Robust markdown block transformer converting Markdown text into styled HTML elements.
+ * Correctly parses headings, code blocks, block equations ($$ ... $$), tables, lists, blockquotes, and callouts.
+ */
+export function convertMarkdownToHtml(markdown: string): string {
+  if (!markdown) return '';
+
+  const lines = markdown.split('\n');
+  const htmlBlocks: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    // 1. Empty lines
+    if (!trimmed) {
+      i++;
+      continue;
+    }
+
+    // 2. Fenced Code Block: ```lang
+    if (trimmed.startsWith('```')) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length && lines[i].trim().startsWith('```')) {
+        i++;
+      }
+      const codeHtml = escapeHtml(codeLines.join('\n'));
+      htmlBlocks.push(
+        `<pre style="background: #0f172a; color: #f8fafc; padding: 14px 18px; border-radius: 8px; font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; overflow-x: auto; line-height: 1.5; margin: 16px 0; break-inside: avoid; page-break-inside: avoid;"><code>${codeHtml}</code></pre>`
+      );
+      continue;
+    }
+
+    // 3. LaTeX Block Equations: $$ formula $$
+    if (trimmed.startsWith('$$')) {
+      if (trimmed.length > 4 && trimmed.endsWith('$$')) {
+        const formula = trimmed.slice(2, -2).trim();
+        htmlBlocks.push(
+          `<div class="katex-block-wrapper" style="margin: 18px 0; padding: 14px 18px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; overflow-x: auto; break-inside: avoid; page-break-inside: avoid;">${renderKatexToString(
+            formula,
+            true
+          )}</div>`
+        );
+        i++;
+        continue;
+      }
+      const mathLines: string[] = [];
+      if (trimmed.length > 2) {
+        mathLines.push(trimmed.slice(2));
+      }
+      i++;
+      while (i < lines.length && !lines[i].trim().endsWith('$$') && lines[i].trim() !== '$$') {
+        mathLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) {
+        const lastLine = lines[i].trim();
+        if (lastLine !== '$$') {
+          mathLines.push(lastLine.replace(/\$\$$/, ''));
+        }
+        i++;
+      }
+      const formula = mathLines.join('\n').trim();
+      htmlBlocks.push(
+        `<div class="katex-block-wrapper" style="margin: 18px 0; padding: 14px 18px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; overflow-x: auto; break-inside: avoid; page-break-inside: avoid;">${renderKatexToString(
+          formula,
+          true
+        )}</div>`
+      );
+      continue;
+    }
+
+    // 4. Horizontal Rules: ---, ***, ___
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      htmlBlocks.push(
+        `<hr style="margin: 22px 0; border: none; border-top: 1px solid #e2e8f0;" />`
+      );
+      i++;
+      continue;
+    }
+
+    // 5. Headings: #, ##, ###, #### (or malformed bullets with headings)
+    const cleanHeadingLine = trimmed.replace(/^[•*-]\s*(?:\*\*)?\s*(#{1,4})/, '$1');
+    if (cleanHeadingLine.startsWith('#')) {
+      const match = cleanHeadingLine.match(/^(#{1,4})\s+(.*)$/);
+      if (match) {
+        const level = match[1].length;
+        const headingText = match[2].replace(/^\*+|\*+$/g, '').trim();
+        if (level === 1) {
+          htmlBlocks.push(
+            `<h1 style="font-size: 22px; font-weight: 800; color: #0f172a; margin-top: 28px; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">${formatInlineMarkdown(
+              headingText
+            )}</h1>`
+          );
+        } else if (level === 2) {
+          htmlBlocks.push(
+            `<h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 24px; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${formatInlineMarkdown(
+              headingText
+            )}</h2>`
+          );
+        } else if (level === 3) {
+          htmlBlocks.push(
+            `<h3 style="font-size: 16px; font-weight: 700; color: #0284c7; margin-top: 20px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${formatInlineMarkdown(
+              headingText
+            )}</h3>`
+          );
+        } else {
+          htmlBlocks.push(
+            `<h4 style="font-size: 14.5px; font-weight: 700; color: #0f172a; margin-top: 16px; margin-bottom: 6px;">${formatInlineMarkdown(
+              headingText
+            )}</h4>`
+          );
+        }
+        i++;
+        continue;
+      }
+    }
+
+    // Standalone bold section header: **Section Title**
+    if (
+      /^\*\*[^*\n]+\*\*$/.test(trimmed) &&
+      !trimmed.slice(2, -2).endsWith('.') &&
+      trimmed.length < 80
+    ) {
+      const inner = trimmed.slice(2, -2).trim();
+      htmlBlocks.push(
+        `<h3 style="font-size: 16px; font-weight: 700; color: #0284c7; margin-top: 20px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${formatInlineMarkdown(
+          inner
+        )}</h3>`
+      );
+      i++;
+      continue;
+    }
+
+    // 6. Markdown Tables: starts with | and next line is separator
+    if (trimmed.includes('|') && i + 1 < lines.length) {
+      const nextTrimmed = lines[i + 1].trim();
+      const isSep = /^\|?\s*:?-+:?\s*(\|(\s*:?-+:?\s*))+\|?$/.test(nextTrimmed);
+      if (isSep) {
+        const headers = splitTableRow(trimmed);
+        const sepSpecs = splitTableRow(nextTrimmed);
+        const alignments = sepSpecs.map(parseAlignment);
+
+        i += 2;
+        const rows: string[][] = [];
+        while (
+          i < lines.length &&
+          lines[i].trim().includes('|') &&
+          !lines[i].trim().startsWith('#')
+        ) {
+          rows.push(splitTableRow(lines[i]));
+          i++;
+        }
+
+        const tableHtml = renderHtmlTable(headers, alignments, rows);
+        htmlBlocks.push(tableHtml);
+        continue;
+      }
+    }
+
+    // 7. Callouts
+    if (/^\*\*(Warning|Caution|Alert|Important):\*\*/i.test(trimmed)) {
+      htmlBlocks.push(
+        `<div style="margin: 14px 0; padding: 12px 16px; background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 13.5px; color: #92400e; line-height: 1.6; break-inside: avoid; page-break-inside: avoid;">${formatInlineMarkdown(
+          trimmed
+        )}</div>`
+      );
+      i++;
+      continue;
+    }
+    if (/^\*\*(Note|Key Takeaway|Finding|Summary|Takeaway):\*\*/i.test(trimmed)) {
+      htmlBlocks.push(
+        `<div style="margin: 14px 0; padding: 12px 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 6px; font-size: 13.5px; color: #1e40af; line-height: 1.6; break-inside: avoid; page-break-inside: avoid;">${formatInlineMarkdown(
+          trimmed
+        )}</div>`
+      );
+      i++;
+      continue;
+    }
+
+    // 8. Blockquotes: > text
+    if (trimmed.startsWith('>')) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('>')) {
+        quoteLines.push(lines[i].trim().replace(/^>\s?/, ''));
+        i++;
+      }
+      htmlBlocks.push(
+        `<blockquote style="margin: 14px 0; padding: 10px 16px; border-left: 4px solid #0284c7; background: #f8fafc; border-radius: 0 6px 6px 0; font-style: italic; color: #475569; font-size: 13.5px; line-height: 1.6; text-align: justify; text-justify: inter-word;">${formatInlineMarkdown(
+          quoteLines.join(' ')
+        )}</blockquote>`
+      );
+      continue;
+    }
+
+    // 9. Ordered List: 1. item
+    if (/^\s*\d+\.\s+/.test(rawLine)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+\.\s+/, '').trim());
+        i++;
+      }
+      const listItems = items
+        .map(
+          (li) =>
+            `<li style="margin-bottom: 7px; text-align: justify; text-justify: inter-word; line-height: 1.65; hyphens: auto; -webkit-hyphens: auto;">${formatInlineMarkdown(
+              li
+            )}</li>`
+        )
+        .join('');
+      htmlBlocks.push(
+        `<ol style="margin: 12px 0; padding-left: 24px; color: #334155; line-height: 1.65;">${listItems}</ol>`
+      );
+      continue;
+    }
+
+    // 10. Unordered List: - item, * item, • item
+    if (/^\s*([*\-•])\s+/.test(rawLine)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*([*\-•])\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*([*\-•])\s+/, '').trim());
+        i++;
+      }
+      const listItems = items
+        .map(
+          (li) =>
+            `<li style="margin-bottom: 7px; text-align: justify; text-justify: inter-word; line-height: 1.65; hyphens: auto; -webkit-hyphens: auto;">${formatInlineMarkdown(
+              li
+            )}</li>`
+        )
+        .join('');
+      htmlBlocks.push(
+        `<ul style="margin: 12px 0; padding-left: 24px; color: #334155; line-height: 1.65;">${listItems}</ul >`
+      );
+      continue;
+    }
+
+    // 11. Standard Paragraph: group contiguous non-blank lines that are not special blocks
+    const paraLines: string[] = [trimmed];
+    i++;
+    while (i < lines.length) {
+      const nextLine = lines[i];
+      const nextTrimmed = nextLine.trim();
+      if (!nextTrimmed) break;
+      if (
+        nextTrimmed.startsWith('#') ||
+        nextTrimmed.startsWith('```') ||
+        nextTrimmed.startsWith('$$') ||
+        nextTrimmed.startsWith('>') ||
+        /^(-{3,}|\*{3,}|_{3,})$/.test(nextTrimmed) ||
+        /^\s*\d+\.\s+/.test(nextLine) ||
+        /^\s*([*\-•])\s+/.test(nextLine) ||
+        (nextTrimmed.includes('|') &&
+          i + 1 < lines.length &&
+          /^\|?\s*:?-+:?\s*(\|(\s*:?-+:?\s*))+\|?$/.test(lines[i + 1].trim())) ||
+        /^\*\*(Warning|Caution|Alert|Important|Note|Key Takeaway|Finding|Summary|Takeaway):\*\*/i.test(
+          nextTrimmed
+        )
+      ) {
+        break;
+      }
+      paraLines.push(nextTrimmed);
+      i++;
+    }
+
+    htmlBlocks.push(
+      `<p style="margin-bottom: 12px; color: #334155; line-height: 1.7; font-size: 14.5px; text-align: justify; text-justify: inter-word; hyphens: auto; -webkit-hyphens: auto;">${formatInlineMarkdown(
+        paraLines.join(' ')
+      )}</p>`
+    );
+  }
+
+  return htmlBlocks.join('\n');
+}
+
+/**
  * Generates an HTML printable report string formatted with institutional styles
  * and @media print CSS for direct browser printing or PDF saving.
  */
@@ -227,84 +805,65 @@ export function generateReportHtml(
     timeStyle: 'short',
   });
 
+  const { cleanText, citations: enrichedCitations } = cleanRagResponseText(
+    answerText,
+    response?.citations || []
+  );
+  const citations =
+    enrichedCitations && enrichedCitations.length > 0
+      ? enrichedCitations
+      : response?.citations || [];
+
   const uniqueDocs = Array.from(
-    new Set((response?.citations || []).map((c) => c.pdf_filename).filter(Boolean))
+    new Set((citations || []).map((c) => c.pdf_filename).filter(Boolean))
   ) as string[];
   const uniqueUnis = Array.from(
-    new Set((response?.citations || []).map((c) => c.university).filter(Boolean))
+    new Set((citations || []).map((c) => c.university).filter(Boolean))
   ) as string[];
-  const citationsCount = response?.citations?.length || 0;
+  const citationsCount = citations?.length || 0;
 
-  const { cleanText } = cleanRagResponseText(answerText, response?.citations || []);
-
-  // Basic markdown to HTML paragraph & heading transformer with justified alignment
-  const formattedAnswerHtml = cleanText
-    .split('\n\n')
-    .map((block) => {
-      const trimmed = block.trim();
-      if (!trimmed) return '';
-      if (trimmed.startsWith('### ')) {
-        return `<h3 style="font-size: 16px; font-weight: 700; color: #0284c7; margin-top: 20px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${escapeHtml(
-          trimmed.slice(4)
-        )}</h3>`;
-      }
-      if (trimmed.startsWith('## ')) {
-        return `<h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 24px; margin-bottom: 10px;">${escapeHtml(
-          trimmed.slice(3)
-        )}</h2>`;
-      }
-      if (trimmed.startsWith('# ')) {
-        return `<h1 style="font-size: 22px; font-weight: 800; color: #0f172a; margin-top: 28px; margin-bottom: 12px;">${escapeHtml(
-          trimmed.slice(2)
-        )}</h1>`;
-      }
-
-      // Format bullet lists with justified text
-      if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
-        const items = trimmed
-          .split('\n')
-          .map((li) => li.replace(/^[-*]\s+/, ''))
-          .map(
-            (li) =>
-              `<li style="margin-bottom: 7px; text-align: justify; text-justify: inter-word; line-height: 1.65; hyphens: auto; -webkit-hyphens: auto;">${formatInlineMarkdown(li)}</li>`
-          )
-          .join('');
-        return `<ul style="margin: 12px 0; padding-left: 24px; color: #334155; line-height: 1.65;">${items}</ul>`;
-      }
-
-      return `<p style="margin-bottom: 12px; color: #334155; line-height: 1.7; font-size: 14.5px; text-align: justify; text-justify: inter-word; hyphens: auto; -webkit-hyphens: auto;">${formatInlineMarkdown(
-        trimmed
-      )}</p>`;
-    })
-    .join('\n');
+  const formattedAnswerHtml = convertMarkdownToHtml(cleanText);
 
   // Citations HTML
   let citationsHtml = '';
-  if (response?.citations && response.citations.length > 0) {
-    const rows = response.citations
+  if (citations && citations.length > 0) {
+    const rows = citations
       .map(
         (cit) => `
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; break-inside: avoid;">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; break-inside: avoid; page-break-inside: avoid;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <strong style="color: #0f172a; font-size: 13px;">[${cit.citation_index}] ${escapeHtml(
-              cit.pdf_filename || 'Document'
-            )}</strong>
-            <span style="font-family: monospace; font-size: 12px; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 4px;">Page ${
+            <div>
+              <strong style="color: #0f172a; font-size: 13px;">[${cit.citation_index}] ${escapeHtml(
+                cit.pdf_filename || 'Audited Document'
+              )}</strong>
+              ${
+                cit.university
+                  ? `<span style="font-size: 11.5px; color: #64748b; margin-left: 6px;">(${escapeHtml(
+                      cit.university
+                    )})</span>`
+                  : ''
+              }
+            </div>
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11.5px; color: #0284c7; background: #e0f2fe; border: 1px solid #bae6fd; padding: 2px 8px; border-radius: 4px; font-weight: 600;">Page ${
               cit.primary_page || 'N/A'
             }</span>
           </div>
           ${
             cit.plain_text
-              ? `<blockquote style="margin: 6px 0; padding-left: 12px; border-left: 3px solid #cbd5e1; font-style: italic; color: #475569; font-size: 12.5px; text-align: justify; text-justify: inter-word;">"${escapeHtml(
+              ? `<blockquote style="margin: 8px 0; padding-left: 12px; border-left: 3px solid #cbd5e1; font-style: italic; color: #475569; font-size: 12.5px; text-align: justify; text-justify: inter-word; line-height: 1.6;">"${escapeHtml(
                   cit.plain_text
                 )}"</blockquote>`
               : ''
           }
           <div style="font-size: 11px; color: #64748b; margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
-            <span>Chunk: <code>${escapeHtml(cit.chunk_id || 'N/A')}</code></span>
+            <span>Chunk: <code style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; border: 1px solid #e2e8f0;">${escapeHtml(
+              cit.chunk_id || 'N/A'
+            )}</code></span>
             ${
               typeof cit.similarity === 'number'
-                ? `<span>Similarity: <strong>${cit.similarity.toFixed(3)}</strong></span>`
+                ? `<span>Relevance Similarity: <strong style="color: #0f172a;">${cit.similarity.toFixed(
+                    3
+                  )}</strong></span>`
                 : ''
             }
           </div>
@@ -316,7 +875,7 @@ export function generateReportHtml(
     citationsHtml = `
       <section style="margin-top: 36px; break-before: auto;">
         <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; border-bottom: 2px solid #0284c7; padding-bottom: 6px; margin-bottom: 16px;">
-          Grounded References & Sources (${response.citations.length})
+          Grounded References & Sources (${citations.length})
         </h2>
         ${rows}
       </section>
@@ -328,6 +887,7 @@ export function generateReportHtml(
 <head>
   <meta charset="UTF-8">
   <title>RAISE Report: ${escapeHtml(query || 'Research Inquiry')}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.css" crossorigin="anonymous">
   <style>
     @page {
       size: A4 portrait;
@@ -356,12 +916,51 @@ export function generateReportHtml(
       .no-print {
         display: none !important;
       }
+      .katex {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
     }
     p, li, blockquote {
       text-align: justify;
       text-justify: inter-word;
       hyphens: auto;
       -webkit-hyphens: auto;
+    }
+    .katex {
+      font-size: 1.05em;
+      text-rendering: auto;
+    }
+    .katex-display {
+      margin: 0.8em 0;
+      text-align: center;
+    }
+    .katex .katex-mathml {
+      position: absolute;
+      clip: rect(1px, 1px, 1px, 1px);
+      padding: 0;
+      border: 0;
+      height: 1px;
+      width: 1px;
+      overflow: hidden;
+    }
+    .katex-html {
+      display: inline-block;
+    }
+    .katex-block-wrapper {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .table-container {
+      margin: 18px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    table {
+      page-break-inside: avoid;
+    }
+    tr {
+      page-break-inside: avoid;
     }
     .print-banner {
       background: #0f172a;
@@ -483,32 +1082,6 @@ export function generateReportHtml(
 </html>`;
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function formatInlineMarkdown(text: string): string {
-  let escaped = escapeHtml(text);
-  // Bold **text**
-  escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  // Code `code`
-  escaped = escaped.replace(
-    /`(.*?)`/g,
-    '<code style="background: #f1f5f9; padding: 2px 4px; border-radius: 4px; font-size: 12px; font-family: monospace;">$1</code>'
-  );
-  // Citation badges [1] or [1, 2]
-  escaped = escaped.replace(
-    /\[(\d+(?:\s*,\s*\d+)*)\]/g,
-    '<span style="display: inline-block; padding: 1px 5px; font-size: 11px; font-family: monospace; font-weight: 600; color: #0284c7; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 4px; margin: 0 2px;">[$1]</span>'
-  );
-  return escaped;
-}
-
 /**
  * Escapes characters for PDF content streams and normalizes unicode into readable ASCII equivalents.
  */
@@ -540,6 +1113,54 @@ function escapePdfText(text: string): string {
           return 'u';
         case '±':
           return '+/-';
+        case '→':
+          return ' -> ';
+        case '←':
+          return ' <- ';
+        case '↔':
+          return ' <-> ';
+        case '≤':
+          return '<=';
+        case '≥':
+          return '>=';
+        case '≠':
+          return '!=';
+        case '≈':
+          return '~=';
+        case '×':
+          return 'x';
+        case '÷':
+          return '/';
+        case '²':
+          return '^2';
+        case '³':
+          return '^3';
+        case '¹':
+          return '^1';
+        case '⁰':
+          return '^0';
+        case '√':
+          return 'sqrt';
+        case 'α':
+          return 'alpha';
+        case 'β':
+          return 'beta';
+        case 'γ':
+          return 'gamma';
+        case 'δ':
+          return 'delta';
+        case 'Δ':
+          return 'Delta';
+        case 'π':
+          return 'pi';
+        case 'λ':
+          return 'lambda';
+        case '∑':
+          return 'sum';
+        case '∫':
+          return 'integral';
+        case '∞':
+          return 'infinity';
         default:
           return ' ';
       }
@@ -645,14 +1266,24 @@ export function generatePdfBlob(
   const topY = 785;
   const bottomY = 56;
 
-  // Metadata Extraction
+  // Clean answer text & extract enriched citations first
+  const { cleanText, citations: enrichedCitations } = cleanRagResponseText(
+    answerText,
+    response?.citations || []
+  );
+  const citations =
+    enrichedCitations && enrichedCitations.length > 0
+      ? enrichedCitations
+      : response?.citations || [];
+
+  // Metadata Extraction from enriched citations
   const uniqueDocs = Array.from(
-    new Set((response?.citations || []).map((c) => c.pdf_filename).filter(Boolean))
+    new Set((citations || []).map((c) => c.pdf_filename).filter(Boolean))
   ) as string[];
   const uniqueUnis = Array.from(
-    new Set((response?.citations || []).map((c) => c.university).filter(Boolean))
+    new Set((citations || []).map((c) => c.university).filter(Boolean))
   ) as string[];
-  const totalCitations = response?.citations?.length || 0;
+  const totalCitations = citations?.length || 0;
 
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
@@ -741,13 +1372,110 @@ export function generatePdfBlob(
   curY -= 28;
 
   // --- ANSWER BODY RENDERING WITH TYPOGRAPHIC JUSTIFICATION ---
-  const { cleanText } = cleanRagResponseText(answerText, response?.citations || []);
   const answerParagraphs = cleanText.split('\n');
-  for (const rawLine of answerParagraphs) {
+  for (let pIdx = 0; pIdx < answerParagraphs.length; pIdx++) {
+    const rawLine = answerParagraphs[pIdx];
     const trimmed = rawLine.trim();
     if (!trimmed) {
       curY -= 6;
       continue;
+    }
+
+    // Block LaTeX Math ($$ ... $$)
+    if (trimmed.startsWith('$$')) {
+      let formula = '';
+      if (trimmed.length > 4 && trimmed.endsWith('$$')) {
+        formula = trimmed.slice(2, -2).trim();
+      } else {
+        const mathLines: string[] = [];
+        if (trimmed.length > 2) mathLines.push(trimmed.slice(2));
+        pIdx++;
+        while (
+          pIdx < answerParagraphs.length &&
+          !answerParagraphs[pIdx].trim().endsWith('$$') &&
+          answerParagraphs[pIdx].trim() !== '$$'
+        ) {
+          mathLines.push(answerParagraphs[pIdx]);
+          pIdx++;
+        }
+        if (pIdx < answerParagraphs.length) {
+          const lastLine = answerParagraphs[pIdx].trim();
+          if (lastLine !== '$$') {
+            mathLines.push(lastLine.replace(/\$\$$/, ''));
+          }
+        }
+        formula = mathLines.join(' ').trim();
+      }
+
+      ensureSpace(28);
+      currentOps.push(`0.96 0.97 0.99 rg 0.88 0.91 0.95 RG 0.5 w`);
+      currentOps.push(`${marginX} ${curY - 24} ${contentWidth} 24 re b`);
+      const cleanFormula = formula.replace(/\\ce\{([^}]+)\}/g, '$1');
+      const safeFormula = escapePdfText(cleanFormula).slice(0, 85);
+      currentOps.push(
+        `BT /F3 9.5 Tf 0.1 0.15 0.25 rg ${marginX + 16} ${curY - 15} Td (${safeFormula}) Tj ET`
+      );
+      curY -= 30;
+      continue;
+    }
+
+    // Markdown Table
+    if (trimmed.includes('|') && pIdx + 1 < answerParagraphs.length) {
+      const nextTrimmed = answerParagraphs[pIdx + 1].trim();
+      if (/^\|?\s*:?-+:?\s*(\|(\s*:?-+:?\s*))+\|?$/.test(nextTrimmed)) {
+        const headers = splitTableRow(trimmed);
+        pIdx += 2;
+        const rows: string[][] = [];
+        while (
+          pIdx < answerParagraphs.length &&
+          answerParagraphs[pIdx].trim().includes('|') &&
+          !answerParagraphs[pIdx].trim().startsWith('#')
+        ) {
+          rows.push(splitTableRow(answerParagraphs[pIdx]));
+          pIdx++;
+        }
+        pIdx--; // Adjust for loop increment
+
+        const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
+        const colWidth = contentWidth / colCount;
+
+        // Render PDF Table Header
+        ensureSpace(22);
+        currentOps.push(`0.94 0.96 0.98 rg 0.82 0.86 0.9 RG 0.75 w`);
+        currentOps.push(`${marginX} ${curY - 18} ${contentWidth} 18 re b`);
+        headers.forEach((h, cIdx) => {
+          const cellX = marginX + cIdx * colWidth + 6;
+          const maxChars = Math.max(4, Math.floor(colWidth / 5.5));
+          const truncated = escapePdfText(h).slice(0, maxChars);
+          currentOps.push(
+            `BT /F2 8 Tf 0.08 0.12 0.22 rg ${cellX} ${curY - 12} Td (${truncated}) Tj ET`
+          );
+        });
+        curY -= 18;
+
+        // Render PDF Table Rows
+        rows.forEach((row, rIdx) => {
+          ensureSpace(16);
+          if (rIdx % 2 === 1) {
+            currentOps.push(`0.98 0.99 1 rg`);
+            currentOps.push(`${marginX} ${curY - 16} ${contentWidth} 16 re f`);
+          }
+          currentOps.push(
+            `0.9 0.92 0.95 RG 0.5 w ${marginX} ${curY - 16} m ${marginX + contentWidth} ${curY - 16} l S`
+          );
+          row.forEach((cell, cIdx) => {
+            const cellX = marginX + cIdx * colWidth + 6;
+            const maxChars = Math.max(4, Math.floor(colWidth / 5.5));
+            const truncated = escapePdfText(cell).slice(0, maxChars);
+            currentOps.push(
+              `BT /F1 8 Tf 0.2 0.25 0.32 rg ${cellX} ${curY - 11} Td (${truncated}) Tj ET`
+            );
+          });
+          curY -= 16;
+        });
+        curY -= 8;
+        continue;
+      }
     }
 
     const cleanHeading = trimmed.replace(/^[•*-]\s*(?:\*\*)?\s*(#{1,4})/, '$1');
@@ -841,18 +1569,18 @@ export function generatePdfBlob(
   }
 
   // --- CITATIONS & REFERENCES SECTION ---
-  if (response?.citations && response.citations.length > 0) {
+  if (citations && citations.length > 0) {
     curY -= 12;
     ensureSpace(32);
     currentOps.push(
-      `BT /F2 11 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText(`GROUNDED REFERENCES & AUDITED SOURCES (${response.citations.length})`)}) Tj ET`
+      `BT /F2 11 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText(`GROUNDED REFERENCES & AUDITED SOURCES (${citations.length})`)}) Tj ET`
     );
     currentOps.push(
       `0.08 0.4 0.65 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 230} ${curY - 16} l S`
     );
     curY -= 26;
 
-    response.citations.forEach((cit) => {
+    citations.forEach((cit) => {
       ensureSpace(42);
       const headerStr = `[${cit.citation_index}] ${cit.pdf_filename || 'Audited Document'} - Page ${cit.primary_page || 'N/A'}${cit.university ? ` (${cit.university})` : ''}`;
       currentOps.push(
@@ -1080,15 +1808,21 @@ export function printReportWindow(
     printWindow.document.write(html);
     printWindow.document.close();
 
-    // Trigger print once document is loaded
-    setTimeout(() => {
+    const triggerPrint = () => {
       try {
         printWindow.focus();
         printWindow.print();
       } catch (e) {
         console.warn('Auto-print invocation prevented:', e);
       }
-    }, 400);
+    };
+
+    if (printWindow.document.readyState === 'complete') {
+      setTimeout(triggerPrint, 300);
+    } else {
+      printWindow.addEventListener('load', () => setTimeout(triggerPrint, 300));
+      setTimeout(triggerPrint, 1200);
+    }
 
     return printWindow;
   } catch (err) {

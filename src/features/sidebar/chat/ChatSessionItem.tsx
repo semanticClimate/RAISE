@@ -46,20 +46,6 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
     >
       <div className="flex-1 min-w-0 pr-1">
         <div className="flex items-center gap-2">
-          {isPinned && (
-            <svg
-              className="w-3.5 h-3.5 text-indigo-600 dark:text-[#a8c7fa] shrink-0"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16 12V4H8v8l-2 3v1h12v-1l-2-3z"
-              />
-            </svg>
-          )}
-
           {isRenaming ? (
             <input
               type="text"

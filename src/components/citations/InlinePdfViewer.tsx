@@ -3,9 +3,13 @@ import {
   ArrowLeft,
   ArrowRight,
   Bookmark,
+  Download,
   ExternalLink,
+  FileDown,
   FileText,
   Hash,
+  Minus,
+  Plus,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { sourceService } from '../../services/SourceService';
@@ -21,6 +25,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
   const [loadError, setLoadError] = React.useState(false);
   const [activePage, setActivePage] = useState<number>(citation.primary_page || 1);
   const [streamMode, setStreamMode] = useState<'single' | 'full'>('single');
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
 
   useEffect(() => {
     setActivePage(citation.primary_page || 1);
@@ -115,12 +120,61 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
             </button>
           </div>
 
+          {/* Zoom controls (- and +) */}
+          <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden shadow-2xs text-xs">
+            <button
+              type="button"
+              onClick={() => setZoomLevel((z) => Math.max(50, z - 25))}
+              disabled={zoomLevel <= 50}
+              className="px-2 py-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white disabled:opacity-30 cursor-pointer"
+              title="Zoom Out (-)"
+            >
+              <Minus className="w-3 h-3" />
+            </button>
+            <span className="px-1.5 font-mono text-[10.5px] text-slate-600 dark:text-slate-300 font-semibold">{zoomLevel}%</span>
+            <button
+              type="button"
+              onClick={() => setZoomLevel((z) => Math.min(250, z + 25))}
+              disabled={zoomLevel >= 250}
+              className="px-2 py-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white disabled:opacity-30 cursor-pointer"
+              title="Zoom In (+)"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+
+          {/* Download full document and current page */}
+          <div className="flex items-center gap-1">
+            <a
+              href={sourceService.getPdfUrl(citation.pdf_filename)}
+              download={citation.pdf_filename}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors px-2 py-1 rounded-xl hover:bg-slate-200/60 dark:hover:bg-white/5"
+              title="Download full document (all pages)"
+            >
+              <Download className="w-3 h-3" />
+              <span className="hidden sm:inline">All</span>
+            </a>
+            <a
+              href={sourceService.getSinglePagePdfUrl(citation.pdf_filename, activePage)}
+              download={`${citation.pdf_filename}_page_${activePage}.pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors px-2 py-1 rounded-xl hover:bg-slate-200/60 dark:hover:bg-white/5"
+              title={`Download page ${activePage}`}
+            >
+              <FileDown className="w-3 h-3" />
+              <span className="hidden sm:inline">Page {activePage}</span>
+            </a>
+          </div>
+
           <a
-            href={pdfUrl}
+            href={sourceService.getViewerUrl(citation.pdf_filename, activePage, citation.plain_text)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-colors px-2.5 py-1 rounded-xl hover:bg-slate-200/60 dark:hover:bg-white/5"
-            title="Open preview in a standalone browser tab"
+            className="inline-flex items-center gap-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors px-2.5 py-1 rounded-xl shadow-2xs"
+            title="Open Google Drive viewer in a standalone browser tab"
           >
             <span>Open in Tab</span>
             <ExternalLink className="w-3 h-3 ml-0.5" />
@@ -207,6 +261,11 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
               src={pdfUrl}
               title={`PDF viewer: ${citation.pdf_filename} page ${activePage}`}
               onError={() => setLoadError(true)}
+              style={{
+                transform: `scale(${zoomLevel / 100})`,
+                transformOrigin: 'top center',
+                transition: 'transform 0.15s ease',
+              }}
               className="w-full h-full min-h-[520px] rounded-xl border border-slate-200 dark:border-slate-800 bg-white shadow-2xs"
             />
           )}
