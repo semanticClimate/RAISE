@@ -222,7 +222,11 @@ export const PlatformStep: React.FC = () => {
             <span>Host RAM</span>
           </div>
           <div className="text-xs font-bold text-white">
-            {hardware?.totalRamGb ? `${hardware.totalRamGb} GB` : '8+ GB'}
+            {hardware?.totalRamGb && hardware.totalRamGb > 0
+              ? `${hardware.totalRamGb} GB`
+              : isConnected
+                ? 'Dynamic Allocation'
+                : 'Local Accelerator Active'}
           </div>
         </div>
 
@@ -232,7 +236,9 @@ export const PlatformStep: React.FC = () => {
             <span>CPU Cores</span>
           </div>
           <div className="text-xs font-bold text-white">
-            {hardware?.cpuCores ? `${hardware.cpuCores} Cores` : '8 Cores'}
+            {hardware?.cpuCores && hardware.cpuCores > 0
+              ? `${hardware.cpuCores} Cores`
+              : 'Local Accelerator Active'}
           </div>
         </div>
 
@@ -242,7 +248,9 @@ export const PlatformStep: React.FC = () => {
             <span>Acceleration</span>
           </div>
           <div className="text-xs font-bold text-white">
-            {hardware?.hasMetalOrCuda ? 'Active' : 'CPU Mode'}
+            {hardware?.hasMetalOrCuda
+              ? 'Local Accelerator Active'
+              : 'Cloud Inference Connected'}
           </div>
         </div>
       </div>

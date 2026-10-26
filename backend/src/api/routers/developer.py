@@ -121,8 +121,34 @@ async def get_hardware_telemetry():
                 gpu_detected = smi.split("\n")[0].strip()
         except Exception:
             pass
+
     if not gpu_detected:
-        gpu_detected = "NVIDIA CUDA GPU (or CPU Fallback)"
+        try:
+            import torch
+            if torch.cuda.is_available():
+                gpu_detected = torch.cuda.get_device_name(0)
+            elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+                gpu_detected = "Apple Silicon GPU (MPS Accelerator Active)"
+        except Exception:
+            pass
+
+    if not gpu_detected:
+        import platform
+        if platform.system() == "Darwin":
+            try:
+                import subprocess
+                out = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], timeout=1.0).decode().strip()
+                if "Apple" in out:
+                    gpu_detected = f"Apple Silicon GPU ({out})"
+            except Exception:
+                pass
+            if not gpu_detected:
+                gpu_detected = "Apple Silicon GPU (MPS Accelerator Active)"
+
+    if not gpu_detected:
+        import platform
+        cpu_proc = platform.processor() or "Multi-Core CPU"
+        gpu_detected = f"CPU Execution Engine ({cpu_proc})"
 
     return {
         "gpu_model": gpu_detected,

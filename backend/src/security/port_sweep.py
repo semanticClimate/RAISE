@@ -65,7 +65,8 @@ class PortSweep:
                         if local_addr.endswith(f":{port}"):
                             try:
                                 pid = int(parts[-1])
-                                if pid > 0 and pid not in pids:
+                                import os
+                                if pid > 0 and pid != os.getpid() and pid not in pids:
                                     pids.append(pid)
                             except ValueError:
                                 pass

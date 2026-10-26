@@ -30,15 +30,16 @@ def resolve_pdf_path(filename_or_path: str | Path) -> Optional[Path]:
     if p.exists() and p.is_file():
         return p
 
+    base_dir = Path(__file__).resolve().parents[3]  # root of repo
+    backend_dir = Path(__file__).resolve().parents[2]  # backend root
+
     candidates = [
         Path("data/documents") / p.name,
         Path("backend/data/documents") / p.name,
-        Path("tests/Test pdf") / p.name,
-        Path("backend/tests/Test pdf") / p.name,
-        Path(r"C:\Users\Siddharth Tripathi\Documents\raise\backend\data\documents") / p.name,
-        Path(r"C:\Users\Siddharth Tripathi\Documents\raise-backend\data\documents") / p.name,
-        Path(r"C:\Users\Siddharth Tripathi\Documents\raise\backend\tests\Test pdf") / p.name,
-        Path(r"C:\Users\Siddharth Tripathi\Documents\raise-backend\tests\Test pdf") / p.name,
+        base_dir / "data" / "documents" / p.name,
+        backend_dir / "data" / "documents" / p.name,
+        base_dir / "tests" / "Test pdf" / p.name,
+        backend_dir / "tests" / "Test pdf" / p.name,
     ]
     for c in candidates:
         if c.exists() and c.is_file():

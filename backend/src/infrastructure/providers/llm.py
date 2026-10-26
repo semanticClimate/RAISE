@@ -68,13 +68,73 @@ class LocalVLLMProvider(BaseLLMProvider):
         self.model_name = model_name or os.getenv("VLLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
 
     def is_available(self) -> bool:
-        """Fast non-blocking check to determine if the local vLLM server is alive."""
-        try:
-            req = urllib.request.Request(f"{self.base_url}/models", headers={"User-Agent": "RAISE-Provider"})
-            with urllib.request.urlopen(req, timeout=0.25) as resp:
-                return resp.status == 200
-        except Exception:
-            return False
+        """Fast non-blocking check to determine if the local vLLM server is alive across common ports."""
+        candidate_urls = [self.base_url]
+        for fallback in ["http://localhost:8002/v1", "http://127.0.0.1:8002/v1", "http://localhost:8000/v1", "http://127.0.0.1:8000/v1", "http://localhost:8080/v1"]:
+            if fallback not in candidate_urls:
+                candidate_urls.append(fallback)
+        for u in candidate_urls:
+            try:
+                req = urllib.request.Request(f"{u}/models", headers={"User-Agent": "RAISE-Provider"})
+                with urllib.request.urlopen(req, timeout=0.35) as resp:
+                    if resp.status == 200:
+                        self.base_url = u
+                        try:
+                            models_data = json.loads(resp.read().decode("utf-8"))
+                            if "data" in models_data and len(models_data["data"]) > 0:
+                                discovered_id = models_data["data"][0].get("id")
+                                if discovered_id and self.model_name == "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4":
+                                    self.model_name = discovered_id
+                        except Exception:
+                            pass
+                        return True
+            except Exception:
+                pass
+        return False
+
+    async def complete_stream(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.1,
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        """Stream tokens directly from vLLM server with fast non-blocking SSE."""
+        import httpx
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+
+        url = f"{self.base_url}/chat/completions"
+        timeout = httpx.Timeout(60.0, connect=3.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", url, json=payload) as resp:
+                if resp.status_code != 200:
+                    err_body = await resp.aread()
+                    raise RuntimeError(f"vLLM HTTP {resp.status_code}: {err_body.decode('utf-8', errors='replace')}")
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if delta:
+                            yield delta
+                    except Exception:
+                        pass
 
     def complete(
         self,

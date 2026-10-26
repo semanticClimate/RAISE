@@ -287,7 +287,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                 id="library-picker-title"
                 className="text-sm font-semibold text-slate-900 dark:text-white truncate"
               >
-                Select from Knowledge Base Library
+                Attach from Knowledge Base Library
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-[#a8a8a8] truncate">
                 Pre-indexed library documents — ready for instant research

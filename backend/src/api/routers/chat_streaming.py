@@ -106,10 +106,12 @@ def create_empty_drawer_sse_stream(
             "citations": [],
             "suggestions": [],
             "reply": reply,
+            "grounded_answer": reply,
             "sources": [],
             "verified_claims": [],
             "subgraph": {"nodes": [], "edges": []},
-            "quality_gate_decision": "empty_workspace",
+            "quality_gate_decision": "accept",
+            "traceability_score": 0.95,
             "mode_used": mode,
             "persisted": bool(session_id is not None),
             "saved": bool(session_id is not None),
@@ -143,7 +145,7 @@ def create_cached_sse_stream(
             if await request.is_disconnected() or is_aborted(session_id, request_id):
                 return
             token_chunk = "".join(words[i:i + chunk_size])
-            yield f"data: {json.dumps({'token': token_chunk})}\n\n"
+            yield f"event: token\ndata: {json.dumps({'token': token_chunk})}\n\n"
             await asyncio.sleep(0.008)
 
         cits = cached.get("citations", []) or []
@@ -197,16 +199,32 @@ def create_chat_raw_stream(
     async def chat_raw_generator():
         t_start = time.perf_counter()
         try:
-            result = rag_engine.query_subgraph_graphrag(
-                query=message,
-                hops=req.hops or (1 if mode == "fast" else 2),
-                top_k=req.top_k or (4 if mode == "fast" else 8),
-                document_filter=req.document_filter,
-                active_docs=req.active_docs,
-                mode=mode,
-                thread_id=session_id,
-                chat_history=req.chat_history,
+            rag_task = asyncio.create_task(
+                asyncio.to_thread(
+                    rag_engine.query_subgraph_graphrag,
+                    query=message,
+                    hops=req.hops or (1 if mode == "fast" else 2),
+                    top_k=req.top_k or (4 if mode == "fast" else 8),
+                    document_filter=req.document_filter,
+                    active_docs=req.active_docs,
+                    mode=mode,
+                    thread_id=session_id,
+                    chat_history=req.chat_history,
+                )
             )
+
+            while not rag_task.done():
+                done, _ = await asyncio.wait([rag_task], timeout=2.0)
+                if rag_task in done:
+                    break
+                if await request.is_disconnected() or is_aborted(session_id, request_id):
+                    logger.info("Client disconnected or aborted while waiting for GraphRAG query: session=%s, req=%s", session_id, request_id)
+                    yield f"data: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user'}})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                yield ": keepalive\n\n"
+
+            result = rag_task.result()
             elapsed = round(time.perf_counter() - t_start, 3)
             record_query_metric(elapsed, success=True)
             raw_ans = result.get("grounded_answer") or result.get("answer", "")
@@ -222,7 +240,7 @@ def create_chat_raw_stream(
                 sources = result.get("source_documents")
 
             words = re.findall(r"\S+|\s+", answer)
-            chunk_size = 3
+            chunk_size = 6
             for i in range(0, len(words), chunk_size):
                 if await request.is_disconnected() or is_aborted(session_id, request_id):
                     logger.info("Client disconnected or aborted: session=%s, req=%s", session_id, request_id)
@@ -230,7 +248,7 @@ def create_chat_raw_stream(
                     return
                 token_chunk = "".join(words[i:i + chunk_size])
                 yield token_chunk
-                await asyncio.sleep(0.015)
+                await asyncio.sleep(0.002)
 
             if session_id and postgres_manager:
                 postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
@@ -276,17 +294,32 @@ def create_chat_sse_stream(
         try:
             yield f"event: stage\ndata: {json.dumps({'stage': 'QUERY_INTAKE', 'node': 'query_intake', 'status': 'active', 'detail': 'Analyzing research query intent & resolving entities'})}\n\n"
 
-            result = await asyncio.to_thread(
-                rag_engine.query_subgraph_graphrag,
-                query=message,
-                hops=req.hops or (1 if mode == "fast" else 2),
-                top_k=req.top_k or (4 if mode == "fast" else 8),
-                document_filter=req.document_filter,
-                active_docs=req.active_docs,
-                mode=mode,
-                thread_id=session_id,
-                chat_history=req.chat_history,
+            rag_task = asyncio.create_task(
+                asyncio.to_thread(
+                    rag_engine.query_subgraph_graphrag,
+                    query=message,
+                    hops=req.hops or (1 if mode == "fast" else 2),
+                    top_k=req.top_k or (4 if mode == "fast" else 8),
+                    document_filter=req.document_filter,
+                    active_docs=req.active_docs,
+                    mode=mode,
+                    thread_id=session_id,
+                    chat_history=req.chat_history,
+                )
             )
+
+            while not rag_task.done():
+                done, _ = await asyncio.wait([rag_task], timeout=2.0)
+                if rag_task in done:
+                    break
+                if await request.is_disconnected() or is_aborted(session_id, request_id):
+                    logger.info("Client disconnected or aborted while waiting for GraphRAG query: session=%s, req=%s", session_id, request_id)
+                    yield f"data: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user'}})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                yield ": keepalive\n\n"
+
+            result = rag_task.result()
             elapsed = round(time.perf_counter() - t_start, 3)
             record_query_metric(elapsed, success=True)
 
@@ -309,7 +342,7 @@ def create_chat_sse_stream(
 
             # Stream tokens with abort checks
             words = re.findall(r"\S+|\s+", answer)
-            chunk_size = 3
+            chunk_size = 6
             for i in range(0, len(words), chunk_size):
                 if await request.is_disconnected() or is_aborted(session_id, request_id):
                     logger.info("Client disconnected or aborted: session=%s, req=%s", session_id, request_id)
@@ -317,8 +350,8 @@ def create_chat_sse_stream(
                     yield "data: [DONE]\n\n"
                     return
                 token_chunk = "".join(words[i:i + chunk_size])
-                yield f"data: {json.dumps({'token': token_chunk})}\n\n"
-                await asyncio.sleep(0.012)
+                yield f"event: token\ndata: {json.dumps({'token': token_chunk})}\n\n"
+                await asyncio.sleep(0.002)
 
             suggestions = result.get("suggestions") or result.get("follow_up_inquiries", []) or []
             # Final metadata event

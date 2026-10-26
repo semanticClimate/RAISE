@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { App } from './app/App';
 import { cleanseLegacyStorage } from './utils/storageCleaner';
 import './styles/globals.css';
+import 'katex/dist/katex.min.css';
 
 // Purge any stale legacy sessions from browser storage on startup
 cleanseLegacyStorage();

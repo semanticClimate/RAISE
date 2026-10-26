@@ -20,7 +20,7 @@ import { sourceService } from '../../services/SourceService';
 import { systemService } from '../../services/SystemService';
 import { useFilterStore } from '../../stores/filterStore';
 import { useModeStore } from '../../stores/modeStore';
-import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../../types';
+import type { Citation, PersistedChatSession, SubgraphData, SubgraphQueryResponse } from '../../types';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
 import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { formatBytes } from '../../utils/formatters';
@@ -51,6 +51,10 @@ const MainSearchModal = lazy(() =>
 import { SourcesDrawer } from './components/SourcesDrawer';
 import { SuggestionBubbles } from './components/SuggestionBubbles';
 import { QueryBox } from './query-box';
+import { SubgraphViewerModal } from '../../components/chat/SubgraphViewerModal';
+import { EmptyWorkspaceNoticeCard } from './components/EmptyWorkspaceNoticeCard';
+import { PdfViewerModal } from './components/PdfViewerModal';
+import { isConversationalQuery } from '../../utils/queryClassifier';
 import type {
   ChatMessage,
   ChatSession,
@@ -117,6 +121,8 @@ export const RaisePage: React.FC = () => {
   const [isPipelineDrawerOpen, setIsPipelineDrawerOpen] = useState(false);
   const [isSourcesDrawerOpen, setIsSourcesDrawerOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [activeSubgraph, setActiveSubgraph] = useState<SubgraphData | null>(null);
+  const [activePdfCitation, setActivePdfCitation] = useState<Citation | null>(null);
   const {
     isOpen: isSettingsOpen,
     isTunerMode,
@@ -461,18 +467,42 @@ export const RaisePage: React.FC = () => {
               localStorage.setItem('raise_recent_sessions_v2', JSON.stringify(cleaned));
             } catch {}
           }
-          return cleaned;
+          if (cleaned.length > 0) {
+            return cleaned;
+          }
         }
       }
     } catch {}
     return [];
   });
 
-  // Current session ID: starts null for new chat
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Current session ID: starts with first saved session or null for clean workspace
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
+    try {
+      const cached = localStorage.getItem('raise_recent_sessions_v2');
+      if (cached) {
+        const parsed = JSON.parse(cached) as ChatSession[];
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.id) {
+          return parsed[0].id;
+        }
+      }
+    } catch {}
+    return null;
+  });
 
-  // Conversation messages: starts empty for new chat
-  const [conversation, setConversation] = useState<ChatMessage[]>([]);
+  // Conversation messages: starts with first saved session messages or empty []
+  const [conversation, setConversation] = useState<ChatMessage[]>(() => {
+    try {
+      const cached = localStorage.getItem('raise_recent_sessions_v2');
+      if (cached) {
+        const parsed = JSON.parse(cached) as ChatSession[];
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.messages) {
+          return parsed[0].messages;
+        }
+      }
+    } catch {}
+    return [];
+  });
 
   // React 19 Active Session & Document Title derivation
   const activeSession = useMemo(() => {
@@ -820,7 +850,7 @@ export const RaisePage: React.FC = () => {
     };
   }, [expandedQVersionsIndex, expandedRespVersionsIndex]);
 
-  // Synchronized source documents (scoped to current chat session; starts empty for new chat)
+  // Synchronized source documents (scoped to current chat session; starts empty)
   const [sourceDocs, setSourceDocs] = useState<SourceDocument[]>([]);
   const [sourceFilter, setSourceFilter] = useState('');
 
@@ -1123,18 +1153,31 @@ export const RaisePage: React.FC = () => {
     filename: string,
     pageNumber: number = 1,
     _heading?: string,
-    mode?: 'page' | 'full' | 'view'
+    _mode?: 'page' | 'full' | 'view'
   ) => {
-    if (typeof window !== 'undefined' && filename) {
-      const safePage = Math.max(1, pageNumber || 1);
-      let targetUrl: string;
-      if (mode === 'page' || mode === 'view') {
-        targetUrl = sourceService.getSinglePageViewUrl(filename, safePage);
-      } else {
-        // mode === 'full' or default
-        targetUrl = sourceService.getPdfUrl(filename, safePage);
+    if (!filename) return;
+    const safePage = Math.max(1, pageNumber || 1);
+
+    // Look for matching citation in current active conversation to retrieve plain_text excerpt
+    let matchedExcerpt = '';
+    for (const msg of conversation) {
+      if (msg.response?.citations) {
+        const cit = msg.response.citations.find(
+          (c: any) =>
+            (c.pdf_filename === filename || c.filename === filename) &&
+            (c.primary_page === safePage || c.page_number === safePage || c.page === safePage)
+        );
+        if (cit?.plain_text || cit?.snippet || cit?.text) {
+          matchedExcerpt = cit.plain_text || cit.snippet || cit.text || '';
+          break;
+        }
       }
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
+
+    // Sid says: Open directly in a new browser tab, never as an in-page popup modal
+    const viewerUrl = sourceService.getViewerUrl(filename, safePage, matchedExcerpt);
+    if (typeof window !== 'undefined') {
+      window.open(viewerUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -1408,6 +1451,7 @@ export const RaisePage: React.FC = () => {
     };
   };
 
+  // Sid says: Stop generating immediately triggers backend abort & marks bubble with [Generation stopped by user] pill
   const handleAbortActiveQuery = () => {
     isUserAbortingRef.current = true;
     terminalLogger.info('Query execution stopped by user.', {
@@ -1430,6 +1474,29 @@ export const RaisePage: React.FC = () => {
     setIsLoading(false);
     setRegeneratingIndex(null);
     setActiveExecutingQuery('');
+
+    // Immediately mark or append the assistant turn as stopped so the user gets instant feedback
+    setConversation((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      if (last.role === 'assistant') {
+        return [
+          ...prev.slice(0, -1),
+          { ...last, isStopped: true },
+        ];
+      }
+      if (last.role === 'user') {
+        return [
+          ...prev,
+          {
+            role: 'assistant',
+            text: latestStreamedTextRef.current || '',
+            isStopped: true,
+          },
+        ];
+      }
+      return prev;
+    });
   };
 
   const getFormattedChatHistory = (msgs: ChatMessage[]): { human: string; ai: string }[] => {
@@ -3575,16 +3642,16 @@ export const RaisePage: React.FC = () => {
         />
 
         <main
-          className={`w-full max-w-2xl mx-auto px-[clamp(0.75rem,3vw,1.25rem)] ${
+          className={`w-full max-w-[clamp(38rem,94vw,62rem)] mx-auto px-[clamp(0.75rem,3vw,1.5rem)] ${
             conversation.length === 0
               ? 'flex-1 flex flex-col justify-center min-h-full py-4 sm:py-6 sm:-translate-y-6'
-              : 'pt-2 pb-4 sm:pb-6 flex-1 flex flex-col justify-between min-h-full'
+              : 'pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-full'
           } transition-all duration-300`}
         >
           {/* Hero Title & Welcome - Only visible before a question is asked / when conversation is empty */}
           {conversation.length === 0 && (
             <section
-              className="mb-4 sm:mb-6 text-center sm:text-left pt-2 sm:pt-0 select-none"
+              className="w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto mb-4 sm:mb-6 text-center sm:text-left pt-2 sm:pt-0 select-none"
               data-purpose="hero-header"
             >
               <h1 className="text-[clamp(1.5rem,4.5vw,2.25rem)] font-semibold tracking-tight text-slate-900 dark:text-white mb-1.5">
@@ -3613,7 +3680,10 @@ export const RaisePage: React.FC = () => {
                   const totalQVers = qVersions.length;
 
                   return (
-                    <div key={`user-turn-${i}`} className="content-visibility-auto flex flex-col items-end group/query">
+                    <div
+                      key={`user-turn-${i}`}
+                      className="content-visibility-auto flex flex-col items-end group/query w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto"
+                    >
                       {editingMessageIndex === i ? (
                         /* Inline Question Editor */
                         <div className="w-full max-w-[85%] bg-white dark:bg-[#131622] border border-indigo-400 dark:border-indigo-500/50 rounded-2xl rounded-tr-sm p-3.5 shadow-md dark:shadow-xl transition-all">
@@ -3964,12 +4034,15 @@ export const RaisePage: React.FC = () => {
                   return (
                     <div
                       key={`assistant-turn-${i}`}
-                      className="content-visibility-auto flex flex-col items-start group/response w-full mb-5"
+                      className="content-visibility-auto flex flex-col items-center group/response w-full mb-5"
                     >
                       {/* Unified Single-Line Thinking & Searching Tracker while active; Thought Duration when complete */}
                       {isCurrentlyActive ? (
-                        activeExecutingQuery ? (
-                          <div className="w-full mb-2">
+                        activeExecutingQuery && isConversationalQuery(activeExecutingQuery) ? (
+                          // Sid says: Fast conversational chat ("hi", "hello", identity) bypasses heavy multi-step research pipeline skeleton/stage bars
+                          null
+                        ) : activeExecutingQuery ? (
+                          <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mb-2">
                             <QueryLifecycleTracker
                               query={activeExecutingQuery}
                               onAbort={handleAbortActiveQuery}
@@ -3987,13 +4060,16 @@ export const RaisePage: React.FC = () => {
                       ) : (
                         !msg.error &&
                         !isStopped && (
-                          <ThoughtDuration executionTimeSec={executionTimeSec} />
+                          <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto">
+                            <ThoughtDuration executionTimeSec={executionTimeSec} />
+                          </div>
                         )
                       )}
 
                       {/* AI Response Card Box */}
-                      {(!isCurrentlyActive || Boolean(msg.text)) && Boolean(msg.text) && (
-                        <div className="ai-response-card w-full bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.75rem,2.5vw,1.25rem)] shadow-sm dark:shadow-xl transition-all">
+                      {(((!isCurrentlyActive || Boolean(msg.text)) && Boolean(msg.text)) ||
+                        Boolean(isCurrentlyActive && activeExecutingQuery && isConversationalQuery(activeExecutingQuery))) && (
+                        <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
                           {/* Save-failure warning banner if generation succeeded but persistence failed */}
                           {msg.persistenceFailed && (
                             <div
@@ -4075,12 +4151,37 @@ export const RaisePage: React.FC = () => {
 
                             return (
                               <div className="text-sm leading-relaxed text-slate-800 dark:text-slate-200 select-text">
-                                <AnswerMarkdown
-                                  content={msg.text}
-                                  citations={messageCitations}
-                                  showCitations={true}
-                                  onViewPdf={handleOpenPdfViewer}
-                                />
+                                {!msg.text && isCurrentlyActive ? (
+                                  <div className="flex items-center gap-2 py-1 text-slate-500 dark:text-slate-400 text-xs font-mono">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                                    <span>Responding...</span>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <AnswerMarkdown
+                                      content={msg.text}
+                                      citations={messageCitations}
+                                      showCitations={true}
+                                      onViewPdf={handleOpenPdfViewer}
+                                    />
+                                    {isCurrentlyActive && (
+                                      <span className="inline-block w-1.5 h-4 ml-1 bg-blue-500 align-middle animate-pulse" />
+                                    )}
+                                  </>
+                                )}
+
+                                {/* 1-click Attach Document Button if empty workspace / drawer notice */}
+                                {(msg.text.includes('No documents have been uploaded to the workspace') ||
+                                  msg.text.includes('No active documents are currently attached to your drawer') ||
+                                  (typeof msg.response?.reply === 'string' &&
+                                    (msg.response.reply.includes('No documents have been uploaded') ||
+                                      msg.response.reply.includes('No active documents')))) && (
+                                  <EmptyWorkspaceNoticeCard
+                                    onOpenDrawer={() => setIsSourcesDrawerOpen(true)}
+                                  />
+                                )}
+
+
                               </div>
                             );
                           })()}
@@ -4089,7 +4190,7 @@ export const RaisePage: React.FC = () => {
 
                       {/* AI Response Action Toolbar OUTSIDE the box, placed identically to Question action bar */}
                       {Boolean(msg.text && !msg.error) && (
-                        <div className="flex items-center gap-1 mt-1.5 ml-1 text-slate-500 dark:text-slate-400">
+                        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] flex items-center justify-start gap-1 mt-1.5 ml-1 text-slate-500 dark:text-slate-400">
                           {/* 1. Copy Response Button */}
                           <ActionTooltip
                             label={copiedKey === `resp-${i}` ? 'Copied!' : 'Copy response'}
@@ -4396,39 +4497,6 @@ export const RaisePage: React.FC = () => {
                                 </button>
                               </ActionTooltip>
                             ))}
-
-                          {/* Exact Execution Time / Latency Badge */}
-                          {executionTimeSec !== null && executionTimeSec > 0 && (
-                            <ActionTooltip
-                              label={`Total execution time: ${
-                                executionTimeSec >= 1
-                                  ? `${executionTimeSec.toFixed(2)}s`
-                                  : `${Math.round(executionTimeSec * 1000)}ms`
-                              }`}
-                            >
-                              <div
-                                data-testid="response-execution-time"
-                                className="flex items-center gap-1 px-2 py-0.5 ml-1.5 rounded-md text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100/80 dark:bg-white/[0.05] border border-slate-200/60 dark:border-white/[0.08] select-none"
-                              >
-                                <svg
-                                  className="w-3 h-3 text-indigo-500 dark:text-indigo-400 shrink-0"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                                </svg>
-                                <span>
-                                  {executionTimeSec >= 1
-                                    ? `${executionTimeSec.toFixed(2)}s`
-                                    : `${Math.round(executionTimeSec * 1000)}ms`}
-                                </span>
-                              </div>
-                            </ActionTooltip>
-                          )}
                         </div>
                       )}
 
@@ -4456,7 +4524,14 @@ export const RaisePage: React.FC = () => {
                 regeneratingIndex === null &&
                 conversation[conversation.length - 1]?.role === 'user' && (
                   <div className="w-full mb-3">
-                    {activeExecutingQuery ? (
+                    {activeExecutingQuery && isConversationalQuery(activeExecutingQuery) ? (
+                      <div className="ai-response-card w-full bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 shadow-sm dark:shadow-xl transition-all animate-in fade-in">
+                        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs font-mono">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                          <span>Responding...</span>
+                        </div>
+                      </div>
+                    ) : activeExecutingQuery ? (
                       <QueryLifecycleTracker
                         query={activeExecutingQuery}
                         onAbort={handleAbortActiveQuery}
@@ -4475,9 +4550,9 @@ export const RaisePage: React.FC = () => {
             </div>
           )}
 
-          {/* Dynamic bottom scroll clearance spacer so messages scroll completely clear of the sticky QueryBox */}
+          {/* Dynamic bottom scroll clearance spacer so messages scroll cleanly */}
           {conversation.length > 0 && (
-            <div className="h-28 sm:h-36 shrink-0 pointer-events-none" aria-hidden="true" />
+            <div className="h-3 sm:h-4 shrink-0 pointer-events-none" aria-hidden="true" />
           )}
 
           {/* End of message stream anchor */}
@@ -4510,54 +4585,56 @@ export const RaisePage: React.FC = () => {
             </div>
           )}
 
-          {/* RAGQueryInterface - Modular QueryBox Component */}
-          <QueryBox
-            query={query}
-            onQueryChange={(val) => {
-              setQuery(val);
-              if (!showSuggestions && val.trim()) {
-                setShowSuggestions(true);
-              }
-            }}
-            onSubmit={() => {
-              setShowSuggestions(false);
-              setActiveSuggestionIndex(-1);
-              handleExecuteQuery();
-            }}
-            onAbort={handleAbortActiveQuery}
-            isLoading={isLoading}
-            conversationLength={conversation.length}
-            placeholderText={placeholderText}
-            textareaRef={textareaRef}
-            showSuggestions={showSuggestions}
-            setShowSuggestions={setShowSuggestions}
-            filteredSuggestions={filteredSuggestions}
-            activeSuggestionIndex={activeSuggestionIndex}
-            setActiveSuggestionIndex={setActiveSuggestionIndex}
-            selectedDocs={selectedDocs}
-            isDocReady={isDocReady}
-            onRemoveAttachedDoc={removeAttachedFile}
-            onOpenSourcesDrawer={() => setIsSourcesDrawerOpen(true)}
-            onViewPdf={handleOpenPdfViewer}
-            addSourceMenuOpen={addSourceMenuOpen}
-            setAddSourceMenuOpen={setAddSourceMenuOpen}
-            fileInputRef={fileInputRef}
-            onFileUpload={handleFileUpload}
-            onOpenLibraryPicker={() => setIsLibraryPickerOpen(true)}
-            parseMode={parseMode}
-            setParseMode={setParseMode}
-            isOnline={isOnline}
-            isListening={isListening}
-            isVoiceSpeaking={isVoiceSpeaking}
-            voiceAudioLevels={voiceAudioLevels}
-            voiceDurationSec={voiceDurationSec}
-            formatVoiceDuration={formatVoiceDuration}
+          {/* RAGQueryInterface - Modular QueryBox Component (Floating sticky bottom container) */}
+          <div className="sticky bottom-3 sm:bottom-5 z-30 w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto mt-2 sm:mt-3">
+            <QueryBox
+              query={query}
+              onQueryChange={(val) => {
+                setQuery(val);
+                if (!showSuggestions && val.trim()) {
+                  setShowSuggestions(true);
+                }
+              }}
+              onSubmit={() => {
+                setShowSuggestions(false);
+                setActiveSuggestionIndex(-1);
+                handleExecuteQuery();
+              }}
+              onAbort={handleAbortActiveQuery}
+              isLoading={isLoading}
+              conversationLength={conversation.length}
+              placeholderText={placeholderText}
+              textareaRef={textareaRef}
+              showSuggestions={showSuggestions}
+              setShowSuggestions={setShowSuggestions}
+              filteredSuggestions={filteredSuggestions}
+              activeSuggestionIndex={activeSuggestionIndex}
+              setActiveSuggestionIndex={setActiveSuggestionIndex}
+              selectedDocs={selectedDocs}
+              isDocReady={isDocReady}
+              onRemoveAttachedDoc={removeAttachedFile}
+              onOpenSourcesDrawer={() => setIsSourcesDrawerOpen(true)}
+              onViewPdf={handleOpenPdfViewer}
+              addSourceMenuOpen={addSourceMenuOpen}
+              setAddSourceMenuOpen={setAddSourceMenuOpen}
+              fileInputRef={fileInputRef}
+              onFileUpload={handleFileUpload}
+              onOpenLibraryPicker={() => setIsLibraryPickerOpen(true)}
+              parseMode={parseMode}
+              setParseMode={setParseMode}
+              isOnline={isOnline}
+              isListening={isListening}
+              isVoiceSpeaking={isVoiceSpeaking}
+              voiceAudioLevels={voiceAudioLevels}
+              voiceDurationSec={voiceDurationSec}
+              formatVoiceDuration={formatVoiceDuration}
             onToggleVoice={handleToggleVoiceQuery}
             onStopVoiceListening={stopVoiceListening}
             voiceError={voiceError}
             onDismissVoiceError={() => setVoiceError(null)}
           />
-        </main>
+        </div>
+      </main>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -4632,6 +4709,21 @@ export const RaisePage: React.FC = () => {
           />
         </Suspense>
       )}
+
+      {/* ─── IN-APP INTERACTIVE PDF CITATION VIEWER MODAL ─── */}
+      <PdfViewerModal
+        isOpen={Boolean(activePdfCitation)}
+        citation={activePdfCitation}
+        onClose={() => setActivePdfCitation(null)}
+      />
+
+      {/* ─── KNOWLEDGE GRAPH SUBGRAPH EXPLORER MODAL ─── */}
+      <SubgraphViewerModal
+        isOpen={Boolean(activeSubgraph)}
+        subgraph={activeSubgraph}
+        onClose={() => setActiveSubgraph(null)}
+        query={activeExecutingQuery || activeSession?.title}
+      />
 
       {/* ─── LITTLE ERROR POPUP TOAST (THEME AWARE & RESPONSIVE POSITIONING) ─── */}
       {errorPopup && (

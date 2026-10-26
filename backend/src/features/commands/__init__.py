@@ -14,10 +14,7 @@ from .browser_command import handle_browser_command
 from .compare_command import handle_compare_command
 from .core_commands import (
     handle_audit_command,
-    handle_bench_command,
-    handle_graph_command,
     handle_help_command,
-    handle_synthesize_command,
 )
 from .pdf_metric_extractor import extract_pdf_institutional_profile
 from .registry import CommandRegistry, get_command_registry
@@ -43,28 +40,8 @@ def _init_default_commands(registry: CommandRegistry) -> None:
         examples=["/audit", "/audit patents and publications", "/audit budget expenditures"],
         aliases=["verify", "factcheck"],
         category="Verification",
-        is_dev_only=True,
+        is_dev_only=False,
     )(handle_audit_command)
-
-    registry.register(
-        name="synthesize",
-        description="Executive institutional synthesis covering accomplishments, publications, and governance.",
-        syntax="/synthesize [focus]",
-        examples=["/synthesize", "/synthesize scientific achievements"],
-        aliases=["summary", "summarize", "overview"],
-        category="Synthesis",
-        is_dev_only=True,
-    )(handle_synthesize_command)
-
-    registry.register(
-        name="graph",
-        description="Traverse knowledge graph entity networks, projects, and relationships.",
-        syntax="/graph [entity or topic]",
-        examples=["/graph", "/graph Early Flowering 3a", "/graph Institutional Collaborations"],
-        aliases=["explore", "kg", "network"],
-        category="Knowledge Graph",
-        is_dev_only=True,
-    )(handle_graph_command)
 
     registry.register(
         name="browser",
@@ -77,23 +54,13 @@ def _init_default_commands(registry: CommandRegistry) -> None:
     )(handle_browser_command)
 
     registry.register(
-        name="bench",
-        description="Run live evaluation across the 8-part industry benchmark suite.",
-        syntax="/bench",
-        examples=["/bench"],
-        aliases=["eval", "benchmark", "scorecard"],
-        category="Diagnostics",
-        is_dev_only=True,
-    )(handle_bench_command)
-
-    registry.register(
         name="help",
         description="Show all available slash commands and usage syntax.",
         syntax="/help",
         examples=["/help"],
         aliases=["commands", "?"],
         category="Help",
-        is_dev_only=True,
+        is_dev_only=False,
     )(handle_help_command)
 
 

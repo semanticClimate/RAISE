@@ -28,9 +28,9 @@ export const CitationSchema = z
   .object({
     citation_index: z.number().int().default(1),
     chunk_id: z.string().default(''),
-    document_id: z.string().nullish().default(''),
+    document_id: z.string().default(''),
     doc_id: z.string().nullish(),
-    pdf_filename: z.string().nullish().default(''),
+    pdf_filename: z.string().default(''),
     filename: z.string().nullish(),
     primary_page: z
       .number()

@@ -16,6 +16,18 @@ from __future__ import annotations
 
 import os
 import sys
+# Enforce UTF-8 console output for Windows terminal and log redirection
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import time
 import json
 import asyncio
@@ -170,6 +182,12 @@ async def listen_admin_and_telemetry_pubsub(r: aioredis.Redis):
 
 def _print_live_edge_monitor(event_data: Dict[str, Any]):
     """Renders formatted live edge monitor terminal logs for multi-user connections."""
+    try:
+        _safe_print_live_edge_monitor(event_data)
+    except Exception:
+        pass
+
+def _safe_print_live_edge_monitor(event_data: Dict[str, Any]):
     client_ip = event_data.get("client_ip", "127.0.0.1")
     country = event_data.get("country", "LOCAL")
     ray_id = event_data.get("ray_id", "DIRECT")

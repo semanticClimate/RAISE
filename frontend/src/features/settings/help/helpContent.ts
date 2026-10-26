@@ -2,9 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * RAISE SETTINGS: HELP CONTENT CONFIGURATION
  * ═══════════════════════════════════════════════════════════════════════════
- * Edit the content in this file to update the Help tab in Settings.
- * You can freely change descriptions, shortcuts, capabilities, and versions here
- * without modifying any component or CSS code.
+ * Sid says: Synchronized with master 7-stage architecture specifications from README.md
  */
 
 export interface KeyboardShortcutItem {
@@ -46,8 +44,8 @@ export interface HelpContentConfig {
 export const helpContent: HelpContentConfig = {
   // Top Header section
   header: {
-    title: 'Help',
-    description: 'Keyboard navigation shortcuts, feature reference, and system information.',
+    title: 'Help & Quick Reference',
+    description: 'Keyboard navigation shortcuts, functional capabilities, and architecture reference.',
   },
 
   // Keyboard Shortcuts section
@@ -63,6 +61,10 @@ export const helpContent: HelpContentConfig = {
         keys: ['⌘/Ctrl + /'],
       },
       {
+        label: 'Find in PDF viewer',
+        keys: ['⌘/Ctrl + F'],
+      },
+      {
         label: 'Close modal / drawer',
         keys: ['Esc'],
       },
@@ -72,29 +74,35 @@ export const helpContent: HelpContentConfig = {
         separator: '/',
       },
       {
-        label: 'Cycle citation cards',
-        keys: ['Tab'],
-      },
-      {
-        label: 'Send message',
+        label: 'Send research query',
         keys: ['Enter'],
       },
     ],
   },
 
-  // Key Capabilities section
+  // Key Capabilities section (grounded in README.md)
   capabilities: {
-    sectionTitle: 'Key Capabilities',
+    sectionTitle: 'Core Research Capabilities',
     items: [
       {
-        title: 'Interactive Citations & Evidence',
+        title: 'Interactive Citations & Google Drive-Style PDF Viewer',
         description:
-          'Click numbered citation chips ([1], [2]) directly inside AI responses to inspect document excerpts and verify exact factual grounding.',
+          'Click citation chips ([1], [2]) directly inside AI responses to open the Google Drive-style PDF viewer with zoom (+/-), page navigation, in-document search, and page downloads.',
       },
       {
-        title: 'Session Scoped Sources Drawer',
+        title: 'Session-Scoped Attached Documents',
         description:
-          'Click the document icon in the top right to open the Sources Drawer. It shows only files uploaded to this specific chat session with accurate file sizes.',
+          'Attach PDFs and reports to your workspace. The sources drawer scopes documents strictly to the active thread for grounded reasoning.',
+      },
+      {
+        title: 'Tri-Substrate Knowledge Base & Subgraph Explorer',
+        description:
+          'Simultaneously searches dense ChromaDB vectors, lexical BM25 indices, and Neo4j knowledge graphs. Explore multi-hop entity relationships via the interactive Subgraph Explorer.',
+      },
+      {
+        title: 'Grounding Verification Quality Gate',
+        description:
+          'Evaluates generated text against retrieved evidence before emitting results. Automatically reformulates queries and triggers retries when evidence is incomplete.',
       },
     ],
   },
@@ -102,7 +110,7 @@ export const helpContent: HelpContentConfig = {
   // Pipeline Routing Architecture preview
   architecture: {
     sectionTitle: 'Pipeline Routing Architecture',
-    linkText: 'Full Specifications',
+    linkText: 'Full Architecture & Specs',
     asciiDiagram: `┌───────────────────┴───────────────────┐
         ▼                                       ▼
  ┌───────────────────────────┐   ┌───────────────────────────┐
@@ -115,8 +123,8 @@ export const helpContent: HelpContentConfig = {
 
   // Platform info footer banner
   platform: {
-    title: 'RAISE RAG Platform',
-    description: 'Hybrid Vector + BM25 Retrieval with GraphRAG Routing',
+    title: 'RAISE GraphRAG Workstation',
+    description: 'Hybrid Tri-Substrate Retrieval with 7-Stage Verifiable Reasoning',
     version: 'v1.0.0',
   },
 };

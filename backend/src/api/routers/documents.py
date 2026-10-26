@@ -189,54 +189,6 @@ async def load_vault_defaults(rag_engine: Any = Depends(get_rag_engine)):
     return execute_load_vault_defaults(rag_engine)
 
 
-@router.get("/api/pdf/{filename}")
-async def get_pdf_file(filename: str):
-    """
-    Serves physical PDF for deep-linked in-browser viewing with #page=N.
-    Enforces HTTP 206 Partial Content byte ranges, inline display, and long-term caching.
-    """
-    import os
-    import urllib.parse
-
-    clean_name = urllib.parse.unquote(filename).strip()
-
-    # Search candidates: DOWNLOAD_DIR, DOCUMENTS_DIR, user Downloads
-    candidates = [
-        DOWNLOAD_DIR / clean_name,
-        DOCUMENTS_DIR / clean_name,
-        Path(os.path.expanduser(f"~/Downloads/{clean_name}")),
-    ]
-
-    target_path = None
-    for cand in candidates:
-        if cand.exists() and cand.is_file():
-            target_path = cand
-            break
-
-    if not target_path:
-        for parent_dir in (DOWNLOAD_DIR, DOCUMENTS_DIR):
-            if parent_dir.exists():
-                for f in parent_dir.glob("*.pdf"):
-                    if f.name.lower() == clean_name.lower():
-                        target_path = f
-                        break
-            if target_path:
-                break
-
-    if not target_path or not target_path.exists():
-        raise HTTPException(status_code=404, detail=f"Document '{filename}' not found.")
-
-    return FileResponse(
-        path=str(target_path),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="{target_path.name}"',
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=86400",
-        }
-    )
-
-
 def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
     """Resolves raw filename, URI-encoded name, stem, or document ID to a physical PDF file path."""
     import urllib.parse
@@ -273,6 +225,48 @@ def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
                     return f
 
     return None
+
+
+@router.get("/api/pdf/{filename}")
+@router.get("/api/documents/{filename}/file")
+async def get_pdf_file(filename: str):
+    """
+    Serves physical PDF for deep-linked in-browser viewing with #page=N.
+    Enforces HTTP 206 Partial Content byte ranges, inline display, and long-term caching.
+    """
+    import os
+    import urllib.parse
+
+    clean_name = urllib.parse.unquote(filename).strip()
+
+    # Search candidates: DOWNLOAD_DIR, DOCUMENTS_DIR, user Downloads
+    candidates = [
+        DOWNLOAD_DIR / clean_name,
+        DOCUMENTS_DIR / clean_name,
+        Path(os.path.expanduser(f"~/Downloads/{clean_name}")),
+    ]
+
+    target_path = None
+    for cand in candidates:
+        if cand.exists() and cand.is_file():
+            target_path = cand
+            break
+
+    if not target_path:
+        target_path = _resolve_document_file(clean_name)
+
+    if not target_path or not target_path.exists():
+        raise HTTPException(status_code=404, detail=f"Document '{filename}' not found.")
+
+    return FileResponse(
+        path=str(target_path),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{target_path.name}"',
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=86400",
+        }
+    )
 
 
 @router.get("/api/pdf/{filename}/pages/{page_number}")

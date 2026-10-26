@@ -41,6 +41,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.api.schemas import ChatMessageRequest
+from src.cli.persona_classifier import extract_conversational_persona
 
 logger = logging.getLogger("raise.router.chat.conversational")
 
@@ -123,15 +124,33 @@ async def handle_conversational_chat(
 
     vllm_candidates = [
         os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1"),
-        "http://raise-vllm-prod:8000/v1",
+        "http://localhost:8000/v1",
+        "http://127.0.0.1:8000/v1",
         "http://localhost:8002/v1",
+        "http://127.0.0.1:8002/v1",
+        "http://raise-vllm-prod:8000/v1",
     ]
     model_name = os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
 
-    # Helper for fallback reply if vLLM is temporarily unreachable
+    # Conversational intent classifier matching main.py
+    intent = extract_conversational_persona(message)
+    q_norm = re.sub(r"[^\w\s]", "", message.lower()).strip()
+    is_persona_fastpath = (
+        intent.get("type") in ("greeting", "bot_identity", "name_recall", "name_intro")
+        or q_norm in {
+            "hi", "hello", "hey", "greetings", "howdy", "hi there", "hello there", "hey there",
+            "good morning", "good afternoon", "good evening", "good day", "yo", "sup"
+        }
+        or any(w in message.lower() for w in ["who are you", "who r u", "whats your name", "what is your name", "what can you do"])
+    )
+
+    # Helper for fallback reply matching main.py
     def get_fallback_reply() -> str:
         q_lower = message.lower()
-        if any(w in q_lower for w in ["do you know my name", "what is my name", "who am i"]):
+        if intent.get("type") == "name_intro":
+            p_name = intent.get("name") or known_name or "there"
+            return f"Hello {p_name}! My name is RAISE. I'm here to help you with your research. How can I assist you today?"
+        if intent.get("type") == "name_recall" or any(w in q_lower for w in ["do you know my name", "what is my name", "who am i"]):
             if known_name:
                 return (
                     f"Yes, of course! Your name is {known_name}. How can I assist you with your research today? "
@@ -140,6 +159,11 @@ async def handle_conversational_chat(
             return (
                 "You haven't told me your name yet! What should I call you? "
                 "When you are ready to conduct document research, please attach a document in your drawer."
+            )
+        if intent.get("type") == "bot_identity" or any(w in q_lower for w in ["who are you", "who r u", "whats your name", "what is your name", "what can you do"]):
+            return (
+                "My name is RAISE, your research intelligence assistant. I am here to help you analyze, verify, "
+                "and extract insights from academic documents and reports. Please attach a document in your drawer to begin research."
             )
         if known_name:
             return (
@@ -151,20 +175,13 @@ async def handle_conversational_chat(
             "Please attach an academic document in your drawer when you wish to begin research."
         )
 
-    # Fast-path for pure introductory greetings (sub-10ms response)
-    q_norm = re.sub(r"[^\w\s]", "", message.lower()).strip()
-    is_pure_greeting = q_norm in {
-        "hi", "hello", "hey", "greetings", "howdy", "hi there", "hello there", "hey there",
-        "good morning", "good afternoon", "good evening", "good day", "yo", "sup"
-    }
-
     # A. Plain-Text Stream Response
     if req.stream and (req.format == "raw" or "text/plain" in request.headers.get("accept", "").lower()):
         async def conv_raw_stream():
             full_response_parts = []
             stream_succeeded = False
 
-            if is_pure_greeting:
+            if is_persona_fastpath:
                 fb = get_fallback_reply()
                 yield fb
                 if session_id:
@@ -268,7 +285,7 @@ async def handle_conversational_chat(
             full_response_parts = []
             stream_succeeded = False
 
-            if is_pure_greeting:
+            if is_persona_fastpath:
                 fb = get_fallback_reply()
                 words = re.findall(r"\S+|\s+", fb)
                 chunk_size = 4
@@ -276,7 +293,7 @@ async def handle_conversational_chat(
                     if await request.is_disconnected():
                         return
                     w = "".join(words[i:i + chunk_size])
-                    yield f"data: {json.dumps({'token': w})}\n\n"
+                    yield f"event: token\ndata: {json.dumps({'token': w})}\n\n"
                     await asyncio.sleep(0.001)
                 if session_id:
                     if postgres_manager:
@@ -304,7 +321,7 @@ async def handle_conversational_chat(
                         return
                     if chunk and not chunk.startswith("Inference execution error"):
                         full_response_parts.append(chunk)
-                        yield f"data: {json.dumps({'token': chunk})}\n\n"
+                        yield f"event: token\ndata: {json.dumps({'token': chunk})}\n\n"
                 if full_response_parts:
                     stream_succeeded = True
             except Exception as router_err:
@@ -355,7 +372,7 @@ async def handle_conversational_chat(
                 for w in words:
                     if await request.is_disconnected():
                         return
-                    yield f"data: {json.dumps({'token': w})}\n\n"
+                    yield f"event: token\ndata: {json.dumps({'token': w})}\n\n"
                     await asyncio.sleep(0.015)
 
             complete_text = "".join(full_response_parts).strip()
@@ -378,7 +395,7 @@ async def handle_conversational_chat(
         )
 
     # C. Non-Streaming Response
-    if is_pure_greeting:
+    if is_persona_fastpath:
         full_reply = get_fallback_reply()
         elapsed = round(time.perf_counter() - t_start, 3)
         if session_id and full_reply:

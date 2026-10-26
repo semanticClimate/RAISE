@@ -1,4 +1,4 @@
-"""
+﻿"""
 RAISE System & Control Center API Router
 ========================================
 Modular API router for system telemetry, runtime configuration, dynamic LLM
@@ -73,6 +73,13 @@ async def test_system_connections(req: Optional[SystemConfigRequest] = None) -> 
     green prematurely when substrates are offline or unconfigured.
     """
     return _probe_all_connections(req)
+
+
+@router.post("/test-llm-key", operation_id="post_system_test_llm_key")
+async def test_llm_key_endpoint(req: Optional[SystemConfigRequest] = None) -> Dict[str, Any]:
+    """Tests ONLY LLM API key credentials without blocking on database connections."""
+    from src.features.system.connection_service import test_llm_connection
+    return {"llm": test_llm_connection(req)}
 
 
 @router.get("/preflight-assets")

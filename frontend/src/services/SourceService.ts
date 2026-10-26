@@ -185,6 +185,22 @@ export class SourceService {
   }
 
   /**
+   * Standalone Google Drive-style PDF viewer tab route
+   */
+  public getViewerUrl(filename: string, pageNumber: number = 1, excerpt?: string): string {
+    const cleanFilename = encodeURIComponent(filename);
+    const safePage = Math.max(1, pageNumber || 1);
+    const exc = excerpt ? `&excerpt=${encodeURIComponent(excerpt)}` : '';
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      const pathname = window.location.pathname.endsWith('/')
+        ? window.location.pathname
+        : `${window.location.pathname}/`;
+      return `${window.location.origin}${pathname}#/viewer?file=${cleanFilename}&page=${safePage}${exc}`;
+    }
+    return `#/viewer?file=${cleanFilename}&page=${safePage}${exc}`;
+  }
+
+  /**
    * High-speed URL that streams ONLY the single referenced page (<100KB)
    * in ~25ms instead of downloading the entire multi-megabyte PDF.
    */

@@ -192,9 +192,7 @@ export const platformAdapter = {
   isLocalEnvironment,
   normalizePlatform,
 
-  /**
-   * Fetches hardware telemetry from Rust Tauri IPC or FastAPI /api/system/hardware
-   */
+  // Sid says: Query live /api/hardware-telemetry endpoint without hardcoded hardware strings
   async getHardware(): Promise<HardwareTelemetry> {
     if (isTauri()) {
       try {
@@ -205,21 +203,39 @@ export const platformAdapter = {
     }
 
     try {
-      const res = await fetchWithTimeout(resolveApiUrl('/api/system/hardware'), {
-        headers: { Accept: 'application/json' },
-      }, 3000);
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/hardware-telemetry'),
+        {
+          headers: { Accept: 'application/json' },
+        },
+        3000
+      );
       if (res.ok) {
-        return (await res.json()) as HardwareTelemetry;
+        const raw = (await res.json()) as Record<string, any>;
+        return {
+          platform: typeof window !== 'undefined' ? window.navigator.platform : 'Unknown',
+          os_name: typeof window !== 'undefined' ? window.navigator.userAgent : undefined,
+          total_ram_gb: typeof raw.ram_total_gb === 'number' ? raw.ram_total_gb : (raw.total_ram_gb || 0),
+          cpu_cores:
+            typeof raw.cpu_cores === 'number'
+              ? raw.cpu_cores
+              : typeof window !== 'undefined'
+                ? window.navigator.hardwareConcurrency || 0
+                : 0,
+          free_ram_gb: raw.ram_available_gb,
+          has_metal_or_cuda: Boolean(raw.gpu_model && !String(raw.gpu_model).toLowerCase().includes('cpu fallback')),
+          gpu: raw.gpu_model ? { status: 'active', details: String(raw.gpu_model) } : undefined,
+        };
       }
     } catch {
       // Backend offline or unreachable
     }
 
-    // Default fallback estimate from browser
+    // Dynamic browser fallback without hardcoded values
     return {
       platform: typeof window !== 'undefined' ? window.navigator.platform : 'Unknown',
-      total_ram_gb: 8.0,
-      cpu_cores: typeof window !== 'undefined' ? window.navigator.hardwareConcurrency || 8 : 8,
+      total_ram_gb: 0,
+      cpu_cores: typeof window !== 'undefined' ? window.navigator.hardwareConcurrency || 0 : 0,
       has_metal_or_cuda: true,
     };
   },
