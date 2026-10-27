@@ -96,6 +96,12 @@ def get_current_configuration() -> Dict[str, Any]:
         "neo4j_database": os.getenv("NEO4J_DATABASE", "neo4j"),
         "neo4j_is_cloud": "databases.neo4j.io" in neo4j_uri,
         "redis_is_cloud": "upstash.io" in redis_url,
+        "embedding_model": os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5"),
+        "embedding_device": os.getenv("EMBEDDING_DEVICE", "cuda"),
+        "reranker_model": os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"),
+        "reranker_device": os.getenv("RERANKER_DEVICE", "cuda"),
+        "nli_model": os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l"),
+        "nli_device": os.getenv("NLI_DEVICE", "cuda"),
         "first_run_completed": bool(
             cm.get_credential_status("groq") == "configured"
             or cm.get_credential_status("mistral") == "configured"
@@ -137,62 +143,92 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
     # Update LLM Backend
     if cfg.llm_mode == "local_ollama":
         env_map["LLM_BACKEND"] = "ollama"
-        if cfg.selected_local_model:
-            env_map["LLM_MODEL_NAME"] = cfg.selected_local_model
+        env_map["LLM_PROVIDER"] = "ollama"
+        env_map["EXECUTION_MODE"] = "LOCAL"
+        env_map["LLM_MODEL_NAME"] = cfg.selected_local_model or "llama3.2:3b"
         env_map["LLM_BASE_URL"] = "http://localhost:11434/v1"
-    elif cfg.llm_mode == "local_vllm":
+    elif cfg.llm_mode in ("local_vllm", "vllm", "local"):
         env_map["LLM_BACKEND"] = "vllm"
-        if cfg.selected_local_model:
+        env_map["LLM_PROVIDER"] = "vllm"
+        env_map["EXECUTION_MODE"] = "LOCAL"
+        if cfg.selected_local_model and cfg.selected_local_model != "llama3.2:3b":
             env_map["LLM_MODEL_NAME"] = cfg.selected_local_model
         else:
             env_map["LLM_MODEL_NAME"] = os.getenv("VLLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
         env_map["VLLM_BASE_URL"] = os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")
     elif cfg.llm_mode == "cloud_gemini":
         env_map["LLM_BACKEND"] = "gemini"
+        env_map["LLM_PROVIDER"] = "gemini"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "gemini-2.0-flash"
         if cfg.gemini_api_key and not is_masked_secret(cfg.gemini_api_key):
             env_map["GEMINI_API_KEY"] = cfg.gemini_api_key.strip()
     elif cfg.llm_mode == "cloud_nvidia":
         env_map["LLM_BACKEND"] = "nvidia"
+        env_map["LLM_PROVIDER"] = "nvidia"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "meta/llama-3.2-11b-vision-instruct"
     elif cfg.llm_mode == "cloud_cohere":
         env_map["LLM_BACKEND"] = "cohere"
+        env_map["LLM_PROVIDER"] = "cohere"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "command-r-plus-08-2024"
     elif cfg.llm_mode == "cloud_mistral":
         env_map["LLM_BACKEND"] = "mistral"
+        env_map["LLM_PROVIDER"] = "mistral"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "open-mistral-nemo"
     elif cfg.llm_mode == "cloud_deepseek":
         env_map["LLM_BACKEND"] = "deepseek"
+        env_map["LLM_PROVIDER"] = "deepseek"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "deepseek-chat"
         if cfg.deepseek_api_key and not is_masked_secret(cfg.deepseek_api_key):
             env_map["DEEPSEEK_API_KEY"] = cfg.deepseek_api_key.strip()
     elif cfg.llm_mode == "cloud_openrouter":
         env_map["LLM_BACKEND"] = "openrouter"
+        env_map["LLM_PROVIDER"] = "openrouter"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "anthropic/claude-3.5-sonnet"
         if cfg.openrouter_api_key and not is_masked_secret(cfg.openrouter_api_key):
             env_map["OPENROUTER_API_KEY"] = cfg.openrouter_api_key.strip()
     elif cfg.llm_mode == "cloud_openai":
         env_map["LLM_BACKEND"] = "universal"
+        env_map["LLM_PROVIDER"] = "openai"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "gpt-4o-mini"
         env_map["CUSTOM_LLM_BASE_URL"] = "https://api.openai.com/v1"
         if cfg.openai_api_key and not is_masked_secret(cfg.openai_api_key):
             env_map["OPENAI_API_KEY"] = cfg.openai_api_key.strip()
     elif cfg.llm_mode == "cloud_anthropic":
         env_map["LLM_BACKEND"] = "universal"
+        env_map["LLM_PROVIDER"] = "anthropic"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "claude-3-5-sonnet"
         if cfg.anthropic_api_key and not is_masked_secret(cfg.anthropic_api_key):
             env_map["ANTHROPIC_API_KEY"] = cfg.anthropic_api_key.strip()
     elif cfg.llm_mode == "cloud_vercel":
         env_map["LLM_BACKEND"] = "vercel"
+        env_map["LLM_PROVIDER"] = "vercel"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "typesafe-ai/jev"
     elif cfg.llm_mode == "cloud_custom":
         env_map["LLM_BACKEND"] = "universal"
+        env_map["LLM_PROVIDER"] = "custom"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = cfg.custom_model_name or "gpt-4o-mini"
         if cfg.custom_base_url:
             env_map["CUSTOM_LLM_BASE_URL"] = cfg.custom_base_url
             os.environ["CUSTOM_LLM_BASE_URL"] = cfg.custom_base_url
+    elif cfg.llm_mode == "automatic":
+        env_map["EXECUTION_MODE"] = "AUTOMATIC"
+        env_map["LLM_BACKEND"] = "groq"
+        env_map["LLM_PROVIDER"] = "groq"
+        env_map["LLM_MODEL_NAME"] = "llama-3.3-70b-versatile"
     else:  # cloud_groq default
         env_map["LLM_BACKEND"] = "groq"
+        env_map["LLM_PROVIDER"] = "groq"
+        env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "llama-3.3-70b-versatile"
         if cfg.groq_api_key and not is_masked_secret(cfg.groq_api_key):
             env_map["GROQ_API_KEY"] = cfg.groq_api_key.strip()
@@ -224,9 +260,41 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
 
     # Refresh provider router fallback chain dynamically
     try:
-        get_provider_router()._refresh_fallback_chain()
+        router = get_provider_router()
+        from src.infrastructure.providers.router import ExecutionMode
+        target_mode_str = env_map.get("EXECUTION_MODE", "AUTOMATIC").upper()
+        if target_mode_str == "LOCAL":
+            router.set_execution_mode(ExecutionMode.LOCAL)
+            router.set_cloud_allowed(False)
+        elif target_mode_str == "CLOUD":
+            router.set_execution_mode(ExecutionMode.CLOUD)
+            router.set_cloud_allowed(True)
+        else:
+            router.set_execution_mode(ExecutionMode.AUTOMATIC)
+            router.set_cloud_allowed(True)
+        router._refresh_fallback_chain(env_map.get("LLM_BACKEND"))
     except Exception as e:
         logger.warning(f"Could not refresh provider router: {e}")
+
+    # Update Neural Models and Acceleration Devices
+    if cfg.embedding_model:
+        env_map["EMBEDDING_MODEL"] = cfg.embedding_model.strip()
+        os.environ["EMBEDDING_MODEL"] = cfg.embedding_model.strip()
+    if cfg.embedding_device:
+        env_map["EMBEDDING_DEVICE"] = cfg.embedding_device.strip()
+        os.environ["EMBEDDING_DEVICE"] = cfg.embedding_device.strip()
+    if cfg.reranker_model:
+        env_map["RERANKER_MODEL"] = cfg.reranker_model.strip()
+        os.environ["RERANKER_MODEL"] = cfg.reranker_model.strip()
+    if cfg.reranker_device:
+        env_map["RERANKER_DEVICE"] = cfg.reranker_device.strip()
+        os.environ["RERANKER_DEVICE"] = cfg.reranker_device.strip()
+    if cfg.nli_model:
+        env_map["NLI_MODEL"] = cfg.nli_model.strip()
+        os.environ["NLI_MODEL"] = cfg.nli_model.strip()
+    if cfg.nli_device:
+        env_map["NLI_DEVICE"] = cfg.nli_device.strip()
+        os.environ["NLI_DEVICE"] = cfg.nli_device.strip()
 
     # Update Neo4j
     if cfg.neo4j_mode == "cloud" and cfg.neo4j_uri:

@@ -28,23 +28,27 @@ _LOAD_FAILED = False
 
 class FineCatNLIVerifier:
     """
-    Local Cross-Encoder NLI Verifier utilizing ModernBERT-large backbone
+    Local Cross-Encoder NLI Verifier utilizing configurable backbone
+    (dleemiller/finecat-nli-l by default, or any HuggingFace NLI model)
     specifically fine-tuned on curated multi-source NLI benchmarks.
     """
 
     MODEL_ID = "dleemiller/finecat-nli-l"
     LABEL_MAPPING = {0: "ENTAILMENT", 1: "NEUTRAL", 2: "CONTRADICTION"}
 
-    def __init__(self, model_id: Optional[str] = None, max_length: int = 4096):
-        self.model_id = model_id or self.MODEL_ID
+    def __init__(self, model_id: Optional[str] = None, max_length: int = 4096, device: Optional[str] = None):
+        self.model_id = model_id or os.getenv("NLI_MODEL", self.MODEL_ID)
         self.max_length = max_length
+        self.device = device or os.getenv("NLI_DEVICE")
 
     @classmethod
-    def _ensure_loaded(cls, model_id: str = MODEL_ID) -> bool:
-        """Loads weights and tokenizer once into GPU VRAM as a singleton."""
+    def _ensure_loaded(cls, model_id: Optional[str] = None, device: Optional[str] = None) -> bool:
+        """Loads weights and tokenizer once into GPU/CPU VRAM as a singleton."""
         global _CACHED_MODEL, _CACHED_TOKENIZER, _CACHED_DEVICE, _LOAD_FAILED
+        target_model = model_id or os.getenv("NLI_MODEL", cls.MODEL_ID)
         if _CACHED_MODEL is not None and _CACHED_TOKENIZER is not None:
-            return True
+            if getattr(_CACHED_MODEL, "_loaded_model_id", None) == target_model:
+                return True
         if _LOAD_FAILED:
             return False
 
@@ -52,36 +56,48 @@ class FineCatNLIVerifier:
             import torch
             from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-            device = "cuda:0" if torch.cuda.is_available() else "cpu"
-            model_dtype = torch.float16 if "cuda" in device else torch.float32
+            target_dev = device or os.getenv("NLI_DEVICE")
+            if target_dev:
+                target_dev = str(target_dev).lower()
+                if "cuda" in target_dev:
+                    if not torch.cuda.is_available():
+                        logger.warning("CUDA requested for NLI but torch.cuda.is_available() is False. Using CPU.")
+                        target_dev = "cpu"
+                    elif ":" not in target_dev:
+                        target_dev = "cuda:0"
+            else:
+                target_dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+            model_dtype = torch.float16 if "cuda" in target_dev else torch.float32
 
             token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
             try:
-                tokenizer = AutoTokenizer.from_pretrained(model_id, token=token, local_files_only=True)
+                tokenizer = AutoTokenizer.from_pretrained(target_model, token=token, local_files_only=True)
                 model = AutoModelForSequenceClassification.from_pretrained(
-                    model_id,
+                    target_model,
                     dtype=model_dtype,
                     token=token,
                     local_files_only=True,
                 )
             except Exception:
-                tokenizer = AutoTokenizer.from_pretrained(model_id, token=token)
+                tokenizer = AutoTokenizer.from_pretrained(target_model, token=token)
                 model = AutoModelForSequenceClassification.from_pretrained(
-                    model_id,
+                    target_model,
                     dtype=model_dtype,
                     token=token,
                 )
-            model.to(device)
+            model.to(target_dev)
             model.eval()
+            model._loaded_model_id = target_model
 
             _CACHED_MODEL = model
             _CACHED_TOKENIZER = tokenizer
-            _CACHED_DEVICE = device
+            _CACHED_DEVICE = target_dev
             _LOAD_FAILED = False
-            logger.info("FineCat-NLI (%s) loaded successfully on %s", model_id, device)
+            logger.info("NLI Verifier (%s) loaded successfully on %s", target_model, target_dev)
             return True
         except Exception as exc:
-            logger.warning("Could not initialize FineCat-NLI locally: %s. Falling back to heuristic NLI.", exc)
+            logger.warning("Could not initialize NLI verifier (%s) locally: %s. Falling back to heuristic NLI.", target_model, exc)
             _LOAD_FAILED = True
             return False
 
@@ -96,6 +112,18 @@ class FineCatNLIVerifier:
         """
         batch_res = self.classify_batch([(premise, hypothesis)])
         return batch_res[0] if batch_res else self._heuristic_fallback(premise, hypothesis)
+
+    async def aclassify_pair(self, premise: str, hypothesis: str) -> Dict[str, Any]:
+        """Asynchronously dispatches pair classification to thread executor."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: self.classify_pair(premise, hypothesis))
+
+    async def aclassify_batch(self, pairs: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
+        """Asynchronously dispatches batch classification to thread executor."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: self.classify_batch(pairs))
 
     def classify_batch(self, pairs: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
         """
@@ -133,15 +161,28 @@ class FineCatNLIVerifier:
 
             elapsed_ms = (time.perf_counter() - t0) * 1000.0 / max(len(pairs), 1)
 
+            # Dynamic label index discovery to support any future NLI architecture
+            ent_idx, neu_idx, con_idx = 0, 1, 2
+            id2label = getattr(getattr(_CACHED_MODEL, "config", None), "id2label", None)
+            if id2label and isinstance(id2label, dict):
+                for idx, lbl in id2label.items():
+                    lbl_clean = str(lbl).lower()
+                    if "entail" in lbl_clean:
+                        ent_idx = int(idx)
+                    elif "contra" in lbl_clean:
+                        con_idx = int(idx)
+                    elif "neut" in lbl_clean:
+                        neu_idx = int(idx)
+
             for logit_row, prob_row in zip(logits_np, probs):
-                ent_prob = float(prob_row[0])
-                neu_prob = float(prob_row[1])
-                con_prob = float(prob_row[2])
+                ent_prob = float(prob_row[ent_idx])
+                neu_prob = float(prob_row[neu_idx])
+                con_prob = float(prob_row[con_idx])
 
                 raw_logits = {
-                    "entailment": round(float(logit_row[0]), 4),
-                    "neutral": round(float(logit_row[1]), 4),
-                    "contradiction": round(float(logit_row[2]), 4),
+                    "entailment": round(float(logit_row[ent_idx]), 4),
+                    "neutral": round(float(logit_row[neu_idx]), 4),
+                    "contradiction": round(float(logit_row[con_idx]), 4),
                 }
                 softmax_probs = {
                     "entailment": round(ent_prob, 4),

@@ -40,10 +40,21 @@ async def create_auth_handshake(request: Request) -> Dict[str, Any]:
             "client_ip": client_ip,
         }
 
-    token = await mgr.create_handshake_token(metadata={"client_ip": client_ip})
-    return {
-        "token": token,
-        "expires_in": 300,
-        "status": "active",
-        "client_ip": client_ip,
-    }
+    try:
+        token = await mgr.create_handshake_token(metadata={"client_ip": client_ip})
+        return {
+            "token": token,
+            "expires_in": 300,
+            "status": "active",
+            "client_ip": client_ip,
+        }
+    except Exception as exc:
+        logger.warning("Redis handshake error, falling back to standalone token: %s", exc)
+        mock_token = f"standalone_{secrets.token_urlsafe(24)}"
+        return {
+            "token": mock_token,
+            "expires_in": 300,
+            "status": "active",
+            "mode": "standalone_fallback",
+            "client_ip": client_ip,
+        }

@@ -220,7 +220,7 @@ class LocalVectorEngine(
         resolved_model = model_name or default_model
         self.model_key = resolved_model
         self.model_path = self.AVAILABLE_MODELS.get(resolved_model, resolved_model)
-        self.device_override = device or os.getenv("RAISE_EMBEDDING_DEVICE")
+        self.device_override = device or os.getenv("EMBEDDING_DEVICE") or os.getenv("RAISE_EMBEDDING_DEVICE")
 
         # Systematic Tripartite Naming Convention:
         if dataset:

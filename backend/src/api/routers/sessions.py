@@ -36,7 +36,14 @@ async def get_chat_history_spec(
     """
     target_id = session_id or thread_id or "default"
     try:
-        return session_service.get_chat_history(target_id, limit=limit)
+        res = session_service.get_chat_history(target_id, limit=limit)
+        if isinstance(res, dict) and "messages" in res and isinstance(res["messages"], list):
+            for m in res["messages"]:
+                if isinstance(m, dict):
+                    txt = m.get("text") or m.get("content", "")
+                    m["text"] = txt
+                    m["content"] = txt
+        return res
     except Exception as exc:
         logger.error(f"Error retrieving chat history for {target_id}: {exc}")
         raise HTTPException(
@@ -56,10 +63,19 @@ async def save_chat_history_spec(
     """
     target_id = payload.session_id or payload.thread_id or "default"
     attached = payload.attached_docs or payload.selectedSourceIds
+    normalized_messages = []
+    for m in (payload.messages or []):
+        if isinstance(m, dict):
+            txt = m.get("text") or m.get("content", "")
+            m["text"] = txt
+            m["content"] = txt
+            normalized_messages.append(m)
+        else:
+            normalized_messages.append(m)
     try:
         return session_service.sync_chat_history(
             session_id=target_id,
-            messages=payload.messages,
+            messages=normalized_messages,
             title=payload.title,
             attached_docs=attached,
         )
@@ -191,11 +207,27 @@ async def get_session_history(
     turns = session_memory_manager.get_thread_history(session_id) if session_memory_manager else []
     pg_msgs = postgres_manager.get_messages(session_id, limit=50) if postgres_manager else []
     session_vars = redis_cache.get_session_memory(session_id) if redis_cache else {}
+
+    normalized_pg = []
+    for m in pg_msgs:
+        txt = m.get("text") or m.get("content", "")
+        m["content"] = txt
+        m["text"] = txt
+        normalized_pg.append(m)
+
+    normalized_turns = []
+    for t in turns:
+        td = t.to_dict() if hasattr(t, "to_dict") else dict(t)
+        txt = td.get("text") or td.get("content") or td.get("user_query") or td.get("assistant_response", "")
+        td["content"] = txt
+        td["text"] = txt
+        normalized_turns.append(td)
+
     return {
         "session_id": session_id,
-        "turns_count": len(pg_msgs) or len(turns),
-        "history": [t.to_dict() for t in turns] if turns else pg_msgs,
-        "messages": pg_msgs,
+        "turns_count": len(normalized_pg) or len(normalized_turns),
+        "history": normalized_turns if normalized_turns else normalized_pg,
+        "messages": normalized_pg,
         "memory_vars": session_vars,
     }
 
@@ -232,10 +264,14 @@ async def clear_chat(
     """Clear conversational trajectory and reasoning memory."""
     try:
         session_id = request.query_params.get("session_id") or request.query_params.get("thread_id")
+        confirm = request.query_params.get("confirm", "").lower() in ("true", "1", "yes")
         if not session_id:
             try:
                 body = await request.json()
-                session_id = body.get("session_id") or body.get("thread_id")
+                if isinstance(body, dict):
+                    session_id = body.get("session_id") or body.get("thread_id")
+                    if not confirm:
+                        confirm = body.get("confirm") is True or str(body.get("confirm", "")).lower() in ("true", "1", "yes")
             except Exception:
                 pass
 
@@ -246,6 +282,13 @@ async def clear_chat(
                 postgres_manager.clear_session(session_id)
             return {"status": "success", "message": f"Session '{session_id}' cleared successfully"}
 
+        # Require explicit confirmation before clearing all sessions across all users
+        if not confirm:
+            raise HTTPException(
+                status_code=400,
+                detail="Confirmation required to clear all chat sessions. Pass 'confirm=true' or specify a 'session_id'."
+            )
+
         if session_memory_manager and hasattr(session_memory_manager, "_threads"):
             session_memory_manager._threads.clear()
         if postgres_manager and hasattr(postgres_manager, "clear_all_sessions"):
@@ -253,5 +296,7 @@ async def clear_chat(
         if rag_engine:
             rag_engine.clear_chat_session()
         return {"status": "success", "message": "All chat sessions cleared successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"status": "error", "error": str(e)}

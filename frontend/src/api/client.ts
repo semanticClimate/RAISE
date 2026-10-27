@@ -368,6 +368,9 @@ class ApiClient {
         const trimmed = line.trim();
         // Ignore SSE comments/keepalives (e.g. ": keepalive")
         if (!trimmed || trimmed.startsWith(':')) {
+          if (!trimmed) {
+            currentEvent = '';
+          }
           return;
         }
 
@@ -400,13 +403,15 @@ class ApiClient {
             const parsed: unknown = JSON.parse(trimmedPayload);
             const p = asRecord(parsed);
 
-            // 1. Check for stage/node progression events
+            // 1. Check for stage/node progression events (only if p actually contains node or stage)
             if (
-              currentEvent === 'node_update' ||
-              currentEvent === 'stage' ||
-              p?.node ||
-              p?.stage
+              (currentEvent === 'node_update' ||
+                currentEvent === 'stage' ||
+                p?.node ||
+                p?.stage) &&
+              (p?.node !== undefined || p?.stage !== undefined)
             ) {
+              currentEvent = '';
               if (p) {
                 options.onStageUpdate?.(p);
               }
@@ -474,6 +479,7 @@ class ApiClient {
                 : undefined) ??
               null;
             if (typeof token === 'string') {
+              currentEvent = '';
               if (token.length > 0) {
                 fullText += token;
                 onChunk?.(token, fullText);
@@ -535,21 +541,20 @@ class ApiClient {
         processLine(buffer);
       }
 
-      // Final pass: ensure no residual JSON tokens or SSE markers remain
-      fullText = sanitizeStreamText(fullText);
-
-      // Sid says: Guard against empty response bug - fallback to answer/grounded_answer/reply in streamMetadata
-      if (!fullText.trim() && streamMetadata) {
-        const fallbackAns =
-          getStringField(streamMetadata, 'grounded_answer') ??
-          getStringField(streamMetadata, 'answer') ??
-          getStringField(streamMetadata, 'reply') ??
-          '';
-        if (fallbackAns) {
-          fullText = sanitizeStreamText(fallbackAns);
-          onChunk?.(fullText, fullText);
+      // Fallback: if fullText is empty, recover from completion event metadata answer
+      if (!fullText.trim()) {
+        const metaAns =
+          getStringField(streamMetadata ?? null, 'answer') ??
+          getStringField(streamMetadata ?? null, 'grounded_answer') ??
+          getStringField(streamMetadata ?? null, 'reply');
+        if (metaAns) {
+          fullText = metaAns;
+          onChunk?.(metaAns, fullText);
         }
       }
+
+      // Final pass: ensure no residual JSON tokens or SSE markers remain
+      fullText = sanitizeStreamText(fullText);
 
       logToTerminal({
         type: 'RES',

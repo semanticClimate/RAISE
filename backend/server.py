@@ -36,10 +36,25 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, Set, Dict, Any
 
+# Windows Asyncio Proactor ConnectionResetError [WinError 10054] mitigation
+if sys.platform == "win32":
+    try:
+        from asyncio.proactor_events import _ProactorBasePipeTransport
+        _orig_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
+
+        def _silenced_call_connection_lost(self, exc):
+            try:
+                _orig_call_connection_lost(self, exc)
+            except (ConnectionResetError, OSError):
+                pass
+
+        _ProactorBasePipeTransport._call_connection_lost = _silenced_call_connection_lost
+    except Exception:
+        pass
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-from fastapi.responses import ORJSONResponse
 from starlette.websockets import WebSocketState
 import redis.asyncio as aioredis
 
@@ -62,7 +77,8 @@ except Exception:
 # Logging configuration
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
 )
 logger = logging.getLogger("RAISE.Server")
 
@@ -296,6 +312,14 @@ async def server_lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning(f"Startup document synchronization notice in server.py: {exc}")
 
+    # 5. Pre-warm local neural inference models (Embedding, Reranker, NLI) in background thread
+    try:
+        from src.infrastructure.model_warmup import warmup_all_neural_models
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, warmup_all_neural_models)
+    except Exception as exc:
+        logger.debug(f"Could not launch neural models pre-warming: {exc}")
+
     yield
 
     # Shutdown Phase
@@ -331,7 +355,6 @@ app = FastAPI(
     title="RAISE Master Edge Gateway",
     version="1.0.0",
     description="Enterprise edge gateway for Research Assessment Intelligence & Semantic Extraction",
-    default_response_class=ORJSONResponse,
     lifespan=server_lifespan
 )
 

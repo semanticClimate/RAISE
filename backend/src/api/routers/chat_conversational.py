@@ -302,7 +302,7 @@ async def handle_conversational_chat(
                     if redis_cache:
                         redis_cache.save_session_message(session_id, "user", message, mode=mode)
                         redis_cache.save_session_message(session_id, "assistant", fb, mode=mode)
-                yield f"data: {json.dumps({'status': 'completed', 'sources': [], 'citations': []})}\n\n"
+                yield f"data: {json.dumps({'status': 'completed', 'answer': fb, 'grounded_answer': fb, 'reply': fb, 'sources': [], 'citations': []})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
 
@@ -385,7 +385,7 @@ async def handle_conversational_chat(
                     redis_cache.save_session_message(session_id, "user", message, mode=mode)
                     redis_cache.save_session_message(session_id, "assistant", complete_text, mode=mode)
 
-            yield f"data: {json.dumps({'status': 'completed', 'sources': [], 'citations': []})}\n\n"
+            yield f"data: {json.dumps({'status': 'completed', 'answer': complete_text, 'grounded_answer': complete_text, 'reply': complete_text, 'sources': [], 'citations': []})}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(

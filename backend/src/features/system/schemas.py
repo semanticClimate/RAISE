@@ -27,7 +27,7 @@ class SystemConfigRequest(BaseModel):
     custom_api_key: Optional[str] = None
     custom_base_url: Optional[str] = None
     custom_model_name: Optional[str] = None
-    selected_local_model: Optional[str] = "llama3.2:3b"
+    selected_local_model: Optional[str] = None
     neo4j_mode: str = Field(default="cloud", description="cloud, local, or in_memory_fallback")
     neo4j_uri: Optional[str] = None
     neo4j_user: Optional[str] = None
@@ -40,6 +40,12 @@ class SystemConfigRequest(BaseModel):
     postgres_url: Optional[str] = None
     postgres_uri: Optional[str] = None
     tunnel_url: Optional[str] = None
+    embedding_model: Optional[str] = None
+    embedding_device: Optional[str] = None
+    reranker_model: Optional[str] = None
+    reranker_device: Optional[str] = None
+    nli_model: Optional[str] = None
+    nli_device: Optional[str] = None
 
 
 class ModelPullRequest(BaseModel):

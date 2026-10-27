@@ -202,6 +202,14 @@ async def lifespan(app_instance: FastAPI):
     except Exception as exc:
         logger.warning(f"Startup document synchronization notice: {exc}")
 
+    # 3. Pre-warm local neural inference models (Embedding, Reranker, NLI) in background thread
+    try:
+        from src.infrastructure.model_warmup import warmup_all_neural_models
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, warmup_all_neural_models)
+    except Exception as exc:
+        logger.debug(f"Startup neural models pre-warming notice in app.py: {exc}")
+
     yield
 
     # Shutdown

@@ -36,6 +36,10 @@ class SessionService:
             try:
                 cached = self.redis_cache.get_session_messages(target_id, limit=limit)
                 if cached:
+                    for m in cached:
+                        txt = m.get("text") or m.get("content", "")
+                        m["text"] = txt
+                        m["content"] = txt
                     return {
                         "id": target_id,
                         "session_id": target_id,
@@ -49,6 +53,10 @@ class SessionService:
 
         # 2. Authoritative PostgreSQL retrieval
         messages = self.postgres_manager.get_messages(target_id, limit=limit) if self.postgres_manager else []
+        for m in messages:
+            txt = m.get("text") or m.get("content", "")
+            m["text"] = txt
+            m["content"] = txt
 
         # 3. Backfill Redis Cache
         if messages and self.redis_cache:

@@ -122,6 +122,20 @@ class VectorConfig(BaseModel):
 
 
 
+
+class RerankerConfig(BaseModel):
+    """Contextual Cross-Encoder Reranker Configuration."""
+    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"))
+    device: str = Field(default_factory=lambda: os.getenv("RERANKER_DEVICE", "cuda"))
+    top_n: int = Field(default_factory=lambda: int(os.getenv("RERANKER_TOP_N", "8")))
+
+
+class NLIConfig(BaseModel):
+    """Natural Language Inference Verification Configuration."""
+    model_name: str = Field(default_factory=lambda: os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l"))
+    device: str = Field(default_factory=lambda: os.getenv("NLI_DEVICE", "cuda"))
+    max_length: int = Field(default_factory=lambda: int(os.getenv("NLI_MAX_LENGTH", "4096")))
+
 class LLMConfig(BaseModel):
     """Local & Remote Large Language Model Configuration."""
     backend: Literal["ollama", "huggingface", "openai-compatible", "vllm", "cloud"] = Field(
@@ -185,6 +199,8 @@ class Settings(BaseModel):
     
     neo4j: Neo4jConfig = Field(default_factory=Neo4jConfig)
     vector: VectorConfig = Field(default_factory=VectorConfig)
+    reranker: RerankerConfig = Field(default_factory=RerankerConfig)
+    nli: NLIConfig = Field(default_factory=NLIConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     postgres: PostgresConfig = Field(default_factory=PostgresConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)

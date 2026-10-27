@@ -153,8 +153,12 @@ class ProviderRouter:
         # Multi-model sequence line: Groq, NVIDIA NIM, Mistral, Cohere, Gemini
         ordered_candidates = ["mistral", "cohere", "nvidia", "gemini", "groq"]
         active = []
+        if prim in ("vllm", "local") or self.mode == ExecutionMode.LOCAL:
+            active.append("vllm")
+
         if prim in ordered_candidates and prim not in self.disabled_providers and cm.get_credential_status(prim) == "configured":
-            active.append(prim)
+            if prim not in active:
+                active.append(prim)
 
         for cand in ordered_candidates:
             if cand in self.disabled_providers:
@@ -175,8 +179,11 @@ class ProviderRouter:
             pass
 
         if "vllm" not in active:
-            if vllm_alive and not any(cm.get_credential_status(k) == "configured" for k in ordered_candidates):
-                active.insert(0, "vllm")
+            if (vllm_alive and not any(cm.get_credential_status(k) == "configured" for k in ordered_candidates)) or self.mode in (ExecutionMode.LOCAL, ExecutionMode.AUTOMATIC):
+                if vllm_alive:
+                    active.insert(0, "vllm")
+                else:
+                    active.append("vllm")
             else:
                 active.append("vllm")
 
@@ -267,6 +274,7 @@ class ProviderRouter:
     def set_execution_mode(self, mode: Union[ExecutionMode, str]) -> None:
         """Change global execution target."""
         self.mode = ExecutionMode(mode) if isinstance(mode, str) else mode
+        self.cloud_allowed = (self.mode != ExecutionMode.LOCAL)
         logger.info(f"Router execution mode set to: {self.mode.value}")
 
     def set_cloud_allowed(self, allowed: bool) -> None:
@@ -289,15 +297,28 @@ class ProviderRouter:
             return self.providers["vllm"]
 
         now = time.time()
+        from src.infrastructure.credentials.manager import get_credential_manager
+        cm = get_credential_manager()
 
         # Multi-model Round-Robin rotation across every configured model in a line
-        healthy_chain = [
-            cand for cand in self.fallback_chain
-            if cand not in self.disabled_providers
-            and self.provider_cooldowns.get(cand, 0) <= now
-            and cand in self.providers
-            and cand not in ("vllm", "local")
-        ]
+        healthy_chain = []
+        for cand in self.fallback_chain:
+            if cand in self.disabled_providers or self.provider_cooldowns.get(cand, 0) > now or cand not in self.providers:
+                continue
+            is_local = cand in ("vllm", "local")
+            if is_local:
+                if self.mode == ExecutionMode.CLOUD:
+                    continue
+                if not getattr(self.providers[cand], "is_available", lambda: True)():
+                    continue
+                healthy_chain.append(cand)
+            else:
+                if self.mode == ExecutionMode.LOCAL:
+                    continue
+                if not self.cloud_allowed:
+                    continue
+                if cm.get_credential_status(cand) == "configured":
+                    healthy_chain.append(cand)
 
         if self.round_robin_enabled and healthy_chain and t in (InferenceTask.RAG_GENERATION, InferenceTask.CHAT):
             with self._rr_lock:
@@ -305,38 +326,31 @@ class ProviderRouter:
                 self._round_robin_index = (self._round_robin_index + 1) % len(healthy_chain)
                 return self.providers[target_name]
 
-        target_name = self.task_policy.get(t, "vllm")
-        from src.infrastructure.credentials.manager import get_credential_manager
-        cm = get_credential_manager()
-
-        # If Cloud mode or Automatic mode, check billing guardrail
-        if target_name != "vllm" and not self.cloud_allowed and self.mode != ExecutionMode.CLOUD:
-            logger.info(f"Cloud inference confirmation required for {target_name}. Defaulting to Local vLLM.")
-            return self.providers["vllm"]
-
         # If target cloud provider has no credentials configured, route to first configured cloud provider or vLLM
         if target_name not in ("vllm", "local") and cm.get_credential_status(target_name) != "configured":
             for cand in self.fallback_chain:
                 if cand not in self.disabled_providers and self.provider_cooldowns.get(cand, 0) <= now:
                     if cand in ("vllm", "local"):
-                        if cand == "vllm" and self.providers["vllm"].is_available():
+                        if self.mode != ExecutionMode.CLOUD and cand in self.providers and getattr(self.providers[cand], "is_available", lambda: True)():
                             target_name = cand
                             break
-                    elif cm.get_credential_status(cand) == "configured":
+                    elif cm.get_credential_status(cand) == "configured" and self.mode != ExecutionMode.LOCAL and self.cloud_allowed:
                         target_name = cand
                         break
             else:
-                if self.providers["vllm"].is_available():
+                if self.mode != ExecutionMode.CLOUD and getattr(self.providers["vllm"], "is_available", lambda: True)():
                     target_name = "vllm"
 
         # Check if preferred provider is on rate-limit cooldown or disabled; if so, pick next healthy fallback
         if target_name in self.disabled_providers or self.provider_cooldowns.get(target_name, 0) > now:
             for cand in self.fallback_chain:
                 if cand != target_name and cand not in self.disabled_providers and self.provider_cooldowns.get(cand, 0) <= now and cand in self.providers:
-                    if cand not in ("vllm", "local") and cm.get_credential_status(cand) != "configured":
-                        continue
-                    if cand == "vllm" and not self.providers["vllm"].is_available():
-                        continue
+                    if cand in ("vllm", "local"):
+                        if self.mode == ExecutionMode.CLOUD or not getattr(self.providers[cand], "is_available", lambda: True)():
+                            continue
+                    else:
+                        if self.mode == ExecutionMode.LOCAL or not self.cloud_allowed or cm.get_credential_status(cand) != "configured":
+                            continue
                     logger.info(f"Provider '{target_name}' unavailable (cooldown/disabled). Routing {t.value} to '{cand}'.")
                     target_name = cand
                     break
@@ -403,12 +417,18 @@ class ProviderRouter:
             for candidate_name in self.fallback_chain:
                 if candidate_name == primary_provider.name or candidate_name in self.disabled_providers:
                     continue
-                # Skip unconfigured cloud candidates
-                if candidate_name not in ("vllm", "local") and cm.get_credential_status(candidate_name) != "configured":
-                    continue
-                # Skip vllm if not running/available
-                if candidate_name == "vllm" and not self.providers["vllm"].is_available():
-                    continue
+                if candidate_name in ("vllm", "local"):
+                    if self.mode == ExecutionMode.CLOUD:
+                        continue
+                    if not getattr(self.providers[candidate_name], "is_available", lambda: True)():
+                        continue
+                else:
+                    if self.mode == ExecutionMode.LOCAL:
+                        continue
+                    if not self.cloud_allowed:
+                        continue
+                    if cm.get_credential_status(candidate_name) != "configured":
+                        continue
                 # Skip candidates actively on cooldown
                 if self.provider_cooldowns.get(candidate_name, 0) > now:
                     continue

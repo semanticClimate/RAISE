@@ -34,6 +34,7 @@ export interface QuestionVersion {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
+  content?: string;
   response?: Partial<SubgraphQueryResponse>;
   error?: BackendErrorDetails;
   durationSec?: number;

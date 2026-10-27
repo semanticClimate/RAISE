@@ -93,4 +93,7 @@ def get_hardware_telemetry() -> Dict[str, Any]:
         "recommended_mode": recommended_mode,
         "recommendation_note": recommendation_note,
         "local_model_catalog": local_model_catalog,
+        "embedding_model": os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5"),
+        "reranker_model": os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"),
+        "nli_model": os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l"),
     }

@@ -14,6 +14,7 @@ from .browser_command import handle_browser_command
 from .compare_command import handle_compare_command
 from .core_commands import (
     handle_audit_command,
+    handle_boost_command,
     handle_help_command,
 )
 from .pdf_metric_extractor import extract_pdf_institutional_profile
@@ -24,6 +25,16 @@ from .web_fetcher import SupplementalWebFetcher
 
 def _init_default_commands(registry: CommandRegistry) -> None:
     """Registers default commands into the global registry."""
+    registry.register(
+        name="boost",
+        description="Hardware acceleration, Rust SIMD engine, cache optimizer & latency diagnostics.",
+        syntax="/boost [mode: fast|expert|clear|status]",
+        examples=["/boost", "/boost fast", "/boost expert", "/boost status"],
+        aliases=["turbo", "accelerate", "perf", "optimize"],
+        category="Performance",
+        is_dev_only=False,
+    )(handle_boost_command)
+
     registry.register(
         name="compare",
         description="Side-by-side institutional comparison across 17 operational dimensions.",

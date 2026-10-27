@@ -154,6 +154,8 @@ def create_cached_sse_stream(
             'status': cached.get('status', 'SUCCESS'),
             'query': cached.get('query', ''),
             'answer': cached_ans,
+            'grounded_answer': cached_ans,
+            'reply': cached_ans,
             'thread_id': session_id,
             'session_id': session_id,
             'citations': cits,
@@ -397,7 +399,7 @@ def create_chat_sse_stream(
                 postgres_manager.save_message(session_id, "assistant", answer, mode=mode, sources=sources)
 
             # Emit clean completion payload adhering to standardized contract
-            yield f"data: {json.dumps({'status': 'SUCCESS', 'query': message, 'answer': answer, 'thread_id': session_id, 'session_id': session_id, 'citations': citations, 'suggestions': suggestions, 'sources': sources, 'follow_up_inquiries': suggestions, 'subgraph': final_meta['subgraph'], 'verified_claims': final_meta['verified_claims'], 'top_chunks': final_meta['top_chunks'], 'quality_gate_decision': final_meta['quality_gate_decision'], 'traceability_score': final_meta['traceability_score'], 'execution_time': elapsed})}\n\n"
+            yield f"data: {json.dumps(final_meta)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
             record_query_metric(round(time.perf_counter() - t_start, 3), success=False)

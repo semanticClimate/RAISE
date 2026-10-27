@@ -104,9 +104,13 @@ def get_preflight_assets() -> Dict[str, Any]:
     """
     docling_ok = check_docling_pymupdf()
     ggahc_ok = True  # In-process token-budgeted python engine
-    bge_large_ok = check_hf_model_cached("BAAI/bge-large-en-v1.5")
-    bge_reranker_ok = check_hf_model_cached("BAAI/bge-reranker-large")
-    finecat_ok = check_hf_model_cached("dleemiller/finecat-nli-l")
+    emb_model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
+    rerank_model = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+    nli_model = os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l")
+
+    bge_large_ok = check_hf_model_cached(emb_model)
+    bge_reranker_ok = check_hf_model_cached(rerank_model)
+    finecat_ok = check_hf_model_cached(nli_model)
     chroma_ok = check_chromadb_substrate()
 
     all_verified = (
@@ -145,11 +149,11 @@ def get_preflight_assets() -> Dict[str, Any]:
         },
         {
             "id": "bge_large",
-            "name": "BAAI/bge-large-en-v1.5",
+            "name": emb_model,
             "size": "1.34 GB",
-            "desc": "1024-dim dense semantic vector embeddings for ChromaDB HNSW",
+            "desc": "Dense semantic vector embeddings for ChromaDB HNSW",
             "verified": bge_large_ok,
-            "status": "Cached & Verified" if bge_large_ok else "Requires Download (1.34 GB)",
+            "status": "Cached & Verified" if bge_large_ok else f"Requires Download ({emb_model})",
             "statusColor": (
                 "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
                 if bge_large_ok
@@ -158,11 +162,11 @@ def get_preflight_assets() -> Dict[str, Any]:
         },
         {
             "id": "bge_reranker",
-            "name": "BAAI/bge-reranker-large",
+            "name": rerank_model,
             "size": "2.24 GB",
-            "desc": "Contextual Cross-Encoder neural reranker on Metal / CUDA",
+            "desc": "Contextual Cross-Encoder neural reranker on CUDA / CPU",
             "verified": bge_reranker_ok,
-            "status": "Cached & Verified" if bge_reranker_ok else "Requires Download (2.24 GB)",
+            "status": "Cached & Verified" if bge_reranker_ok else f"Requires Download ({rerank_model})",
             "statusColor": (
                 "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
                 if bge_reranker_ok
@@ -171,11 +175,11 @@ def get_preflight_assets() -> Dict[str, Any]:
         },
         {
             "id": "finecat_nli",
-            "name": "FineCat-ModernBERT-NLI",
-            "size": "~700 MB",
+            "name": nli_model,
+            "size": "~1.6 GB",
             "desc": "Runtime Faithfulness Quality Gate & zero-hallucination shield",
             "verified": finecat_ok,
-            "status": "Cached & Verified" if finecat_ok else "Requires Download (~700 MB)",
+            "status": "Cached & Verified" if finecat_ok else f"Requires Download ({nli_model})",
             "statusColor": (
                 "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
                 if finecat_ok
@@ -216,10 +220,13 @@ def trigger_asset_download(req: Optional[PreflightDownloadRequest] = None) -> Di
     """Triggers background parallel download of any missing neural model weights."""
     global _IS_DOWNLOADING_ASSETS
     missing: List[str] = []
+    emb_model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
+    rerank_model = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+    nli_model = os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l")
     models_to_check = [
-        ("BAAI/bge-large-en-v1.5", check_hf_model_cached("BAAI/bge-large-en-v1.5")),
-        ("BAAI/bge-reranker-large", check_hf_model_cached("BAAI/bge-reranker-large")),
-        ("dleemiller/finecat-nli-l", check_hf_model_cached("dleemiller/finecat-nli-l")),
+        (emb_model, check_hf_model_cached(emb_model)),
+        (rerank_model, check_hf_model_cached(rerank_model)),
+        (nli_model, check_hf_model_cached(nli_model)),
     ]
     for repo, cached in models_to_check:
         if not cached:

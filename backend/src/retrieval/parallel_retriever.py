@@ -49,7 +49,7 @@ class AsyncParallelRetriever:
 
     def __init__(self, rag_pipeline: Any, reranker_model: Optional[str] = None):
         self.pipeline = rag_pipeline
-        self.reranker = CrossEncoderReranker(model_name=reranker_model or "BAAI/bge-reranker-large")
+        self.reranker = CrossEncoderReranker(model_name=reranker_model)
 
     async def _search_dense_vector(
         self,
@@ -223,7 +223,7 @@ class AsyncParallelRetriever:
         )
 
         # 5. Contextual Reranking with BGE-Reranker-Large (or cached fallback)
-        reranked_chunks = self.reranker.rerank(
+        reranked_chunks = await self.reranker.arerank(
             query=query,
             candidates=fused_candidates,
             text_key="plain_text",

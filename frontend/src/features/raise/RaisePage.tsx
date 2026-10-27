@@ -97,6 +97,35 @@ export {
   selectBestSpeechVoice,
 };
 
+export const normalizeChatMessage = (m: any): ChatMessage => {
+  const txt =
+    typeof m?.text === 'string' && m.text.trim()
+      ? m.text
+      : typeof m?.content === 'string' && m.content.trim()
+        ? m.content
+        : typeof m?.response?.grounded_answer === 'string' && m.response.grounded_answer.trim()
+          ? m.response.grounded_answer
+          : typeof m?.response?.answer === 'string' && m.response.answer.trim()
+            ? m.response.answer
+            : typeof m?.response?.reply === 'string' && m.response.reply.trim()
+              ? m.response.reply
+              : typeof m?.text === 'string'
+                ? m.text
+                : typeof m?.content === 'string'
+                  ? m.content
+                  : '';
+  return {
+    ...m,
+    text: txt,
+    content: txt,
+  };
+};
+
+export const normalizeChatMessages = (msgs: any[]): ChatMessage[] => {
+  if (!Array.isArray(msgs)) return [];
+  return msgs.map(normalizeChatMessage);
+};
+
 const ANIMATED_PLACEHOLDER_PROMPTS = [
   'Ask any question..',
   'Ask any question about research & innovations..',
@@ -461,7 +490,12 @@ export const RaisePage: React.FC = () => {
       if (cached) {
         const parsed = JSON.parse(cached) as ChatSession[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned = parsed.filter((s) => !isLegacySession(s));
+          const cleaned = parsed
+            .filter((s) => !isLegacySession(s))
+            .map((s) => ({
+              ...s,
+              messages: normalizeChatMessages(s.messages || []),
+            }));
           if (cleaned.length !== parsed.length) {
             try {
               localStorage.setItem('raise_recent_sessions_v2', JSON.stringify(cleaned));
@@ -497,7 +531,7 @@ export const RaisePage: React.FC = () => {
       if (cached) {
         const parsed = JSON.parse(cached) as ChatSession[];
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.messages) {
-          return parsed[0].messages;
+          return normalizeChatMessages(parsed[0].messages);
         }
       }
     } catch {}
@@ -516,9 +550,9 @@ export const RaisePage: React.FC = () => {
     return 'RAISE: Research Assessment Intelligence & Semantic Extraction';
   }, [activeSession]);
 
-  // Fetch PostgreSQL sessions when tunnel is configured and online (Stale-While-Revalidate)
+  // Fetch PostgreSQL sessions when connected and online (Stale-While-Revalidate)
   useEffect(() => {
-    if (!isTunnelConfigured || !isOnline) {
+    if (appMode !== 'connected') {
       return;
     }
 
@@ -560,13 +594,16 @@ export const RaisePage: React.FC = () => {
               }));
             }
 
+            const rawMessages = Array.isArray(item.messages) ? item.messages : [];
+            const normalizedMsgs = normalizeChatMessages(rawMessages);
+
             return {
               id: item.thread_id || item.session_id || item.id,
               thread_id: item.thread_id || item.session_id || item.id,
               session_id: item.thread_id || item.session_id || item.id,
               title: item.title || 'Chat Session',
               timestamp: item.timestamp || formatSessionDate(item.updated_at || item.created_at),
-              messages: Array.isArray(item.messages) ? item.messages : [],
+              messages: normalizedMsgs,
               selectedSourceIds:
                 item.selectedSourceIds ||
                 resolvedSources.filter((s: any) => s.selected).map((s: any) => s.id),
@@ -592,7 +629,7 @@ export const RaisePage: React.FC = () => {
                   messages:
                     remote.messages && remote.messages.length > 0
                       ? remote.messages
-                      : localMatch?.messages || [],
+                      : normalizeChatMessages(localMatch?.messages || []),
                   sources:
                     remote.sources && remote.sources.length > 0
                       ? remote.sources
@@ -602,13 +639,49 @@ export const RaisePage: React.FC = () => {
 
               for (const local of prevLocal) {
                 if (!remoteMap.has(local.id) && !isLegacySession(local)) {
-                  merged.push(local);
+                  merged.push({
+                    ...local,
+                    messages: normalizeChatMessages(local.messages || []),
+                  });
                 }
               }
 
               saveSessionsLocally(merged);
               return merged;
             });
+
+            // Reactively rehydrate active conversation if empty
+            const activeId = currentSessionId || (fetchedRemoteSessions.length > 0 ? fetchedRemoteSessions[0].id : null);
+            if (activeId && !currentSessionId) {
+              setCurrentSessionId(activeId);
+            }
+            if (activeId) {
+              const targetSession = fetchedRemoteSessions.find((s) => s.id === activeId);
+              if (targetSession && targetSession.messages && targetSession.messages.length > 0) {
+                setConversation((currentConvo) =>
+                  currentConvo.length === 0 ? targetSession.messages : currentConvo
+                );
+              } else {
+                chatService.getChatHistory?.(activeId).then((hRes) => {
+                  if (isMounted && hRes?.data?.messages && Array.isArray(hRes.data.messages) && hRes.data.messages.length > 0) {
+                    const normalized = normalizeChatMessages(hRes.data.messages);
+                    setConversation((currentConvo) => {
+                      if (currentConvo.length === 0) return normalized;
+                      // Authoritative rehydration: if currentConvo is missing assistant answers or has fewer messages, heal it
+                      const currentHasAssistant = currentConvo.some((m) => m.role === 'assistant' && Boolean(m.text));
+                      const remoteHasAssistant = normalized.some((m) => m.role === 'assistant' && Boolean(m.text));
+                      if (!currentHasAssistant && remoteHasAssistant) {
+                        return normalized;
+                      }
+                      if (normalized.length >= currentConvo.length) {
+                        return normalized;
+                      }
+                      return currentConvo;
+                    });
+                  }
+                }).catch(() => {});
+              }
+            }
           }
         }
       } catch (err) {
@@ -620,7 +693,7 @@ export const RaisePage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [isTunnelConfigured]);
+  }, [isTunnelConfigured, isOnline, appMode]);
 
   const [activeSessionMenuId, setActiveSessionMenuId] = useState<string | null>(null);
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
@@ -1504,10 +1577,12 @@ export const RaisePage: React.FC = () => {
     for (let idx = 0; idx < msgs.length; idx += 2) {
       const u = msgs[idx];
       const a = msgs[idx + 1];
-      if (u && u.role === 'user' && a && a.role === 'assistant' && a.text && !a.error) {
+      const uText = u ? (u.text || u.content || '') : '';
+      const aText = a ? (a.text || a.content || '') : '';
+      if (u && u.role === 'user' && a && a.role === 'assistant' && aText && !a.error) {
         history.push({
-          human: u.text,
-          ai: a.text,
+          human: uText,
+          ai: aText,
         });
       }
     }
@@ -1518,7 +1593,7 @@ export const RaisePage: React.FC = () => {
   useEffect(() => {
     const printConnectionAudit = async () => {
       await runCapabilityProbe();
-      const caps = await systemService.probeCapabilities();
+      const caps = useModeStore.getState().capabilities || (await systemService.probeCapabilities());
       const currentMode = useModeStore.getState().appMode;
       const currentUrl = useModeStore.getState().apiBaseUrl;
 
@@ -2037,7 +2112,8 @@ export const RaisePage: React.FC = () => {
   const updateSessionInMemory = (messages: ChatMessage[], effectiveSessionId: string) => {
     const currentActiveSourceIds = sourceDocs.filter((d) => d.selected).map((d) => d.id);
     const username = getStoredUsername();
-    const firstUserMsg = messages.find((m) => m.role === 'user')?.text || 'New Chat';
+    const firstUserObj = messages.find((m) => m.role === 'user');
+    const firstUserMsg = firstUserObj ? (firstUserObj.text || firstUserObj.content || '') : 'New Chat';
     const newTitle = truncateSessionTitle(firstUserMsg, 44);
     const dateFormatted = formatSessionDate(new Date());
 
@@ -2107,7 +2183,7 @@ export const RaisePage: React.FC = () => {
     setShowScrollToBottom(false);
     setCurrentSessionId(session.id);
     // Immediately render cached messages so user does not experience a blank chat
-    setConversation(session.messages || []);
+    setConversation(session.messages ? normalizeChatMessages(session.messages) : []);
     let initialSources = session.sources ?? [];
     if (
       initialSources.length === 0 &&
@@ -2202,7 +2278,7 @@ export const RaisePage: React.FC = () => {
           Array.isArray(res.data.messages) &&
           res.data.messages.length > 0
         ) {
-          const remoteMsgs = res.data.messages as ChatMessage[];
+          const remoteMsgs = normalizeChatMessages(res.data.messages);
           setConversation(remoteMsgs);
 
           // Harvest all document sources referenced in historical messages
@@ -2252,7 +2328,6 @@ export const RaisePage: React.FC = () => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    chatService.clearChat?.(currentSessionId || undefined).catch(() => {});
     setSpeakingMessageId(null);
     setEditingMessageIndex(null);
     setRegeneratingIndex(null);
@@ -2319,8 +2394,8 @@ export const RaisePage: React.FC = () => {
   // Permanently clear all chat sessions across backend (PostgreSQL) and browser storage
   const handleDeleteAllChats = async () => {
     try {
-      // 1. Tell backend to purge database history
-      await chatService.clearChat?.();
+      // 1. Tell backend to purge database history with explicit confirmation
+      await chatService.clearChat?.(undefined, undefined, true);
     } catch (err) {
       console.warn('Backend clearChat error:', err);
     }
@@ -2420,8 +2495,17 @@ export const RaisePage: React.FC = () => {
       currentQuestionVersionIndex: 0,
     };
 
-    const updatedConversation = [...conversation, userMsg];
-    setConversation(updatedConversation);
+    const assistantPlaceholder: ChatMessage = {
+      role: 'assistant',
+      text: '',
+      response: undefined,
+      error: undefined,
+      durationSec: 0,
+    };
+
+    const turnConversation = [...conversation, userMsg, assistantPlaceholder];
+    const assistantIndex = turnConversation.length - 1;
+    setConversation(turnConversation);
     setQuery('');
     setActiveExecutingQuery(q);
     setIsLoading(true);
@@ -2432,7 +2516,7 @@ export const RaisePage: React.FC = () => {
     if (!currentSessionId) {
       setCurrentSessionId(threadId);
     }
-    updateSessionInMemory(updatedConversation, threadId);
+    updateSessionInMemory(turnConversation, threadId);
     const recentHistory = getFormattedChatHistory(conversation);
     const executionStartTime = performance.now();
 
@@ -2470,7 +2554,7 @@ export const RaisePage: React.FC = () => {
         controller.signal,
         (_chunk, fullAccumulated) => {
           // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
-          flushStreamToConversation('last', fullAccumulated);
+          flushStreamToConversation(assistantIndex, fullAccumulated);
         }
       );
 
@@ -2483,11 +2567,19 @@ export const RaisePage: React.FC = () => {
 
       let assistantMsg: ChatMessage;
 
+      const rawAnswer =
+        res.data?.grounded_answer ||
+        (res.data as any)?.answer ||
+        (res.data as any)?.reply ||
+        latestStreamedTextRef.current ||
+        '';
+      const cleanAnswer = sanitizeStreamText(rawAnswer);
+
       if (res.data) {
         const persisted = isResponsePersisted(res.data);
         assistantMsg = {
           role: 'assistant',
-          text: sanitizeStreamText(res.data.grounded_answer),
+          text: cleanAnswer,
           response: res.data,
           durationSec: elapsedSec,
           persistenceFailed: !persisted,
@@ -2506,7 +2598,7 @@ export const RaisePage: React.FC = () => {
           });
           assistantMsg = {
             role: 'assistant',
-            text: latestStreamedTextRef.current,
+            text: latestStreamedTextRef.current || cleanAnswer,
             isStopped: true,
             durationSec: elapsedSec,
           };
@@ -2544,13 +2636,13 @@ export const RaisePage: React.FC = () => {
                 if (appMode !== 'connected') {
                   await runCapabilityProbe();
                 }
-                handleRegenerateResponse(updatedConversation.length);
+                handleRegenerateResponse(assistantIndex);
               });
             }
           }
           assistantMsg = {
             role: 'assistant',
-            text: '',
+            text: latestStreamedTextRef.current || cleanAnswer,
             error: createErrorDetails(res.error, null),
             durationSec: elapsedSec,
           };
@@ -2567,19 +2659,33 @@ export const RaisePage: React.FC = () => {
         isStopped: assistantMsg.isStopped,
       };
 
-      userMsg.questionVersions = [
-        {
-          ...initialQVer,
-          responseVersions: [initialRespVer],
-          currentResponseVersionIndex: 0,
-        },
-      ];
+      const finalUserMsg: ChatMessage = {
+        ...userMsg,
+        questionVersions: [
+          {
+            ...initialQVer,
+            responseVersions: [initialRespVer],
+            currentResponseVersionIndex: 0,
+          },
+        ],
+      };
 
-      const finalMessages = [...updatedConversation, assistantMsg];
-      setConversation(finalMessages);
-      if (res.data && !assistantMsg.persistenceFailed) {
-        updateSessionInMemory(finalMessages, threadId);
-      }
+      setConversation((prev) => {
+        const next = [...prev];
+        const userIdx = assistantIndex - 1;
+        if (userIdx >= 0 && next[userIdx] && next[userIdx].role === 'user') {
+          next[userIdx] = finalUserMsg;
+        }
+        if (next[assistantIndex] && next[assistantIndex].role === 'assistant') {
+          next[assistantIndex] = assistantMsg;
+        } else {
+          next.push(assistantMsg);
+        }
+        return next;
+      });
+
+      const finalTurnMessages = [...conversation, finalUserMsg, assistantMsg];
+      updateSessionInMemory(finalTurnMessages, threadId);
     } catch (err: any) {
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -2609,15 +2715,30 @@ export const RaisePage: React.FC = () => {
           durationSec: elapsedSec,
           timestamp: 'Just now',
         };
-        userMsg.questionVersions = [
-          {
-            ...initialQVer,
-            responseVersions: [initialRespVer],
-            currentResponseVersionIndex: 0,
-          },
-        ];
-        const finalMessages = [...updatedConversation, stoppedMsg];
-        setConversation(finalMessages);
+        const finalUserMsg: ChatMessage = {
+          ...userMsg,
+          questionVersions: [
+            {
+              ...initialQVer,
+              responseVersions: [initialRespVer],
+              currentResponseVersionIndex: 0,
+            },
+          ],
+        };
+        setConversation((prev) => {
+          const next = [...prev];
+          const userIdx = assistantIndex - 1;
+          if (userIdx >= 0 && next[userIdx] && next[userIdx].role === 'user') {
+            next[userIdx] = finalUserMsg;
+          }
+          if (next[assistantIndex] && next[assistantIndex].role === 'assistant') {
+            next[assistantIndex] = stoppedMsg;
+          } else {
+            next.push(stoppedMsg);
+          }
+          return next;
+        });
+        updateSessionInMemory([...conversation, finalUserMsg, stoppedMsg], threadId);
       } else {
         const errorDetails = createErrorDetails(null, err);
         const isNoLlm =
@@ -2635,32 +2756,47 @@ export const RaisePage: React.FC = () => {
               if (appMode !== 'connected') {
                 await runCapabilityProbe();
               }
-              handleRegenerateResponse(updatedConversation.length);
+              handleRegenerateResponse(assistantIndex);
             });
           }
         }
         const errorAssistantMsg: ChatMessage = {
           role: 'assistant',
-          text: '',
+          text: latestStreamedTextRef.current,
           error: errorDetails,
           durationSec: elapsedSec,
         };
         const initialRespVer: ResponseVersion = {
           id: `resp-${Date.now()}`,
-          text: '',
+          text: latestStreamedTextRef.current,
           error: errorDetails,
           durationSec: elapsedSec,
           timestamp: 'Just now',
         };
-        userMsg.questionVersions = [
-          {
-            ...initialQVer,
-            responseVersions: [initialRespVer],
-            currentResponseVersionIndex: 0,
-          },
-        ];
-        const finalMessages = [...updatedConversation, errorAssistantMsg];
-        setConversation(finalMessages);
+        const finalUserMsg: ChatMessage = {
+          ...userMsg,
+          questionVersions: [
+            {
+              ...initialQVer,
+              responseVersions: [initialRespVer],
+              currentResponseVersionIndex: 0,
+            },
+          ],
+        };
+        setConversation((prev) => {
+          const next = [...prev];
+          const userIdx = assistantIndex - 1;
+          if (userIdx >= 0 && next[userIdx] && next[userIdx].role === 'user') {
+            next[userIdx] = finalUserMsg;
+          }
+          if (next[assistantIndex] && next[assistantIndex].role === 'assistant') {
+            next[assistantIndex] = errorAssistantMsg;
+          } else {
+            next.push(errorAssistantMsg);
+          }
+          return next;
+        });
+        updateSessionInMemory([...conversation, finalUserMsg, errorAssistantMsg], threadId);
       }
     } finally {
       setIsLoading(false);
@@ -4031,6 +4167,16 @@ export const RaisePage: React.FC = () => {
                       : null) ??
                     null;
 
+                  const effectiveAnswerText =
+                    msg.text ||
+                    activeResp?.text ||
+                    activeResp?.response?.grounded_answer ||
+                    (activeResp?.response as any)?.answer ||
+                    msg.response?.grounded_answer ||
+                    (msg.response as any)?.answer ||
+                    (msg.response as any)?.reply ||
+                    '';
+
                   return (
                     <div
                       key={`assistant-turn-${i}`}
@@ -4067,7 +4213,7 @@ export const RaisePage: React.FC = () => {
                       )}
 
                       {/* AI Response Card Box */}
-                      {(((!isCurrentlyActive || Boolean(msg.text)) && Boolean(msg.text)) ||
+                      {(((!isCurrentlyActive || Boolean(effectiveAnswerText)) && Boolean(effectiveAnswerText)) ||
                         Boolean(isCurrentlyActive && activeExecutingQuery && isConversationalQuery(activeExecutingQuery))) && (
                         <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
                           {/* Save-failure warning banner if generation succeeded but persistence failed */}
@@ -4151,7 +4297,7 @@ export const RaisePage: React.FC = () => {
 
                             return (
                               <div className="text-sm leading-relaxed text-slate-800 dark:text-slate-200 select-text">
-                                {!msg.text && isCurrentlyActive ? (
+                                {!effectiveAnswerText && isCurrentlyActive ? (
                                   <div className="flex items-center gap-2 py-1 text-slate-500 dark:text-slate-400 text-xs font-mono">
                                     <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
                                     <span>Responding...</span>
@@ -4159,7 +4305,7 @@ export const RaisePage: React.FC = () => {
                                 ) : (
                                   <>
                                     <AnswerMarkdown
-                                      content={msg.text}
+                                      content={effectiveAnswerText}
                                       citations={messageCitations}
                                       showCitations={true}
                                       onViewPdf={handleOpenPdfViewer}
@@ -4189,7 +4335,7 @@ export const RaisePage: React.FC = () => {
                       )}
 
                       {/* AI Response Action Toolbar OUTSIDE the box, placed identically to Question action bar */}
-                      {Boolean(msg.text && !msg.error) && (
+                      {Boolean(effectiveAnswerText && !msg.error) && (
                         <div className="w-full max-w-[clamp(36rem,90vw,58rem)] flex items-center justify-start gap-1 mt-1.5 ml-1 text-slate-500 dark:text-slate-400">
                           {/* 1. Copy Response Button */}
                           <ActionTooltip
@@ -4197,7 +4343,7 @@ export const RaisePage: React.FC = () => {
                           >
                             <button
                               type="button"
-                              onClick={() => handleCopyText(msg.text, `resp-${i}`)}
+                              onClick={() => handleCopyText(effectiveAnswerText, `resp-${i}`)}
                               title={copiedKey === `resp-${i}` ? 'Copied!' : 'Copy response'}
                               aria-label="Copy response"
                               className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
@@ -4270,7 +4416,7 @@ export const RaisePage: React.FC = () => {
                           <ActionTooltip label={isSpeaking ? 'Stop speaking' : 'Read aloud'}>
                             <button
                               type="button"
-                              onClick={() => handleToggleSpeak(msg.text, `msg-${i}`)}
+                              onClick={() => handleToggleSpeak(effectiveAnswerText, `msg-${i}`)}
                               title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
                               aria-label={isSpeaking ? 'Stop speaking' : 'Read aloud'}
                               className={`p-1.5 rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center ${

@@ -31,6 +31,7 @@ export interface QuestionVersion {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
+  content?: string;
   response?: any;
   sources?: string[] | any[];
   citations?: Citation[] | any[];

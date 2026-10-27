@@ -126,13 +126,7 @@ async def get_discovered_models(provider: Optional[str] = None) -> Dict[str, Any
             "models": models,
         }
 
-    discovered: Dict[str, List[str]] = {}
-    known_providers = ["groq", "gemini", "mistral", "nvidia", "cohere", "openai", "openrouter", "vllm", "ollama"]
-    for p in known_providers:
-        if cm.get_credential_status(p) == "configured" or p in ("vllm", "ollama"):
-            models = engine.discover_provider_models(p)
-            if models:
-                discovered[p] = models
+    discovered = engine.discover_all()
 
     return {
         "providers": discovered,

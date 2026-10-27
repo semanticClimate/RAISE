@@ -207,6 +207,14 @@ class LocalTransformersProvider(BaseLLMProvider):
     def __init__(self, model_name: Optional[str] = None):
         self.model_name = model_name or os.getenv("LOCAL_LLM_MODEL", "Qwen/Qwen2.5-1.5B-Instruct")
 
+    def is_available(self) -> bool:
+        """Check if local environment supports torch inference."""
+        try:
+            import torch
+            return bool(torch.cuda.is_available() or os.getenv("ALLOW_CPU_LOCAL_LLM", "true").lower() in ("true", "1"))
+        except Exception:
+            return False
+
     def _ensure_loaded(self):
         with self._lock:
             if LocalTransformersProvider._shared_model is not None and LocalTransformersProvider._loaded_model_name == self.model_name:

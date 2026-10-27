@@ -96,9 +96,10 @@ class CrossEncoderReranker:
         "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     }
 
-    def __init__(self, model_name: Optional[str] = None):
-        target_name = model_name or "BAAI/bge-reranker-large"
+    def __init__(self, model_name: Optional[str] = None, device: Optional[str] = None):
+        target_name = model_name or os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
         self.model_name = self.AVAILABLE_RERANKERS.get(target_name, target_name)
+        self.device = device or os.getenv("RERANKER_DEVICE")
         self.model = _CROSS_ENCODER_MODEL_CACHE.get(self.model_name)
         self._loaded = self.model is not None
 
@@ -110,7 +111,7 @@ class CrossEncoderReranker:
             self.model = _CROSS_ENCODER_MODEL_CACHE[self.model_name]
             self._loaded = True
             return
-        if self._loaded:
+        if self._loaded and self.model is None:
             return
         self._loaded = True
         try:
@@ -118,7 +119,15 @@ class CrossEncoderReranker:
             import torch
             import warnings
 
-            dev = "cuda" if torch.cuda.is_available() else "cpu"
+            dev = self.device or os.getenv("RERANKER_DEVICE")
+            if dev:
+                dev = str(dev).lower()
+                if "cuda" in dev and not torch.cuda.is_available():
+                    logger.warning("CUDA requested for reranker (%s) but torch.cuda.is_available() is False. Using CPU.", self.model_name)
+                    dev = "cpu"
+            else:
+                dev = "cuda" if torch.cuda.is_available() else "cpu"
+
             token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
             try:
                 with warnings.catch_warnings():
@@ -138,7 +147,9 @@ class CrossEncoderReranker:
                         )
                     self.model = loaded_model
                     _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
-            except Exception:
+                    logger.info("CrossEncoder reranker (%s) initialized successfully on %s.", self.model_name, dev)
+            except Exception as e:
+                logger.warning("Could not load primary reranker (%s): %s. Attempting fallback.", self.model_name, e)
                 try:
                     fallback_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
                     if fallback_name in _CROSS_ENCODER_MODEL_CACHE:
@@ -153,10 +164,35 @@ class CrossEncoderReranker:
                         self.model = loaded_model
                         self.model_name = fallback_name
                         _CROSS_ENCODER_MODEL_CACHE[fallback_name] = loaded_model
-                except Exception:
+                    logger.info("CrossEncoder fallback reranker (%s) loaded.", fallback_name)
+                except Exception as fe:
+                    logger.warning("Could not load fallback reranker: %s. Using heuristic cross-scoring.", fe)
                     self.model = None
-        except Exception:
+        except Exception as e:
+            logger.warning("Reranker initialization exception: %s", e)
             self.model = None
+
+    async def arerank(
+        self,
+        query: str,
+        candidates: List[Dict[str, Any]],
+        text_key: str = "plain_text",
+        top_n: int = 8,
+        subqueries: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Asynchronously dispatches reranking to thread executor to keep event loop free."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.rerank(
+                query=query,
+                candidates=candidates,
+                text_key=text_key,
+                top_n=top_n,
+                subqueries=subqueries,
+            ),
+        )
 
     def rerank(
         self,

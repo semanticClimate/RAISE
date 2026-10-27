@@ -19,14 +19,23 @@ export const CommandsResponseSchema = z.object({
 
 export type CommandsResponse = z.infer<typeof CommandsResponseSchema>;
 
-// Sid says: Disallowed commands explicitly purged per UI cleanup specifications
-export const DISALLOWED_SLASH_COMMANDS = new Set(['/boost', '/synthesize', '/graph', '/bench']);
+// Disallowed commands explicitly purged per UI cleanup specifications (e.g. decommissioned commands)
+export const DISALLOWED_SLASH_COMMANDS = new Set(['/synthesize', '/graph', '/bench']);
 
 /**
  * Standard default slash commands available even when offline or before initial probe.
- * User interface presents /compare and /browser as core research commands.
+ * User interface presents /boost, /compare and /browser as core research commands.
  */
 export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
+  {
+    name: '/boost',
+    syntax: '/boost [mode: fast|expert|clear|status]',
+    description: 'Hardware acceleration & tier status',
+    category: 'Performance',
+    examples: ['/boost', '/boost fast', '/boost expert', '/boost status'],
+    aliases: ['/turbo', '/accelerate', '/perf', '/optimize'],
+    is_dev_only: false,
+  },
   {
     name: '/compare',
     syntax: '/compare [focus: research|academics|finance|faculty|sustainability]',
@@ -71,4 +80,3 @@ export const DEV_SLASH_COMMANDS: SlashCommand[] = [
     is_dev_only: true,
   },
 ];
-

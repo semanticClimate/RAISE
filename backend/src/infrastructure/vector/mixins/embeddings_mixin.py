@@ -54,9 +54,25 @@ class VectorEmbeddingsMixin:
 
     @property
     def dimension(self) -> int:
-        """Returns embedding vector dimension (1024 for BGE-Large, 384 for MiniLM)."""
-        if "minilm" in self.model_key.lower():
+        """Returns embedding vector dimension, detected dynamically from model or config."""
+        if getattr(self, "embed_model", None) is not None:
+            try:
+                dim = self.embed_model.get_sentence_embedding_dimension()
+                if dim and int(dim) > 0:
+                    return int(dim)
+            except Exception:
+                pass
+        env_dim = os.getenv("EMBEDDING_DIMENSION")
+        if env_dim:
+            try:
+                return int(env_dim)
+            except ValueError:
+                pass
+        model_name = getattr(self, "model_key", "").lower()
+        if "minilm" in model_name:
             return 384
+        if "qwen" in model_name and "4b" in model_name:
+            return 4096
         return 1024
 
     def _get_embedding_model(self):
@@ -78,14 +94,20 @@ class VectorEmbeddingsMixin:
                     cache_folder = os.getenv("HF_HOME", str(Path.home() / ".cache" / "huggingface" / "hub"))
                     import torch
                     if getattr(self, "device_override", None):
-                        dev = self.device_override
+                        dev = str(self.device_override).lower()
                     else:
-                        dev = "cuda" if torch.cuda.is_available() else "cpu"
+                        env_dev = os.getenv("EMBEDDING_DEVICE") or os.getenv("RAISE_EMBEDDING_DEVICE")
+                        dev = env_dev.lower() if env_dev else ("cuda" if torch.cuda.is_available() else "cpu")
+                    if "cuda" in dev and not torch.cuda.is_available():
+                        dev = "cpu"
+
                     token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+                    model_id = getattr(self, "model_path", None) or os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
+                    resolved_id = self.AVAILABLE_MODELS.get(model_id, model_id)
                     # Security Policy (CVE-2026-45829): Whitelist parameters and ban trust_remote_code
                     try:
                         self.embed_model = SentenceTransformer(
-                            self.model_path,
+                            resolved_id,
                             cache_folder=cache_folder,
                             local_files_only=True,
                             device=dev,
@@ -94,7 +116,7 @@ class VectorEmbeddingsMixin:
                         )
                     except Exception:
                         self.embed_model = SentenceTransformer(
-                            self.model_path,
+                            resolved_id,
                             cache_folder=cache_folder,
                             device=dev,
                             token=token,
