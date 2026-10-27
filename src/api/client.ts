@@ -368,6 +368,9 @@ class ApiClient {
         const trimmed = line.trim();
         // Ignore SSE comments/keepalives (e.g. ": keepalive")
         if (!trimmed || trimmed.startsWith(':')) {
+          if (!trimmed) {
+            currentEvent = '';
+          }
           return;
         }
 
@@ -400,13 +403,12 @@ class ApiClient {
             const parsed: unknown = JSON.parse(trimmedPayload);
             const p = asRecord(parsed);
 
-            // 1. Check for stage/node progression events
+            // 1. Check for stage/node progression events (only if p actually contains node or stage)
             if (
-              currentEvent === 'node_update' ||
-              currentEvent === 'stage' ||
-              p?.node ||
-              p?.stage
+              (currentEvent === 'node_update' || currentEvent === 'stage' || p?.node || p?.stage) &&
+              (p?.node !== undefined || p?.stage !== undefined)
             ) {
+              currentEvent = '';
               if (p) {
                 options.onStageUpdate?.(p);
               }
@@ -440,13 +442,14 @@ class ApiClient {
             );
 
             if (isMetadataObject && p) {
+              currentEvent = '';
               streamMetadata = {
                 ...streamMetadata,
                 ...p,
               };
               options.onMetadata?.(p);
 
-              // Sid says: If the SSE stream delivers the final synthesized answer directly in the metadata payload without micro-tokens, unpack it immediately to avoid empty response box
+              // If the SSE stream delivers the final synthesized answer directly in the metadata payload without micro-tokens, unpack it immediately to avoid empty response box
               if (!fullText.trim()) {
                 const answerInMeta =
                   getStringField(p, 'grounded_answer') ??
@@ -474,6 +477,7 @@ class ApiClient {
                 : undefined) ??
               null;
             if (typeof token === 'string') {
+              currentEvent = '';
               if (token.length > 0) {
                 fullText += token;
                 onChunk?.(token, fullText);

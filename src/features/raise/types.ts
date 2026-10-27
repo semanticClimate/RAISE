@@ -16,6 +16,7 @@ export interface SourceDocument {
 export interface ResponseVersion {
   id: string;
   text: string;
+  content?: string;
   response?: Partial<SubgraphQueryResponse>;
   error?: BackendErrorDetails;
   durationSec?: number;
@@ -34,6 +35,7 @@ export interface QuestionVersion {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
+  content?: string;
   response?: Partial<SubgraphQueryResponse>;
   error?: BackendErrorDetails;
   durationSec?: number;

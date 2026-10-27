@@ -33,7 +33,12 @@ export const AppRouter: React.FC = () => {
         localStorage.getItem('raise_onboarding_completed') === 'true';
 
       const store = useControlCenterStore.getState();
-      if (isExplicitSetup || (!hasCompletedOnboarding && !store.config.firstRunCompleted)) {
+      const isLocalMode =
+        store.config.llmDeployment === 'local' ||
+        store.config.llmMode?.startsWith('local_') ||
+        Boolean(store.config.selectedLocalModel);
+
+      if (isExplicitSetup || (!hasCompletedOnboarding && !store.config.firstRunCompleted && !isLocalMode)) {
         store.setOpen(true);
         const hasKey = store.config.apiKeys?.some(
           (k) => k.key && k.key.trim().length > 0 && k.provider !== 'unknown'

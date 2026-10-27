@@ -77,11 +77,12 @@ export const ControlCenterModal: React.FC = () => {
 
   // Track completion state of each step for visual stepper badges
   const hasConfiguredKey =
-    config.llmDeployment === 'local'
-      ? Boolean(config.selectedLocalModel)
-      : (config.apiKeys || []).some(
-          (k) => k?.key && k.key.trim().length > 0 && k.provider !== 'unknown'
-        );
+    config.llmDeployment === 'local' ||
+    config.llmMode?.startsWith('local_') ||
+    Boolean(config.selectedLocalModel) ||
+    (config.apiKeys || []).some(
+      (k) => k?.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+    );
 
   const tabs = [
     {
@@ -233,23 +234,30 @@ export const ControlCenterModal: React.FC = () => {
               </p>
             </div>
           </div>
-          {isSetupMode && !hasConfiguredKey ? (
-            <span
-              className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-md shrink-0"
-              title="Configure an AI engine before launching"
-            >
-              Setup Required
-            </span>
-          ) : (
+          <div className="flex items-center gap-2 shrink-0">
+            {isSetupMode && !hasConfiguredKey && (
+              <span
+                className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-md"
+                title="Configure an AI engine or continue with local workstation"
+              >
+                Setup Recommended
+              </span>
+            )}
             <button
               type="button"
-              onClick={() => setOpen(false)}
-              className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center shrink-0 border border-transparent hover:border-white/10"
+              onClick={() => {
+                try {
+                  localStorage.setItem('raise_onboarding_completed', 'true');
+                } catch {}
+                setOpen(false);
+              }}
+              className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-white/10"
               aria-label="Close Control Center"
+              title="Close Control Center"
             >
               <X className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
 
         {/* First-Time Setup Welcome Banner */}

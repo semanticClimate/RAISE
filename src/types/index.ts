@@ -13,6 +13,7 @@ export type ConfigMode = 'mock' | 'remote' | 'auto';
 export interface ResponseVersion {
   id: string;
   text: string;
+  content?: string;
   response?: any;
   error?: any;
   durationSec?: number;
@@ -31,6 +32,7 @@ export interface QuestionVersion {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
+  content?: string;
   response?: any;
   sources?: string[] | any[];
   citations?: Citation[] | any[];

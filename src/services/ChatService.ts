@@ -527,9 +527,15 @@ export class ChatService implements ChatServiceInterface {
     );
     if (res.data) {
       const parsed = ChatHistoryResponseSchema.safeParse(res.data);
-      if (parsed.success) {
-        return { ...res, data: parsed.data };
+      const dataToNormalize = parsed.success ? parsed.data : res.data;
+      if (Array.isArray(dataToNormalize.messages)) {
+        dataToNormalize.messages = dataToNormalize.messages.map((m: any) => ({
+          ...m,
+          text: m?.text || m?.content || '',
+          content: m?.content || m?.text || '',
+        }));
       }
+      return { ...res, data: dataToNormalize };
     }
     return res;
   }
@@ -550,9 +556,21 @@ export class ChatService implements ChatServiceInterface {
     });
     if (res.data) {
       const parsed = z.array(PersistedChatSessionSchema).safeParse(res.data);
-      if (parsed.success) {
-        return { ...res, data: parsed.data };
-      }
+      const rawList = parsed.success ? parsed.data : res.data;
+      const normalizedList = rawList.map((session: any) => {
+        if (Array.isArray(session.messages)) {
+          return {
+            ...session,
+            messages: session.messages.map((m: any) => ({
+              ...m,
+              text: m?.text || m?.content || '',
+              content: m?.content || m?.text || '',
+            })),
+          };
+        }
+        return session;
+      });
+      return { ...res, data: normalizedList };
     }
     return res;
   }
