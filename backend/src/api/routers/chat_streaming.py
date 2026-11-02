@@ -89,6 +89,7 @@ def create_empty_drawer_sse_stream(
 ) -> StreamingResponse:
     """Deliver an immediate SSE event stream when no drawer documents are attached."""
     async def fast_sse_stream():
+        start_time = time.time()
         yield ": keepalive\n\n"
         words = re.findall(r"\S+|\s+", reply)
         for w in words:
@@ -97,6 +98,7 @@ def create_empty_drawer_sse_stream(
             yield f"data: {json.dumps({'token': w})}\n\n"
             await asyncio.sleep(0.015)
 
+        lat = round(time.time() - start_time, 2)
         meta_payload = {
             "status": "SUCCESS",
             "query": "",
@@ -113,6 +115,10 @@ def create_empty_drawer_sse_stream(
             "quality_gate_decision": "accept",
             "traceability_score": 0.95,
             "mode_used": mode,
+            "latency_sec": lat,
+            "execution_time": lat,
+            "durationSec": lat,
+            "duration_sec": lat,
             "persisted": bool(session_id is not None),
             "saved": bool(session_id is not None),
             "persistence_status": "saved" if session_id else "ephemeral",
@@ -254,7 +260,7 @@ def create_chat_raw_stream(
 
             if session_id and postgres_manager:
                 postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-                postgres_manager.save_message(session_id, "assistant", answer, mode=mode, sources=sources)
+                postgres_manager.save_message(session_id, "assistant", answer, mode=mode, sources=sources, latency_sec=elapsed)
         except Exception as exc:
             yield f"\n[Error: {str(exc)}]"
 

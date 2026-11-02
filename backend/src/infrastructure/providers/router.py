@@ -7,9 +7,12 @@ non-secret fallback logging, and execution modes (LOCAL, CLOUD, AUTOMATIC).
 from __future__ import annotations
 
 import os
+import json
 import logging
+import socket
 import threading
 import time
+import urllib.request
 from enum import Enum
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
 
@@ -214,25 +217,79 @@ class ProviderRouter:
             "universal": {"name": "Universal Custom Cloud API", "tier": "Custom OpenAI-Compatible", "default_model": "gpt-4o-mini"},
         }
 
-        # Check local GPU providers (In-process Transformers & vLLM)
+        # Check local GPU / accelerator / container providers
+        from src.infrastructure.hardware import get_gpu_info
+        gpu_info = get_gpu_info()
+        device_label = "CPU Only"
+        tier_label = "Host System Memory"
+
+        if gpu_info.get("mps_available"):
+            device_label = "Apple Silicon Metal (MPS)"
+            tier_label = "Unified Memory (Zero-Cost)"
+        elif gpu_info.get("cuda_available") and gpu_info.get("devices"):
+            primary_gpu = gpu_info["devices"][0]
+            device_label = f"NVIDIA GPU ({primary_gpu.get('name')})"
+            tier_label = f"{primary_gpu.get('total_vram_gb', 0)}GB VRAM"
+
+        # 1. In-process PyTorch Local Model
         if "local" in self.providers and "local" not in self.disabled_providers:
+            model_name = getattr(self.providers["local"], "model_name", None) or os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-1.5B-Instruct")
+            is_ready = bool(getattr(self.providers["local"], "pipeline", None) is not None)
             available.append({
                 "provider": "local",
-                "display_name": "Local GPU (In-Process PyTorch/CUDA, RTX 3090)",
-                "model": getattr(self.providers["local"], "model_name", "Qwen/Qwen2.5-1.5B-Instruct"),
-                "status": "READY",
-                "is_active": self.mode == ExecutionMode.LOCAL,
-                "tier": "Local Zero-Cost (24GB VRAM)",
+                "display_name": f"Local Accelerator ({device_label})",
+                "model": model_name,
+                "status": "READY" if is_ready else "LOCAL_OFFLINE",
+                "is_active": self.mode == ExecutionMode.LOCAL and is_ready,
+                "tier": tier_label,
             })
 
-        if "vllm" in self.providers and "vllm" not in self.disabled_providers:
-            vllm_alive = self.providers["vllm"].is_available()
+        # 2. Probe Ollama dynamically (Port 11434)
+        try:
+            req = urllib.request.Request("http://127.0.0.1:11434/api/tags", headers={"User-Agent": "RAISE"})
+            with urllib.request.urlopen(req, timeout=0.8) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode())
+                    models = data.get("models", [])
+                    for m in models:
+                        m_name = m.get("name")
+                        available.append({
+                            "provider": "ollama",
+                            "display_name": f"Ollama ({device_label})",
+                            "model": m_name,
+                            "status": "READY",
+                            "is_active": True,
+                            "tier": "Ollama Local Engine",
+                        })
+        except Exception:
+            pass
+
+        # 3. Probe vLLM Container (Port 8002 / 8000)
+        vllm_alive = False
+        for port in (8002, 8000):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                    vllm_alive = True
+                    break
+            except Exception:
+                pass
+
+        if vllm_alive or ("vllm" in self.providers and "vllm" not in self.disabled_providers and self.providers["vllm"].is_available()):
             available.append({
                 "provider": "vllm",
-                "display_name": "Local vLLM Container (Docker)",
-                "model": getattr(self.providers["vllm"], "model_name", "Qwen2.5-14B"),
-                "status": "READY" if (vllm_alive or self.mode == ExecutionMode.LOCAL) else "LOCAL_OFFLINE",
-                "is_active": vllm_alive or self.mode == ExecutionMode.LOCAL,
+                "display_name": f"Local vLLM Container ({device_label})",
+                "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", "Qwen2.5-14B"),
+                "status": "READY",
+                "is_active": self.mode == ExecutionMode.LOCAL or vllm_alive,
+                "tier": "Docker Local Inference",
+            })
+        elif "vllm" in self.providers and "vllm" not in self.disabled_providers:
+            available.append({
+                "provider": "vllm",
+                "display_name": f"Local vLLM Container ({device_label})",
+                "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", "Qwen2.5-14B"),
+                "status": "LOCAL_OFFLINE",
+                "is_active": False,
                 "tier": "Docker Local Inference",
             })
 

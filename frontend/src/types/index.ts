@@ -13,6 +13,7 @@ export type ConfigMode = 'mock' | 'remote' | 'auto';
 export interface ResponseVersion {
   id: string;
   text: string;
+  content?: string;
   response?: any;
   error?: any;
   durationSec?: number;

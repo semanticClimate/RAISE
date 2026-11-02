@@ -13,7 +13,7 @@ export class SearchService {
   ): Promise<ApiResponse<SearchResponse>> {
     return apiClient.request<SearchResponse>(ENDPOINTS.SEARCH, SearchResponseSchema, {
       method: 'POST',
-      body: JSON.stringify({ query, limit }),
+      body: JSON.stringify({ query, limit, top_k: limit }),
       signal,
     });
   }

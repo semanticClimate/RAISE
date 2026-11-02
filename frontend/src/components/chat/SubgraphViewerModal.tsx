@@ -234,7 +234,7 @@ export const SubgraphViewerModal: React.FC<SubgraphViewerModalProps> = ({
                           opacity={isHighlighted ? 1 : 0.6}
                           markerEnd="url(#arrow)"
                         />
-                        {edge.relationship && (
+                        {Boolean(edge.relationship || (edge as any).relation || (edge as any).type) && (
                           <g transform={`translate(${midX}, ${midY})`}>
                             <rect
                               x="-34"
@@ -256,9 +256,11 @@ export const SubgraphViewerModal: React.FC<SubgraphViewerModalProps> = ({
                               fontFamily="monospace"
                               fontWeight="bold"
                             >
-                              {edge.relationship.length > 10
-                                ? `${edge.relationship.slice(0, 9)}…`
-                                : edge.relationship}
+                              {(() => {
+                                const relStr =
+                                  edge.relationship || (edge as any).relation || (edge as any).type || '';
+                                return relStr.length > 10 ? `${relStr.slice(0, 9)}…` : relStr;
+                              })()}
                             </text>
                           </g>
                         )}
@@ -367,7 +369,8 @@ export const SubgraphViewerModal: React.FC<SubgraphViewerModalProps> = ({
                               >
                                 <div className="min-w-0">
                                   <span className="font-mono text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase block">
-                                    {isOutgoing ? '→' : '←'} {e.relationship}
+                                    {isOutgoing ? '→' : '←'}{' '}
+                                    {e.relationship || (e as any).relation || (e as any).type || 'RELATED_TO'}
                                   </span>
                                   <span className="font-medium text-slate-800 dark:text-slate-200 truncate block">
                                     {peerName}
@@ -467,7 +470,9 @@ export const SubgraphViewerModal: React.FC<SubgraphViewerModalProps> = ({
                         {e.source}
                       </span>
                       <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold shrink-0">
-                        → {e.relationship} →
+                        →{' '}
+                        {e.relationship || (e as any).relation || (e as any).type || 'RELATED_TO'}{' '}
+                        →
                       </span>
                       <span className="text-slate-700 dark:text-slate-300 truncate text-right">
                         {e.target}

@@ -66,6 +66,15 @@ class CredentialManager:
         Returns raw secret in-memory only. Never logs or prints the secret.
         """
         prov = provider.lower().strip()
+        # 0. Check live core_registry RuntimeState
+        try:
+            import core_registry
+            live_key = core_registry.state.keys.get(prov)
+            if live_key and live_key.strip() and not live_key.strip().startswith("your_"):
+                return live_key.strip()
+        except Exception:
+            pass
+
         env_vars = PROVIDER_ENV_MAPPING.get(prov, [f"{prov.upper()}_API_KEY"])
 
         # 1. Check OS Environment Variables
@@ -108,6 +117,13 @@ class CredentialManager:
             return False
 
         clean_secret = secret.strip()
+
+        # Update core_registry runtime state
+        try:
+            import core_registry
+            core_registry.state.keys[prov] = clean_secret
+        except Exception:
+            pass
 
         # Update current process environment
         primary_var = PROVIDER_ENV_MAPPING.get(prov, [f"{prov.upper()}_API_KEY"])[0]

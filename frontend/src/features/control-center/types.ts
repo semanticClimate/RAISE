@@ -63,6 +63,13 @@ export interface ControlCenterConfig {
   selectedLocalModel: string;
   tunnelUrl?: string;
 
+  // Neural Pipeline Substrates
+  embeddingModel?: string;
+  rerankerModel?: string;
+  nliVerifierModel?: string;
+  neuralDevice?: 'auto' | 'mps' | 'cuda' | 'cpu';
+  huggingfaceToken?: string;
+
   // Architectural Substrates
   knowledgeGraph: SubstrateConfig; // Neo4j Property Graph
   sessionMemory: SubstrateConfig; // PostgreSQL Chat History

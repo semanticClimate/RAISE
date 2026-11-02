@@ -333,6 +333,45 @@ class ApiClient {
         return { text: '', error: normErr, status: response.status };
       }
 
+      const contentType = response.headers.get('content-type') || '';
+      const isSse =
+        contentType.includes('text/event-stream') || contentType.includes('application/x-ndjson');
+
+      // Fast-path: If server returns standard JSON or non-streaming text directly
+      if (!isSse) {
+        const rawText = await response.text();
+        let extractedText = rawText;
+        let metadata: Record<string, unknown> | undefined;
+        try {
+          const json = JSON.parse(rawText);
+          if (json && typeof json === 'object') {
+            const obj = json as Record<string, unknown>;
+            metadata = obj;
+            extractedText =
+              (typeof obj.grounded_answer === 'string' ? obj.grounded_answer : '') ||
+              (typeof obj.answer === 'string' ? obj.answer : '') ||
+              (typeof obj.reply === 'string' ? obj.reply : '') ||
+              (typeof obj.text === 'string' ? obj.text : '') ||
+              (typeof obj.content === 'string' ? obj.content : '') ||
+              (typeof obj.response === 'string' ? obj.response : '') ||
+              rawText;
+          }
+        } catch {
+          // not json, use rawText
+        }
+        const sanitized = sanitizeStreamText(extractedText);
+        onChunk?.(sanitized, sanitized);
+        logToTerminal({
+          type: 'RES',
+          method,
+          endpoint,
+          status: response.status,
+          durationMs: Date.now() - startTime,
+          message: `Direct response completed (${sanitized.length} characters)`,
+        });
+        return { text: sanitized, error: null, status: response.status, metadata };
+      }
+
       if (!response.body) {
         const text = await response.text();
         logToTerminal({
@@ -351,16 +390,13 @@ class ApiClient {
       let fullText = '';
       let buffer = '';
       let streamMetadata: Record<string, unknown> | undefined;
+      let isStreamComplete = false;
 
       const asRecord = (v: unknown): Record<string, unknown> | null =>
         v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 
       const getStringField = (obj: Record<string, unknown> | null, key: string): string | undefined =>
         obj && typeof obj[key] === 'string' ? (obj[key] as string) : undefined;
-
-      const contentType = response.headers.get('content-type') || '';
-      const isSse =
-        contentType.includes('text/event-stream') || contentType.includes('application/x-ndjson');
 
       let currentEvent = '';
 
@@ -388,8 +424,11 @@ class ApiClient {
           payload = payload.slice(5).replace(/^[ \t]/, '');
         }
 
-        if (!payload || payload.trim() === '[DONE]') {
+        if (!payload) return;
+
+        if (payload.trim() === '[DONE]') {
           currentEvent = '';
+          isStreamComplete = true;
           return;
         }
 
@@ -405,10 +444,7 @@ class ApiClient {
 
             // 1. Check for stage/node progression events (only if p actually contains node or stage)
             if (
-              (currentEvent === 'node_update' ||
-                currentEvent === 'stage' ||
-                p?.node ||
-                p?.stage) &&
+              (currentEvent === 'node_update' || currentEvent === 'stage' || p?.node || p?.stage) &&
               (p?.node !== undefined || p?.stage !== undefined)
             ) {
               currentEvent = '';
@@ -445,13 +481,14 @@ class ApiClient {
             );
 
             if (isMetadataObject && p) {
+              currentEvent = '';
               streamMetadata = {
                 ...streamMetadata,
                 ...p,
               };
               options.onMetadata?.(p);
 
-              // Sid says: If the SSE stream delivers the final synthesized answer directly in the metadata payload without micro-tokens, unpack it immediately to avoid empty response box
+              // If the SSE stream delivers the final synthesized answer directly in the metadata payload without micro-tokens, unpack it immediately to avoid empty response box
               if (!fullText.trim()) {
                 const answerInMeta =
                   getStringField(p, 'grounded_answer') ??
@@ -475,7 +512,7 @@ class ApiClient {
               getStringField(deltaObj, 'content') ??
               (typeof p?.delta === 'string' ? p.delta : undefined) ??
               (!fullText.trim()
-                ? (getStringField(p, 'response') ?? getStringField(p, 'reply'))
+                ? (getStringField(p, 'grounded_answer') ?? getStringField(p, 'answer') ?? getStringField(p, 'response') ?? getStringField(p, 'reply'))
                 : undefined) ??
               null;
             if (typeof token === 'string') {
@@ -512,7 +549,7 @@ class ApiClient {
         }
       };
 
-      while (true) {
+      while (!isStreamComplete) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -527,11 +564,21 @@ class ApiClient {
 
           for (const line of lines) {
             processLine(line);
+            if (isStreamComplete) break;
           }
         } else if (!isSse && !buffer.includes('data:') && !buffer.startsWith('{')) {
           fullText += buffer;
           onChunk?.(buffer, fullText);
           buffer = '';
+        }
+
+        if (isStreamComplete) {
+          try {
+            await reader.cancel();
+          } catch {
+            // Stream already finished or cancelled
+          }
+          break;
         }
       }
 
@@ -541,20 +588,21 @@ class ApiClient {
         processLine(buffer);
       }
 
-      // Fallback: if fullText is empty, recover from completion event metadata answer
-      if (!fullText.trim()) {
-        const metaAns =
-          getStringField(streamMetadata ?? null, 'answer') ??
-          getStringField(streamMetadata ?? null, 'grounded_answer') ??
-          getStringField(streamMetadata ?? null, 'reply');
-        if (metaAns) {
-          fullText = metaAns;
-          onChunk?.(metaAns, fullText);
-        }
-      }
-
       // Final pass: ensure no residual JSON tokens or SSE markers remain
       fullText = sanitizeStreamText(fullText);
+
+      // Sid says: Guard against empty response bug - fallback to answer/grounded_answer/reply in streamMetadata
+      if (!fullText.trim() && streamMetadata) {
+        const fallbackAns =
+          getStringField(streamMetadata, 'grounded_answer') ??
+          getStringField(streamMetadata, 'answer') ??
+          getStringField(streamMetadata, 'reply') ??
+          '';
+        if (fallbackAns) {
+          fullText = sanitizeStreamText(fallbackAns);
+          onChunk?.(fullText, fullText);
+        }
+      }
 
       logToTerminal({
         type: 'RES',

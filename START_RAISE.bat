@@ -288,7 +288,7 @@ $isFirstLaunch = (-not $hasMarker -and -not $hasConfiguredProvider)
 # 6. Launch Backend Server
 Write-Info "Launching backend on http://localhost:8000..." "Green"
 $backendScript = Join-Path $backendDir "server.py"
-$backendProc = Start-Process -FilePath $pythonExe -ArgumentList "-u `"$backendScript`" --no-tunnel" -WorkingDirectory $backendDir -RedirectStandardOutput $backendLog -RedirectStandardError "$backendLog.err" -PassThru
+$backendProc = Start-Process -FilePath $pythonExe -ArgumentList "-u `"$backendScript`" --no-tunnel" -WorkingDirectory $backendDir -RedirectStandardOutput $backendLog -RedirectStandardError "$backendLog.err" -WindowStyle Hidden -PassThru
 
 # Wait for backend health check
 $backendReady = $false
@@ -322,11 +322,11 @@ if (-not (Test-Path -LiteralPath $vitePkg)) {
 Write-Info "Launching frontend on http://localhost:5173..." "Green"
 $viteJs = Join-Path $frontendDir "node_modules\vite\bin\vite.js"; $viteCmd = Join-Path $frontendDir "node_modules\.bin\vite.cmd"
 if (Test-Path $viteJs) {
-    $frontendProc = Start-Process -FilePath $nodeExe -ArgumentList "`"$viteJs`"" -WorkingDirectory $frontendDir -RedirectStandardOutput $frontendLog -RedirectStandardError "$frontendLog.err" -PassThru
+    $frontendProc = Start-Process -FilePath $nodeExe -ArgumentList "`"$viteJs`"" -WorkingDirectory $frontendDir -RedirectStandardOutput $frontendLog -RedirectStandardError "$frontendLog.err" -WindowStyle Hidden -PassThru
 } elseif (Test-Path $viteCmd) {
-    $frontendProc = Start-Process -FilePath $viteCmd -WorkingDirectory $frontendDir -RedirectStandardOutput $frontendLog -RedirectStandardError "$frontendLog.err" -PassThru
+    $frontendProc = Start-Process -FilePath $viteCmd -WorkingDirectory $frontendDir -RedirectStandardOutput $frontendLog -RedirectStandardError "$frontendLog.err" -WindowStyle Hidden -PassThru
 } else {
-    $frontendProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev" -WorkingDirectory $frontendDir -RedirectStandardOutput $frontendLog -RedirectStandardError "$frontendLog.err" -PassThru
+    $frontendProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev" -WorkingDirectory $frontendDir -RedirectStandardOutput $frontendLog -RedirectStandardError "$frontendLog.err" -WindowStyle Hidden -PassThru
 }
 
 # Wait for frontend
@@ -381,6 +381,10 @@ $backendFs = $null
 $backendReader = $null
 $errFs = $null
 $errReader = $null
+$frontendFs = $null
+$frontendReader = $null
+$frontendErrFs = $null
+$frontendErrReader = $null
 
 try {
     if (Test-Path -LiteralPath $backendLog) {
@@ -399,6 +403,27 @@ try {
         $errReader = [System.IO.StreamReader]::new($errFs, [System.Text.Encoding]::UTF8)
         if (-not $showMode) {
             $errFs.Seek(0, [System.IO.SeekOrigin]::End) | Out-Null
+        }
+    }
+} catch {}
+
+try {
+    if (Test-Path -LiteralPath $frontendLog) {
+        $frontendFs = [System.IO.File]::Open($frontendLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $frontendReader = [System.IO.StreamReader]::new($frontendFs, [System.Text.Encoding]::UTF8)
+        if (-not $showMode) {
+            $frontendFs.Seek(0, [System.IO.SeekOrigin]::End) | Out-Null
+        }
+    }
+} catch {}
+
+try {
+    $frontendErrCandidate = "$frontendLog.err"
+    if (Test-Path -LiteralPath $frontendErrCandidate) {
+        $frontendErrFs = [System.IO.File]::Open($frontendErrCandidate, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $frontendErrReader = [System.IO.StreamReader]::new($frontendErrFs, [System.Text.Encoding]::UTF8)
+        if (-not $showMode) {
+            $frontendErrFs.Seek(0, [System.IO.SeekOrigin]::End) | Out-Null
         }
     }
 } catch {}
@@ -449,6 +474,36 @@ try {
             } catch {}
         }
 
+        # Stream new frontend stdout lines
+        if ($frontendReader) {
+            try {
+                while (-not $frontendReader.EndOfStream) {
+                    $fLine = $frontendReader.ReadLine()
+                    if ($fLine -and $fLine.Trim()) {
+                        if ($fLine -match "ready in|Local:|Network:") {
+                            Write-Host "[FRONTEND] $fLine" -ForegroundColor DarkCyan
+                        } elseif ($fLine -match "error|failed|exception") {
+                            Write-Host "[FRONTEND] $fLine" -ForegroundColor Red
+                        } else {
+                            Write-Host "[FRONTEND] $fLine" -ForegroundColor DarkGray
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        # Stream new frontend stderr lines
+        if ($frontendErrReader) {
+            try {
+                while (-not $frontendErrReader.EndOfStream) {
+                    $fErrLine = $frontendErrReader.ReadLine()
+                    if ($fErrLine -and $fErrLine.Trim()) {
+                        Write-Host "[FRONTEND-ERR] $fErrLine" -ForegroundColor DarkYellow
+                    }
+                }
+            } catch {}
+        }
+
         Start-Sleep -Milliseconds 250
     }
 } finally {
@@ -456,6 +511,10 @@ try {
     if ($backendFs) { try { $backendFs.Dispose() } catch {} }
     if ($errReader) { try { $errReader.Dispose() } catch {} }
     if ($errFs) { try { $errFs.Dispose() } catch {} }
+    if ($frontendReader) { try { $frontendReader.Dispose() } catch {} }
+    if ($frontendFs) { try { $frontendFs.Dispose() } catch {} }
+    if ($frontendErrReader) { try { $frontendErrReader.Dispose() } catch {} }
+    if ($frontendErrFs) { try { $frontendErrFs.Dispose() } catch {} }
 
     Write-Info "Stopping services..." "Yellow"
     if ($backendProc -and -not $backendProc.HasExited) {

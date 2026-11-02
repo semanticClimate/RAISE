@@ -103,7 +103,14 @@ async def pull_model_stream(req: ModelPullRequest):
     Streams SSE progress frames for model ingestion / pull.
     Compatible with frontend platformAdapter.pullModel.
     """
-    return StreamingResponse(_stream_model_pull(req.model_name), media_type="text/event-stream")
+    return StreamingResponse(
+        _stream_model_pull(
+            req.model_name,
+            provider=getattr(req, "provider", "huggingface") or "huggingface",
+            hf_token=getattr(req, "huggingface_token", None)
+        ),
+        media_type="text/event-stream"
+    )
 
 
 @router.get("/models/discovered", operation_id="get_system_models_discovered")

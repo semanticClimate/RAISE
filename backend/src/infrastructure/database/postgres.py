@@ -325,9 +325,11 @@ class PostgresManager(
                 );
                 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS citations JSONB DEFAULT '[]'::jsonb;
                 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS duration_sec DOUBLE PRECISION DEFAULT 0.0;
+                ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS latency_sec NUMERIC DEFAULT 0.0;
                 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS turn_index INT DEFAULT 0;
                 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS message_hash VARCHAR(64);
                 CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_hash ON chat_messages(session_id, message_hash);
             """)
 
             cur.execute("""

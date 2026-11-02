@@ -87,6 +87,15 @@ sheriff.config.ts
 # ------------------------------------------------------------------------------
 # 6. Vector Stores, Embeddings & Large Runtime Databases
 # ------------------------------------------------------------------------------
+models/
+**/models/
+backend/models/
+**/backend/models/
+*.safetensors
+*.bin
+*.onnx
+*.pt
+*.pth
 .chromadb*/
 **/.chromadb*/
 RAG/.chromadb_bge_large/

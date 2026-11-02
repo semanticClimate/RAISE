@@ -27,9 +27,11 @@ class ChatStoreMixin(SessionLifecycleMixin):
         content: str,
         mode: str = "fast",
         sources: Optional[List[str]] = None,
-        active_docs: Optional[List[str]] = None
+        active_docs: Optional[List[str]] = None,
+        latency_sec: float = 0.0
     ) -> bool:
         sources = sources or []
+        lat_float = float(latency_sec or 0.0)
         if not self.is_connected:
             self._memory_chat.setdefault(session_id, []).append({
                 "role": role,
@@ -39,6 +41,8 @@ class ChatStoreMixin(SessionLifecycleMixin):
                 "sources": sources,
                 "citations": sources,
                 "response": {"sources": sources},
+                "latency_sec": lat_float,
+                "durationSec": lat_float,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
             if active_docs is not None:
@@ -94,10 +98,12 @@ class ChatStoreMixin(SessionLifecycleMixin):
             # Save in chat_messages idempotently
             m_hash = hashlib.sha256(f"{session_id}:{role}:{content.strip()}".encode("utf-8")).hexdigest()
             cur.execute("""
-                INSERT INTO chat_messages (session_id, role, content, mode, sources, citations, message_hash)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (session_id, message_hash) DO NOTHING
-            """, (session_id, role, content, mode, json.dumps(sources), json.dumps(sources), m_hash))
+                INSERT INTO chat_messages (session_id, role, content, mode, sources, citations, message_hash, latency_sec, duration_sec)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (session_id, message_hash) DO UPDATE SET
+                    latency_sec = EXCLUDED.latency_sec,
+                    duration_sec = EXCLUDED.duration_sec
+            """, (session_id, role, content, mode, json.dumps(sources), json.dumps(sources), m_hash, lat_float, lat_float))
 
             # Keep message_history in sync for relational consistency
             try:
@@ -146,9 +152,9 @@ class ChatStoreMixin(SessionLifecycleMixin):
             cur = conn.cursor()
             # Sliding window context query: fetch the N latest messages, then sort chronologically
             cur.execute("""
-                SELECT role, content, mode, sources, created_at
+                SELECT role, content, mode, sources, created_at, COALESCE(latency_sec, duration_sec, 0.0)
                 FROM (
-                    SELECT id, role, content, mode, sources, created_at
+                    SELECT id, role, content, mode, sources, created_at, latency_sec, duration_sec
                     FROM chat_messages
                     WHERE session_id = %s
                     ORDER BY id DESC
@@ -162,6 +168,7 @@ class ChatStoreMixin(SessionLifecycleMixin):
             for r in rows:
                 raw_sources = r[3] if isinstance(r[3], list) else (json.loads(r[3]) if r[3] else [])
                 text_content = r[1] or ""
+                lat_val = float(r[5] or 0.0)
                 result.append({
                     "role": r[0],
                     "content": text_content,
@@ -170,7 +177,9 @@ class ChatStoreMixin(SessionLifecycleMixin):
                     "sources": raw_sources,
                     "citations": raw_sources,
                     "response": {"sources": raw_sources} if raw_sources else None,
-                    "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4])
+                    "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
+                    "latency_sec": lat_val,
+                    "durationSec": lat_val
                 })
             return result
         except Exception as e:
@@ -261,12 +270,14 @@ class ChatStoreMixin(SessionLifecycleMixin):
                 raw_citations = msg.get("citations") or raw_sources
                 sources_json = json.dumps(raw_sources) if isinstance(raw_sources, list) else json.dumps([])
                 citations_json = json.dumps(raw_citations) if isinstance(raw_citations, list) else json.dumps([])
-                dur = float(msg.get("durationSec") or msg.get("duration_sec") or 0.0)
+                dur = float(msg.get("latency_sec") or msg.get("durationSec") or msg.get("duration_sec") or 0.0)
                 cur.execute("""
-                    INSERT INTO chat_messages (session_id, turn_index, role, content, mode, sources, citations, duration_sec, message_hash, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, CURRENT_TIMESTAMP)
-                    ON CONFLICT (session_id, message_hash) DO NOTHING
-                """, (session_id, idx, role, content, mode, sources_json, citations_json, dur, m_hash))
+                    INSERT INTO chat_messages (session_id, turn_index, role, content, mode, sources, citations, duration_sec, latency_sec, message_hash, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (session_id, message_hash) DO UPDATE SET
+                        latency_sec = EXCLUDED.latency_sec,
+                        duration_sec = EXCLUDED.duration_sec
+                """, (session_id, idx, role, content, mode, sources_json, citations_json, dur, dur, m_hash))
                 try:
                     cur.execute("""
                         INSERT INTO message_history (session_id, role, content, timestamp)

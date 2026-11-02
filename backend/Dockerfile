@@ -1,13 +1,13 @@
 # ==============================================================================
 # RAISE Academic GraphRAG Studio — Production Multi-Stage Dockerfile
-# Stage 1: Rust Acceleration Engine Builder (PyO3 native extension + C-ABI + CLI)
+# Stage 1: Rust Acceleration Engine Builder (PyO3 native extension + C-ABI)
 # Stage 2: Production Python 3.12-slim Runtime with non-root security & healthcheck
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
 # Stage 1: Native Rust Acceleration Engine Builder (raise_engine)
 # ------------------------------------------------------------------------------
-FROM rust:1.82-slim-bookworm AS rust-builder
+FROM rust:1-slim-bookworm AS rust-builder
 
 WORKDIR /build
 
@@ -32,8 +32,8 @@ WORKDIR /build/rust/raise_engine
 # 1. Build release Python wheel via maturin (PyO3 native extension)
 RUN maturin build --release --out /build/wheels
 
-# 2. Build C-ABI shared library (.so) with python feature enabled and standalone CLI binary
-RUN cargo build --release --features python --bin raise-cli
+# 2. Build C-ABI shared library (.so) with python feature enabled
+RUN cargo build --release --features python
 
 
 # ------------------------------------------------------------------------------
@@ -50,23 +50,27 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Astral uv for ultra-fast, concurrent dependency resolution & caching
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
-# Install Python requirements with layer caching
+# Build-time argument allowing custom PyTorch wheels (CPU default, cu121/cu124 for CUDA)
+ARG TORCH_INDEX_URL="https://download.pytorch.org/whl/cpu"
+
+# Install Python requirements with layer caching using uv
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip "setuptools>=78.1.1" "msgpack>=1.2.1" && \
-    pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --upgrade "setuptools>=78.1.1" "msgpack>=1.2.1"
+RUN uv pip install --system --no-cache "setuptools>=78.1.1" "msgpack>=1.2.1" && \
+    uv pip install --system --no-cache --index-strategy unsafe-best-match -r requirements.txt --extra-index-url "${TORCH_INDEX_URL}"
 
 # Copy and install compiled native Rust PyO3 wheel from builder stage
 COPY --from=rust-builder /build/wheels /tmp/wheels
-RUN pip install --no-cache-dir /tmp/wheels/*.whl && rm -rf /tmp/wheels
+RUN uv pip install --system --no-cache /tmp/wheels/*.whl && rm -rf /tmp/wheels
 
-# Copy C-ABI shared library and standalone CLI tool from builder stage
+# Copy C-ABI shared library from builder stage
 RUN mkdir -p /app/bin
 COPY --from=rust-builder /build/rust/raise_engine/target/release/libraise_engine.so /app/bin/libraise_engine.so
 COPY --from=rust-builder /build/rust/raise_engine/target/release/libraise_engine.so /usr/local/lib/libraise_engine.so
-COPY --from=rust-builder /build/rust/raise_engine/target/release/raise-cli /usr/local/bin/raise-cli
 RUN ldconfig
 
 # Copy codebase
@@ -77,6 +81,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
     HF_HUB_VERBOSITY=error \
+    HF_HOME=/home/appuser/.cache/huggingface \
+    MODELS_DIR=/app/models \
     TOKENIZERS_PARALLELISM=false \
     HOST=0.0.0.0 \
     PORT=8000 \
@@ -85,12 +91,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Verify Rust acceleration engine loads properly inside container during build
 RUN python -c "import raise_engine; print('[DOCKER BUILD] Rust PyO3 acceleration active:', raise_engine.clean_text('Test-\ning  engine'))"
-RUN /usr/local/bin/raise-cli --version || true
 
 # Create non-root user and set permissions
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app/.chromadb_bge_large /app/.runtime /app/data && \
-    chown -R appuser:appuser /app
+    mkdir -p /app/.chromadb_bge_large /app/.runtime /app/data /app/models /home/appuser/.cache/huggingface && \
+    chown -R appuser:appuser /app /home/appuser
 
 USER appuser
 
@@ -103,6 +108,3 @@ HEALTHCHECK --interval=20s --timeout=5s --start-period=25s --retries=3 \
 
 # Production Entrypoint
 CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
-
-
-

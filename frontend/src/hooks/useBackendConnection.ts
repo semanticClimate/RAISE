@@ -72,156 +72,6 @@ export interface UseBackendConnectionResult {
   setAppMode: (mode: AppMode) => void;
 }
 
-// Shared WebSocket Manager to deduplicate telemetry streams and eliminate flapping
-class SharedWebSocketManager {
-  private static instance: SharedWebSocketManager | null = null;
-  private socket: WebSocket | null = null;
-  private listeners = new Set<(connected: boolean) => void>();
-  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private pingInterval: ReturnType<typeof setInterval> | null = null;
-  private teardownTimeout: ReturnType<typeof setTimeout> | null = null;
-  private reconnectAttempt = 0;
-  private currentUrl = '';
-  private isConnected = false;
-
-  public static getInstance(): SharedWebSocketManager {
-    if (!SharedWebSocketManager.instance) {
-      SharedWebSocketManager.instance = new SharedWebSocketManager();
-    }
-    return SharedWebSocketManager.instance;
-  }
-
-  public subscribe(url: string, listener: (connected: boolean) => void): () => void {
-    this.listeners.add(listener);
-    listener(this.isConnected);
-
-    if (this.teardownTimeout) {
-      clearTimeout(this.teardownTimeout);
-      this.teardownTimeout = null;
-    }
-
-    if (url && (url !== this.currentUrl || !this.socket || this.socket.readyState === WebSocket.CLOSED)) {
-      this.currentUrl = url;
-      this.connect();
-    }
-
-    return () => {
-      this.listeners.delete(listener);
-      if (this.listeners.size === 0) {
-        this.teardownTimeout = setTimeout(() => {
-          this.teardown();
-        }, 5000);
-      }
-    };
-  }
-
-  private notify(connected: boolean) {
-    this.isConnected = connected;
-    for (const listener of this.listeners) {
-      listener(connected);
-    }
-  }
-
-  private async connect() {
-    if (!this.currentUrl || typeof window === 'undefined' || !window.WebSocket) return;
-
-    this.cleanupSocket();
-
-    try {
-      const handshakeRes = await systemService.performHandshake().catch(() => null);
-      if (this.listeners.size === 0) return;
-
-      const token = handshakeRes?.data?.token || 'ephemeral-handshake-standalone';
-      const wsProtocol = this.currentUrl.startsWith('https:') ? 'wss:' : 'ws:';
-      const host = this.currentUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-      const wsUrl = `${wsProtocol}//${host}/ws/traffic?token=${encodeURIComponent(token)}`;
-
-      const socket = new WebSocket(wsUrl);
-      this.socket = socket;
-
-      socket.onopen = () => {
-        this.reconnectAttempt = 0;
-        this.notify(true);
-
-        if (this.pingInterval) clearInterval(this.pingInterval);
-        this.pingInterval = setInterval(() => {
-          if (socket.readyState === WebSocket.OPEN) {
-            try {
-              socket.send('ping');
-            } catch {}
-          }
-        }, 25000);
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          if (event.data === 'ping') {
-            socket.send('pong');
-          }
-        } catch {}
-      };
-
-      socket.onclose = () => {
-        this.notify(false);
-        this.cleanupSocket();
-        this.scheduleReconnect();
-      };
-
-      socket.onerror = () => {
-        try {
-          socket.close();
-        } catch {}
-      };
-    } catch {
-      this.notify(false);
-      this.scheduleReconnect();
-    }
-  }
-
-  private scheduleReconnect() {
-    if (this.listeners.size === 0) return;
-    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-
-    const attempt = this.reconnectAttempt;
-    const baseDelay = Math.min(30000, 1000 * Math.pow(2, attempt));
-    const jitter = Math.random() * 1000;
-    const delayMs = baseDelay + jitter;
-    this.reconnectAttempt = attempt + 1;
-
-    this.reconnectTimeout = setTimeout(() => {
-      this.connect();
-    }, delayMs);
-  }
-
-  private cleanupSocket() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-    if (this.socket) {
-      try {
-        this.socket.onopen = null;
-        this.socket.onmessage = null;
-        this.socket.onclose = null;
-        this.socket.onerror = null;
-        this.socket.close();
-      } catch {}
-      this.socket = null;
-    }
-  }
-
-  private teardown() {
-    this.cleanupSocket();
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-    this.reconnectAttempt = 0;
-    this.currentUrl = '';
-    this.notify(false);
-  }
-}
-
 /**
  * Modern React 19 hook for managing RAISE Backend & Cloudflare Gateway connectivity.
  * Combines Zustand store persistence, async transition wrapping, periodic heartbeats,
@@ -386,21 +236,116 @@ export function useBackendConnection(
     }
   }, [autoDetectLocalOnMount, isOffline, isTunnelConfigured, scanLocalPorts]);
 
-  // WebSocket Traffic & Telemetry Stream with Jittered Exponential Backoff & 25s Keepalive Ping
+  // WebSocket Traffic & Telemetry Stream with Jittered Exponential Backoff (1s, 2s, 4s, 8s, max 30s)
   const [isWsConnected, setIsWsConnected] = useState(false);
+  const reconnectAttemptRef = useRef(0);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isConnected || !apiBaseUrl || typeof window === 'undefined' || !window.WebSocket) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      reconnectAttemptRef.current = 0;
       setIsWsConnected(false);
       return;
     }
 
-    const unsubscribe = SharedWebSocketManager.getInstance().subscribe(apiBaseUrl, (connected) => {
-      setIsWsConnected(connected);
-    });
+    let isMounted = true;
+
+    const connectWebSocket = async () => {
+      if (!isMounted || !apiBaseUrl) return;
+
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch {}
+        wsRef.current = null;
+      }
+
+      try {
+        const handshakeRes = await systemService.performHandshake().catch(() => null);
+        if (!isMounted) return;
+
+        const token = handshakeRes?.data?.token || 'ephemeral-handshake-standalone';
+        const wsProtocol = apiBaseUrl.startsWith('https:') ? 'wss:' : 'ws:';
+        const host = apiBaseUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+        const wsUrl = `${wsProtocol}//${host}/ws/traffic?token=${encodeURIComponent(token)}`;
+
+        const socket = new WebSocket(wsUrl);
+        wsRef.current = socket;
+
+        socket.onopen = () => {
+          if (!isMounted) return;
+          reconnectAttemptRef.current = 0;
+          setIsWsConnected(true);
+        };
+
+        socket.onmessage = (event) => {
+          if (!isMounted) return;
+          try {
+            if (event.data === 'ping') {
+              socket.send('pong');
+            }
+          } catch {}
+        };
+
+        socket.onclose = () => {
+          if (!isMounted) return;
+          setIsWsConnected(false);
+          wsRef.current = null;
+
+          // Exponential backoff with jitter: 1s, 2s, 4s, 8s, ... max 30s + jitter
+          const attempt = reconnectAttemptRef.current;
+          const baseDelay = Math.min(30000, 1000 * Math.pow(2, attempt));
+          const jitter = Math.random() * 1000;
+          const delayMs = baseDelay + jitter;
+          reconnectAttemptRef.current = attempt + 1;
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isMounted) {
+              connectWebSocket();
+            }
+          }, delayMs);
+        };
+
+        socket.onerror = () => {
+          try {
+            socket.close();
+          } catch {}
+        };
+      } catch {
+        if (!isMounted) return;
+        setIsWsConnected(false);
+        const attempt = reconnectAttemptRef.current;
+        const delayMs = Math.min(30000, 1000 * Math.pow(2, attempt)) + Math.random() * 1000;
+        reconnectAttemptRef.current = attempt + 1;
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (isMounted) connectWebSocket();
+        }, delayMs);
+      }
+    };
+
+    connectWebSocket();
 
     return () => {
-      unsubscribe();
+      isMounted = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      setIsWsConnected(false);
+      reconnectAttemptRef.current = 0;
     };
   }, [isConnected, apiBaseUrl]);
 

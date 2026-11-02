@@ -1,0 +1,85 @@
+name: Frontend CI & Verification
+
+on:
+  push:
+    branches:
+      - frontend
+      - main
+  pull_request:
+    branches:
+      - frontend
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint, Typecheck & Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Biome Toolchain
+        uses: biomejs/setup-biome@v2
+        with:
+          version: 'latest'
+
+      - name: Initialize Biome Configuration
+        run: |
+          if [ ! -f biome.json ] && [ ! -f biome.jsonc ]; then
+            printf '{"$schema":"https://biomejs.dev/schemas/2.6.3/schema.json","vcs":{"enabled":true,"clientKind":"git","useIgnoreFile":true},"files":{"ignoreUnknown":true,"includes":["src/**","biome.json","package.json","tsconfig.json","vite.config.ts"]},"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"none","correctness":{"preset":"recommended"},"suspicious":{"preset":"recommended","noExplicitAny":"off","noArrayIndexKey":"off","noAssignInExpressions":"off","noControlCharactersInRegex":"off"}}},"assist":{"enabled":false},"css":{"parser":{"tailwindDirectives":true}}}' > biome.json
+          fi
+
+      - name: Run Biome Lint & Correctness Checks
+        run: biome check --formatter-enabled=false src || biome lint src
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: TypeScript Typecheck & Compilation
+        run: npm run typecheck
+
+      - name: Build Application Bundle with Vite
+        run: npm run build
+
+      - name: Upload Build Artifacts
+        if: github.ref == 'refs/heads/frontend' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.ref == 'refs/heads/frontend' && github.event_name != 'pull_request'
+    needs: validate
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup GitHub Pages
+        id: setup-pages
+        uses: actions/configure-pages@v5
+        continue-on-error: true
+
+      - name: Deploy Pages Artifact
+        if: steps.setup-pages.outcome == 'success'
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true

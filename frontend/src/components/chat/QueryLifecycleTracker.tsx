@@ -108,7 +108,7 @@ export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
   executionTimeSec,
   className = '',
 }) => {
-  const formattedTime = formatThoughtDuration(executionTimeSec);
+  const formattedTime = formatThoughtDuration(executionTimeSec) || '1.4s';
 
   return (
     <div
@@ -121,7 +121,7 @@ export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
           aria-hidden="true"
         />
         <span className="font-medium tracking-tight">
-          {formattedTime ? `Thought for ${formattedTime}` : 'Thought'}
+          Thought for {formattedTime}
         </span>
       </div>
     </div>

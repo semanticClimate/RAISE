@@ -27,7 +27,20 @@ class SystemConfigRequest(BaseModel):
     custom_api_key: Optional[str] = None
     custom_base_url: Optional[str] = None
     custom_model_name: Optional[str] = None
-    selected_local_model: Optional[str] = None
+    selected_local_model: Optional[str] = "llama3.2:3b"
+
+    # Neural Retrieval Pipeline Substrates
+    embedding_model: Optional[str] = Field(default="google/embeddinggemma-2")
+    embedding_device: Optional[str] = None
+    reranker_model: Optional[str] = Field(default="BAAI/bge-reranker-large")
+    reranker_device: Optional[str] = None
+    nli_verifier_model: Optional[str] = Field(default="FineCat-NLI-DeBERTa")
+    nli_model: Optional[str] = None
+    nli_device: Optional[str] = None
+    neural_device: Optional[str] = Field(default="auto")
+    huggingface_token: Optional[str] = None
+
+    # Database Substrates
     neo4j_mode: str = Field(default="cloud", description="cloud, local, or in_memory_fallback")
     neo4j_uri: Optional[str] = None
     neo4j_user: Optional[str] = None
@@ -40,17 +53,14 @@ class SystemConfigRequest(BaseModel):
     postgres_url: Optional[str] = None
     postgres_uri: Optional[str] = None
     tunnel_url: Optional[str] = None
-    embedding_model: Optional[str] = None
-    embedding_device: Optional[str] = None
-    reranker_model: Optional[str] = None
-    reranker_device: Optional[str] = None
-    nli_model: Optional[str] = None
-    nli_device: Optional[str] = None
 
 
 class ModelPullRequest(BaseModel):
     """Payload schema for streaming model ingestion requests."""
-    model_name: str = Field(default="BAAI/bge-large-en-v1.5")
+    model_name: str = Field(default="google/embeddinggemma-2")
+    provider: Optional[str] = Field(default="huggingface")
+    model_type: Optional[str] = Field(default="embedding")
+    huggingface_token: Optional[str] = None
 
 
 class PreflightDownloadRequest(BaseModel):

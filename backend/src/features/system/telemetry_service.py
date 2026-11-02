@@ -31,17 +31,16 @@ def get_hardware_telemetry() -> Dict[str, Any]:
         total_ram_gb = 8.0
         available_ram_gb = 4.0
 
-    # 3. GPU (CUDA check)
+    # 3. GPU (CUDA & MPS check via authoritative hardware module)
     gpu_detected = False
     gpu_name = "None (CPU Execution)"
     vram_gb = 0.0
     try:
-        import torch
-        if torch.cuda.is_available():
-            gpu_detected = True
-            gpu_name = torch.cuda.get_device_name(0)
-            _, v_tot = torch.cuda.mem_get_info()
-            vram_gb = round(v_tot / (1024**3), 1)
+        from src.infrastructure.hardware import get_gpu_info
+        g_info = get_gpu_info()
+        gpu_detected = bool(g_info.get("cuda_available") or g_info.get("mps_available"))
+        gpu_name = g_info.get("primary_device_name", "None (CPU Execution)")
+        vram_gb = g_info.get("primary_vram_gb") or 0.0
     except Exception:
         pass
 

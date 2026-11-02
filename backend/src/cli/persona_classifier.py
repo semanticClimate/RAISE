@@ -118,14 +118,15 @@ def extract_conversational_persona(text: str) -> Dict[str, Any]:
         return {"type": "bot_identity"}
 
     # Natural greetings & conversational openers (Must be standalone greetings)
+    greeting_typo_regex = re.compile(
+        r"^(hi+|hello+|helo+|hekko+|hey+|heyy+|heyo|howdy|hola|yo+|sup|hlo|hlw|greetings)(?:\s+there|\s+raise|\s+bot|\s*!|\s*\.|\s*\?)*$",
+        re.IGNORECASE
+    )
     greeting_words = {
-        "hi", "hello", "hey", "he", "hola", "howdy", "sup", "yo",
-        "greetings", "good morning", "good afternoon", "good evening",
+        "hi", "hello", "helo", "hekko", "hey", "heyy", "he", "hola", "howdy", "sup", "yo",
+        "hlo", "hlw", "greetings", "good morning", "good afternoon", "good evening", "good day",
     }
-    if t_lower in greeting_words or re.match(
-        r"^(?:hi|hello|hey|he|hola|howdy|sup|yo|greetings)(?:\s+there|\s+raise|\s+bot|\s*!|\s*\.|\s*\?)*$",
-        t_lower,
-    ):
+    if t_lower in greeting_words or greeting_typo_regex.match(text.strip()):
         return {"type": "greeting"}
 
     return {"type": "research_query"}

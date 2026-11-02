@@ -4,7 +4,6 @@ import {
   HelpCircle,
   ShieldCheck,
   Terminal,
-  Zap,
 } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
@@ -22,12 +21,9 @@ export interface SlashCommandMenuProps {
   className?: string;
 }
 
-// Map dedicated clean SVGs for each slash command
+// Sid says: Map dedicated clean SVGs for each slash command (Antigravity / ChatGPT style)
 export const getCommandIcon = (cmdName: string) => {
   const name = cmdName.toLowerCase();
-  if (name.includes('boost') || name.includes('turbo') || name.includes('accelerate') || name.includes('perf')) {
-    return <Zap className="w-3.5 h-3.5 text-amber-400" />;
-  }
   if (name.includes('compare') || name.includes('diff') || name.includes('vs')) {
     return <GitCompare className="w-3.5 h-3.5 text-indigo-400" />;
   }

@@ -33,10 +33,10 @@ redis>=5.0.0
 msgpack>=1.1.2
 
 # --- 4. Embeddings, Local Models & Inference ---
-sentence-transformers>=2.6.0
+sentence-transformers>=6.1.0
 accelerate>=0.28.0
 fastembed>=0.4.0
-transformers>=4.40.0
+transformers>=5.22.0
 torch>=2.2.0
 huggingface-hub>=0.23.0
 openai>=1.12.0

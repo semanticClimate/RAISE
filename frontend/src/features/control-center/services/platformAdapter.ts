@@ -128,6 +128,10 @@ export interface SystemConfigPayload {
   redis_uri?: string;
   redis_url?: string;
   tunnel_url?: string;
+  huggingface_token?: string;
+  embedding_model?: string;
+  reranker_model?: string;
+  nli_verifier_model?: string;
 }
 
 const isTauri = (): boolean => {
@@ -149,6 +153,31 @@ const resolveApiUrl = (path: string): string => {
 };
 
 const isTestEnv = typeof process !== 'undefined' && process.env.NODE_ENV === 'test';
+
+export function detectHostOS(): 'macos' | 'windows' | 'linux' {
+  if (typeof window === 'undefined') return 'macos';
+  const ua = (window.navigator?.userAgent || '').toLowerCase();
+  const platform = (window.navigator?.platform || '').toLowerCase();
+  const uadPlatform = ((window.navigator as any)?.userAgentData?.platform || '').toLowerCase();
+
+  if (
+    ua.includes('mac') ||
+    ua.includes('darwin') ||
+    ua.includes('os x') ||
+    platform.includes('mac') ||
+    platform.includes('darwin') ||
+    uadPlatform.includes('mac')
+  ) {
+    return 'macos';
+  }
+  if (ua.includes('win') || platform.includes('win') || uadPlatform.includes('win')) {
+    return 'windows';
+  }
+  if (ua.includes('linux') || platform.includes('linux') || uadPlatform.includes('linux')) {
+    return 'linux';
+  }
+  return 'macos';
+}
 
 export function normalizePlatform(raw: string): 'macos' | 'windows' | 'linux' | 'ios' | 'android' {
   const p = (raw || '').toLowerCase();
@@ -191,6 +220,7 @@ export const platformAdapter = {
   isNativeTauri: isTauri,
   isLocalEnvironment,
   normalizePlatform,
+  detectHostOS,
 
   // Sid says: Query live /api/hardware-telemetry endpoint without hardcoded hardware strings
   async getHardware(): Promise<HardwareTelemetry> {
@@ -386,6 +416,7 @@ export const platformAdapter = {
           openrouter_api_key: provider === 'openrouter' ? key : undefined,
           openai_api_key: provider === 'openai' ? key : undefined,
           anthropic_api_key: provider === 'anthropic' ? key : undefined,
+          hf_token: provider === 'huggingface' ? key : undefined,
           custom_api_key: key,
         }),
       }, 4000);

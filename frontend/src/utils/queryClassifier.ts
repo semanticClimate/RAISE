@@ -15,7 +15,7 @@ export function isConversationalQuery(query?: string | null): boolean {
   const qLower = qClean.toLowerCase();
 
   const patterns = [
-    /^(he|hi|hello|hey|greetings|howdy|hola|yo)\b/i,
+    /^(he|hi|hello|hey|hekko|helo|heyo|heyy+|hii+|hie|hlo|hlw|greetings|howdy|hola|yo|sup|wassup)\b/i,
     /^good\s+(morning|afternoon|evening|day|night)\b/i,
     /\b(?:my\s+name\s+is|call\s+me)\b/i,
     /\b(?:do\s+you\s+know|what\s+is|what's)\s+my\s+name\b/i,
@@ -46,6 +46,9 @@ export function isConversationalQuery(query?: string | null): boolean {
       'my name',
       'your name',
       'hello',
+      'hekko',
+      'helo',
+      'heyo',
       'hi raise',
       'hey there',
     ];

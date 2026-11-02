@@ -8,6 +8,7 @@ export type DetectedProvider =
   | 'openai'
   | 'deepseek'
   | 'openrouter'
+  | 'huggingface'
   | 'custom'
   | 'unknown';
 
@@ -31,25 +32,25 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
   if (trimmed.startsWith('gsk_')) {
     return {
       provider: 'groq',
-      displayName: 'Groq LPU',
+      displayName: 'Groq',
       defaultModel: 'llama-3.3-70b-versatile',
     };
   }
 
-  // Google Gemini / Google Developer Programme keys typically start with 'AIzaSy' or 'AIza'
+  // Google Gemini keys typically start with 'AIzaSy' or 'AIza'
   if (trimmed.startsWith('AIzaSy') || trimmed.startsWith('AIza')) {
     return {
       provider: 'gemini',
-      displayName: 'Google Developer Programme (Gemini Pro)',
+      displayName: 'Gemini',
       defaultModel: 'gemini-2.0-flash',
     };
   }
 
-  // NVIDIA NIM keys start with 'nvapi-'
+  // NVIDIA keys start with 'nvapi-'
   if (trimmed.startsWith('nvapi-')) {
     return {
       provider: 'nvidia',
-      displayName: 'NVIDIA NIM',
+      displayName: 'NVIDIA',
       defaultModel: 'meta/llama-3.2-11b-vision-instruct',
     };
   }
@@ -58,7 +59,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
   if (trimmed.startsWith('sk-ant-')) {
     return {
       provider: 'anthropic',
-      displayName: 'Anthropic Claude',
+      displayName: 'Anthropic',
       defaultModel: 'claude-3-5-sonnet',
     };
   }
@@ -67,12 +68,12 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
   if (trimmed.startsWith('co-') || trimmed.length === 40) {
     return {
       provider: 'cohere',
-      displayName: 'Cohere Command',
+      displayName: 'Cohere',
       defaultModel: 'command-r-plus-08-2024',
     };
   }
 
-  // OpenAI / OpenRouter / DeepSeek
+  // OpenRouter
   if (trimmed.startsWith('sk-or-')) {
     return {
       provider: 'openrouter',
@@ -82,10 +83,9 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
   }
 
   if (trimmed.startsWith('sk-')) {
-    // Could be OpenAI or DeepSeek or generic
     return {
       provider: 'openai',
-      displayName: 'OpenAI / DeepSeek',
+      displayName: 'OpenAI',
       defaultModel: 'gpt-4o-mini',
     };
   }
@@ -94,14 +94,23 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
   if (/^[a-zA-Z0-9]{32}$/.test(trimmed)) {
     return {
       provider: 'mistral',
-      displayName: 'Mistral AI',
+      displayName: 'Mistral',
       defaultModel: 'open-mistral-nemo',
+    };
+  }
+
+  // Hugging Face keys start with 'hf_'
+  if (trimmed.startsWith('hf_')) {
+    return {
+      provider: 'huggingface',
+      displayName: 'Hugging Face',
+      defaultModel: 'sentence-transformers/all-MiniLM-L6-v2',
     };
   }
 
   return {
     provider: 'custom',
-    displayName: 'Custom / Universal API',
+    displayName: 'Custom API',
     defaultModel: 'default',
   };
 }

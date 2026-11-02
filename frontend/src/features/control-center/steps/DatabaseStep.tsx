@@ -25,27 +25,27 @@ export const DatabaseStep: React.FC = () => {
     {
       key: 'knowledgeGraph' as const,
       name: 'Knowledge Graph',
-      role: 'Graph Triples & Multi-hop Reasoning (Neo4j)',
+      role: 'Neo4j Graph Engine',
       icon: Layers,
-      info: 'Neo4j Graph Database for semantic citations, concept nodes, and multi-hop reasoning traversals.',
+      info: 'Neo4j Graph Database for semantic citations, concept nodes, and multi-hop reasoning.',
       defaultUri: 'neo4j+s://your-instance.databases.neo4j.io',
       presetName: 'Neo4j AuraDB',
     },
     {
       key: 'sessionMemory' as const,
       name: 'Session Memory',
-      role: 'Chat History & Turn Persistence (PostgreSQL)',
+      role: 'PostgreSQL Store',
       icon: Database,
-      info: 'PostgreSQL with pgvector for cross-session chat persistence, audit logs, and user trajectories.',
+      info: 'PostgreSQL with pgvector for cross-session chat persistence.',
       defaultUri: 'postgresql://user:password@ep-cool-fog.neon.tech/neondb',
       presetName: 'Neon Serverless Postgres',
     },
     {
       key: 'cacheAndSignals' as const,
-      name: 'Response Cache & Abort Bus',
-      role: 'Sub-millisecond Query Caching & Interrupts (Redis)',
+      name: 'Response Cache',
+      role: 'Redis Fast Bus',
       icon: Zap,
-      info: 'Redis for ephemeral streaming state, semantic query caching, and pub/sub signals.',
+      info: 'Redis for ephemeral streaming state and semantic query caching.',
       defaultUri: 'rediss://default:token@your-cluster.upstash.io:6379',
       presetName: 'Upstash Redis',
     },
@@ -171,11 +171,8 @@ export const DatabaseStep: React.FC = () => {
     <div className="space-y-4 animate-in fade-in-50 duration-150">
       <div>
         <h3 className="text-base font-bold text-white tracking-tight">
-          Storage & Retrieval Substrates
+          Storage Substrates
         </h3>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Select deployment architecture for knowledge graph, memory, and cache layers.
-        </p>
       </div>
 
       {/* Global Mode Quick-Toggle: Python In-Memory vs Cloud Infrastructure */}
@@ -191,10 +188,10 @@ export const DatabaseStep: React.FC = () => {
         >
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-emerald-400" />
-            <span>Python In-Memory</span>
+            <span>In-Memory</span>
           </div>
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
-            0 GB Disk • Instant
+            0 GB • Instant
           </span>
         </button>
 
@@ -209,10 +206,10 @@ export const DatabaseStep: React.FC = () => {
         >
           <div className="flex items-center gap-2">
             <Cloud className="w-4 h-4 text-sky-400" />
-            <span>Cloud Infrastructure</span>
+            <span>Cloud</span>
           </div>
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
-            Aura • Neon • Upstash
+            Remote Endpoints
           </span>
         </button>
       </div>
@@ -223,12 +220,12 @@ export const DatabaseStep: React.FC = () => {
           <div>
             <div className="font-semibold text-sky-300 flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-sky-400" />
-              <span>Environment endpoints configured:</span>
+              <span>Endpoints found in .env:</span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex gap-2 flex-wrap">
-              {envData.postgres.present && <span>• PostgreSQL ({envData.postgres.source})</span>}
-              {envData.redis.present && <span>• Redis ({envData.redis.source})</span>}
-              {envData.neo4j.present && <span>• Neo4j ({envData.neo4j.source})</span>}
+              {envData.postgres.present && <span>• Postgres</span>}
+              {envData.redis.present && <span>• Redis</span>}
+              {envData.neo4j.present && <span>• Neo4j</span>}
             </div>
           </div>
           <button
@@ -236,7 +233,7 @@ export const DatabaseStep: React.FC = () => {
             onClick={() => setAllSubstratesMode('cloud')}
             className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-semibold transition-all cursor-pointer shrink-0"
           >
-            Apply endpoints
+            Apply
           </button>
         </div>
       )}
@@ -246,42 +243,10 @@ export const DatabaseStep: React.FC = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-white/10 bg-black/40 text-xs font-semibold text-slate-300">
-              <th className="py-3 px-4">
-                <div className="flex items-center gap-1.5">
-                  <span>Substrate Layer</span>
-                  <Tooltip
-                    size="sm"
-                    content="Storage and retrieval substrate layers in the RAISE pipeline."
-                  />
-                </div>
-              </th>
-              <th className="py-3 px-3 text-center">
-                <div className="inline-flex items-center gap-1.5">
-                  <span>Python In-Memory</span>
-                  <Tooltip
-                    size="sm"
-                    content="Zero-disk in-process Python fallback. 0 GB storage, ephemeral runtime."
-                  />
-                </div>
-              </th>
-              <th className="py-3 px-3 text-center">
-                <div className="inline-flex items-center gap-1.5">
-                  <span>Local</span>
-                  <Tooltip
-                    size="sm"
-                    content="Local daemons running on host system (Neo4j port 7687, Postgres 5432, Redis 6379)."
-                  />
-                </div>
-              </th>
-              <th className="py-3 px-3 text-center">
-                <div className="inline-flex items-center gap-1.5">
-                  <span>Cloud</span>
-                  <Tooltip
-                    size="sm"
-                    content="Fully-managed cloud infrastructure (Neo4j Aura, Neon Postgres, Upstash Redis)."
-                  />
-                </div>
-              </th>
+              <th className="py-2.5 px-4">Substrate</th>
+              <th className="py-2.5 px-3 text-center">In-Memory</th>
+              <th className="py-2.5 px-3 text-center">Local</th>
+              <th className="py-2.5 px-3 text-center">Cloud</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 text-xs">

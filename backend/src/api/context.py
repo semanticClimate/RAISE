@@ -258,15 +258,24 @@ def _parse_drawer_active_docs(raw_val: Any) -> Optional[List[str]]:
     return cleaned_docs
 
 
+GREETING_TYPO_REGEX = re.compile(
+    r"^(hi+|hello+|helo+|hekko+|hey+|heyy+|heyo|howdy|hola|yo+|sup|hlo|hlw|greetings)(?:\s+there|\s+raise|\s+bot|\s*!|\s*\.|\s*\?)*$",
+    re.IGNORECASE
+)
+
+
 def is_conversational_or_memory_query(query: str) -> bool:
     """
     Detects if a query is a greeting, introduction, memory recall, or general assistant dialogue.
     These queries bypass the document drawer check completely.
     """
     q_clean = query.strip()
+    if GREETING_TYPO_REGEX.match(q_clean):
+        return True
+
     q_lower = q_clean.lower()
     patterns = [
-        r"^(he|hi|hello|hey|greetings|howdy)\b",
+        r"^(he|hi+|hello+|helo+|hekko+|hey+|heyy+|heyo|greetings|howdy|hola|yo+|sup|hlo|hlw)\b",
         r"^good\s+(morning|afternoon|evening|day)\b",
         r"\b(?:my\s+name\s+is|call\s+me)\b",
         r"\b(?:do\s+you\s+know|what\s+is|what's)\s+my\s+name\b",

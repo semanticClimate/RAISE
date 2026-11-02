@@ -194,7 +194,7 @@ async def chat_endpoint(
         if has_empty_drawer:
             immediate_reply = "No active documents are currently attached to your drawer. Please attach a document in the drawer to begin research."
         else:
-            immediate_reply = "No documents have been uploaded to the workspace yet. Please upload an academic PDF or report from the frontend to begin research and analysis."
+            immediate_reply = "No documents have been uploaded to the workspace yet. Please upload an academic PDF or report to RAISE to begin research and analysis."
 
         if session_id:
             if postgres_manager:
@@ -369,7 +369,7 @@ async def chat_endpoint(
         # Persist in PostgreSQL
         if session_id and postgres_manager:
             postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-            postgres_manager.save_message(session_id, "assistant", answer, mode=mode, sources=sources)
+            postgres_manager.save_message(session_id, "assistant", answer, mode=mode, sources=sources, latency_sec=elapsed)
 
         return JSONResponse(
             content=response_payload,

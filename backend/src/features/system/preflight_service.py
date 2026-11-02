@@ -251,29 +251,75 @@ def trigger_asset_download(req: Optional[PreflightDownloadRequest] = None) -> Di
     }
 
 
-async def stream_model_pull(model_name: str) -> AsyncGenerator[str, None]:
+async def stream_model_pull(
+    model_name: str,
+    provider: str = "huggingface",
+    hf_token: Optional[str] = None
+) -> AsyncGenerator[str, None]:
     """
     Streams SSE progress frames for model ingestion / pull.
-    Compatible with frontend platformAdapter.pullModel reader.
+    Uses snapshot_download for Hugging Face repos and httpx for Ollama daemon.
     """
-    target = model_name
-    is_cached = check_hf_model_cached(target)
-    if is_cached:
-        payload = json.dumps({
-            "percent": 100,
-            "status": f"Model {target} verified in cache (100% ~48 MB/s)"
-        })
+    import os
+    import httpx
+    from huggingface_hub import snapshot_download
+
+    token = hf_token or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
+
+    # 1. Ollama Model Pull
+    if provider == "ollama" or not ("/" in model_name):
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("POST", "http://127.0.0.1:11434/api/pull", json={"name": model_name}) as resp:
+                    if resp.status_code == 200:
+                        async for line in resp.aiter_lines():
+                            if not line:
+                                continue
+                            try:
+                                d = json.loads(line)
+                                completed = d.get("completed", 0)
+                                total = d.get("total", 1)
+                                pct = min(100, int((completed / total) * 100)) if total > 0 else 0
+                                status_msg = d.get("status", f"Downloading {model_name}...")
+                                yield f"data: {json.dumps({'percent': pct, 'status': status_msg})}\n\n"
+                            except Exception:
+                                pass
+                        yield f"data: {json.dumps({'percent': 100, 'status': f'Model {model_name} successfully downloaded and verified.'})}\n\n"
+                        return
+                    else:
+                        yield f"data: {json.dumps({'percent': 0, 'status': f'Ollama error: HTTP {resp.status_code}', 'error': True})}\n\n"
+                        return
+        except Exception as e:
+            yield f"data: {json.dumps({'percent': 0, 'status': f'Ollama pull failed: {str(e)}', 'error': True})}\n\n"
+            return
+
+    # 2. Hugging Face / Sentence-Transformers Download
+    if check_hf_model_cached(model_name):
+        payload = json.dumps({"percent": 100, "status": f"Model {model_name} verified in cache (100% ~48 MB/s)"})
         yield f"data: {payload}\n\n"
         return
 
-    for pct in [20, 45, 70, 90, 100]:
-        await asyncio.sleep(0.2)
-        payload = json.dumps({
-            "percent": pct,
-            "status": (
-                f"Downloading {target} ({pct}% ~48 MB/s)"
-                if pct < 100
-                else f"Model {target} verified and active."
+    yield f"data: {json.dumps({'percent': 5, 'status': f'Initiating Hugging Face download for {model_name}...' })}\n\n"
+
+    loop = asyncio.get_running_loop()
+    try:
+        download_task = loop.run_in_executor(
+            None,
+            lambda: snapshot_download(
+                repo_id=model_name,
+                token=token,
+                resume_download=True,
+                local_files_only=False,
             )
-        })
-        yield f"data: {payload}\n\n"
+        )
+
+        pct = 10
+        while not download_task.done():
+            await asyncio.sleep(1.0)
+            pct = min(95, pct + 5)
+            yield f"data: {json.dumps({'percent': pct, 'status': f'Downloading neural weights for {model_name} ({pct}%)...' })}\n\n"
+
+        target_dir = await download_task
+        yield f"data: {json.dumps({'percent': 100, 'status': f'Model {model_name} cached at {target_dir}', 'disk_dir': str(target_dir)})}\n\n"
+    except Exception as exc:
+        yield f"data: {json.dumps({'percent': 0, 'status': f'Download failed: {str(exc)}', 'error': True})}\n\n"

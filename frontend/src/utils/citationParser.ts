@@ -311,13 +311,38 @@ export function normalizeCitation(
     primary_page: page && page > 0 ? page : (undefined as any),
     page: page && page > 0 ? page : undefined,
     page_number: page && page > 0 ? page : undefined,
-    heading: raw.heading || raw.metadata?.heading || raw.title || '',
-    plain_text: raw.plain_text || raw.text || raw.content || raw.snippet || '',
-    snippet: raw.snippet || raw.plain_text || raw.text,
-    text: raw.text || raw.plain_text || raw.content,
+    heading:
+      raw.heading ||
+      raw.section_heading ||
+      raw.metadata?.heading ||
+      raw.metadata?.section_heading ||
+      raw.title ||
+      '',
+    plain_text:
+      raw.plain_text ||
+      raw.text ||
+      raw.content ||
+      raw.excerpt ||
+      raw.snippet ||
+      raw.metadata?.excerpt ||
+      '',
+    snippet: raw.snippet || raw.excerpt || raw.plain_text || raw.text,
+    text: raw.text || raw.plain_text || raw.excerpt || raw.content,
     university: raw.university || raw.metadata?.university || '',
-    similarity: typeof raw.similarity === 'number' ? raw.similarity : 0.9,
-    score: typeof raw.score === 'number' ? raw.score : (typeof raw.similarity === 'number' ? raw.similarity : undefined),
+    similarity:
+      typeof raw.similarity === 'number'
+        ? raw.similarity
+        : typeof raw.relevance_score === 'number'
+          ? raw.relevance_score
+          : 0.9,
+    score:
+      typeof raw.score === 'number'
+        ? raw.score
+        : typeof raw.relevance_score === 'number'
+          ? raw.relevance_score
+          : typeof raw.similarity === 'number'
+            ? raw.similarity
+            : undefined,
     printed_page: raw.printed_page || raw.metadata?.printed_page,
     page_url: pageUrl,
     page_image_url: pageImageUrl,

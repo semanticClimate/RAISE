@@ -96,12 +96,16 @@ def get_current_configuration() -> Dict[str, Any]:
         "neo4j_database": os.getenv("NEO4J_DATABASE", "neo4j"),
         "neo4j_is_cloud": "databases.neo4j.io" in neo4j_uri,
         "redis_is_cloud": "upstash.io" in redis_url,
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5"),
-        "embedding_device": os.getenv("EMBEDDING_DEVICE", "cuda"),
+        "embedding_model": os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"),
+        "embedding_device": os.getenv("EMBEDDING_DEVICE", "auto"),
         "reranker_model": os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"),
-        "reranker_device": os.getenv("RERANKER_DEVICE", "cuda"),
-        "nli_model": os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l"),
-        "nli_device": os.getenv("NLI_DEVICE", "cuda"),
+        "reranker_device": os.getenv("RERANKER_DEVICE", "auto"),
+        "nli_model": os.getenv("NLI_MODEL", "FineCat-NLI-DeBERTa"),
+        "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL") or os.getenv("NLI_MODEL", "FineCat-NLI-DeBERTa"),
+        "nli_device": os.getenv("NLI_DEVICE", "auto"),
+        "neural_device": os.getenv("NEURAL_DEVICE") or os.getenv("EMBEDDING_DEVICE", "auto"),
+        "huggingface_configured": bool(os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")),
+        "huggingface_masked": mask_secret(os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")),
         "first_run_completed": bool(
             cm.get_credential_status("groq") == "configured"
             or cm.get_credential_status("mistral") == "configured"
@@ -278,23 +282,43 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
 
     # Update Neural Models and Acceleration Devices
     if cfg.embedding_model:
-        env_map["EMBEDDING_MODEL"] = cfg.embedding_model.strip()
-        os.environ["EMBEDDING_MODEL"] = cfg.embedding_model.strip()
-    if cfg.embedding_device:
-        env_map["EMBEDDING_DEVICE"] = cfg.embedding_device.strip()
-        os.environ["EMBEDDING_DEVICE"] = cfg.embedding_device.strip()
+        clean_emb = cfg.embedding_model.strip()
+        env_map["EMBEDDING_MODEL"] = clean_emb
+        env_map["DEFAULT_EMBEDDING_MODEL"] = clean_emb
+        os.environ["EMBEDDING_MODEL"] = clean_emb
+        os.environ["DEFAULT_EMBEDDING_MODEL"] = clean_emb
+
     if cfg.reranker_model:
-        env_map["RERANKER_MODEL"] = cfg.reranker_model.strip()
-        os.environ["RERANKER_MODEL"] = cfg.reranker_model.strip()
-    if cfg.reranker_device:
-        env_map["RERANKER_DEVICE"] = cfg.reranker_device.strip()
-        os.environ["RERANKER_DEVICE"] = cfg.reranker_device.strip()
-    if cfg.nli_model:
-        env_map["NLI_MODEL"] = cfg.nli_model.strip()
-        os.environ["NLI_MODEL"] = cfg.nli_model.strip()
-    if cfg.nli_device:
-        env_map["NLI_DEVICE"] = cfg.nli_device.strip()
-        os.environ["NLI_DEVICE"] = cfg.nli_device.strip()
+        clean_rerank = cfg.reranker_model.strip()
+        env_map["RERANKER_MODEL"] = clean_rerank
+        os.environ["RERANKER_MODEL"] = clean_rerank
+
+    nli_target = cfg.nli_verifier_model or cfg.nli_model
+    if nli_target:
+        clean_nli = nli_target.strip()
+        env_map["NLI_VERIFIER_MODEL"] = clean_nli
+        env_map["NLI_MODEL"] = clean_nli
+        os.environ["NLI_VERIFIER_MODEL"] = clean_nli
+        os.environ["NLI_MODEL"] = clean_nli
+
+    device_target = cfg.neural_device or cfg.embedding_device or cfg.reranker_device or cfg.nli_device
+    if device_target:
+        clean_dev = device_target.strip()
+        env_map["NEURAL_DEVICE"] = clean_dev
+        os.environ["NEURAL_DEVICE"] = clean_dev
+        env_map["EMBEDDING_DEVICE"] = clean_dev
+        os.environ["EMBEDDING_DEVICE"] = clean_dev
+        env_map["RERANKER_DEVICE"] = clean_dev
+        os.environ["RERANKER_DEVICE"] = clean_dev
+        env_map["NLI_DEVICE"] = clean_dev
+        os.environ["NLI_DEVICE"] = clean_dev
+
+    if cfg.huggingface_token and not is_masked_secret(cfg.huggingface_token):
+        hf_clean = cfg.huggingface_token.strip()
+        env_map["HUGGINGFACE_TOKEN"] = hf_clean
+        env_map["HF_TOKEN"] = hf_clean
+        os.environ["HUGGINGFACE_TOKEN"] = hf_clean
+        os.environ["HF_TOKEN"] = hf_clean
 
     # Update Neo4j
     if cfg.neo4j_mode == "cloud" and cfg.neo4j_uri:

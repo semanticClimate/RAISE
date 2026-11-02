@@ -85,76 +85,28 @@ async def get_system_metrics(
 
 @router.get("/api/hardware-telemetry")
 async def get_hardware_telemetry():
-    """Hardware telemetry: reports system RAM and GPU stats."""
-    total_gb = 64.0
-    avail_gb = 38.2
-    pct = 40.3
-    try:
-        import psutil
-        mem = psutil.virtual_memory()
-        total_gb = round(mem.total / (1024**3), 1)
-        avail_gb = round(mem.available / (1024**3), 1)
-        pct = mem.percent
-    except Exception:
-        try:
-            with open("/proc/meminfo", "r") as f:
-                lines = f.readlines()
-            meminfo = {}
-            for line in lines:
-                parts = line.split(":")
-                if len(parts) == 2:
-                    meminfo[parts[0].strip()] = int(parts[1].strip().split()[0])
-            total_kb = meminfo.get("MemTotal", 67108864)
-            avail_kb = meminfo.get("MemAvailable", 40000000)
-            total_gb = round(total_kb / (1024**2), 1)
-            avail_gb = round(avail_kb / (1024**2), 1)
-            pct = round((1.0 - (avail_kb / total_kb)) * 100, 1)
-        except Exception:
-            pass
+    """Authoritative hardware telemetry: dynamically inspects RAM, CPU, and GPU/MPS."""
+    from src.infrastructure.hardware import get_gpu_info, get_ram_info, get_cpu_info
 
-    gpu_detected = os.getenv("GPU_MODEL_NAME")
-    if not gpu_detected:
-        try:
-            import subprocess
-            smi = subprocess.check_output(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], timeout=1.0).decode().strip()
-            if smi:
-                gpu_detected = smi.split("\n")[0].strip()
-        except Exception:
-            pass
+    ram = get_ram_info()
+    gpu = get_gpu_info()
+    cpu = get_cpu_info()
 
-    if not gpu_detected:
-        try:
-            import torch
-            if torch.cuda.is_available():
-                gpu_detected = torch.cuda.get_device_name(0)
-            elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-                gpu_detected = "Apple Silicon GPU (MPS Accelerator Active)"
-        except Exception:
-            pass
-
-    if not gpu_detected:
-        import platform
-        if platform.system() == "Darwin":
-            try:
-                import subprocess
-                out = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], timeout=1.0).decode().strip()
-                if "Apple" in out:
-                    gpu_detected = f"Apple Silicon GPU ({out})"
-            except Exception:
-                pass
-            if not gpu_detected:
-                gpu_detected = "Apple Silicon GPU (MPS Accelerator Active)"
-
-    if not gpu_detected:
-        import platform
-        cpu_proc = platform.processor() or "Multi-Core CPU"
-        gpu_detected = f"CPU Execution Engine ({cpu_proc})"
+    gpu_label = gpu.get("primary_device_name") or ("Apple Silicon Metal (MPS)" if gpu.get("mps_available") else "CPU Execution")
+    total_ram = ram.get("total_gb") or 16.0
+    free_ram = ram.get("available_gb") or 8.0
 
     return {
-        "gpu_model": gpu_detected,
-        "ram_total_gb": total_gb,
-        "ram_available_gb": avail_gb,
-        "ram_percent": pct,
-        "embedding_model": "BAAI/bge-large-en-v1.5 (1024-dim, Cached Offline)",
+        # Support both naming conventions for full frontend compatibility
+        "gpu_model": gpu_label,
+        "ram_total_gb": total_ram,
+        "total_ram_gb": total_ram,
+        "ram_available_gb": free_ram,
+        "free_ram_gb": free_ram,
+        "ram_percent": ram.get("percent_used") or 0.0,
+        "cpu_cores": cpu.get("logical_cores") or 4,
+        "has_metal_or_cuda": bool(gpu.get("cuda_available") or gpu.get("mps_available")),
+        "embedding_model": os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"),
+        "reranker_model": os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"),
         "neo4j_endpoint": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     }

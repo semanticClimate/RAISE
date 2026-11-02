@@ -133,13 +133,18 @@ async def handle_conversational_chat(
     model_name = os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
 
     # Conversational intent classifier matching main.py
+    greeting_typo_regex = re.compile(
+        r"^(hi+|hello+|helo+|hekko+|hey+|heyy+|heyo|howdy|hola|yo+|sup|hlo|hlw|greetings)(?:\s+there|\s+raise|\s+bot|\s*!|\s*\.|\s*\?)*$",
+        re.IGNORECASE
+    )
     intent = extract_conversational_persona(message)
     q_norm = re.sub(r"[^\w\s]", "", message.lower()).strip()
     is_persona_fastpath = (
         intent.get("type") in ("greeting", "bot_identity", "name_recall", "name_intro")
+        or bool(greeting_typo_regex.match(message.strip()))
         or q_norm in {
-            "hi", "hello", "hey", "greetings", "howdy", "hi there", "hello there", "hey there",
-            "good morning", "good afternoon", "good evening", "good day", "yo", "sup"
+            "hi", "hello", "helo", "hekko", "hey", "heyy", "greetings", "howdy", "hi there", "hello there", "hey there",
+            "good morning", "good afternoon", "good evening", "good day", "yo", "sup", "hlo", "hlw"
         }
         or any(w in message.lower() for w in ["who are you", "who r u", "whats your name", "what is your name", "what can you do"])
     )

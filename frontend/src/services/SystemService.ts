@@ -208,17 +208,20 @@ export class SystemService {
         });
       }
 
-      if (aliveRes.status !== 200) {
-        aliveRes = await apiClient.request(ENDPOINTS.INDEX, undefined, {
-          method: 'GET',
-          skipModeCheck: true,
-          timeoutMs: 1800,
-        });
-      }
-
       capabilities.latencyMs = Math.round(performance.now() - startTime);
 
-      if (aliveRes.status >= 200 && aliveRes.status < 400) {
+      const resData =
+        aliveRes.data && typeof aliveRes.data === 'object'
+          ? (aliveRes.data as Record<string, unknown>)
+          : null;
+
+      // Verify response is genuine JSON from RAISE backend (not a 404 or Vite HTML page)
+      const isLiveBackend =
+        aliveRes.status === 200 &&
+        resData !== null &&
+        Boolean(resData.status || resData.service || resData.version || resData.api_version);
+
+      if (isLiveBackend) {
         capabilities.apiReachable = true;
         capabilities.chatAvailable = true;
         capabilities.documentsAvailable = true;
@@ -226,10 +229,6 @@ export class SystemService {
         // Rely on /api/health for handshake availability without burning single-use tokens
         capabilities.handshakeAvailable = true;
 
-        const resData =
-          aliveRes.data && typeof aliveRes.data === 'object'
-            ? (aliveRes.data as Record<string, unknown>)
-            : null;
         if (typeof resData?.version === 'string' || typeof resData?.api_version === 'string') {
           capabilities.backendVersion = String(resData.version || resData.api_version);
         }
@@ -315,55 +314,69 @@ export class SystemService {
       }
     };
 
+    const isBackendJson = (res: Response, body: any): boolean => {
+      if (res.status < 200 || res.status >= 300) return false;
+      const ctype = res.headers.get('content-type') || '';
+      if (!ctype.includes('application/json')) return false;
+      return body && typeof body === 'object' && Boolean(body.status || body.service || body.version || body.api_version || Array.isArray(body));
+    };
+
+    // Fast-path 1: Probe /api/health
     try {
       const { res, endpoint } = await fetchEndpoint('/api/health', 2000);
       const latencyMs = Math.round(performance.now() - startTime);
-      if (res.status < 500) {
+      if (res.status >= 200 && res.status < 300) {
         let parsedVersion: string | undefined;
         let isVersionAligned = true;
+        let body: any = null;
         try {
-          const body = (await res.clone().json().catch(() => null)) as Record<string, unknown> | null;
+          body = await res.clone().json().catch(() => null);
           parsedVersion = typeof body?.version === 'string' ? body.version : typeof body?.api_version === 'string' ? body.api_version : undefined;
           if (parsedVersion) {
             isVersionAligned = parsedVersion === '1.0.0';
           }
         } catch {}
 
-        return {
-          success: true,
-          status: res.status,
-          latencyMs,
-          endpoint,
-          version: parsedVersion ?? '1.0.0',
-          isVersionAligned,
-        };
+        if (isBackendJson(res, body)) {
+          return {
+            success: true,
+            status: res.status,
+            latencyMs,
+            endpoint,
+            version: parsedVersion ?? '1.0.0',
+            isVersionAligned,
+          };
+        }
       }
     } catch {
       // /api/health failed or timed out; proceed to parallel fallback probe
     }
 
-    // Fast-path 2: Probe secondary endpoints in parallel with 2500ms timeout
-    const fallbackEndpoints = ['/health', '/', '/api/documents', '/docs'];
+    // Fast-path 2: Probe secondary backend endpoints in parallel
+    const fallbackEndpoints = ['/health', '/api/documents'];
     try {
       const probePromises = fallbackEndpoints.map(async (ep) => {
         const result = await fetchEndpoint(ep, 2500);
-        if (result.res.status < 500) {
-          return result;
+        if (result.res.status >= 200 && result.res.status < 300) {
+          const body = await result.res.clone().json().catch(() => null);
+          if (isBackendJson(result.res, body)) {
+            return { ...result, body };
+          }
         }
-        throw new Error(`Status ${result.res.status}`);
+        throw new Error(`Invalid backend response from ${ep}`);
       });
 
       const firstSuccess = await Promise.any(probePromises);
       const latencyMs = Math.round(performance.now() - startTime);
       let parsedVersion: string | undefined;
       let isVersionAligned = true;
-      try {
-        const body = (await firstSuccess.res.clone().json().catch(() => null)) as Record<string, unknown> | null;
-        parsedVersion = typeof body?.version === 'string' ? body.version : typeof body?.api_version === 'string' ? body.api_version : undefined;
+      if (firstSuccess.body && typeof firstSuccess.body === 'object') {
+        const b = firstSuccess.body as Record<string, unknown>;
+        parsedVersion = typeof b.version === 'string' ? b.version : typeof b.api_version === 'string' ? b.api_version : undefined;
         if (parsedVersion) {
           isVersionAligned = parsedVersion === '1.0.0';
         }
-      } catch {}
+      }
 
       return {
         success: true,

@@ -2,14 +2,10 @@
 .env
 .env.*
 
-# Original requirements (we use requirements-docker.txt instead)
-requirements.txt
-
 # Python cache and compiled files
 __pycache__/
 *.py[cod]
 *$py.class
-
 
 # Distribution / packaging
 .Python
@@ -68,7 +64,6 @@ docker-compose*.yml
 # Documentation
 *.md
 docs/
-data/
 big_tech_docs/
 
 # Test files
@@ -91,7 +86,15 @@ temp/
 # Neo4j data (if local)
 neo4j/
 
-# Large local caches, vector stores, and inspiration repositories
+# Large local caches, vector stores, and model checkpoints
+# (Mount models/ as a volume at runtime rather than baking into image)
+models/
+**/models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
 .cache/
 .chromadb_bge_large/
 .pytest_cache/
@@ -102,4 +105,3 @@ evaluation/
 target/
 rust/**/target/
 rust/target/
-

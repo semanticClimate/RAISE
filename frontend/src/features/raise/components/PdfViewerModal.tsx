@@ -37,7 +37,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
         <GoogleDrivePdfViewer
           filename={citation.pdf_filename || 'Audited Document'}
           initialPage={citation.primary_page || citation.page_number || 1}
-          excerpt={citation.plain_text || ''}
+          excerpt={citation.plain_text || (citation as any).excerpt || (citation as any).text || ''}
           fileSize="2.4 MB"
           onClose={onClose}
         />

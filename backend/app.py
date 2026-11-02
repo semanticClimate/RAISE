@@ -339,6 +339,8 @@ app.include_router(graph_router)
 app.include_router(search_router)
 app.include_router(agent_router)
 app.include_router(system_router)
+from core_registry import router as core_registry_router
+app.include_router(core_registry_router)
 app.include_router(commands_router)
 
 

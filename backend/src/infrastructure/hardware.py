@@ -116,6 +116,12 @@ def get_gpu_info() -> Dict[str, Any]:
 
     primary_name = devices[0]["name"] if devices else ("Apple MPS" if mps_available else "CPU Only (No GPU)")
     primary_vram = devices[0]["total_vram_gb"] if devices else None
+    if not devices and mps_available:
+        try:
+            import psutil
+            primary_vram = round(psutil.virtual_memory().total / (1024 ** 3), 2)
+        except Exception:
+            primary_vram = None
 
     return {
         "detected": True,

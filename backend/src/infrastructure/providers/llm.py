@@ -192,7 +192,8 @@ class LocalVLLMProvider(BaseLLMProvider):
 
 class LocalTransformersProvider(BaseLLMProvider):
     """
-    Direct in-process GPU LLM inference using HuggingFace Transformers on CUDA (RTX 3090, 24GB VRAM).
+    Direct in-process GPU / accelerator LLM inference using HuggingFace Transformers.
+    Dynamically utilizes available host hardware (CUDA, Apple Silicon MPS, or CPU).
     Zero external server dependency, runs fully local with torch.float16 / bfloat16.
     """
 

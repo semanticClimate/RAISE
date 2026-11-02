@@ -70,7 +70,7 @@ export interface ChatServiceInterface {
     req: AgentQueryRequest,
     signal?: AbortSignal
   ): Promise<ApiResponse<AgentQueryResponse>>;
-  clearChat?(threadId?: string, signal?: AbortSignal, confirm?: boolean): Promise<ApiResponse<{ status: string; message?: string }>>;
+  clearChat?(threadId?: string, signal?: AbortSignal): Promise<ApiResponse<{ status: string }>>;
   abortChat?(
     params: AbortChatParams | string,
     requestId?: string
@@ -180,28 +180,10 @@ export class ChatService implements ChatServiceInterface {
           : '') ||
         (typeof streamRes.metadata?.reply === 'string'
           ? (streamRes.metadata.reply as string)
-          : '') ||
-        (typeof (streamRes.metadata as any)?.response === 'string'
-          ? ((streamRes.metadata as any).response as string)
           : '');
 
-      // If streaming was explicitly cancelled or errored out, do NOT make a duplicate non-streaming request
-      if (streamRes.error) {
-        return {
-          data: null,
-          error: streamRes.error,
-          isMock: false,
-          status: streamRes.status || 0,
-        };
-      }
-
-      // If streaming /api/chat succeeded (status 200) and we have text or terminal completion payload
-      if (
-        streamRes.status === 200 &&
-        (resolvedStreamText ||
-          streamRes.metadata?.status === 'SUCCESS' ||
-          streamRes.metadata?.status === 'completed')
-      ) {
+      // If streaming /api/chat succeeded (status 200) and we have text
+      if (streamRes.status === 200 && resolvedStreamText) {
         const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
         const meta = streamRes.metadata || {};
         let citations: Citation[] = Array.isArray(meta.citations)
@@ -484,19 +466,14 @@ export class ChatService implements ChatServiceInterface {
    */
   public async clearChat(
     threadId?: string,
-    signal?: AbortSignal,
-    confirm?: boolean
+    signal?: AbortSignal
   ): Promise<ApiResponse<{ status: string; message?: string }>> {
     return apiClient.request<{ status: string; message?: string }>(
       ENDPOINTS.CLEAR_CHAT,
       undefined,
       {
         method: 'POST',
-        body: JSON.stringify(
-          threadId
-            ? { session_id: threadId, thread_id: threadId }
-            : { confirm: Boolean(confirm) }
-        ),
+        body: JSON.stringify(threadId ? { session_id: threadId, thread_id: threadId } : {}),
         signal,
       }
     );
@@ -550,9 +527,15 @@ export class ChatService implements ChatServiceInterface {
     );
     if (res.data) {
       const parsed = ChatHistoryResponseSchema.safeParse(res.data);
-      if (parsed.success) {
-        return { ...res, data: parsed.data };
+      const dataToNormalize = parsed.success ? parsed.data : res.data;
+      if (Array.isArray(dataToNormalize.messages)) {
+        dataToNormalize.messages = dataToNormalize.messages.map((m: any) => ({
+          ...m,
+          text: m?.text || m?.content || '',
+          content: m?.content || m?.text || '',
+        }));
       }
+      return { ...res, data: dataToNormalize };
     }
     return res;
   }
@@ -573,9 +556,21 @@ export class ChatService implements ChatServiceInterface {
     });
     if (res.data) {
       const parsed = z.array(PersistedChatSessionSchema).safeParse(res.data);
-      if (parsed.success) {
-        return { ...res, data: parsed.data };
-      }
+      const rawList = parsed.success ? parsed.data : res.data;
+      const normalizedList = rawList.map((session: any) => {
+        if (Array.isArray(session.messages)) {
+          return {
+            ...session,
+            messages: session.messages.map((m: any) => ({
+              ...m,
+              text: m?.text || m?.content || '',
+              content: m?.content || m?.text || '',
+            })),
+          };
+        }
+        return session;
+      });
+      return { ...res, data: normalizedList };
     }
     return res;
   }
