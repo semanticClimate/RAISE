@@ -48,6 +48,12 @@ export const EngineStep: React.FC = () => {
 
   const isCloud = config.llmDeployment === 'cloud';
 
+  const isLocalProvider = (provider: string) =>
+    provider === 'local' || provider === 'vllm' || provider === 'ollama';
+
+  const cloudDiscoveredLLMs = liveDiscoveredLLMs.filter((m) => !isLocalProvider(m.provider));
+  const localDiscoveredLLMs = liveDiscoveredLLMs.filter((m) => isLocalProvider(m.provider));
+
   // Load available models dynamically from backend API (zero hardcoding)
   const fetchModels = () => {
     setIsLoadingModels(true);
@@ -146,7 +152,7 @@ export const EngineStep: React.FC = () => {
         • <strong>Offline:</strong> Runs without active internet connection
       </div>
       <div>
-        • <strong>Compute:</strong> Requires local RAM and CPU / GPU acceleration
+        • <strong>Compute:</strong> Requires on-device acceleration
       </div>
       <div>
         • <strong>Daemon:</strong> Managed via local Ollama process
@@ -158,10 +164,7 @@ export const EngineStep: React.FC = () => {
     <div className="space-y-5 animate-in fade-in-50 duration-150">
       {/* Header */}
       <div>
-        <h3 className="text-base font-bold text-white tracking-tight">Intelligence Engine</h3>
-        <p className="text-xs text-slate-400 mt-1">
-          Select reasoning deployment substrate and manage inference credentials.
-        </p>
+        <h3 className="text-base font-bold text-white tracking-tight">Intelligence Models</h3>
       </div>
 
       {/* Clean Dual-State Deployment Toggle */}
@@ -199,7 +202,7 @@ export const EngineStep: React.FC = () => {
         >
           <div className="flex items-center gap-2">
             <HardDrive className="w-4 h-4" />
-            <span>Private / Local LLM</span>
+            <span>Local LLM</span>
           </div>
           <Tooltip
             as="span"
@@ -220,7 +223,7 @@ export const EngineStep: React.FC = () => {
               <div className="flex items-center gap-2 text-emerald-300">
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
                 <span>
-                  {envData.llmKeys.length} credentials loaded from <code className="font-mono text-[11px] bg-black/40 px-1 py-0.5 rounded">.env</code>: {envData.llmKeys.map((k) => k.providerName).join(', ')}
+                  Loaded from <code className="font-mono text-[11px] bg-black/40 px-1 py-0.5 rounded">.env</code>: {envData.llmKeys.map((k) => k.providerName).join(', ')}
                 </span>
               </div>
               <button
@@ -235,10 +238,7 @@ export const EngineStep: React.FC = () => {
           )}
 
           <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-300 font-medium">Configured API Keys:</span>
-            <span className="text-[11px] font-mono text-slate-400">
-              Supports Google Developer (Gemini Pro), Groq, NVIDIA, Mistral
-            </span>
+            <span className="text-slate-300 font-medium">API Keys:</span>
           </div>
 
           <div className="space-y-2.5">
@@ -319,7 +319,7 @@ export const EngineStep: React.FC = () => {
                     <div className="relative flex-1">
                       <input
                         type="text"
-                        placeholder="Enter API key (Google AI Studio AIzaSy..., Groq gsk_..., nvapi-..., sk-...)"
+                        placeholder="Enter API key..."
                         value={displayValue}
                         onFocus={() => setFocusedKeyId(item.id)}
                         onBlur={() => setFocusedKeyId(null)}
@@ -357,7 +357,7 @@ export const EngineStep: React.FC = () => {
                           Checking...
                         </>
                       ) : (
-                        'Check Connection'
+                        'Check'
                       )}
                     </button>
                   </div>
@@ -378,15 +378,15 @@ export const EngineStep: React.FC = () => {
               </button>
             )}
 
-            {/* Live Dynamically Discovered Models */}
+            {/* Live Dynamically Discovered Models (Cloud only) */}
             <div className="pt-3 border-t border-white/10 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 flex-wrap">
-                  <span>Dynamic Model Catalog:</span>
+                  <span>Cloud Models:</span>
                   <span className="text-[11px] font-mono text-emerald-400">
-                    {liveDiscoveredLLMs.length} active
+                    {cloudDiscoveredLLMs.length} active
                   </span>
-                  {liveActiveModel && (
+                  {liveActiveModel && !isLocalProvider(liveActiveModel) && (
                     <span className="text-[10px] font-mono text-slate-400">
                       • {liveActiveModel}
                     </span>
@@ -403,16 +403,13 @@ export const EngineStep: React.FC = () => {
                 </button>
               </div>
 
-              {liveDiscoveredLLMs.length === 0 ? (
-                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-                  <span>
-                    No active cloud models detected yet. Add a valid API key above to activate real-time inference.
-                  </span>
+              {cloudDiscoveredLLMs.length === 0 ? (
+                <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 flex items-center gap-2">
+                  <span>Add a valid API key above to activate cloud models.</span>
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {liveDiscoveredLLMs.map((m) => (
+                  {cloudDiscoveredLLMs.map((m) => (
                     <div
                       key={`${m.provider}-${m.model}`}
                       className={`p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
@@ -502,12 +499,12 @@ export const EngineStep: React.FC = () => {
             {isLoadingModels ? (
               <div className="p-6 text-center text-xs text-slate-400">
                 <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-white" />
-                Querying local inference runtime & model registry...
+                Scanning local runtime...
               </div>
             ) : dynamicModels.length === 0 ? (
               <div className="p-6 rounded-xl border border-white/10 bg-black/40 text-center space-y-3">
                 <p className="text-xs text-slate-300">
-                  No local AI engines or open-weight models detected yet. Ensure Ollama is running or scan the public catalog.
+                  No local models detected. Ensure Ollama is running.
                 </p>
                 <button
                   type="button"
@@ -515,7 +512,7 @@ export const EngineStep: React.FC = () => {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/15 text-white border border-white/10 transition-colors cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Scan Dynamic Model Catalog
+                  Scan Catalog
                 </button>
               </div>
             ) : (
@@ -580,6 +577,34 @@ export const EngineStep: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Detected Local Runtimes (vLLM / Local GPU / Ollama) */}
+            {localDiscoveredLLMs.length > 0 && (
+              <div className="pt-3 border-t border-white/10 space-y-1.5">
+                <span className="text-[11px] font-mono text-slate-400">
+                  Detected Local Inference Engines:
+                </span>
+                {localDiscoveredLLMs.map((m) => (
+                  <div
+                    key={`${m.provider}-${m.model}`}
+                    className="p-2.5 rounded-lg border border-white/10 bg-[#131622] text-xs flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                      <span className="font-semibold text-white truncate">{m.displayName}</span>
+                      <code className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-300 shrink-0">
+                        {m.model}
+                      </code>
+                    </div>
+                    {m.tier && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10 shrink-0">
+                        {m.tier}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -2,17 +2,17 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { detectProviderFromKey } from '../services/keyDetector';
 import { detectEnvCredentials } from '../services/envDetector';
+import { detectHostOS } from '../services/platformAdapter';
 import type {
   CloudApiKeyEntry,
   ControlCenterConfig,
   SubstrateConfig,
   SystemHardwareInfo,
-  TargetPlatform,
 } from '../types';
 
 interface ControlCenterState {
   isOpen: boolean;
-  activeTab: 'platform' | 'models' | 'databases' | 'launch';
+  activeTab: 'platform' | 'models' | 'neural' | 'databases' | 'launch';
   hardware: SystemHardwareInfo | null;
   config: ControlCenterConfig;
   downloadProgress: number; // 0 - 100
@@ -23,7 +23,7 @@ interface ControlCenterState {
   preflightFootprint: string;
 
   setOpen: (open: boolean) => void;
-  setActiveTab: (tab: 'platform' | 'models' | 'databases' | 'launch') => void;
+  setActiveTab: (tab: 'platform' | 'models' | 'neural' | 'databases' | 'launch') => void;
   updateConfig: (patch: Partial<ControlCenterConfig>) => void;
   setHardware: (info: SystemHardwareInfo) => void;
   setDownloadProgress: (percent: number, speed: string) => void;
@@ -48,17 +48,7 @@ interface ControlCenterState {
   setAllSubstratesMode: (mode: 'in_memory_fallback' | 'cloud' | 'local') => void;
 }
 
-const detectDefaultPlatform = (): TargetPlatform => {
-  if (typeof window === 'undefined') return 'macos';
-  const ua = window.navigator.userAgent.toLowerCase();
-  const platform = (window.navigator.platform || '').toLowerCase();
-  if (/macintosh|mac os x|macintel|darwin/.test(ua) || /mac|darwin/.test(platform)) return 'macos';
-  if (/win/.test(platform) || /windows/.test(ua)) return 'windows';
-  if (/linux/.test(platform) || /linux/.test(ua)) return 'linux';
-  return 'macos';
-};
-
-const defaultPlatform = detectDefaultPlatform();
+const defaultPlatform = detectHostOS();
 
 export const useControlCenterStore = create<ControlCenterState>()(
   persist(
@@ -67,9 +57,9 @@ export const useControlCenterStore = create<ControlCenterState>()(
       activeTab: 'platform',
       hardware: {
         platform: defaultPlatform,
-        osName: typeof window !== 'undefined' ? window.navigator.userAgent : 'Unknown OS',
+        osName: defaultPlatform === 'macos' ? 'macOS (Apple Silicon)' : defaultPlatform === 'windows' ? 'Windows' : 'Linux',
         totalRamGb: 8.0,
-        cpuCores: typeof window !== 'undefined' ? window.navigator.hardwareConcurrency || 8 : 8,
+        cpuCores: 8,
         hasMetalOrCuda: true,
       },
       downloadProgress: 0,
@@ -82,6 +72,11 @@ export const useControlCenterStore = create<ControlCenterState>()(
         firstRunCompleted: typeof process !== 'undefined' && process.env.NODE_ENV === 'test',
         targetPlatform: defaultPlatform,
         llmDeployment: 'cloud',
+        embeddingModel: 'google/embeddinggemma-2',
+        rerankerModel: 'BAAI/bge-reranker-large',
+        nliVerifierModel: 'FineCat-NLI-DeBERTa',
+        neuralDevice: 'auto',
+        huggingfaceToken: '',
         apiKeys: [
           {
             id: 'key-1',
@@ -95,7 +90,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
         tunnelUrl: '',
 
         knowledgeGraph: {
-          mode: 'local',
+          mode: 'in_memory_fallback',
           uri: 'bolt://localhost:7687',
           password: '',
         },
@@ -276,6 +271,18 @@ export const useControlCenterStore = create<ControlCenterState>()(
         const envData = detectEnvCredentials();
         set((s) => {
           let updatedApiKeys = [...(s.config?.apiKeys || [])];
+
+          // Purge any bogus or obsolete env keys (e.g. LLM_MODE or short strings like 'cloud')
+          updatedApiKeys = updatedApiKeys.filter((k) => {
+            if (k.fromEnv) {
+              return envData.llmKeys.some((ek) => ek.key === k.key);
+            }
+            if (k.key && k.key.length > 0 && k.key.length < 10) {
+              return false;
+            }
+            return true;
+          });
+
           if (envData.llmKeys.length > 0) {
             for (const envKey of envData.llmKeys) {
               const existingIdx = updatedApiKeys.findIndex(
@@ -412,14 +419,20 @@ export const useControlCenterStore = create<ControlCenterState>()(
         ) {
           mergedConfig.tunnelUrl = '';
         }
-        // Normalize platform away from 'web' or mobile to native OS target
+        // Normalize platform away from 'web' or mobile, or old hardcoded 'windows' on Mac
         if (
+          !mergedConfig.targetPlatform ||
           mergedConfig.targetPlatform === 'web' ||
           mergedConfig.targetPlatform === 'ios' ||
-          mergedConfig.targetPlatform === 'android'
+          mergedConfig.targetPlatform === 'android' ||
+          (defaultPlatform === 'macos' && mergedConfig.targetPlatform === 'windows')
         ) {
           mergedConfig.targetPlatform = defaultPlatform;
         }
+        if (!mergedConfig.embeddingModel) mergedConfig.embeddingModel = 'google/embeddinggemma-2';
+        if (!mergedConfig.rerankerModel) mergedConfig.rerankerModel = 'BAAI/bge-reranker-large';
+        if (!mergedConfig.nliVerifierModel) mergedConfig.nliVerifierModel = 'FineCat-NLI-DeBERTa';
+        if (!mergedConfig.neuralDevice) mergedConfig.neuralDevice = 'auto';
         if (!Array.isArray(mergedConfig.apiKeys) || mergedConfig.apiKeys.length === 0) {
           mergedConfig.apiKeys = [
             {

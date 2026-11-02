@@ -35,13 +35,33 @@ export interface DetectedEnvState {
   neo4j: DetectedDatabaseConfig;
 }
 
+const INVALID_SECRET_VALUES = new Set([
+  'cloud',
+  'local',
+  'mock',
+  'remote',
+  'auto',
+  'in_memory_fallback',
+  'true',
+  'false',
+  'none',
+  'null',
+  'undefined',
+  'default',
+  'development',
+  'production',
+  'test',
+]);
+
 /**
- * Filter out dummy placeholders or empty values
+ * Filter out dummy placeholders, short words, or non-secret config values
  */
 function isValidSecret(val?: string): boolean {
   if (!val) return false;
   const trimmed = val.trim();
-  if (trimmed.length === 0) return false;
+  // Legitimate API keys / tokens are at least 10 characters long
+  if (trimmed.length < 10) return false;
+  if (INVALID_SECRET_VALUES.has(trimmed.toLowerCase())) return false;
   if (trimmed.startsWith('your_') || trimmed.startsWith('<your-') || trimmed.includes('placeholder')) {
     return false;
   }
@@ -54,26 +74,46 @@ export function detectEnvCredentials(): DetectedEnvState {
   const detectedLlmKeys: DetectedLlmKey[] = [];
   const processedKeys = new Set<string>();
 
-  // Dynamically discover all LLM keys from environment without static hardcoded lists
+  // Dynamically discover genuine LLM keys from environment
   for (const [key, rawVal] of Object.entries(env)) {
     if (typeof rawVal !== 'string' || !isValidSecret(rawVal)) continue;
 
     const normalizedKey = key.replace(/^VITE_/, '');
-    const isApiKeyVar =
-      normalizedKey.endsWith('_API_KEY') ||
-      normalizedKey.endsWith('_KEY') ||
-      normalizedKey.endsWith('_TOKEN') ||
-      normalizedKey.includes('LLM');
 
-    // Skip non-LLM variables like session keys or DB passwords
+    // Strictly exclude configuration flags, modes, models, and endpoints
     if (
-      !isApiKeyVar ||
-      processedKeys.has(normalizedKey) ||
+      normalizedKey.includes('MODE') ||
+      normalizedKey.includes('MODEL') ||
+      normalizedKey.includes('PROVIDER') ||
+      normalizedKey.includes('DEPLOYMENT') ||
+      normalizedKey.includes('ENDPOINT') ||
+      normalizedKey.includes('URL') ||
+      normalizedKey.includes('HOST') ||
+      normalizedKey.includes('PORT') ||
+      normalizedKey.includes('VERSION') ||
+      normalizedKey.includes('DIMENSION') ||
+      normalizedKey.includes('TIMEOUT') ||
+      normalizedKey.includes('TEMP') ||
       normalizedKey.includes('POSTGRES') ||
       normalizedKey.includes('REDIS') ||
       normalizedKey.includes('NEO4J') ||
+      normalizedKey.includes('CHROMA') ||
       normalizedKey.includes('SECRET')
     ) {
+      continue;
+    }
+
+    // Must explicitly be an API key or auth token variable
+    const isApiKeyVar =
+      normalizedKey.endsWith('_API_KEY') ||
+      normalizedKey.endsWith('_API_TOKEN') ||
+      normalizedKey.endsWith('_AUTH_TOKEN') ||
+      normalizedKey.endsWith('_ACCESS_TOKEN') ||
+      normalizedKey.endsWith('_KEY') ||
+      normalizedKey.endsWith('_TOKEN') ||
+      normalizedKey === 'HF_TOKEN';
+
+    if (!isApiKeyVar || processedKeys.has(normalizedKey)) {
       continue;
     }
 

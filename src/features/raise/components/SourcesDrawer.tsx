@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { CircularUploadProgress } from '../../../components/ui/CircularUploadProgress';
 import { useModeStore } from '../../../stores/modeStore';
 import type { SourceDocument } from '../../../types';
@@ -41,18 +41,13 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
 }) => {
   const { appMode } = useModeStore();
   const isOnline = appMode === 'connected';
-  const [scopeTab, setScopeTab] = useState<'all' | 'active' | 'inactive'>('all');
 
   if (!isOpen) return null;
 
   const allSelected = sourceDocs.length > 0 && sourceDocs.every((d) => d.selected);
 
   const filteredDocs = sourceDocs.filter((d) => {
-    const matchesFilter = d.name.toLowerCase().includes(sourceFilter.toLowerCase());
-    if (!matchesFilter) return false;
-    if (scopeTab === 'active') return d.selected;
-    if (scopeTab === 'inactive') return !d.selected;
-    return true;
+    return d.name.toLowerCase().includes(sourceFilter.toLowerCase());
   });
 
   return (
@@ -113,15 +108,12 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-200/80 dark:bg-white/10 text-slate-500 dark:text-slate-400 rounded-md border border-slate-300 dark:border-white/10">
-                Esc
-              </kbd>
               <button
                 id="closeSourcesBtn"
                 type="button"
                 onClick={onClose}
                 className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10 rounded-xl transition-colors cursor-pointer shrink-0"
-                title="Close (Esc)"
+                title="Close"
                 aria-label="Close drawer popup"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -310,30 +302,8 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
           style={{ scrollbarWidth: 'thin' }}
         >
           <div className="px-1 flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-200/60 dark:border-white/5">
-            <div className="flex items-center gap-1.5 overflow-x-auto text-[11px]">
-              {(
-                [
-                  { id: 'all', label: `All (${sourceDocs.length})` },
-                  { id: 'active', label: `Active (${activeSourcesCount})` },
-                  {
-                    id: 'inactive',
-                    label: `Inactive (${Math.max(0, sourceDocs.length - activeSourcesCount)})`,
-                  },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setScopeTab(tab.id)}
-                  className={`px-2.5 py-0.5 rounded-full font-medium transition-all cursor-pointer ${
-                    scopeTab === tab.id
-                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-white/10'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              Attached Documents ({sourceDocs.length})
             </div>
 
             {onToggleAllSources && sourceDocs.length > 0 && isOnline && (

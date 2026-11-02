@@ -32,18 +32,31 @@ export const DocumentListResponseSchema = z
 
 export type DocumentListResponse = z.infer<typeof DocumentListResponseSchema>;
 
-export const UploadReportItemSchema = z
-  .object({
-    filename: z.string(),
-    doc_id: z.string().optional(),
-    document_id: z.string().optional(),
-    status: z.string().optional(),
-    pages_processed: z.number().int().default(0),
-    chunks_extracted: z.number().int().default(0),
-    facts_extracted: z.number().int().default(0),
-    triples_extracted: z.number().int().default(0),
-  })
-  .passthrough();
+export const UploadReportItemSchema = z.preprocess(
+  (val: any) => {
+    if (val && typeof val === 'object') {
+      return {
+        ...val,
+        filename: val.filename || val.document || val.pdf_filename || 'Unknown Document',
+        chunks_extracted: val.chunks_extracted ?? val.chunks_count ?? 0,
+        doc_id: val.doc_id || val.document_id || val.id,
+      };
+    }
+    return val;
+  },
+  z
+    .object({
+      filename: z.string(),
+      doc_id: z.string().optional(),
+      document_id: z.string().optional(),
+      status: z.string().optional(),
+      pages_processed: z.number().int().default(0),
+      chunks_extracted: z.number().int().default(0),
+      facts_extracted: z.number().int().default(0),
+      triples_extracted: z.number().int().default(0),
+    })
+    .passthrough()
+);
 
 export type UploadReportItem = z.infer<typeof UploadReportItemSchema>;
 
@@ -98,6 +111,10 @@ export const DocumentStatusResponseSchema = z.preprocess(
       // Fallback progress_percent -> percent
       if (normalized.percent === undefined && typeof normalized.progress_percent === 'number') {
         normalized.percent = normalized.progress_percent;
+      }
+      // Fallback message -> detail
+      if (normalized.detail === undefined && typeof normalized.message === 'string') {
+        normalized.detail = normalized.message;
       }
       return normalized;
     }

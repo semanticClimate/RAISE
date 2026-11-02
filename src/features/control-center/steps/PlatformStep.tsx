@@ -2,18 +2,13 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Cpu,
-  HardDrive,
   Laptop,
-  RefreshCw,
   Terminal,
   Zap,
 } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useModeStore } from '../../../stores/modeStore';
-import { useBackendConnection } from '../../../hooks/useBackendConnection';
-import { Tooltip } from '../components/Tooltip';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 import type { TargetPlatform } from '../types';
 
@@ -21,50 +16,16 @@ export const PlatformStep: React.FC = () => {
   const { hardware, config, updateConfig } = useControlCenterStore();
   const { appMode, latencyMs } = useModeStore();
   const isConnected = appMode === 'connected';
-  const { connect, scanLocalPorts, isConnecting } = useBackendConnection();
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-  const [probeNotice, setProbeNotice] = useState<string | null>(null);
-
-  const handleQuickLocalDetect = async () => {
-    setProbeNotice('Probing 127.0.0.1:8000...');
-    const res = await connect('http://127.0.0.1:8000');
-    if (res.success) {
-      setProbeNotice('Connected to 127.0.0.1:8000!');
-      setTimeout(() => setProbeNotice(null), 3000);
-    } else {
-      const found = await scanLocalPorts();
-      if (found) {
-        setProbeNotice(`Connected to ${found}!`);
-        setTimeout(() => setProbeNotice(null), 3000);
-      } else {
-        setProbeNotice('Backend offline on 127.0.0.1:8000. Start backend via ./START_RAISE.sh');
-        setTimeout(() => setProbeNotice(null), 4000);
-      }
-    }
-  };
-
-  // Dynamic local time formatting (e.g., 7:25 PM)
-  const [currentTime, setCurrentTime] = useState('');
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   const clientOSLabel =
     hardware?.platform === 'macos'
-      ? 'macOS'
+      ? 'macOS (Apple Silicon)'
       : hardware?.platform === 'windows'
         ? 'Windows'
         : hardware?.platform === 'linux'
           ? 'Linux'
-          : 'Desktop';
+          : 'macOS (Apple Silicon)';
 
   const platforms: {
     id: TargetPlatform;
@@ -75,19 +36,19 @@ export const PlatformStep: React.FC = () => {
     {
       id: 'macos',
       label: 'macOS',
-      sub: 'Apple Silicon / Intel (Metal acceleration)',
+      sub: 'Metal',
       icon: Laptop,
     },
     {
       id: 'windows',
       label: 'Windows',
-      sub: 'DirectML / CUDA acceleration',
+      sub: 'CUDA / DirectML',
       icon: Laptop,
     },
     {
       id: 'linux',
       label: 'Linux',
-      sub: 'CUDA / ROCm Desktop',
+      sub: 'CUDA / ROCm',
       icon: Terminal,
     },
   ];
@@ -98,10 +59,7 @@ export const PlatformStep: React.FC = () => {
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-150">
       <div>
-        <h3 className="text-base font-bold text-white tracking-tight">Device & Operating System</h3>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Auto-detected local workstation environment with hardware acceleration.
-        </p>
+        <h3 className="text-base font-bold text-white tracking-tight">Device & Platform</h3>
       </div>
 
       {/* Target Operating System Selector */}
@@ -121,22 +79,9 @@ export const PlatformStep: React.FC = () => {
             <div className="w-9 h-9 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center text-white shrink-0">
               <CurrentIcon className="w-4 h-4 text-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-mono">Active Target:</span>
-                <span className="text-xs font-bold text-white">{currentPlatform.label}</span>
-                <Tooltip
-                  content={
-                    <div className="space-y-1 font-mono text-[11px]">
-                      <div className="font-bold text-white text-xs border-b border-white/10 pb-1">
-                        {currentPlatform.label} Workstation
-                      </div>
-                      <div className="text-slate-300">{currentPlatform.sub}</div>
-                    </div>
-                  }
-                />
-              </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">{currentPlatform.sub}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white">{currentPlatform.label}</span>
+              <span className="text-[11px] text-slate-400 font-mono">({currentPlatform.sub})</span>
             </div>
           </div>
 
@@ -145,7 +90,7 @@ export const PlatformStep: React.FC = () => {
               type="button"
               className="text-xs font-semibold px-2.5 py-1 rounded-md border border-white/20 bg-white/10 hover:bg-white/15 text-white transition-all cursor-pointer"
             >
-              {isSelectorOpen ? 'Close' : 'Switch OS'}
+              {isSelectorOpen ? 'Close' : 'Switch'}
             </button>
             {isSelectorOpen ? (
               <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -204,9 +149,9 @@ export const PlatformStep: React.FC = () => {
         )}
       </div>
 
-      {/* Hardware Telemetry Specs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+      {/* Hardware Telemetry Specs: Clean 2-Card Layout (Platform & Acceleration) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
             <Laptop className="w-3.5 h-3.5 text-indigo-400" />
             <span>Platform</span>
@@ -216,106 +161,46 @@ export const PlatformStep: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Host RAM</span>
-          </div>
-          <div className="text-xs font-bold text-white">
-            {hardware?.totalRamGb && hardware.totalRamGb > 0
-              ? `${hardware.totalRamGb} GB`
-              : isConnected
-                ? 'Dynamic Allocation'
-                : 'Local Accelerator Active'}
-          </div>
-        </div>
-
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Cpu className="w-3.5 h-3.5 text-purple-400" />
-            <span>CPU Cores</span>
-          </div>
-          <div className="text-xs font-bold text-white">
-            {hardware?.cpuCores && hardware.cpuCores > 0
-              ? `${hardware.cpuCores} Cores`
-              : 'Local Accelerator Active'}
-          </div>
-        </div>
-
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+        <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
             <Zap className="w-3.5 h-3.5 text-amber-400" />
             <span>Acceleration</span>
           </div>
           <div className="text-xs font-bold text-white">
-            {hardware?.hasMetalOrCuda
-              ? 'Local Accelerator Active'
-              : 'Cloud Inference Connected'}
+            {config.targetPlatform === 'macos' ? 'Metal Active' : hardware?.hasMetalOrCuda ? 'CUDA / ROCm' : 'CPU'}
           </div>
         </div>
       </div>
 
-      {/* Local Backend Engine Service Card */}
-      <div className="p-4 rounded-xl bg-[#131622] border border-white/10 space-y-3">
-        <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-white">Local Backend Gateway</span>
-            <span
-              data-testid="connection-status-dot"
-              className={`relative inline-flex rounded-full h-2 w-2 shrink-0 transition-colors ${
-                isConnected
-                  ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
-                  : isConnecting
-                    ? 'bg-amber-500 animate-pulse ring-2 ring-amber-500/20'
-                    : 'bg-rose-500 ring-2 ring-rose-500/20'
-              }`}
-            />
-            {isConnected ? (
-              <span className="text-[11px] font-mono font-medium text-emerald-400">
-                • Active (127.0.0.1:8000) {latencyMs ? `(${latencyMs}ms)` : ''}
+      {/* Local Backend Engine Service Card: Clean live status display */}
+      <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span
+            data-testid="connection-status-dot"
+            className={`relative inline-flex rounded-full h-2.5 w-2.5 shrink-0 transition-colors ${
+              isConnected
+                ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
+                : 'bg-rose-500 ring-2 ring-rose-500/20'
+            }`}
+          />
+          <div>
+            <div className="text-xs font-bold text-white flex items-center gap-2">
+              <span>Backend Gateway</span>
+              <span className="text-[11px] font-mono text-slate-400 font-normal">
+                {isConnected ? '127.0.0.1:8000' : 'Offline (Port 8000)'}
               </span>
-            ) : (
-              <span className="text-[11px] font-mono font-medium text-rose-400">
-                • Offline (127.0.0.1:8000)
-              </span>
-            )}
+              {isConnected && latencyMs ? (
+                <span className="text-[10px] font-mono text-emerald-400">({latencyMs}ms)</span>
+              ) : null}
+            </div>
           </div>
-
-          <button
-            type="button"
-            disabled={isConnecting}
-            onClick={handleQuickLocalDetect}
-            className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white border border-white/15 text-[11px] font-mono transition-all cursor-pointer flex items-center gap-1.5"
-            title="Probe local machine for port 8000"
-          >
-            <RefreshCw className={`w-3 h-3 ${isConnecting ? 'animate-spin' : ''}`} />
-            <span>{isConnecting ? 'Probing...' : 'Probe Localhost'}</span>
-          </button>
         </div>
 
-        <div className="text-xs text-slate-300 leading-relaxed">
-          {isConnected ? (
-            <p className="text-emerald-300/90 font-mono text-[11.5px]">
-              Connected to local RAISE backend engine on 127.0.0.1:8000. Low-latency loopback active.
-            </p>
-          ) : (
-            <p className="text-amber-300/90 text-xs">
-              {probeNotice ||
-                'Local backend service is not detected on 127.0.0.1:8000. Start it via ./START_RAISE.sh (Mac/Linux) or START_RAISE.bat (Windows), then click Probe Localhost.'}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between text-xs text-slate-400 pt-0.5 border-t border-white/5">
-          <div className="font-mono text-[11px] text-slate-300">
-            <span className="text-slate-400">Active System: </span>
-            <strong>
-              {clientOSLabel} • {currentTime || 'Active'}
-            </strong>
-          </div>
-          <div className="font-mono text-[11px] text-slate-400">
-            Port: <span className="text-slate-200">8000</span> (Loopback)
-          </div>
+        <div className="flex items-center gap-1.5 text-[11px] font-mono">
+          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+          <span className={isConnected ? 'text-emerald-300 font-semibold' : 'text-rose-400 font-semibold'}>
+            {isConnected ? 'Connected' : 'Offline'}
+          </span>
         </div>
       </div>
     </div>

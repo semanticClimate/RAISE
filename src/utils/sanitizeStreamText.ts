@@ -56,5 +56,8 @@ export function sanitizeStreamText(text: string): string {
   // 7. Normalize excess blank lines
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
 
+  // 8. Replace internal phrasing: "from the frontend to begin" -> "to RAISE to begin"
+  cleaned = cleaned.replace(/from the frontend to begin/gi, 'to RAISE to begin');
+
   return cleaned;
 }

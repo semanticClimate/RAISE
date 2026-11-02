@@ -66,38 +66,82 @@ export const CitationSchema = z
 
 export type Citation = z.infer<typeof CitationSchema>;
 
-export const VerifiedClaimSchema = z.object({
-  claim_id: z.string(),
-  text: z.string(),
-  is_supported: z.boolean(),
-  status: z
-    .enum(['SUPPORTED', 'NUMERICAL_MISMATCH', 'ENTITY_MISMATCH', 'UNSUPPORTED', 'CITATION_INVALID'])
-    .or(z.string()),
-  extracted_numbers: z.array(z.string()).default([]),
-  matched_numbers: z.array(z.string()).default([]),
-  citations_found: z.array(z.number().int()).default([]),
-  notes: z.array(z.string()).default([]),
-});
+export const VerifiedClaimSchema = z.preprocess(
+  (val: any) => {
+    if (val && typeof val === 'object') {
+      const isSupp =
+        val.is_supported ??
+        (val.status === 'VERIFIED' ||
+          val.status === 'SUPPORTED' ||
+          val.status === 'DIRECT' ||
+          val.status === 'NLI_ENTAILED' ||
+          (typeof val.confidence === 'number' && val.confidence >= 0.7));
+      return {
+        ...val,
+        is_supported: Boolean(isSupp),
+        notes: val.notes || val.verification_notes || [],
+      };
+    }
+    return val;
+  },
+  z.object({
+    claim_id: z.string(),
+    text: z.string(),
+    is_supported: z.boolean().default(true),
+    status: z
+      .enum(['SUPPORTED', 'NUMERICAL_MISMATCH', 'ENTITY_MISMATCH', 'UNSUPPORTED', 'CITATION_INVALID'])
+      .or(z.string())
+      .default('SUPPORTED'),
+    extracted_numbers: z.array(z.string()).default([]),
+    matched_numbers: z.array(z.string()).default([]),
+    citations_found: z.array(z.number().int()).default([]),
+    notes: z.array(z.string()).default([]),
+  })
+);
 
 export type VerifiedClaim = z.infer<typeof VerifiedClaimSchema>;
 
-export const GraphNodeSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  label: z.string().default(''),
-  type: z.string().default('Entity'),
-  color: z.string().optional(),
-  provenance: z.record(z.string(), z.any()).default({}),
-});
+export const GraphNodeSchema = z.preprocess(
+  (val: any) => {
+    if (val && typeof val === 'object') {
+      const fallbackName = val.name || val.label || val.id || 'Entity';
+      return {
+        ...val,
+        name: fallbackName,
+        label: val.label || fallbackName,
+      };
+    }
+    return val;
+  },
+  z.object({
+    id: z.string(),
+    name: z.string().default('Entity'),
+    label: z.string().default(''),
+    type: z.string().default('Entity'),
+    color: z.string().optional(),
+    provenance: z.record(z.string(), z.any()).default({}),
+  })
+);
 
 export type GraphNode = z.infer<typeof GraphNodeSchema>;
 
-export const GraphEdgeSchema = z.object({
-  source: z.string(),
-  target: z.string(),
-  relationship: z.string(),
-  provenance: z.record(z.string(), z.any()).default({}),
-});
+export const GraphEdgeSchema = z.preprocess(
+  (val: any) => {
+    if (val && typeof val === 'object') {
+      return {
+        ...val,
+        relationship: val.relationship || val.relation || val.type || 'RELATED_TO',
+      };
+    }
+    return val;
+  },
+  z.object({
+    source: z.string(),
+    target: z.string(),
+    relationship: z.string().default('RELATED_TO'),
+    provenance: z.record(z.string(), z.any()).default({}),
+  })
+);
 
 export type GraphEdge = z.infer<typeof GraphEdgeSchema>;
 

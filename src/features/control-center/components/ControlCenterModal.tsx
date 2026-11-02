@@ -1,11 +1,24 @@
-import { Check, CheckCircle2, Cpu, Laptop, RefreshCw, Sparkles, X, Zap } from 'lucide-react';
+import {
+  Check,
+  CheckCircle2,
+  Cpu,
+  Database,
+  Laptop,
+  Layers,
+  RefreshCw,
+  Sparkles,
+  X,
+  Zap,
+} from 'lucide-react';
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { useScrollLock } from '../../../hooks';
 import { useModeStore } from '../../../stores/modeStore';
-import { platformAdapter } from '../services/platformAdapter';
+import { detectHostOS, isLocalEnvironment, platformAdapter } from '../services/platformAdapter';
+import { DatabaseStep } from '../steps/DatabaseStep';
 import { EngineStep } from '../steps/EngineStep';
 import { LaunchStep } from '../steps/LaunchStep';
+import { NeuralStep } from '../steps/NeuralStep';
 import { PlatformStep } from '../steps/PlatformStep';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 
@@ -23,8 +36,7 @@ export const ControlCenterModal: React.FC = () => {
 
   const [isSaving, setIsSaving] = useState(false);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const { testConnection, appMode } = useModeStore();
+  const { appMode } = useModeStore();
   const isConnected = appMode === 'connected';
 
   // Detect whether modal is rendered in first-time setup or onboarding context
@@ -44,36 +56,32 @@ export const ControlCenterModal: React.FC = () => {
     );
   }, [config.firstRunCompleted]);
 
-  // Load live hardware telemetry on mount or open
+  // Load live hardware telemetry and accurately synchronize host OS on mount/open
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && isLocalEnvironment()) {
+      useModeStore.getState().runCapabilityProbe();
+      const hostOS = detectHostOS();
+      if (hostOS === 'macos' && config.targetPlatform !== 'macos') {
+        updateConfig({ targetPlatform: 'macos' });
+      }
+
       useControlCenterStore.getState().syncEnvCredentials();
       platformAdapter.getHardware().then((hw) => {
-        const detected = platformAdapter.normalizePlatform(
-          hw.os_name ||
-            hw.platform ||
-            (typeof window !== 'undefined' ? window.navigator.platform : 'macos')
-        );
+        const detected = detectHostOS();
         setHardware({
           platform: detected,
-          osName: hw.os_name || (detected === 'macos' ? 'macOS (Apple Silicon)' : detected),
-          totalRamGb: hw.total_ram_gb || 8.0,
+          osName: detected === 'macos' ? 'macOS (Apple Silicon)' : hw.os_name || detected,
+          totalRamGb: hw.total_ram_gb || 16.0,
           cpuCores: hw.cpu_cores || 8,
-          hasMetalOrCuda: hw.has_metal_or_cuda ?? true,
+          hasMetalOrCuda: true,
         });
-        if (
-          config.targetPlatform === 'web' ||
-          config.targetPlatform === 'ios' ||
-          config.targetPlatform === 'android'
-        ) {
-          updateConfig({ targetPlatform: detected });
-        }
+        updateConfig({ targetPlatform: detected });
       });
     }
   }, [isOpen]);
 
   useScrollLock(isOpen);
-  if (!isOpen) return null;
+  if (!isOpen || !isLocalEnvironment()) return null;
 
   // Track completion state of each step for visual stepper badges
   const hasConfiguredKey =
@@ -88,37 +96,108 @@ export const ControlCenterModal: React.FC = () => {
     {
       id: 'platform' as const,
       stepNumber: 1,
-      label: 'Platform & Device',
+      label: 'Device',
       icon: Laptop,
-      isCompleted: Boolean(config.targetPlatform),
+      isCompleted: Boolean(config.targetPlatform) && isConnected,
     },
     {
       id: 'models' as const,
       stepNumber: 2,
-      label: 'Intelligence Engine',
+      label: 'Models',
       icon: Cpu,
       isCompleted: hasConfiguredKey,
     },
     {
-      id: 'launch' as const,
+      id: 'neural' as const,
       stepNumber: 3,
-      label: 'Summary & Launch',
+      label: 'Neural',
+      icon: Layers,
+      isCompleted: Boolean(config.embeddingModel && config.rerankerModel),
+    },
+    {
+      id: 'databases' as const,
+      stepNumber: 4,
+      label: 'Storage',
+      icon: Database,
+      isCompleted: true,
+    },
+    {
+      id: 'launch' as const,
+      stepNumber: 5,
+      label: 'Launch',
       icon: Zap,
-      isCompleted: hasConfiguredKey,
+      isCompleted: isConnected && hasConfiguredKey,
     },
   ];
 
   const currentTabIdx = tabs.findIndex((t) => t.id === activeTab);
 
+  // Step readiness gate: user cannot click "Next" until current step is valid and ready to run
+  const isCurrentStepReady = useMemo(() => {
+    switch (activeTab) {
+      case 'platform':
+        return Boolean(config.targetPlatform) && isConnected;
+      case 'models':
+        return hasConfiguredKey;
+      case 'neural':
+        return Boolean(config.embeddingModel && config.rerankerModel);
+      case 'databases':
+        return true;
+      case 'launch':
+        return isConnected && hasConfiguredKey;
+      default:
+        return true;
+    }
+  }, [
+    activeTab,
+    config.targetPlatform,
+    isConnected,
+    hasConfiguredKey,
+    config.embeddingModel,
+    config.rerankerModel,
+  ]);
+
+  const stepBlockReason = useMemo(() => {
+    if (activeTab === 'platform' && !isConnected) {
+      return 'Backend offline on 127.0.0.1:8000';
+    }
+    if (activeTab === 'models' && !hasConfiguredKey) {
+      return 'Configure an API key or local model to proceed';
+    }
+    if (activeTab === 'neural' && (!config.embeddingModel || !config.rerankerModel)) {
+      return 'Select embedding & reranker models';
+    }
+    if (activeTab === 'launch' && !isConnected) {
+      return 'Backend gateway offline';
+    }
+    if (activeTab === 'launch' && !hasConfiguredKey) {
+      return 'Configure API key first';
+    }
+    return null;
+  }, [
+    activeTab,
+    isConnected,
+    hasConfiguredKey,
+    config.embeddingModel,
+    config.rerankerModel,
+  ]);
+
   const handleNext = () => {
+    if (!isCurrentStepReady) {
+      if (stepBlockReason) {
+        setConnectNotice(stepBlockReason);
+        setTimeout(() => setConnectNotice(null), 4000);
+      }
+      return;
+    }
+
     if (activeTab === 'platform') {
       setActiveTab('models');
     } else if (activeTab === 'models') {
-      if (!hasConfiguredKey) {
-        setConnectNotice('Configure an AI key or local model to proceed.');
-        setTimeout(() => setConnectNotice(null), 4000);
-        return;
-      }
+      setActiveTab('neural');
+    } else if (activeTab === 'neural') {
+      setActiveTab('databases');
+    } else if (activeTab === 'databases') {
       setActiveTab('launch');
     } else {
       handleFinalStart();
@@ -131,27 +210,9 @@ export const ControlCenterModal: React.FC = () => {
     }
   };
 
-  const handleProbeBackend = async () => {
-    setIsConnecting(true);
-    setConnectNotice('Probing backend (127.0.0.1:8000)...');
-    try {
-      const result = await testConnection('http://127.0.0.1:8000');
-      if (result.success) {
-        setConnectNotice('Connected to local backend!');
-        setTimeout(() => setConnectNotice(null), 2000);
-      } else {
-        setConnectNotice(result.error || 'Backend offline on 127.0.0.1:8000');
-        setTimeout(() => setConnectNotice(null), 5000);
-      }
-    } catch (err: any) {
-      setConnectNotice(err?.message || 'Connection attempt failed.');
-      setTimeout(() => setConnectNotice(null), 5000);
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
   const handleFinalStart = async () => {
+    if (!isConnected || !hasConfiguredKey) return;
+
     setIsSaving(true);
     try {
       const isCloud = config.llmDeployment === 'cloud';
@@ -184,6 +245,10 @@ export const ControlCenterModal: React.FC = () => {
         selected_local_model: config.selectedLocalModel,
         ollama_model: config.selectedLocalModel,
         tunnel_url: config.tunnelUrl,
+        huggingface_token: config.huggingfaceToken,
+        embedding_model: config.embeddingModel,
+        reranker_model: config.rerankerModel,
+        nli_verifier_model: config.nliVerifierModel,
       });
 
       // Persist onboarding completion flag to localStorage
@@ -221,26 +286,20 @@ export const ControlCenterModal: React.FC = () => {
                 {isSetupMode ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
                     <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
-                    First-Time Setup
+                    Setup
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
-                    Workstation Active
+                    Active
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 font-mono mt-1">
-                Configure Cloud AI Providers (Groq, Gemini, Mistral) & Local Acceleration
-              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {isSetupMode && !hasConfiguredKey && (
-              <span
-                className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-md"
-                title="Configure an AI engine or continue with local workstation"
-              >
-                Setup Recommended
+              <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-md">
+                Key Required
               </span>
             )}
             <button
@@ -261,22 +320,18 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* First-Time Setup Welcome Banner */}
-        {isSetupMode && (
-          <div className="bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-900/60 border-b border-indigo-500/20 px-6 py-2.5 flex items-center justify-between text-xs shrink-0">
+        {isSetupMode && !hasConfiguredKey && (
+          <div className="bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-900/60 border-b border-indigo-500/20 px-6 py-2 flex items-center justify-between text-xs shrink-0">
             <div className="flex items-center gap-2 text-indigo-200">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              <span>
-                <strong>Quick Start:</strong> Enter your free <strong>Gemini Flash</strong> or{' '}
-                <strong>Groq</strong> API key in Step 2 to query academic papers immediately
-                without downloading GPU weights.
-              </span>
+              <span>Add an API key to start immediately.</span>
             </div>
             <button
               type="button"
               onClick={() => setActiveTab('models')}
               className="text-[11px] font-bold text-indigo-300 hover:text-white underline underline-offset-2 shrink-0 ml-3 cursor-pointer"
             >
-              Configure Provider &rarr;
+              Configure &rarr;
             </button>
           </div>
         )}
@@ -327,6 +382,8 @@ export const ControlCenterModal: React.FC = () => {
         <div className="flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-5 bg-[#0e1017] min-h-0">
           {activeTab === 'platform' && <PlatformStep />}
           {activeTab === 'models' && <EngineStep />}
+          {activeTab === 'neural' && <NeuralStep />}
+          {activeTab === 'databases' && <DatabaseStep />}
           {activeTab === 'launch' && <LaunchStep />}
         </div>
 
@@ -345,39 +402,20 @@ export const ControlCenterModal: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {stepBlockReason && (
+              <span className="text-[11px] font-mono text-amber-400 hidden sm:inline-flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span>{stepBlockReason}</span>
+              </span>
+            )}
+
             {connectNotice && (
-              <span
-                className={`text-xs font-mono font-medium max-w-[220px] truncate ${
-                  connectNotice.includes('Connected')
-                    ? 'text-emerald-400'
-                    : connectNotice.includes('Testing') || connectNotice.includes('Probing')
-                      ? 'text-amber-400 animate-pulse'
-                      : 'text-rose-400'
-                }`}
-              >
+              <span className="text-xs font-mono font-medium max-w-[240px] truncate text-amber-400">
                 {connectNotice}
               </span>
             )}
 
-            {activeTab === 'platform' && !isConnected && (
-              <button
-                type="button"
-                disabled={isConnecting}
-                onClick={handleProbeBackend}
-                className={`px-3.5 py-2 rounded-xl text-xs transition-all font-bold cursor-pointer active:scale-95 flex items-center gap-1.5 border border-white/20 bg-white/10 hover:bg-white/15 text-white ${
-                  isConnecting ? 'opacity-70 cursor-wait' : ''
-                }`}
-              >
-                {isConnecting ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Zap className="w-3.5 h-3.5 fill-white text-white" />
-                )}
-                <span>{isConnecting ? 'Probing...' : 'Probe Localhost (:8000)'}</span>
-              </button>
-            )}
-
-            {activeTab !== 'launch' && hasConfiguredKey && (
+            {activeTab !== 'launch' && isConnected && hasConfiguredKey && (
               <button
                 type="button"
                 onClick={handleFinalStart}
@@ -392,10 +430,22 @@ export const ControlCenterModal: React.FC = () => {
             {activeTab !== 'launch' ? (
               <button
                 type="button"
+                disabled={!isCurrentStepReady}
                 onClick={handleNext}
-                className="px-5 py-2 rounded-xl text-xs transition-all font-bold bg-white hover:bg-slate-200 text-black cursor-pointer shadow-sm active:scale-95"
+                className={`px-5 py-2 rounded-xl text-xs transition-all font-bold shadow-sm active:scale-95 flex items-center gap-1.5 ${
+                  isCurrentStepReady
+                    ? 'bg-white hover:bg-slate-200 text-black cursor-pointer'
+                    : 'bg-white/10 text-slate-500 cursor-not-allowed opacity-50 border border-white/5'
+                }`}
+                title={stepBlockReason || undefined}
               >
-                {activeTab === 'platform' ? 'Configure Engine \u2192' : 'Next \u2192'}
+                <span>
+                  {activeTab === 'platform'
+                    ? 'Configure Engine \u2192'
+                    : activeTab === 'models'
+                      ? 'Configure Neural \u2192'
+                      : 'Next \u2192'}
+                </span>
               </button>
             ) : !hasConfiguredKey ? (
               <button
@@ -408,9 +458,13 @@ export const ControlCenterModal: React.FC = () => {
             ) : (
               <button
                 type="button"
-                disabled={isSaving}
+                disabled={isSaving || !isConnected || !hasConfiguredKey}
                 onClick={handleFinalStart}
-                className="px-6 py-2 rounded-xl bg-white hover:bg-slate-200 text-black font-bold text-xs transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-2 disabled:opacity-50"
+                className={`px-6 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
+                  isConnected && hasConfiguredKey
+                    ? 'bg-white hover:bg-slate-200 text-black cursor-pointer'
+                    : 'bg-white/10 text-slate-500 cursor-not-allowed opacity-50'
+                }`}
               >
                 {isSaving ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />

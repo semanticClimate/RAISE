@@ -1,13 +1,29 @@
 import { z } from 'zod';
 
-export const HardwareTelemetrySchema = z.object({
-  gpu_model: z.string().default('Unknown GPU'),
-  ram_total_gb: z.number().default(0),
-  ram_available_gb: z.number().default(0),
-  ram_percent: z.number().default(0),
-  embedding_model: z.string().default('BAAI/bge-large-en-v1.5'),
-  neo4j_endpoint: z.string().default('bolt://localhost:7687'),
-});
+export const HardwareTelemetrySchema = z.preprocess(
+  (val: any) => {
+    if (val && typeof val === 'object') {
+      return {
+        ...val,
+        gpu_model: val.gpu_model || val.gpu_name || 'NVIDIA CUDA GPU (or CPU Fallback)',
+        ram_total_gb: val.ram_total_gb ?? val.total_ram_gb ?? 0,
+        ram_available_gb: val.ram_available_gb ?? val.free_ram_gb ?? 0,
+        ram_percent: val.ram_percent ?? val.cpu_usage_pct ?? 0,
+        embedding_model: val.embedding_model || 'BAAI/bge-large-en-v1.5',
+        neo4j_endpoint: val.neo4j_endpoint || 'bolt://localhost:7687',
+      };
+    }
+    return val;
+  },
+  z.object({
+    gpu_model: z.string().default('Unknown GPU'),
+    ram_total_gb: z.number().default(0),
+    ram_available_gb: z.number().default(0),
+    ram_percent: z.number().default(0),
+    embedding_model: z.string().default('BAAI/bge-large-en-v1.5'),
+    neo4j_endpoint: z.string().default('bolt://localhost:7687'),
+  })
+);
 
 export type HardwareTelemetry = z.infer<typeof HardwareTelemetrySchema>;
 

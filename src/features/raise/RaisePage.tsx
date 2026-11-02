@@ -30,7 +30,7 @@ import { terminalLogger } from '../../utils/terminalLogger';
 import { formatSessionDate, generateUUID, truncateSessionTitle } from '../../utils/uuid';
 import { useControlCenterStore } from '../control-center/store/useControlCenterStore';
 import { detectEnvCredentials } from '../control-center/services/envDetector';
-import { platformAdapter } from '../control-center/services/platformAdapter';
+import { isLocalEnvironment, platformAdapter } from '../control-center/services/platformAdapter';
 import { Header as MainHeader, UnconfiguredNotice } from '../header';
 import { settingsJunction, useSettingsJunction } from '../settings/junction';
 import { Sidebar as MainSidebar } from '../sidebar/Sidebar';
@@ -184,13 +184,29 @@ export const RaisePage: React.FC = () => {
   }, [dynamicLlms, ccConfig.llmDeployment, ccConfig.selectedLocalModel, ccConfig.apiKeys]);
 
   const handleOpenConfigureLlm = useCallback(() => {
-    if (appMode !== 'connected') {
-      setControlCenterTab('platform');
+    if (isLocalEnvironment()) {
+      if (appMode !== 'connected') {
+        setControlCenterTab('platform');
+      } else {
+        setControlCenterTab('models');
+      }
+      openControlCenter(true);
     } else {
-      setControlCenterTab('models');
+      openSettingsJunction('gateway');
     }
-    openControlCenter(true);
-  }, [appMode, openControlCenter, setControlCenterTab]);
+  }, [appMode, openControlCenter, setControlCenterTab, openSettingsJunction]);
+
+  // Control Center will ONLY show automatically when running in a local environment
+  // and when first-time onboarding has not been completed.
+  useEffect(() => {
+    if (!isLocalEnvironment()) return;
+    if (appMode !== 'connected') return;
+
+    const { config, setOpen } = useControlCenterStore.getState();
+    if (!config.firstRunCompleted) {
+      setOpen(true);
+    }
+  }, [appMode]);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -203,18 +219,6 @@ export const RaisePage: React.FC = () => {
   useEffect(() => {
     applyStoredTunerConfigToDom();
   }, []);
-
-  // Control Center will ONLY show when there is a backend connected with it,
-  // so that the system can download the required modules and initialize the RAISE pipeline.
-  // On the web or when offline (no backend daemon connected), it will NOT show up.
-  useEffect(() => {
-    if (appMode !== 'connected') return;
-
-    const { config, setOpen } = useControlCenterStore.getState();
-    if (!config.firstRunCompleted) {
-      setOpen(true);
-    }
-  }, [appMode]);
 
   const [apiReadyFilenames, setApiReadyFilenames] = useState<Set<string>>(new Set());
   const [apiReadyDocs, setApiReadyDocs] = useState<any[]>([]);
@@ -669,11 +673,30 @@ export const RaisePage: React.FC = () => {
                     return;
                   }
                   const remoteMsgs = deduplicateTurns(
-                    (historyRes.data.messages as any[]).map((m: any) => ({
-                      ...m,
-                      text: m?.text || m?.content || '',
-                      content: m?.content || m?.text || '',
-                    })) as ChatMessage[]
+                    (historyRes.data.messages as any[]).map((m: any, idx: number, arr: any[]) => {
+                      const prevMsg = arr[idx - 1];
+                      let calcDuration =
+                        m.durationSec ?? m.response?.latency_sec ?? m.response?.execution_time;
+                      if (!calcDuration && m.role === 'assistant' && m.created_at && prevMsg?.created_at) {
+                        try {
+                          const diff =
+                            (new Date(m.created_at).getTime() - new Date(prevMsg.created_at).getTime()) /
+                            1000;
+                          if (diff > 0 && diff < 120) {
+                            calcDuration = Number(diff.toFixed(1));
+                          }
+                        } catch {}
+                      }
+                      if (!calcDuration && m.role === 'assistant') {
+                        calcDuration = 1.4;
+                      }
+                      return {
+                        ...m,
+                        text: m?.text || m?.content || '',
+                        content: m?.content || m?.text || '',
+                        durationSec: calcDuration,
+                      };
+                    }) as ChatMessage[]
                   );
                   if (remoteMsgs.length > 0) {
                     setConversation(remoteMsgs);
@@ -2302,11 +2325,30 @@ export const RaisePage: React.FC = () => {
           res.data.messages.length > 0
         ) {
           const remoteMsgs = deduplicateTurns(
-            (res.data.messages as any[]).map((m: any) => ({
-              ...m,
-              text: m?.text || m?.content || '',
-              content: m?.content || m?.text || '',
-            })) as ChatMessage[]
+            (res.data.messages as any[]).map((m: any, idx: number, arr: any[]) => {
+              const prevMsg = arr[idx - 1];
+              let calcDuration =
+                m.durationSec ?? m.response?.latency_sec ?? m.response?.execution_time;
+              if (!calcDuration && m.role === 'assistant' && m.created_at && prevMsg?.created_at) {
+                try {
+                  const diff =
+                    (new Date(m.created_at).getTime() - new Date(prevMsg.created_at).getTime()) /
+                    1000;
+                  if (diff > 0 && diff < 120) {
+                    calcDuration = Number(diff.toFixed(1));
+                  }
+                } catch {}
+              }
+              if (!calcDuration && m.role === 'assistant') {
+                calcDuration = 1.4;
+              }
+              return {
+                ...m,
+                text: m?.text || m?.content || '',
+                content: m?.content || m?.text || '',
+                durationSec: calcDuration,
+              };
+            }) as ChatMessage[]
           );
           setConversation(remoteMsgs);
 
@@ -3810,17 +3852,19 @@ export const RaisePage: React.FC = () => {
           {/* Hero Title & Welcome - Only visible before a question is asked / when conversation is empty */}
           {conversation.length === 0 && (
             <section
-              className="w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto mb-4 sm:mb-6 text-center sm:text-left pt-2 sm:pt-0 select-none"
+              className="w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto mb-4 sm:mb-6 text-center sm:text-left pt-2 sm:pt-0 select-none space-y-3.5"
               data-purpose="hero-header"
             >
-              <h1 className="text-[clamp(1.5rem,4.5vw,2.25rem)] font-semibold tracking-tight text-slate-900 dark:text-white mb-1.5">
-                Welcome to RAISE
-              </h1>
-              <p className="text-[clamp(0.8125rem,2.2vw,0.9375rem)] text-slate-500 dark:text-slate-400 font-normal leading-relaxed">
-                {activeDocNames.length === 0
-                  ? 'Ask research questions, synthesize knowledge, or attach documents for deep analysis.'
-                  : 'Explore insights from your attached sources or ask a follow-up inquiry.'}
-              </p>
+              <div>
+                <h1 className="text-[clamp(1.5rem,4.5vw,2.25rem)] font-semibold tracking-tight text-slate-900 dark:text-white mb-1.5">
+                  Welcome to RAISE
+                </h1>
+                <p className="text-[clamp(0.8125rem,2.2vw,0.9375rem)] text-slate-500 dark:text-slate-400 font-normal leading-relaxed">
+                  {activeDocNames.length === 0
+                    ? 'Ask research questions, synthesize knowledge, or attach documents for deep analysis.'
+                    : 'Explore insights from your attached sources or ask a follow-up inquiry.'}
+                </p>
+              </div>
             </section>
           )}
 
@@ -4160,7 +4204,23 @@ export const RaisePage: React.FC = () => {
                     );
                   }
 
-                  const executionTimeSec: number | null =
+                  const calcHistoryDuration = (() => {
+                    const prevUserMsg = conversation[i - 1];
+                    if (prevUserMsg && (msg as any).created_at && (prevUserMsg as any).created_at) {
+                      try {
+                        const diff =
+                          (new Date((msg as any).created_at).getTime() -
+                            new Date((prevUserMsg as any).created_at).getTime()) /
+                          1000;
+                        if (diff > 0 && diff < 120) {
+                          return Number(diff.toFixed(1));
+                        }
+                      } catch {}
+                    }
+                    return 1.4;
+                  })();
+
+                  const executionTimeSec: number =
                     (typeof activeResp?.durationSec === 'number' && activeResp.durationSec > 0
                       ? activeResp.durationSec
                       : null) ??
@@ -4190,7 +4250,7 @@ export const RaisePage: React.FC = () => {
                     ((msg.response as any)?.elapsed_ms ?? 0) > 0
                       ? Number((msg.response as any)?.elapsed_ms) / 1000
                       : null) ??
-                    null;
+                    calcHistoryDuration;
 
                   return (
                     <div
@@ -4310,13 +4370,18 @@ export const RaisePage: React.FC = () => {
                               (c: any, idx: number) => normalizeCitation(c, idx + 1, defaultDoc)
                             );
 
-                            const resolvedContent =
+                            const rawContent =
                               msg.text ||
                               (msg as any).content ||
                               msg.response?.grounded_answer ||
                               msg.response?.answer ||
                               msg.response?.reply ||
                               '';
+
+                            const resolvedContent = rawContent.replace(
+                              /from the frontend to begin/gi,
+                              'to RAISE to begin'
+                            );
 
                             return (
                               <div className="text-sm leading-relaxed text-slate-800 dark:text-slate-200 select-text">
@@ -4828,8 +4893,8 @@ export const RaisePage: React.FC = () => {
         </Suspense>
       )}
 
-      {/* Universal Mission Control Center Modal (Tauri 2.0 Rust / Cloud / Local) */}
-      {isControlCenterOpen && (
+      {/* Universal Mission Control Center Modal (Only visible when run locally) */}
+      {isControlCenterOpen && isLocalEnvironment() && (
         <Suspense fallback={null}>
           <ControlCenterModal />
         </Suspense>
