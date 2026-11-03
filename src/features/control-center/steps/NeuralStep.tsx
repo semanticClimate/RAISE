@@ -27,7 +27,7 @@ const EMBEDDING_PRESETS: ModelOption[] = [
   {
     id: 'google/embeddinggemma-2',
     name: 'Embedding Gemma 2',
-    dimOrType: '2048-dim',
+    dimOrType: '768-dim',
     tokens: '8,192 tokens context',
     chunkSize: '512 tokens (64 overlap)',
     desc: 'Dense semantic embeddings with Google Gemma 2 architecture',
@@ -61,13 +61,21 @@ const EMBEDDING_PRESETS: ModelOption[] = [
 
 const RERANKER_PRESETS: ModelOption[] = [
   {
+    id: 'jinaai/jina-reranker-v3.5',
+    name: 'Jina Reranker v3.5',
+    dimOrType: 'Listwise Cross-Attention',
+    tokens: '8,192 tokens max',
+    chunkSize: 'Reranks candidate top-20 chunks down to top-4',
+    desc: 'State-of-the-art listwise neural reranker with Flash Attention',
+    recommended: true,
+  },
+  {
     id: 'BAAI/bge-reranker-large',
     name: 'BGE Reranker Large',
     dimOrType: 'Cross-Attention',
     tokens: '512 tokens max',
     chunkSize: 'Reranks candidate top-20 chunks down to top-4',
     desc: 'Deep cross-attention scoring on passage chunks',
-    recommended: true,
   },
   {
     id: 'cross-encoder/ms-marco-MiniLM-L-6-v2',
@@ -89,13 +97,21 @@ const RERANKER_PRESETS: ModelOption[] = [
 
 const NLI_PRESETS: ModelOption[] = [
   {
+    id: 'dleemiller/finecat-nli-ultra-l',
+    name: 'FineCat NLI Ultra-L',
+    dimOrType: 'Ultra-L / RoBERTa',
+    tokens: '512 tokens max',
+    chunkSize: 'Pairwise Citation Chunk vs. Claim verification',
+    desc: 'Fine-grained claim entailment verification & strict hallucination guard',
+    recommended: true,
+  },
+  {
     id: 'FineCat-NLI-DeBERTa',
     name: 'FineCat NLI DeBERTa',
     dimOrType: 'DeBERTa-v3',
     tokens: '512 tokens max',
     chunkSize: 'Pairwise Citation Chunk vs. Claim verification',
-    desc: 'Fine-grained claim entailment verification & hallucination guard',
-    recommended: true,
+    desc: 'Standard DeBERTa-v3 claim entailment verification',
   },
   {
     id: 'facebook/bart-large-mnli',
@@ -119,8 +135,8 @@ export const NeuralStep: React.FC = () => {
   const { config, updateConfig } = useControlCenterStore();
 
   const currentEmbedding = config.embeddingModel || 'google/embeddinggemma-2';
-  const currentReranker = config.rerankerModel || 'BAAI/bge-reranker-large';
-  const currentNli = config.nliVerifierModel || 'FineCat-NLI-DeBERTa';
+  const currentReranker = config.rerankerModel || 'jinaai/jina-reranker-v3.5';
+  const currentNli = config.nliVerifierModel || 'dleemiller/finecat-nli-ultra-l';
   const currentDevice = config.neuralDevice || 'auto';
 
   const isCustomEmbedding = !EMBEDDING_PRESETS.some((p) => p.id === currentEmbedding);

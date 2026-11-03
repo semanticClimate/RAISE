@@ -2,13 +2,42 @@ import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, X, Zap } f
 import type React from 'react';
 import { useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
-import { platformAdapter } from '../services/platformAdapter';
+import { platformAdapter, type ConnectionTestResult } from '../services/platformAdapter';
 import { detectEnvCredentials } from '../services/envDetector';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 
 export const DatabaseStep: React.FC = () => {
   const { config, updateSubstrate, setAllSubstratesMode } = useControlCenterStore();
   const envData = detectEnvCredentials();
+
+  // Test live substrate connectivity state
+  const [isTestingSubstrates, setIsTestingSubstrates] = useState(false);
+  const [testResults, setTestResults] = useState<ConnectionTestResult | null>(null);
+  const [testNotice, setTestNotice] = useState<string | null>(null);
+
+  const handleTestAllSubstrates = async () => {
+    setIsTestingSubstrates(true);
+    setTestNotice('Testing substrates...');
+    try {
+      const results = await platformAdapter.testConnections({
+        neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
+        neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
+        neo4j_user: config.knowledgeGraph?.user,
+        neo4j_password: config.knowledgeGraph?.password || config.neo4jPassword,
+        postgres_mode: config.sessionMemory?.mode || config.postgresMode,
+        postgres_uri: config.sessionMemory?.uri,
+        redis_mode: config.cacheAndSignals?.mode || config.redisMode,
+        redis_uri: config.cacheAndSignals?.uri,
+      });
+      setTestResults(results);
+      setTestNotice('Connection probes complete.');
+    } catch {
+      setTestNotice('Connection probe encountered offline endpoints.');
+    } finally {
+      setIsTestingSubstrates(false);
+      setTimeout(() => setTestNotice(null), 3500);
+    }
+  };
 
   // Cloud credentials modal state
   const [activeCloudSubstrate, setActiveCloudSubstrate] = useState<
@@ -169,10 +198,32 @@ export const DatabaseStep: React.FC = () => {
 
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-150">
-      <div>
-        <h3 className="text-base font-bold text-white tracking-tight">
-          Storage Substrates
-        </h3>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-bold text-white tracking-tight">
+            Storage Substrates
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Configure Graph, Memory, Cache, and Vector stores with runtime fallback.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {testNotice && (
+            <span className="text-xs font-mono text-emerald-400 animate-in fade-in">
+              {testNotice}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleTestAllSubstrates}
+            disabled={isTestingSubstrates}
+            className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            title="Probe live connectivity for all configured substrates"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin text-indigo-400' : ''}`} />
+            <span>Test Substrates</span>
+          </button>
+        </div>
       </div>
 
       {/* Global Mode Quick-Toggle: Python In-Memory vs Cloud Infrastructure */}
@@ -383,6 +434,31 @@ export const DatabaseStep: React.FC = () => {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* ChromaDB Dense Vector Engine Substrate */}
+      <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0 font-mono font-bold text-xs">
+            V
+          </div>
+          <div>
+            <div className="font-bold text-white flex items-center gap-2">
+              <span>ChromaDB Vector Store</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                {testResults?.chroma?.online ? 'Online' : 'Local Embedded'}
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+              Dense document embeddings & semantic similarity • Fast embedded SQLite/Parquet vector persistence
+            </div>
+          </div>
+        </div>
+        {typeof testResults?.chroma?.total_chunks === 'number' && (
+          <span className="text-[11px] font-mono text-slate-400 shrink-0">
+            {testResults.chroma.total_chunks} chunks
+          </span>
+        )}
       </div>
 
       {/* Cloud Connection Configuration Popup */}

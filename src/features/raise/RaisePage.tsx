@@ -184,29 +184,24 @@ export const RaisePage: React.FC = () => {
   }, [dynamicLlms, ccConfig.llmDeployment, ccConfig.selectedLocalModel, ccConfig.apiKeys]);
 
   const handleOpenConfigureLlm = useCallback(() => {
-    if (isLocalEnvironment()) {
-      if (appMode !== 'connected') {
-        setControlCenterTab('platform');
-      } else {
-        setControlCenterTab('models');
-      }
-      openControlCenter(true);
+    if (appMode !== 'connected') {
+      setControlCenterTab('platform');
     } else {
-      openSettingsJunction('gateway');
+      setControlCenterTab('models');
     }
-  }, [appMode, openControlCenter, setControlCenterTab, openSettingsJunction]);
+    openControlCenter(true);
+  }, [appMode, openControlCenter, setControlCenterTab]);
 
-  // Control Center will ONLY show automatically when running in a local environment
-  // and when first-time onboarding has not been completed.
+  // Control Center opens automatically on first launch when onboarding has not been completed
   useEffect(() => {
-    if (!isLocalEnvironment()) return;
-    if (appMode !== 'connected') return;
-
     const { config, setOpen } = useControlCenterStore.getState();
-    if (!config.firstRunCompleted) {
+    if (
+      !config.firstRunCompleted &&
+      localStorage.getItem('raise_onboarding_completed') !== 'true'
+    ) {
       setOpen(true);
     }
-  }, [appMode]);
+  }, []);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -227,9 +222,6 @@ export const RaisePage: React.FC = () => {
   useEffect(() => {
     let active = true;
     if (appMode !== 'connected') {
-      setApiReadyDocs([]);
-      setApiReadyFilenames(new Set());
-      setSourceDocs([]);
       return;
     }
     sourceService
@@ -244,16 +236,10 @@ export const RaisePage: React.FC = () => {
               .map((d) => d.filename.toLowerCase())
           );
           setApiReadyFilenames(readyNames);
-        } else {
-          setApiReadyDocs([]);
-          setApiReadyFilenames(new Set());
         }
       })
       .catch(() => {
-        if (active) {
-          setApiReadyDocs([]);
-          setApiReadyFilenames(new Set());
-        }
+        // Do NOT wipe state on transient gateway fluctuations
       });
     return () => {
       active = false;
@@ -496,11 +482,20 @@ export const RaisePage: React.FC = () => {
     return [];
   });
 
-  // Current session ID: strictly restored from localStorage 'raise_current_session_id'.
-  // If stored session ID exists, restore it directly for persistent reload.
-  // If not stored or empty, default to null (clean front page / New Chat).
+  // Current session ID: restored from URL param, or localStorage only if persistence is explicitly enabled.
+  // By default (or when reload persistence is false), refreshing root URL starts with a clean slate.
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlSession = urlParams.get('session') || urlParams.get('session_id');
+        if (urlSession && urlSession.trim()) {
+          return urlSession.trim();
+        }
+      }
+      const shouldPersist = localStorage.getItem('raise_persist_session_on_reload') === 'true';
+      if (!shouldPersist) return null;
+
       const savedCurrentId = localStorage.getItem('raise_current_session_id');
       if (savedCurrentId && savedCurrentId.trim()) {
         return savedCurrentId.trim();
@@ -512,26 +507,46 @@ export const RaisePage: React.FC = () => {
   // Conversation messages: starts with saved active session messages or empty [] for clean front page
   const [conversation, setConversation] = useState<ChatMessage[]>(() => {
     try {
-      const savedCurrentId = localStorage.getItem('raise_current_session_id');
-      if (savedCurrentId && savedCurrentId.trim()) {
-        const cached = localStorage.getItem('raise_recent_sessions_v2');
-        if (cached) {
-          const parsed = JSON.parse(cached) as ChatSession[];
-          const match = parsed.find((s) => s.id === savedCurrentId.trim());
-          if (match?.messages && Array.isArray(match.messages)) {
-            return deduplicateTurns(
-              match.messages.map((m: any) => ({
-                ...m,
-                text: m?.text || m?.content || '',
-                content: m?.content || m?.text || '',
-              }))
-            );
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlSession = urlParams.get('session') || urlParams.get('session_id');
+        const shouldPersist = localStorage.getItem('raise_persist_session_on_reload') === 'true';
+        const targetId = urlSession?.trim() || (shouldPersist ? localStorage.getItem('raise_current_session_id')?.trim() : null);
+
+        if (targetId) {
+          const cached = localStorage.getItem('raise_recent_sessions_v2');
+          if (cached) {
+            const parsed = JSON.parse(cached) as ChatSession[];
+            const match = parsed.find((s) => s.id === targetId);
+            if (match?.messages && Array.isArray(match.messages)) {
+              return deduplicateTurns(
+                match.messages.map((m: any) => ({
+                  ...m,
+                  text: m?.text || m?.content || '',
+                  content: m?.content || m?.text || '',
+                }))
+              );
+            }
           }
         }
       }
     } catch {}
     return [];
   });
+
+  // Clean-slate on mount if reload persistence is disabled and no explicit ?session= query is present
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlSession = urlParams.get('session') || urlParams.get('session_id');
+        const shouldPersist = localStorage.getItem('raise_persist_session_on_reload') === 'true';
+        if (!urlSession && !shouldPersist) {
+          localStorage.removeItem('raise_current_session_id');
+        }
+      }
+    } catch {}
+  }, []);
 
   // React 19 Active Session & Document Title derivation
   const activeSession = useMemo(() => {
@@ -2220,6 +2235,11 @@ export const RaisePage: React.FC = () => {
     setCurrentSessionId(session.id);
     try {
       localStorage.setItem('raise_current_session_id', session.id);
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('session', session.id);
+        window.history.replaceState({}, document.title, url.toString());
+      }
     } catch {}
     // Immediately render cached messages so user does not experience a blank chat
     const normalizedCached = deduplicateTurns(
@@ -2412,6 +2432,10 @@ export const RaisePage: React.FC = () => {
     setCurrentSessionId(null);
     try {
       localStorage.removeItem('raise_current_session_id');
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
     } catch {}
 
     setConversation([]);
@@ -2571,6 +2595,14 @@ export const RaisePage: React.FC = () => {
       currentQuestionVersionIndex: 0,
     };
 
+    const pendingAssistantMsg: ChatMessage = {
+      role: 'assistant',
+      text: '',
+      content: '',
+      isThinking: true,
+      timestamp: 'Just now',
+    };
+
     // Prevent duplicate optimistic query appending if previous turn is identical
     const lastExisting = conversation[conversation.length - 1];
     const isDuplicateLast =
@@ -2578,7 +2610,9 @@ export const RaisePage: React.FC = () => {
       lastExisting.role === 'user' &&
       ((lastExisting.text || (lastExisting as any).content || '').trim() === q);
 
-    const updatedConversation = isDuplicateLast ? conversation : [...conversation, userMsg];
+    const updatedConversation = isDuplicateLast
+      ? conversation
+      : [...conversation, userMsg, pendingAssistantMsg];
     setConversation(updatedConversation);
     setQuery('');
     setActiveExecutingQuery(q);
@@ -2622,7 +2656,7 @@ export const RaisePage: React.FC = () => {
           active_docs: activeDocNames,
           document_filter:
             storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined),
-          parser: 'docling',
+          parser: parseMode === 'expert' ? 'docling' : 'fast',
           full_potential: parseMode === 'expert',
         },
         controller.signal,
@@ -2647,6 +2681,8 @@ export const RaisePage: React.FC = () => {
           (typeof res.data.grounded_answer === 'string' ? res.data.grounded_answer : '') ||
           (typeof res.data.answer === 'string' ? res.data.answer : '') ||
           (typeof (res.data as any).reply === 'string' ? (res.data as any).reply : '') ||
+          (typeof (res.data as any).content === 'string' ? (res.data as any).content : '') ||
+          (typeof (res.data as any).text === 'string' ? (res.data as any).text : '') ||
           latestStreamedTextRef.current ||
           '';
         const resolvedText = sanitizeStreamText(rawAns);
@@ -2657,6 +2693,7 @@ export const RaisePage: React.FC = () => {
           response: res.data,
           durationSec: elapsedSec,
           persistenceFailed: !persisted,
+          isThinking: false,
         };
       } else {
         const isManualAbort =
@@ -2670,11 +2707,14 @@ export const RaisePage: React.FC = () => {
             session_id: threadId,
             elapsed_sec: elapsedSec,
           });
+          const abortText = latestStreamedTextRef.current || '';
           assistantMsg = {
             role: 'assistant',
-            text: latestStreamedTextRef.current,
+            text: abortText,
+            content: abortText,
             isStopped: true,
             durationSec: elapsedSec,
+            isThinking: false,
           };
         } else {
           const isNoLlm =
@@ -2710,48 +2750,80 @@ export const RaisePage: React.FC = () => {
                 if (appMode !== 'connected') {
                   await runCapabilityProbe();
                 }
-                handleRegenerateResponse(updatedConversation.length);
+                handleRegenerateResponse(updatedConversation.length - 1);
               });
             }
           }
           assistantMsg = {
             role: 'assistant',
             text: '',
+            content: '',
             error: createErrorDetails(res.error, null),
             durationSec: elapsedSec,
+            isThinking: false,
           };
         }
       }
 
-      const initialRespVer: ResponseVersion = {
-        id: `resp-${Date.now()}`,
-        text: assistantMsg.text,
-        response: assistantMsg.response,
-        error: assistantMsg.error,
-        durationSec: elapsedSec,
-        timestamp: 'Just now',
-        isStopped: assistantMsg.isStopped,
-      };
+      setConversation((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        const currentStreamed = latestStreamedTextRef.current || '';
+        const finalAns =
+          assistantMsg.text ||
+          (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant'
+            ? updated[lastIdx].text || (updated[lastIdx] as any).content || ''
+            : '') ||
+          currentStreamed;
 
-      userMsg.questionVersions = [
-        {
-          ...initialQVer,
-          responseVersions: [initialRespVer],
-          currentResponseVersionIndex: 0,
-        },
-      ];
+        const mergedAssistant: ChatMessage = {
+          ...assistantMsg,
+          text: finalAns,
+          content: finalAns,
+          isThinking: false,
+        };
 
-      const finalMessages = (() => {
-        const userIdx = updatedConversation.lastIndexOf(userMsg);
-        if (userIdx !== -1) {
-          return deduplicateTurns([...updatedConversation.slice(0, userIdx + 1), assistantMsg]);
+        const initialRespVer: ResponseVersion = {
+          id: `resp-${Date.now()}`,
+          text: finalAns,
+          response: mergedAssistant.response,
+          error: mergedAssistant.error,
+          durationSec: elapsedSec,
+          timestamp: 'Just now',
+          isStopped: mergedAssistant.isStopped,
+        };
+
+        let userIdx = -1;
+        for (let idx = updated.length - 1; idx >= 0; idx--) {
+          if (updated[idx].role === 'user') {
+            userIdx = idx;
+            break;
+          }
         }
-        return deduplicateTurns([...updatedConversation, assistantMsg]);
-      })();
-      setConversation(finalMessages);
-      if (res.data && !assistantMsg.persistenceFailed) {
-        updateSessionInMemory(finalMessages, threadId);
-      }
+        if (userIdx !== -1) {
+          const user = updated[userIdx];
+          user.questionVersions = [
+            {
+              ...initialQVer,
+              responseVersions: [initialRespVer],
+              currentResponseVersionIndex: 0,
+            },
+          ];
+        }
+
+        let committed: ChatMessage[];
+        if (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant') {
+          updated[lastIdx] = mergedAssistant;
+          committed = deduplicateTurns(updated);
+        } else {
+          committed = deduplicateTurns([...updated, mergedAssistant]);
+        }
+
+        if (res.data && !assistantMsg.persistenceFailed) {
+          updateSessionInMemory(committed, threadId);
+        }
+        return committed;
+      });
     } catch (err: any) {
       if (isUnmountedRef.current) return;
       const elapsedSec =
@@ -2767,13 +2839,14 @@ export const RaisePage: React.FC = () => {
           session_id: threadId,
           elapsed_sec: elapsedSec,
         });
-        const stoppedText = latestStreamedTextRef.current;
+        const stoppedText = latestStreamedTextRef.current || '';
         const stoppedMsg: ChatMessage = {
           role: 'assistant',
           text: stoppedText,
           content: stoppedText,
           isStopped: true,
           durationSec: elapsedSec,
+          isThinking: false,
         };
         const initialRespVer: ResponseVersion = {
           id: `resp-${Date.now()}`,
@@ -2790,14 +2863,19 @@ export const RaisePage: React.FC = () => {
             currentResponseVersionIndex: 0,
           },
         ];
-        const finalMessages = (() => {
-          const userIdx = updatedConversation.lastIndexOf(userMsg);
-          if (userIdx !== -1) {
-            return [...updatedConversation.slice(0, userIdx + 1), stoppedMsg];
+        setConversation((prev) => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          let committed: ChatMessage[];
+          if (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant') {
+            updated[lastIdx] = stoppedMsg;
+            committed = deduplicateTurns(updated);
+          } else {
+            committed = deduplicateTurns([...updated, stoppedMsg]);
           }
-          return [...updatedConversation, stoppedMsg];
-        })();
-        setConversation(finalMessages);
+          updateSessionInMemory(committed, threadId);
+          return committed;
+        });
       } else {
         const errorDetails = createErrorDetails(null, err);
         const isNoLlm =
@@ -2815,7 +2893,7 @@ export const RaisePage: React.FC = () => {
               if (appMode !== 'connected') {
                 await runCapabilityProbe();
               }
-              handleRegenerateResponse(updatedConversation.length);
+              handleRegenerateResponse(updatedConversation.length - 1);
             });
           }
         }
@@ -2825,6 +2903,7 @@ export const RaisePage: React.FC = () => {
           content: '',
           error: errorDetails,
           durationSec: elapsedSec,
+          isThinking: false,
         };
         const initialRespVer: ResponseVersion = {
           id: `resp-${Date.now()}`,
@@ -2841,14 +2920,15 @@ export const RaisePage: React.FC = () => {
             currentResponseVersionIndex: 0,
           },
         ];
-        const finalMessages = (() => {
-          const userIdx = updatedConversation.lastIndexOf(userMsg);
-          if (userIdx !== -1) {
-            return deduplicateTurns([...updatedConversation.slice(0, userIdx + 1), errorAssistantMsg]);
+        setConversation((prev) => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant') {
+            updated[lastIdx] = errorAssistantMsg;
+            return deduplicateTurns(updated);
           }
-          return deduplicateTurns([...updatedConversation, errorAssistantMsg]);
-        })();
-        setConversation(finalMessages);
+          return deduplicateTurns([...updated, errorAssistantMsg]);
+        });
       }
     } finally {
       isSubmittingQueryRef.current = false;
@@ -2987,7 +3067,7 @@ export const RaisePage: React.FC = () => {
           active_docs: activeDocNames,
           document_filter:
             storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined),
-          parser: 'docling',
+          parser: parseMode === 'expert' ? 'docling' : 'fast',
           full_potential: parseMode === 'expert',
         },
         controller.signal,
@@ -3314,7 +3394,7 @@ export const RaisePage: React.FC = () => {
           active_docs: activeDocNames,
           document_filter:
             storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined),
-          parser: 'docling',
+          parser: parseMode === 'expert' ? 'docling' : 'fast',
           full_potential: parseMode === 'expert',
         },
         controller.signal,
@@ -3599,23 +3679,31 @@ export const RaisePage: React.FC = () => {
         return updated;
       });
 
-      // Smooth progress animation during upload / initial stages
+      // Smooth asymptotic progress animation during document parsing and ingestion
       let currentProg = 15;
       const progressTimer = setInterval(() => {
-        currentProg = Math.min(88, currentProg + Math.floor(Math.random() * 8) + 4);
+        const step =
+          currentProg < 50
+            ? Math.floor(Math.random() * 5) + 3
+            : currentProg < 75
+              ? Math.floor(Math.random() * 3) + 2
+              : currentProg < 88
+                ? 1
+                : 0.3;
+        currentProg = Math.min(92, Number((currentProg + step).toFixed(1)));
         setSourceDocs((prev) =>
           prev.map((d) =>
             d.id === tempDocId && d.status === 'processing'
-              ? { ...d, uploadProgress: currentProg }
+              ? { ...d, uploadProgress: Math.round(currentProg) }
               : d
           )
         );
-      }, 400);
+      }, 500);
 
       try {
         const uploadRes = await sourceService.uploadPdfs([file], undefined, {
           parseMode,
-          parser: 'docling',
+          parser: parseMode === 'expert' ? 'docling' : 'fast',
           sessionId: currentSessionId || undefined,
         });
         clearInterval(progressTimer);
@@ -3694,8 +3782,11 @@ export const RaisePage: React.FC = () => {
           'Upload failed',
           'Document processing could not be completed. Please try again.'
         );
+      } finally {
+        if (e?.target) {
+          e.target.value = '';
+        }
       }
-      e.target.value = '';
     }
   };
 
@@ -3707,6 +3798,8 @@ export const RaisePage: React.FC = () => {
         onOpenSources={() => setIsSourcesDrawerOpen(true)}
         onOpenMobileMenu={() => setIsPipelineDrawerOpen(true)}
         isDrawerOpen={isPipelineDrawerOpen}
+        onNewChat={handleNewChat}
+        onOpenControlCenter={() => openControlCenter(true)}
       />
 
       {/* Upper Side Notification: Unconfigured Pipeline Tunnel Notice */}
@@ -3765,6 +3858,7 @@ export const RaisePage: React.FC = () => {
         isDrawerOpen={isPipelineDrawerOpen}
         onToggleDrawer={() => setIsPipelineDrawerOpen((prev) => !prev)}
         onNewChat={handleNewChat}
+        onOpenControlCenter={() => openControlCenter(true)}
         onOpenSearch={() => {
           setIsPipelineDrawerOpen(false);
           setIsSearchModalOpen(true);
@@ -4288,8 +4382,9 @@ export const RaisePage: React.FC = () => {
                       )}
 
                       {/* AI Response Card Box */}
-                      {(((!isCurrentlyActive || Boolean(msg.text || (msg as any).content)) && Boolean(msg.text || (msg as any).content)) ||
-                        Boolean(isCurrentlyActive && activeExecutingQuery && isConversationalQuery(activeExecutingQuery))) && (
+                      {(Boolean(msg.text || (msg as any).content || msg.response) ||
+                        isCurrentlyActive ||
+                        msg.isThinking) && (
                         <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
                           {/* Save-failure warning banner if generation succeeded but persistence failed */}
                           {msg.persistenceFailed && (
@@ -4866,6 +4961,7 @@ export const RaisePage: React.FC = () => {
             onStopVoiceListening={stopVoiceListening}
             voiceError={voiceError}
             onDismissVoiceError={() => setVoiceError(null)}
+            onNewChat={handleNewChat}
           />
         </div>
       </main>

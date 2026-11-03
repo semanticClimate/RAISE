@@ -14,7 +14,7 @@ import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { useScrollLock } from '../../../hooks';
 import { useModeStore } from '../../../stores/modeStore';
-import { detectHostOS, isLocalEnvironment, platformAdapter } from '../services/platformAdapter';
+import { detectHostOS, platformAdapter } from '../services/platformAdapter';
 import { DatabaseStep } from '../steps/DatabaseStep';
 import { EngineStep } from '../steps/EngineStep';
 import { LaunchStep } from '../steps/LaunchStep';
@@ -58,7 +58,7 @@ export const ControlCenterModal: React.FC = () => {
 
   // Load live hardware telemetry and accurately synchronize host OS on mount/open
   useEffect(() => {
-    if (isOpen && isLocalEnvironment()) {
+    if (isOpen) {
       useModeStore.getState().runCapabilityProbe();
       const hostOS = detectHostOS();
       if (hostOS === 'macos' && config.targetPlatform !== 'macos') {
@@ -81,7 +81,7 @@ export const ControlCenterModal: React.FC = () => {
   }, [isOpen]);
 
   useScrollLock(isOpen);
-  if (!isOpen || !isLocalEnvironment()) return null;
+  if (!isOpen) return null;
 
   // Track completion state of each step for visual stepper badges
   const hasConfiguredKey =
@@ -98,7 +98,7 @@ export const ControlCenterModal: React.FC = () => {
       stepNumber: 1,
       label: 'Device',
       icon: Laptop,
-      isCompleted: Boolean(config.targetPlatform) && isConnected,
+      isCompleted: Boolean(config.targetPlatform),
     },
     {
       id: 'models' as const,
@@ -126,58 +126,42 @@ export const ControlCenterModal: React.FC = () => {
       stepNumber: 5,
       label: 'Launch',
       icon: Zap,
-      isCompleted: isConnected && hasConfiguredKey,
+      isCompleted: hasConfiguredKey,
     },
   ];
 
   const currentTabIdx = tabs.findIndex((t) => t.id === activeTab);
 
-  // Step readiness gate: user cannot click "Next" until current step is valid and ready to run
+  // Step readiness gate: user can freely configure all sections
   const isCurrentStepReady = useMemo(() => {
     switch (activeTab) {
       case 'platform':
-        return Boolean(config.targetPlatform) && isConnected;
+        return Boolean(config.targetPlatform);
       case 'models':
-        return hasConfiguredKey;
+        return true;
       case 'neural':
         return Boolean(config.embeddingModel && config.rerankerModel);
       case 'databases':
         return true;
       case 'launch':
-        return isConnected && hasConfiguredKey;
+        return true;
       default:
         return true;
     }
   }, [
     activeTab,
     config.targetPlatform,
-    isConnected,
-    hasConfiguredKey,
     config.embeddingModel,
     config.rerankerModel,
   ]);
 
   const stepBlockReason = useMemo(() => {
-    if (activeTab === 'platform' && !isConnected) {
-      return 'Backend offline on 127.0.0.1:8000';
-    }
-    if (activeTab === 'models' && !hasConfiguredKey) {
-      return 'Configure an API key or local model to proceed';
-    }
     if (activeTab === 'neural' && (!config.embeddingModel || !config.rerankerModel)) {
       return 'Select embedding & reranker models';
-    }
-    if (activeTab === 'launch' && !isConnected) {
-      return 'Backend gateway offline';
-    }
-    if (activeTab === 'launch' && !hasConfiguredKey) {
-      return 'Configure API key first';
     }
     return null;
   }, [
     activeTab,
-    isConnected,
-    hasConfiguredKey,
     config.embeddingModel,
     config.rerankerModel,
   ]);
@@ -211,8 +195,6 @@ export const ControlCenterModal: React.FC = () => {
   };
 
   const handleFinalStart = async () => {
-    if (!isConnected || !hasConfiguredKey) return;
-
     setIsSaving(true);
     try {
       const isCloud = config.llmDeployment === 'cloud';
@@ -249,6 +231,14 @@ export const ControlCenterModal: React.FC = () => {
         embedding_model: config.embeddingModel,
         reranker_model: config.rerankerModel,
         nli_verifier_model: config.nliVerifierModel,
+        neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
+        neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
+        neo4j_user: config.knowledgeGraph?.user,
+        neo4j_password: config.knowledgeGraph?.password || config.neo4jPassword,
+        postgres_mode: config.sessionMemory?.mode || config.postgresMode,
+        postgres_uri: config.sessionMemory?.uri,
+        redis_mode: config.cacheAndSignals?.mode || config.redisMode,
+        redis_uri: config.cacheAndSignals?.uri,
       });
 
       // Persist onboarding completion flag to localStorage
@@ -415,7 +405,7 @@ export const ControlCenterModal: React.FC = () => {
               </span>
             )}
 
-            {activeTab !== 'launch' && isConnected && hasConfiguredKey && (
+            {activeTab !== 'launch' && hasConfiguredKey && (
               <button
                 type="button"
                 onClick={handleFinalStart}
@@ -423,7 +413,7 @@ export const ControlCenterModal: React.FC = () => {
                 title="Launch directly with current settings"
               >
                 <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
-                <span className="hidden sm:inline">Quick Launch</span>
+                <span className="hidden sm:inline">Save & Launch</span>
               </button>
             )}
 
@@ -458,10 +448,10 @@ export const ControlCenterModal: React.FC = () => {
             ) : (
               <button
                 type="button"
-                disabled={isSaving || !isConnected || !hasConfiguredKey}
+                disabled={isSaving || !hasConfiguredKey}
                 onClick={handleFinalStart}
                 className={`px-6 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
-                  isConnected && hasConfiguredKey
+                  hasConfiguredKey
                     ? 'bg-white hover:bg-slate-200 text-black cursor-pointer'
                     : 'bg-white/10 text-slate-500 cursor-not-allowed opacity-50'
                 }`}
@@ -471,7 +461,7 @@ export const ControlCenterModal: React.FC = () => {
                 ) : (
                   <Zap className="w-3.5 h-3.5 fill-black text-black" />
                 )}
-                <span>Launch App</span>
+                <span>{isConnected ? 'Launch App' : 'Save & Launch'}</span>
               </button>
             )}
           </div>

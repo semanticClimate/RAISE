@@ -42,9 +42,6 @@ export class SourceService {
     for (const file of files) {
       formData.append('files', file);
     }
-    if (files.length > 0) {
-      formData.append('file', files[0]);
-    }
     if (options?.sessionId) {
       formData.append('session_id', options.sessionId);
     }

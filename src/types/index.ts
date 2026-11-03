@@ -42,6 +42,8 @@ export interface ChatMessage {
   currentQuestionVersionIndex?: number;
   persistenceFailed?: boolean;
   isStopped?: boolean;
+  isThinking?: boolean;
+  timestamp?: string;
   feedback?: 'thumbs_up' | 'thumbs_down' | null;
   id?: string;
 }

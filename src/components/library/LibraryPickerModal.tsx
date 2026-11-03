@@ -255,6 +255,9 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
         multiple
         accept=".pdf,.txt,.docx,.csv,.md,.json"
         className="hidden"
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = '';
+        }}
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
             handleOptimisticUpload(e.target.files);

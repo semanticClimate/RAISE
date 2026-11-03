@@ -162,6 +162,8 @@ export class ChatService implements ChatServiceInterface {
             document_filter: req.document_filter,
             hops: req.hops ?? (effectiveMode === 'expert' ? 3 : 1),
             top_k: req.top_k ?? (effectiveMode === 'expert' ? 8 : 4),
+            parser: req.parser || (effectiveMode === 'expert' ? 'docling' : 'fast'),
+            full_potential: effectiveMode === 'expert',
           }),
           signal,
           timeoutMs: 90000,
@@ -292,7 +294,7 @@ export class ChatService implements ChatServiceInterface {
       document_filter: req.document_filter,
       hops: req.hops ?? (effectiveMode === 'expert' ? 3 : 1),
       top_k: req.top_k ?? (effectiveMode === 'expert' ? 8 : 4),
-      parser: 'docling',
+      parser: req.parser || (effectiveMode === 'expert' ? 'docling' : 'fast'),
       full_potential: effectiveMode === 'expert',
       request_id: req.request_id,
     };

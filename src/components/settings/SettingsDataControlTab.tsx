@@ -30,6 +30,28 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
 
+  // Persistence on reload toggle (default: false as requested by specification)
+  const [persistOnReload, setPersistOnReload] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('raise_persist_session_on_reload') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleTogglePersistOnReload = () => {
+    const nextVal = !persistOnReload;
+    setPersistOnReload(nextVal);
+    try {
+      localStorage.setItem('raise_persist_session_on_reload', String(nextVal));
+    } catch {}
+    showToast(
+      nextVal
+        ? 'Active session will be restored on page reload'
+        : 'Page reload will now start with a clean search page'
+    );
+  };
+
   // Shared links state
   const [sharedLinks, setSharedLinks] = useState<SharedLinkItem[]>(() => {
     try {
@@ -243,8 +265,46 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
         </p>
       </div>
 
-      {/* 5 Data Control Options */}
+      {/* Data Control Options */}
       <div className="divide-y divide-slate-200/80 dark:divide-white/10 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] overflow-hidden">
+        {/* Toggle: Restore chat on reload */}
+        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Restore last active chat on page reload
+              </h4>
+              <span
+                className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
+                  persistOnReload
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                    : 'bg-slate-200/70 dark:bg-white/10 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                {persistOnReload ? 'Enabled' : 'Fresh Start'}
+              </span>
+            </div>
+            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#a8a8a8]">
+              When disabled, refreshing the browser (F5) starts with a clean query landing page while keeping your chat history safely in the sidebar.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={persistOnReload}
+            onClick={handleTogglePersistOnReload}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              persistOnReload ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-white/20'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                persistOnReload ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+
         {/* 1. Shared links */}
         <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
           <div className="space-y-0.5 min-w-0">

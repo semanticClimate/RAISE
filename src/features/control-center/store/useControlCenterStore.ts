@@ -73,8 +73,8 @@ export const useControlCenterStore = create<ControlCenterState>()(
         targetPlatform: defaultPlatform,
         llmDeployment: 'cloud',
         embeddingModel: 'google/embeddinggemma-2',
-        rerankerModel: 'BAAI/bge-reranker-large',
-        nliVerifierModel: 'FineCat-NLI-DeBERTa',
+        rerankerModel: 'jinaai/jina-reranker-v3.5',
+        nliVerifierModel: 'dleemiller/finecat-nli-ultra-l',
         neuralDevice: 'auto',
         huggingfaceToken: '',
         apiKeys: [
@@ -429,9 +429,19 @@ export const useControlCenterStore = create<ControlCenterState>()(
         ) {
           mergedConfig.targetPlatform = defaultPlatform;
         }
-        if (!mergedConfig.embeddingModel) mergedConfig.embeddingModel = 'google/embeddinggemma-2';
-        if (!mergedConfig.rerankerModel) mergedConfig.rerankerModel = 'BAAI/bge-reranker-large';
-        if (!mergedConfig.nliVerifierModel) mergedConfig.nliVerifierModel = 'FineCat-NLI-DeBERTa';
+        if (!mergedConfig.embeddingModel || mergedConfig.embeddingModel === 'BAAI/bge-large-en-v1.5') {
+          mergedConfig.embeddingModel = 'google/embeddinggemma-2';
+        }
+        if (!mergedConfig.rerankerModel || mergedConfig.rerankerModel === 'BAAI/bge-reranker-large') {
+          mergedConfig.rerankerModel = 'jinaai/jina-reranker-v3.5';
+        }
+        if (
+          !mergedConfig.nliVerifierModel ||
+          mergedConfig.nliVerifierModel === 'FineCat-NLI-DeBERTa' ||
+          mergedConfig.nliVerifierModel === 'dleemiller/finecat-nli-l'
+        ) {
+          mergedConfig.nliVerifierModel = 'dleemiller/finecat-nli-ultra-l';
+        }
         if (!mergedConfig.neuralDevice) mergedConfig.neuralDevice = 'auto';
         if (!Array.isArray(mergedConfig.apiKeys) || mergedConfig.apiKeys.length === 0) {
           mergedConfig.apiKeys = [

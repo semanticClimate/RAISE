@@ -40,6 +40,8 @@ export interface ConnectionTestResult {
   chroma?: {
     online: boolean;
     mode: string;
+    total_chunks?: number;
+    error?: string;
   };
 }
 
@@ -233,28 +235,53 @@ export const platformAdapter = {
     }
 
     try {
-      const res = await fetchWithTimeout(
+      let res = await fetchWithTimeout(
         resolveApiUrl('/api/hardware-telemetry'),
         {
           headers: { Accept: 'application/json' },
         },
         3000
-      );
-      if (res.ok) {
+      ).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetchWithTimeout(
+          resolveApiUrl('/api/system/hardware'),
+          {
+            headers: { Accept: 'application/json' },
+          },
+          3000
+        ).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const raw = (await res.json()) as Record<string, any>;
+        const gpuStr = String(raw.gpu_model || raw.gpu_name || '');
+        const hasGpu = Boolean(
+          gpuStr &&
+          !gpuStr.toLowerCase().includes('cpu fallback') &&
+          !gpuStr.toLowerCase().includes('none')
+        );
+
         return {
           platform: typeof window !== 'undefined' ? window.navigator.platform : 'Unknown',
           os_name: typeof window !== 'undefined' ? window.navigator.userAgent : undefined,
-          total_ram_gb: typeof raw.ram_total_gb === 'number' ? raw.ram_total_gb : (raw.total_ram_gb || 0),
+          total_ram_gb:
+            typeof raw.ram_total_gb === 'number'
+              ? raw.ram_total_gb
+              : typeof raw.total_ram_gb === 'number'
+                ? raw.total_ram_gb
+                : 0,
           cpu_cores:
             typeof raw.cpu_cores === 'number'
               ? raw.cpu_cores
-              : typeof window !== 'undefined'
-                ? window.navigator.hardwareConcurrency || 0
-                : 0,
-          free_ram_gb: raw.ram_available_gb,
-          has_metal_or_cuda: Boolean(raw.gpu_model && !String(raw.gpu_model).toLowerCase().includes('cpu fallback')),
-          gpu: raw.gpu_model ? { status: 'active', details: String(raw.gpu_model) } : undefined,
+              : typeof raw.cpu_cores_logical === 'number'
+                ? raw.cpu_cores_logical
+                : typeof window !== 'undefined'
+                  ? window.navigator.hardwareConcurrency || 0
+                  : 0,
+          free_ram_gb: raw.ram_available_gb ?? raw.available_ram_gb,
+          has_metal_or_cuda: hasGpu || Boolean(raw.has_metal_or_cuda),
+          gpu: gpuStr ? { status: 'active', details: gpuStr } : undefined,
         };
       }
     } catch {

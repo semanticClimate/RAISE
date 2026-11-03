@@ -33,6 +33,9 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
         type="file"
         accept=".pdf,.txt,.docx,.md,.csv"
         onChange={onFileUpload}
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = '';
+        }}
         className="hidden"
       />
       <div
