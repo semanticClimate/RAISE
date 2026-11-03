@@ -91,13 +91,15 @@ class CrossEncoderReranker:
     """
 
     AVAILABLE_RERANKERS = {
+        "jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
+        "jina-reranker": "jinaai/jina-reranker-v3.5",
         "bge-reranker-large": "BAAI/bge-reranker-large",
         "bge-reranker-base": "BAAI/bge-reranker-base",
         "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     }
 
     def __init__(self, model_name: Optional[str] = None, device: Optional[str] = None):
-        target_name = model_name or os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+        target_name = model_name or os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5")
         self.model_name = self.AVAILABLE_RERANKERS.get(target_name, target_name)
         self.device = device or os.getenv("RERANKER_DEVICE")
         self.model = _CROSS_ENCODER_MODEL_CACHE.get(self.model_name)
@@ -130,24 +132,39 @@ class CrossEncoderReranker:
 
             token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
             try:
+                from src.core.config import resolve_local_model_path
+                resolved_name = resolve_local_model_path(self.model_name)
+
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", category=UserWarning)
-                    try:
-                        loaded_model = CrossEncoder(
-                            self.model_name,
-                            device=dev,
+                    if "jina-reranker-v3" in self.model_name.lower() or "jina-reranker-v3" in resolved_name.lower():
+                        from transformers import AutoModel
+                        loaded_model = AutoModel.from_pretrained(
+                            resolved_name,
+                            torch_dtype=torch.float16 if "cuda" in dev else torch.float32,
                             token=token,
-                            local_files_only=True,
-                        )
-                    except Exception:
-                        loaded_model = CrossEncoder(
-                            self.model_name,
-                            device=dev,
-                            token=token,
-                        )
+                            trust_remote_code=True,
+                            device_map=dev,
+                        ).eval()
+                    else:
+                        try:
+                            loaded_model = CrossEncoder(
+                                resolved_name,
+                                device=dev,
+                                token=token,
+                                trust_remote_code=True,
+                                local_files_only=True,
+                            )
+                        except Exception:
+                            loaded_model = CrossEncoder(
+                                resolved_name,
+                                device=dev,
+                                token=token,
+                                trust_remote_code=True,
+                            )
                     self.model = loaded_model
                     _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
-                    logger.info("CrossEncoder reranker (%s) initialized successfully on %s.", self.model_name, dev)
+                    logger.info("Reranker (%s) initialized successfully on %s.", self.model_name, dev)
             except Exception as e:
                 logger.warning("Could not load primary reranker (%s): %s. Attempting fallback.", self.model_name, e)
                 try:
@@ -267,8 +284,23 @@ class CrossEncoderReranker:
 
         if self.model is not None:
             try:
-                raw_scores = self.model.predict(all_pairs, batch_size=64, show_progress_bar=False)
-                all_scores = [float(s) for s in raw_scores]
+                if hasattr(self.model, "rerank"):
+                    all_scores = []
+                    for q in all_queries:
+                        cand_texts = [p[1] for p in all_pairs if p[0] == q]
+                        if cand_texts:
+                            res = self.model.rerank(q, cand_texts, max_query_length=512, max_length=1024)
+                            q_scores = [0.0] * len(cand_texts)
+                            for r in res:
+                                q_scores[int(r["index"])] = float(r["relevance_score"])
+                            all_scores.extend(q_scores)
+                        else:
+                            all_scores.extend([0.0] * len(candidates))
+                elif hasattr(self.model, "predict"):
+                    raw_scores = self.model.predict(all_pairs, batch_size=64, show_progress_bar=False)
+                    all_scores = [float(s) for s in raw_scores]
+                else:
+                    all_scores = self._score_with_flashrank_or_heuristic(all_pairs)
             except Exception:
                 all_scores = self._score_with_flashrank_or_heuristic(all_pairs)
         else:

@@ -133,9 +133,11 @@ class DocumentService:
         extract_tables: bool = True,
     ) -> Dict[str, Any]:
         """Processes a single uploaded PDF through all 5 ingestion phases."""
-        filename = file.filename or f"upload_{int(time.time())}.pdf"
+        raw_name = file.filename or f"upload_{int(time.time())}.pdf"
+        filename = Path(raw_name).name.strip("\"'")
         clean_stem = re.sub(r"[^a-zA-Z0-9_-]", "_", Path(filename).stem)[:40]
         doc_id = f"doc_{clean_stem}_{int(time.time())}"
+        self.documents_dir.mkdir(parents=True, exist_ok=True)
         save_path = self.documents_dir / filename
 
         # Phase 1: Uploading (15%)
@@ -149,6 +151,11 @@ class DocumentService:
                 detail="Streaming binary PDF to disk",
                 library=library or "default",
             )
+
+        try:
+            file.file.seek(0)
+        except Exception:
+            pass
 
         with save_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -211,7 +218,32 @@ class DocumentService:
             facts_cnt = rep.get("facts_extracted", 0)
             triples_cnt = rep.get("triples_extracted", 0)
         except Exception as e:
-            logger.warning(f"[DocumentService] Ingestion note for {filename}: {e}")
+            ingest_error = str(e)
+            logger.error(f"[DocumentService] Ingestion failed for '{filename}': {e}", exc_info=True)
+
+        if ingest_error:
+            if self.postgres_manager:
+                self.postgres_manager.upsert_document_status(
+                    doc_id=doc_id,
+                    filename=filename,
+                    phase="failed",
+                    percent=0,
+                    status="failed",
+                    detail=f"Ingestion failed: {ingest_error}",
+                    file_size_bytes=file_size,
+                    library=library or "default",
+                )
+            return {
+                "filename": filename,
+                "doc_id": doc_id,
+                "document_id": doc_id,
+                "pages_processed": 0,
+                "chunks_extracted": 0,
+                "facts_extracted": 0,
+                "triples_extracted": 0,
+                "status": "failed",
+                "error": ingest_error,
+            }
 
         # Phase 5: Ready (100%)
         if self.postgres_manager:

@@ -82,6 +82,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger("RAISE.Server")
 
+
+class PrivacyPathFilter(logging.Filter):
+    """Dynamically redacts host user directories and repo absolute paths from log outputs."""
+    def __init__(self):
+        super().__init__()
+        self.home_win = str(Path.home())
+        self.home_unix = self.home_win.replace("\\", "/")
+        try:
+            self.repo_root = str(Path(__file__).resolve().parent.parent)
+            self.repo_root_unix = self.repo_root.replace("\\", "/")
+        except Exception:
+            self.repo_root = ""
+            self.repo_root_unix = ""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            if self.repo_root:
+                record.msg = record.msg.replace(self.repo_root, ".").replace(self.repo_root_unix, ".")
+            record.msg = record.msg.replace(self.home_win, "~").replace(self.home_unix, "~")
+        if record.args:
+            if isinstance(record.args, tuple):
+                new_args = []
+                for a in record.args:
+                    if isinstance(a, str):
+                        if self.repo_root:
+                            a = a.replace(self.repo_root, ".").replace(self.repo_root_unix, ".")
+                        a = a.replace(self.home_win, "~").replace(self.home_unix, "~")
+                    new_args.append(a)
+                record.args = tuple(new_args)
+        return True
+
+
+logging.root.addFilter(PrivacyPathFilter())
+
 # Suppress informational notifications from Neo4j driver
 logging.getLogger("neo4j").setLevel(logging.WARNING)
 logging.getLogger("neo4j.notifications").setLevel(logging.WARNING)

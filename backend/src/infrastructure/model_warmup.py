@@ -41,9 +41,9 @@ def warmup_all_neural_models() -> Dict[str, float]:
     latencies: Dict[str, float] = {}
     _safe_print("\033[1;94m" + "=" * 78 + "\033[0m")
     _safe_print(" \033[1;94m[RAISE] PRE-WARMING NEURAL INFERENCE STACK (BACKGROUND GPU/CPU INIT)\033[0m")
-    _safe_print(f"  * Embedding Model : \033[93m{os.getenv('EMBEDDING_MODEL', 'BAAI/bge-large-en-v1.5')}\033[0m (Device: \033[96m{os.getenv('EMBEDDING_DEVICE', 'cuda')}\033[0m)")
-    _safe_print(f"  * Context Reranker: \033[93m{os.getenv('RERANKER_MODEL', 'BAAI/bge-reranker-large')}\033[0m (Device: \033[96m{os.getenv('RERANKER_DEVICE', 'cuda')}\033[0m)")
-    _safe_print(f"  * NLI Verifier    : \033[93m{os.getenv('NLI_MODEL', 'dleemiller/finecat-nli-l')}\033[0m (Device: \033[96m{os.getenv('NLI_DEVICE', 'cuda')}\033[0m)")
+    _safe_print(f"  * Embedding Model : \033[93m{os.getenv('EMBEDDING_MODEL', 'google/embeddinggemma-2')}\033[0m (Device: \033[96m{os.getenv('EMBEDDING_DEVICE', 'cuda')}\033[0m)")
+    _safe_print(f"  * Context Reranker: \033[93m{os.getenv('RERANKER_MODEL', 'jinaai/jina-reranker-v3.5')}\033[0m (Device: \033[96m{os.getenv('RERANKER_DEVICE', 'cuda')}\033[0m)")
+    _safe_print(f"  * NLI Verifier    : \033[93m{os.getenv('NLI_MODEL', 'dleemiller/finecat-nli-ultra-l')}\033[0m (Device: \033[96m{os.getenv('NLI_DEVICE', 'cuda')}\033[0m)")
     _safe_print("\033[1;94m" + "-" * 78 + "\033[0m")
 
     # 1. Pre-warm Embedding Model
@@ -71,8 +71,11 @@ def warmup_all_neural_models() -> Dict[str, float]:
         reranker = CrossEncoderReranker()
         reranker._ensure_model_loaded()
         if reranker.model is not None:
-            # Prime PyTorch CUDA kernels with dummy cross-encoder prediction
-            _ = reranker.model.predict([("warmup query", "warmup passage")], show_progress_bar=False)
+            # Prime PyTorch CUDA kernels with dummy cross-encoder / listwise prediction
+            if hasattr(reranker.model, "rerank"):
+                _ = reranker.model.rerank("warmup query", ["warmup passage"])
+            elif hasattr(reranker.model, "predict"):
+                _ = reranker.model.predict([("warmup query", "warmup passage")], show_progress_bar=False)
             dur = round((time.perf_counter() - t0) * 1000, 1)
             latencies["reranker"] = dur
             logger.info("Contextual Cross-Encoder reranker (%s) pre-warmed in %sms.", reranker.model_name, dur)

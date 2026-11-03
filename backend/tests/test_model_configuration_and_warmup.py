@@ -32,11 +32,11 @@ def test_typed_configuration_defaults_and_env():
     assert hasattr(cfg, "reranker")
     assert hasattr(cfg, "nli")
 
-    assert cfg.vector.embedding_model == os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
+    assert cfg.vector.embedding_model == os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
     assert cfg.vector.embedding_device == os.getenv("EMBEDDING_DEVICE", "cuda")
-    assert cfg.reranker.model_name == os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+    assert cfg.reranker.model_name == os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5")
     assert cfg.reranker.device == os.getenv("RERANKER_DEVICE", "cuda")
-    assert cfg.nli.model_name == os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l")
+    assert cfg.nli.model_name == os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l")
     assert cfg.nli.device == os.getenv("NLI_DEVICE", "cuda")
 
 

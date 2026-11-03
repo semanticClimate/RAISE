@@ -65,10 +65,14 @@ async def upload_document_spec(
     use_engine = "docling" if (effective_parser.lower() in ("docling", "deep") or effective_mode.lower() == "expert" or effective_full_potential) else "auto"
 
     upload_list: List[UploadFile] = []
-    if files:
-        upload_list.extend(files)
-    if file and file not in upload_list:
-        upload_list.append(file)
+    seen_filenames = set()
+    raw_candidates = ([file] if file else []) + (files or [])
+    for candidate in raw_candidates:
+        if candidate and candidate.filename:
+            fn = Path(candidate.filename).name.strip("\"'")
+            if fn and fn not in seen_filenames:
+                seen_filenames.add(fn)
+                upload_list.append(candidate)
 
     if not upload_list:
         raise HTTPException(status_code=400, detail="No file selected for upload")
@@ -89,10 +93,16 @@ async def upload_document_spec(
 
     total_nodes, total_edges = document_service.sync_rag_and_graph()
     first_rep = reports[0] if reports else {}
+    failed_count = sum(1 for r in reports if r.get("status") == "failed")
+    overall_status = "error" if (reports and failed_count == len(reports)) else "success"
 
     return {
-        "status": "success",
-        "message": "Document(s) uploaded and processed successfully",
+        "status": overall_status,
+        "message": (
+            "Document(s) uploaded and processed successfully"
+            if overall_status == "success"
+            else f"Document ingestion failed: {reports[0].get('error', 'Processing error')}"
+        ),
         "uploaded_count": len(reports),
         "document_id": first_rep.get("doc_id"),
         "doc_id": first_rep.get("doc_id"),
@@ -140,11 +150,17 @@ async def upload_academic_pdfs(
     ingested_reports = []
     academic_pipeline = AcademicPipelineIngestor(download_dir=DOWNLOAD_DIR)
 
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     for upload_file in files:
         if not upload_file.filename.lower().endswith(".pdf"):
             continue
 
-        dest_path = DOWNLOAD_DIR / upload_file.filename
+        dest_name = Path(upload_file.filename).name.strip("\"'")
+        dest_path = DOWNLOAD_DIR / dest_name
+        try:
+            upload_file.file.seek(0)
+        except Exception:
+            pass
         with open(dest_path, "wb") as buffer:
             shutil.copyfileobj(upload_file.file, buffer)
 

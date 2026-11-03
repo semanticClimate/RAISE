@@ -52,6 +52,49 @@ def _load_env_file():
 _load_env_file()
 
 
+def resolve_local_model_path(repo_or_path: str) -> str:
+    """
+    Dynamically checks for locally downloaded weights in workspace model folders (models/...)
+    before falling back to remote Hugging Face repository ID.
+    Supports nested paths (models/google/embeddinggemma-2), flat paths, and direct paths.
+    """
+    if not repo_or_path:
+        return repo_or_path
+    cleaned = repo_or_path.strip().strip('"').strip("'")
+    if os.path.isdir(cleaned):
+        return cleaned
+
+    base_dirs = []
+    if os.environ.get("MODELS_DIR"):
+        base_dirs.append(Path(os.environ["MODELS_DIR"]))
+    base_dirs.extend([
+        PROJECT_ROOT.parent / "models",
+        PROJECT_ROOT / "models",
+        Path.cwd() / "models",
+        Path.cwd() / "backend" / "models",
+    ])
+
+    norm_slash = cleaned.replace("\\", "/")
+    basename = norm_slash.split("/")[-1]
+    dash_name = norm_slash.replace("/", "--")
+    under_name = norm_slash.replace("/", "_")
+
+    candidates = []
+    for b in base_dirs:
+        candidates.extend([
+            b / norm_slash,
+            b / basename,
+            b / dash_name,
+            b / under_name,
+        ])
+
+    for cand in candidates:
+        if cand.is_dir() and any(cand.iterdir()):
+            return str(cand)
+
+    return repo_or_path
+
+
 class Neo4jConfig(BaseModel):
     """Neo4j Graph Database Configuration."""
     uri: str = Field(default_factory=lambda: os.getenv("NEO4J_URI", "bolt://localhost:7687"))
@@ -66,15 +109,15 @@ class Neo4jConfig(BaseModel):
 class VectorConfig(BaseModel):
     persist_directory: Path = Field(
         default_factory=lambda: (
-            Path(os.getenv("CHROMA_PERSIST_DIRECTORY", str(PROJECT_ROOT / ".chromadb_bge_large")))
+            Path(os.getenv("CHROMA_PERSIST_DIRECTORY", str(PROJECT_ROOT / ".chromadb_embeddinggemma_2")))
             if Path(os.getenv("CHROMA_PERSIST_DIRECTORY", "")).is_absolute()
-            else (PROJECT_ROOT / os.getenv("CHROMA_PERSIST_DIRECTORY", ".chromadb_bge_large")).resolve()
+            else (PROJECT_ROOT / os.getenv("CHROMA_PERSIST_DIRECTORY", ".chromadb_embeddinggemma_2")).resolve()
         )
     )
-    collection_name: str = Field(default_factory=lambda: os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_bge_large"))
-    embedding_model: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5"))
+    collection_name: str = Field(default_factory=lambda: os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_embeddinggemma_2"))
+    embedding_model: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"))
     embedding_device: str = Field(default_factory=lambda: os.getenv("EMBEDDING_DEVICE", "cuda"))
-    embedding_dimension: int = Field(default_factory=lambda: int(os.getenv("EMBEDDING_DIMENSION", "1024")))
+    embedding_dimension: int = Field(default_factory=lambda: int(os.getenv("EMBEDDING_DIMENSION", "768")))
     hnsw_space: str = Field(default_factory=lambda: os.getenv("CHROMA_HNSW_SPACE", "cosine"))
 
     @staticmethod
@@ -97,7 +140,9 @@ class VectorConfig(BaseModel):
 
         d = _clean(dataset) or "default"
         p = _clean(parser) or "docling"
-        m = _clean(embedding_model) or "bge_large"
+        m = _clean(embedding_model) or "embeddinggemma_2"
+        if "embeddinggemma" in m or "gemma" in m:
+            m = "embeddinggemma_2"
         if "bge_large" in m:
             m = "bge_large"
         elif "bge_m3" in m:
@@ -125,14 +170,14 @@ class VectorConfig(BaseModel):
 
 class RerankerConfig(BaseModel):
     """Contextual Cross-Encoder Reranker Configuration."""
-    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"))
+    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5"))
     device: str = Field(default_factory=lambda: os.getenv("RERANKER_DEVICE", "cuda"))
     top_n: int = Field(default_factory=lambda: int(os.getenv("RERANKER_TOP_N", "8")))
 
 
 class NLIConfig(BaseModel):
     """Natural Language Inference Verification Configuration."""
-    model_name: str = Field(default_factory=lambda: os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l"))
+    model_name: str = Field(default_factory=lambda: os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"))
     device: str = Field(default_factory=lambda: os.getenv("NLI_DEVICE", "cuda"))
     max_length: int = Field(default_factory=lambda: int(os.getenv("NLI_MAX_LENGTH", "4096")))
 

@@ -45,6 +45,8 @@ class VectorEmbeddingsMixin:
     """Provides dense embedding computation, model loading, and vector validation."""
 
     AVAILABLE_MODELS = {
+        "embeddinggemma-2": "google/embeddinggemma-2",
+        "embeddinggemma": "google/embeddinggemma-2",
         "bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
         "bge-large": "BAAI/bge-large-en-v1.5",
         "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
@@ -71,6 +73,8 @@ class VectorEmbeddingsMixin:
         model_name = getattr(self, "model_key", "").lower()
         if "minilm" in model_name:
             return 384
+        if "embeddinggemma" in model_name or "gemma" in model_name:
+            return 768
         if "qwen" in model_name and "4b" in model_name:
             return 4096
         return 1024
@@ -102,9 +106,16 @@ class VectorEmbeddingsMixin:
                         dev = "cpu"
 
                     token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
-                    model_id = getattr(self, "model_path", None) or os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
-                    resolved_id = self.AVAILABLE_MODELS.get(model_id, model_id)
-                    # Security Policy (CVE-2026-45829): Whitelist parameters and ban trust_remote_code
+                    model_id = getattr(self, "model_path", None) or os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
+                    from src.core.config import resolve_local_model_path
+                    raw_id = self.AVAILABLE_MODELS.get(model_id, model_id)
+                    resolved_id = resolve_local_model_path(raw_id)
+
+                    embed_cfg = None
+                    if "embeddinggemma" in str(raw_id).lower() or "embeddinggemma" in str(resolved_id).lower():
+                        embed_cfg = {"audio_config": None, "vision_config": None}
+
+                    model_kwargs = {"torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32}
                     try:
                         self.embed_model = SentenceTransformer(
                             resolved_id,
@@ -112,7 +123,9 @@ class VectorEmbeddingsMixin:
                             local_files_only=True,
                             device=dev,
                             token=token,
-                            trust_remote_code=False,
+                            trust_remote_code=True,
+                            config_kwargs=embed_cfg,
+                            model_kwargs=model_kwargs,
                         )
                     except Exception:
                         self.embed_model = SentenceTransformer(
@@ -120,7 +133,9 @@ class VectorEmbeddingsMixin:
                             cache_folder=cache_folder,
                             device=dev,
                             token=token,
-                            trust_remote_code=False,
+                            trust_remote_code=True,
+                            config_kwargs=embed_cfg,
+                            model_kwargs=model_kwargs,
                         )
             except Exception as e:
                 print(f"SentenceTransformer fallback notice: {e}")

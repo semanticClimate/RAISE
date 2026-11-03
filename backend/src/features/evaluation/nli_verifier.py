@@ -33,7 +33,7 @@ class FineCatNLIVerifier:
     specifically fine-tuned on curated multi-source NLI benchmarks.
     """
 
-    MODEL_ID = "dleemiller/finecat-nli-l"
+    MODEL_ID = "dleemiller/finecat-nli-ultra-l"
     LABEL_MAPPING = {0: "ENTAILMENT", 1: "NEUTRAL", 2: "CONTRADICTION"}
 
     def __init__(self, model_id: Optional[str] = None, max_length: int = 4096, device: Optional[str] = None):
@@ -70,23 +70,37 @@ class FineCatNLIVerifier:
 
             model_dtype = torch.float16 if "cuda" in target_dev else torch.float32
 
+            from src.core.config import resolve_local_model_path
+            resolved_model = resolve_local_model_path(target_model)
+
             token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
             try:
-                tokenizer = AutoTokenizer.from_pretrained(target_model, token=token, local_files_only=True)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    resolved_model,
+                    token=token,
+                    trust_remote_code=True,
+                    local_files_only=True,
+                )
                 model = AutoModelForSequenceClassification.from_pretrained(
-                    target_model,
+                    resolved_model,
                     dtype=model_dtype,
                     token=token,
+                    trust_remote_code=True,
                     local_files_only=True,
                 )
             except Exception:
-                tokenizer = AutoTokenizer.from_pretrained(target_model, token=token)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    resolved_model,
+                    token=token,
+                    trust_remote_code=True,
+                )
                 model = AutoModelForSequenceClassification.from_pretrained(
-                    target_model,
+                    resolved_model,
                     dtype=model_dtype,
                     token=token,
+                    trust_remote_code=True,
                 )
-            model.to(target_dev)
+            model = model.to(device=target_dev, dtype=model_dtype)
             model.eval()
             model._loaded_model_id = target_model
 
