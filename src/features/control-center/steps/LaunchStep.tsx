@@ -121,34 +121,16 @@ export const LaunchStep: React.FC = () => {
     },
   ];
 
+  const offlineSubstrates = substrates.filter((s) => !s.online);
+  const isAllSubstratesOnline = offlineSubstrates.length === 0;
+
   return (
     <div
       className="space-y-4 animate-in fade-in duration-200"
       data-testid="control-center-launch-step"
     >
       {/* Ready / Incomplete Status Banner */}
-      {hasConfiguredKey ? (
-        <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-            <div>
-              <h4 className="text-sm font-bold text-white">System Ready & Synchronized</h4>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Workstation configured. All neural substrates and runtime parameters are active.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleTestAllSubstrates}
-            disabled={isTestingSubstrates}
-            className="px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin' : ''}`} />
-            <span>Test Substrates</span>
-          </button>
-        </div>
-      ) : (
+      {!hasConfiguredKey ? (
         <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
@@ -165,6 +147,50 @@ export const LaunchStep: React.FC = () => {
             className="text-xs font-bold text-amber-300 hover:text-white underline underline-offset-2 cursor-pointer shrink-0"
           >
             Configure &rarr;
+          </button>
+        </div>
+      ) : isAllSubstratesOnline ? (
+        <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <div>
+              <h4 className="text-sm font-bold text-white">System Ready & Synchronized</h4>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Workstation configured. All neural substrates and external database stores are active.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleTestAllSubstrates}
+            disabled={isTestingSubstrates}
+            className="px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin' : ''}`} />
+            <span>Test Substrates</span>
+          </button>
+        </div>
+      ) : (
+        <div className="p-3.5 rounded-xl border border-sky-500/30 bg-sky-500/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-sky-400 shrink-0" />
+            <div>
+              <h4 className="text-sm font-bold text-white">
+                Workstation Active (In-Memory Fallback Mode)
+              </h4>
+              <p className="text-xs text-slate-300 mt-0.5">
+                ChromaDB vector store is active. {offlineSubstrates.map((s) => s.name.split(' ')[0]).join(', ')} are offline — running on in-process Python memory (NetworkX, SQLite, fakeredis).
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleTestAllSubstrates}
+            disabled={isTestingSubstrates}
+            className="px-3 py-1.5 rounded-lg border border-sky-500/30 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin' : ''}`} />
+            <span>Test Substrates</span>
           </button>
         </div>
       )}

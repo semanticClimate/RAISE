@@ -1,6 +1,6 @@
 import katex from 'katex';
 import 'katex/dist/contrib/mhchem.mjs';
-import type { SubgraphQueryResponse } from '../types';
+import type { SubgraphQueryResponse, ChatSession } from '../types';
 import { cleanRagResponseText } from './citationParser';
 
 /**
@@ -1151,20 +1151,165 @@ function escapePdfText(text: string): string {
           return 'delta';
         case 'Δ':
           return 'Delta';
-        case 'π':
-          return 'pi';
+        case 'ε':
+          return 'epsilon';
+        case 'θ':
+          return 'theta';
         case 'λ':
           return 'lambda';
+        case 'μ':
+          return 'mu';
+        case 'π':
+          return 'pi';
+        case 'ρ':
+          return 'rho';
+        case 'σ':
+          return 'sigma';
+        case 'Σ':
+          return 'Sigma';
+        case 'τ':
+          return 'tau';
+        case 'φ':
+        case 'ϕ':
+          return 'phi';
+        case 'ω':
+          return 'omega';
+        case 'Ω':
+          return 'Omega';
         case '∑':
           return 'sum';
         case '∫':
           return 'integral';
         case '∞':
           return 'infinity';
+        case '·':
+          return ' * ';
+        case '⁻':
+          return '-';
+        case '₀':
+          return '0';
+        case '₁':
+          return '1';
+        case '₂':
+          return '2';
+        case '₃':
+          return '3';
+        case '₄':
+          return '4';
+        case '₅':
+          return '5';
+        case '₆':
+          return '6';
+        case '₇':
+          return '7';
+        case '₈':
+          return '8';
+        case '₉':
+          return '9';
+        case 'ᵢ':
+          return 'i';
+        case 'ⱼ':
+          return 'j';
+        case 'ₖ':
+          return 'k';
+        case 'ₙ':
+          return 'n';
+        case 'ₓ':
+          return 'x';
+        case 'ᶻ':
+          return 'z';
         default:
           return ' ';
       }
     });
+}
+
+/**
+ * Formats LaTeX mathematical syntax into clean, elegant, human-readable
+ * mathematical notation (e.g. fractions, Greek symbols, superscripts, powers)
+ * instead of raw programming/TeX code slash commands.
+ */
+export function formatMathFormula(latex: string): string {
+  let s = latex.trim();
+  // Strip outer delimiters
+  if (s.startsWith('$$') && s.endsWith('$$')) {
+    s = s.slice(2, -2).trim();
+  } else if (s.startsWith('$') && s.endsWith('$')) {
+    s = s.slice(1, -1).trim();
+  }
+
+  // Handle chemical formulas \ce{...}
+  s = s.replace(/\\ce\{([^}]+)\}/g, '$1');
+
+  // Fractions: \frac{A}{B} -> (A) / (B) or A / B
+  s = s.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, (_m, num, den) => {
+    const cleanNum = num.trim();
+    const cleanDen = den.trim();
+    const numNeedsParen = cleanNum.includes('+') || cleanNum.includes('-');
+    const denNeedsParen =
+      cleanDen.includes('+') || cleanDen.includes('-') || cleanDen.includes('*');
+    return `${numNeedsParen ? `(${cleanNum})` : cleanNum} / ${denNeedsParen ? `(${cleanDen})` : cleanDen}`;
+  });
+
+  // Square roots: \sqrt{X} -> sqrt(X)
+  s = s.replace(/\\sqrt\{([^{}]+)\}/g, 'sqrt($1)');
+
+  // Common LaTeX commands & brackets
+  s = s
+    .replace(/\\left\s*([(\[{|])/g, '$1')
+    .replace(/\\right\s*([)\]}|])/g, '$1')
+    .replace(/\\cdot/g, ' * ')
+    .replace(/\\times/g, ' x ')
+    .replace(/\\pm/g, ' +/- ')
+    .replace(/\\neq/g, ' != ')
+    .replace(/\\approx/g, ' ~= ')
+    .replace(/\\le(q)?/g, ' <= ')
+    .replace(/\\ge(q)?/g, ' >= ')
+    .replace(/\\infty/g, 'infinity')
+    .replace(/\\sum/g, 'sum')
+    .replace(/\\int/g, 'integral')
+    .replace(/\\partial/g, 'd')
+    .replace(/\\nabla/g, 'grad');
+
+  // Greek letters
+  s = s
+    .replace(/\\sigma/g, 'sigma')
+    .replace(/\\alpha/g, 'alpha')
+    .replace(/\\beta/g, 'beta')
+    .replace(/\\gamma/g, 'gamma')
+    .replace(/\\delta/g, 'delta')
+    .replace(/\\epsilon/g, 'epsilon')
+    .replace(/\\theta/g, 'theta')
+    .replace(/\\lambda/g, 'lambda')
+    .replace(/\\mu/g, 'mu')
+    .replace(/\\pi/g, 'pi')
+    .replace(/\\tau/g, 'tau')
+    .replace(/\\phi/g, 'phi')
+    .replace(/\\omega/g, 'omega')
+    .replace(/\\Delta/g, 'Delta')
+    .replace(/\\Sigma/g, 'Sigma')
+    .replace(/\\Omega/g, 'Omega');
+
+  // Subscripts & Superscripts
+  s = s
+    .replace(/\^\{([^}]+)\}/g, '^($1)')
+    .replace(/_\{([^}]+)\}/g, '_($1)');
+
+  // Clean \text{...}, \mathbf{...}, \mathit{...}
+  s = s
+    .replace(/\\(?:text|mathbf|mathit|mathrm)\{([^}]+)\}/g, '$1')
+    .replace(/\\,/g, ' ')
+    .replace(/\\;/g, ' ')
+    .replace(/\\!/g, '')
+    .replace(/\\quad/g, '   ')
+    .replace(/\\qquad/g, '      ');
+
+  // Clean residual backslashes
+  s = s.replace(/\\([a-zA-Z]+)/g, '$1');
+
+  // Normalize multiple spaces
+  s = s.replace(/\s+/g, ' ').trim();
+  return s;
 }
 
 /**
@@ -1283,7 +1428,6 @@ export function generatePdfBlob(
   const uniqueUnis = Array.from(
     new Set((citations || []).map((c) => c.university).filter(Boolean))
   ) as string[];
-  const totalCitations = citations?.length || 0;
 
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
@@ -1315,33 +1459,12 @@ export function generatePdfBlob(
     `BT /F2 11 Tf 1 1 1 rg ${marginX + 12} ${curY - 18} Td (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')}) Tj ET`
   );
   currentOps.push(
-    `BT /F1 7.5 Tf 0.7 0.78 0.9 rg ${marginX + 12} ${curY - 29} Td (${escapePdfText('ISO A4 Standard • Justified Research Intelligence Report')}) Tj ET`
+    `BT /F1 7.5 Tf 0.7 0.78 0.9 rg ${marginX + 12} ${curY - 29} Td (${escapePdfText('Research Assessment & Intelligence Synthesis')}) Tj ET`
   );
   currentOps.push(
     `BT /F1 8 Tf 1 1 1 rg ${marginX + contentWidth - 85} ${curY - 22} Td (${escapePdfText(`${dateStr} ${timeStr}`)}) Tj ET`
   );
-  curY -= 42;
-
-  // --- METADATA STRIP ---
-  ensureSpace(24);
-  const metaBoxHeight = 20;
-  currentOps.push(`0.96 0.97 0.99 rg 0.88 0.91 0.95 RG 0.5 w`);
-  currentOps.push(`${marginX} ${curY - metaBoxHeight} ${contentWidth} ${metaBoxHeight} re b`);
-
-  const metaLeft = `A4 (210 x 297 mm)  •  Justified  •  Audited Citations: ${totalCitations}`;
-  const metaRight =
-    uniqueUnis.length > 0
-      ? `Institute: ${uniqueUnis.slice(0, 2).join(', ').slice(0, 30)}`
-      : uniqueDocs.length > 0
-        ? `Corpus: ${uniqueDocs[0].slice(0, 30)}`
-        : 'Research Corpus';
-  currentOps.push(
-    `BT /F2 7.5 Tf 0.25 0.35 0.5 rg ${marginX + 8} ${curY - 13} Td (${escapePdfText(metaLeft)}) Tj ET`
-  );
-  currentOps.push(
-    `BT /F1 7.5 Tf 0.4 0.48 0.58 rg ${marginX + contentWidth - 170} ${curY - 13} Td (${escapePdfText(metaRight)}) Tj ET`
-  );
-  curY -= metaBoxHeight + 8;
+  curY -= 48;
 
   // --- QUERY BOX ---
   ensureSpace(45);
@@ -1407,15 +1530,23 @@ export function generatePdfBlob(
         formula = mathLines.join(' ').trim();
       }
 
-      ensureSpace(28);
-      currentOps.push(`0.96 0.97 0.99 rg 0.88 0.91 0.95 RG 0.5 w`);
-      currentOps.push(`${marginX} ${curY - 24} ${contentWidth} 24 re b`);
-      const cleanFormula = formula.replace(/\\ce\{([^}]+)\}/g, '$1');
-      const safeFormula = escapePdfText(cleanFormula).slice(0, 85);
+      const formattedFormula = formatMathFormula(formula);
+      const safeFormula = escapePdfText(formattedFormula).slice(0, 95);
+
+      ensureSpace(34);
+      // Clean mathematical formulation card with left accent bar
+      currentOps.push(`0.97 0.98 1 rg 0.82 0.87 0.96 RG 0.5 w`);
+      currentOps.push(`${marginX} ${curY - 28} ${contentWidth} 28 re b`);
+      currentOps.push(`0.2 0.42 0.85 RG 2 w ${marginX} ${curY - 28} m ${marginX} ${curY} l S`);
       currentOps.push(
-        `BT /F3 9.5 Tf 0.1 0.15 0.25 rg ${marginX + 16} ${curY - 15} Td (${safeFormula}) Tj ET`
+        `BT /F2 7 Tf 0.35 0.45 0.65 rg ${marginX + 12} ${curY - 11} Td (${escapePdfText('FORMULATION')}) Tj ET`
       );
-      curY -= 30;
+      const estW = estimateHelveticaWidth(safeFormula, 10);
+      const mathX = Math.max(marginX + 12, marginX + (contentWidth - estW) / 2);
+      currentOps.push(
+        `BT /F2 10 Tf 0.08 0.14 0.32 rg ${mathX} ${curY - 22} Td (${safeFormula}) Tj ET`
+      );
+      curY -= 36;
       continue;
     }
 
@@ -1568,15 +1699,15 @@ export function generatePdfBlob(
     }
   }
 
-  // --- CITATIONS & REFERENCES SECTION ---
+  // --- REFERENCES SECTION ---
   if (citations && citations.length > 0) {
     curY -= 12;
     ensureSpace(32);
     currentOps.push(
-      `BT /F2 11 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText(`GROUNDED REFERENCES & AUDITED SOURCES (${citations.length})`)}) Tj ET`
+      `BT /F2 11 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('References')}) Tj ET`
     );
     currentOps.push(
-      `0.08 0.4 0.65 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 230} ${curY - 16} l S`
+      `0.08 0.4 0.65 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 80} ${curY - 16} l S`
     );
     curY -= 26;
 
@@ -1638,12 +1769,22 @@ export function generatePdfBlob(
   const totalPages = Math.max(1, pages.length);
   const finalPagesContent = pages.map((pageStream, pageIndex) => {
     const pageNum = pageIndex + 1;
+    const watermarkOps = [
+      'q',
+      '0.95 0.96 0.98 rg', // Elegant, subtle diagonal RAISE watermark
+      'BT',
+      '/F2 52 Tf',
+      '0.7071 0.7071 -0.7071 0.7071 210 330 Tm',
+      `(${escapePdfText('RAISE')}) Tj`,
+      'ET',
+      'Q',
+    ].join('\n');
     const footerOps = [
       `0.85 0.88 0.92 RG 0.5 w ${marginX} 40 m ${marginX + contentWidth} 40 l S`,
-      `BT /F1 7.5 Tf 0.55 0.6 0.68 rg ${marginX} 28 Td (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction • ISO A4 Justified')}) Tj ET`,
+      `BT /F1 7.5 Tf 0.55 0.6 0.68 rg ${marginX} 28 Td (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')}) Tj ET`,
       `BT /F1 7.5 Tf 0.55 0.6 0.68 rg ${marginX + contentWidth - 55} 28 Td (${escapePdfText(`Page ${pageNum} of ${totalPages}`)}) Tj ET`,
     ].join('\n');
-    return `${pageStream}\n${footerOps}`;
+    return `${watermarkOps}\n${pageStream}\n${footerOps}`;
   });
 
   // --- BUILD PDF 1.4 FILE STRUCTURE ---
@@ -1719,7 +1860,7 @@ export function generatePdfBlob(
   const keywordsStr = `RAISE, GraphRAG, A4, Justified, Research Synthesis${uniqueDocs.length > 0 ? `, ${uniqueDocs.join(', ')}` : ''}${uniqueUnis.length > 0 ? `, ${uniqueUnis.join(', ')}` : ''}`;
 
   appendString(
-    `${infoId} 0 obj\n<<\n  /Title (${escapePdfText(`RAISE Report: ${query.slice(0, 60) || 'Research Inquiry'}${safeDocTitle}`)})\n  /Subject (${escapePdfText('Research Assessment Intelligence & Semantic Extraction')})\n  /Author (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')})\n  /Creator (${escapePdfText('RAISE Semantic Research Platform')})\n  /Producer (${escapePdfText('RAISE PDF Engine 1.4 (ISO A4 Justified)')})\n  /CreationDate (${pdfDate})\n  /ModDate (${pdfDate})\n  /Keywords (${escapePdfText(keywordsStr)})\n>>\nendobj\n`
+    `${infoId} 0 obj\n<<\n  /Title (${escapePdfText(`RAISE Report: ${query.slice(0, 60) || 'Research Inquiry'}${safeDocTitle}`)})\n  /Subject (${escapePdfText('Research Assessment Intelligence & Semantic Extraction')})\n  /Author (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')})\n  /Creator (${escapePdfText('RAISE Semantic Research Platform')})\n  /Producer (${escapePdfText('RAISE PDF Engine 1.4')})\n  /CreationDate (${pdfDate})\n  /ModDate (${pdfDate})\n  /Keywords (${escapePdfText(keywordsStr)})\n>>\nendobj\n`
   );
 
   // Cross Reference Table
@@ -1781,6 +1922,554 @@ export function exportAsPdf(
 ): void {
   const blob = generatePdfBlob(query, answerText, response);
   const filename = customFilename || generateExportFilename(query, 'pdf');
+  downloadBlob(blob, filename);
+}
+
+/**
+ * Generates a valid multi-page PDF (PDF 1.4) binary document Blob
+ * containing the complete conversation transcript for a session,
+ * ISO A4 page dimensions, full turns (User inquiries & RAISE intelligence responses),
+ * duration latency, citations/sources, page numbers on every page footer ("Page X of Y"),
+ * and document metadata (/Info dictionary).
+ */
+export function generateSessionPdfBlob(session: ChatSession): Blob {
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const marginX = 42;
+  const contentWidth = pageWidth - marginX * 2; // 511.28 pt
+  const topY = 785;
+  const bottomY = 56;
+
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  const sessionTitle =
+    session.title && session.title !== 'New Chat'
+      ? session.title
+      : 'RAISE Research Session Transcript';
+  const rawMessages = Array.isArray(session.messages) ? session.messages : [];
+  // Filter out any orphaned empty turns
+  const messages = rawMessages.filter((m) => {
+    const txt = (
+      m.text ||
+      (m as any).content ||
+      m.response?.grounded_answer ||
+      m.response?.answer ||
+      m.response?.reply ||
+      ''
+    ).trim();
+    return Boolean(txt || m.response || m.error);
+  });
+
+  const userTurns = messages.filter((m) => m.role === 'user').length;
+  const assistantTurns = messages.filter((m) => m.role === 'assistant').length;
+
+  // Attached docs metadata
+  const docNames: string[] = [];
+  if (Array.isArray(session.sources)) {
+    session.sources.forEach((s: any) => {
+      if (s?.name) docNames.push(s.name);
+    });
+  }
+  if (Array.isArray(session.attached_docs)) {
+    session.attached_docs.forEach((d: string) => {
+      if (d && !docNames.includes(d)) docNames.push(d);
+    });
+  }
+
+  // Collection of page streams
+  const pages: string[] = [];
+  let currentOps: string[] = [];
+  let curY = topY;
+
+  const startNewPage = () => {
+    if (currentOps.length > 0) {
+      pages.push(currentOps.join('\n'));
+      currentOps = [];
+    }
+    curY = topY;
+  };
+
+  const ensureSpace = (ptsNeeded: number) => {
+    if (curY - ptsNeeded < bottomY) {
+      startNewPage();
+    }
+  };
+
+  // --- PAGE 1: TRANSCRIPT HEADER BANNER ---
+  currentOps.push(`0.06 0.09 0.16 rg`); // Dark Navy
+  currentOps.push(`${marginX} ${curY - 40} ${contentWidth} 40 re f`);
+  currentOps.push(
+    `BT /F2 11.5 Tf 1 1 1 rg ${marginX + 12} ${curY - 18} Td (${escapePdfText('RAISE: Complete Conversation Transcript')}) Tj ET`
+  );
+  currentOps.push(
+    `BT /F1 7.5 Tf 0.7 0.78 0.9 rg ${marginX + 12} ${curY - 30} Td (${escapePdfText('Verified Multi-Turn Conversation Record')}) Tj ET`
+  );
+  currentOps.push(
+    `BT /F1 8 Tf 1 1 1 rg ${marginX + contentWidth - 95} ${curY - 24} Td (${escapePdfText(`${dateStr} ${timeStr}`)}) Tj ET`
+  );
+  curY -= 48;
+
+  // --- SESSION METADATA STRIP ---
+  ensureSpace(28);
+  const metaBoxHeight = 24;
+  currentOps.push(`0.96 0.97 0.99 rg 0.88 0.91 0.95 RG 0.5 w`);
+  currentOps.push(`${marginX} ${curY - metaBoxHeight} ${contentWidth} ${metaBoxHeight} re b`);
+
+  const metaLeft = `Session: ${escapePdfText(sessionTitle.slice(0, 50))}  •  ${messages.length} messages (${userTurns} inquiries, ${assistantTurns} responses)`;
+  const metaRight =
+    docNames.length > 0
+      ? `Corpus: ${escapePdfText(docNames.slice(0, 2).join(', ').slice(0, 28))}`
+      : `ID: ${session.id.slice(0, 18)}...`;
+  currentOps.push(
+    `BT /F2 7.5 Tf 0.22 0.32 0.48 rg ${marginX + 8} ${curY - 15} Td (${escapePdfText(metaLeft)}) Tj ET`
+  );
+  currentOps.push(
+    `BT /F1 7 Tf 0.45 0.5 0.58 rg ${marginX + contentWidth - 145} ${curY - 15} Td (${escapePdfText(metaRight)}) Tj ET`
+  );
+  curY -= metaBoxHeight + 14;
+
+  // Helper to render markdown paragraphs/tables/lists/math
+  const renderMarkdownBlock = (rawText: string) => {
+    const lines = rawText.split('\n');
+    for (let pIdx = 0; pIdx < lines.length; pIdx++) {
+      const rawLine = lines[pIdx];
+      const trimmed = rawLine.trim();
+      if (!trimmed) {
+        curY -= 6;
+        continue;
+      }
+
+      // Block LaTeX Math ($$ ... $$)
+      if (trimmed.startsWith('$$')) {
+        let formula = '';
+        if (trimmed.length > 4 && trimmed.endsWith('$$')) {
+          formula = trimmed.slice(2, -2).trim();
+        } else {
+          const mathLines: string[] = [];
+          if (trimmed.length > 2) mathLines.push(trimmed.slice(2));
+          pIdx++;
+          while (
+            pIdx < lines.length &&
+            !lines[pIdx].trim().endsWith('$$') &&
+            lines[pIdx].trim() !== '$$'
+          ) {
+            mathLines.push(lines[pIdx]);
+            pIdx++;
+          }
+          if (pIdx < lines.length) {
+            const lastLine = lines[pIdx].trim();
+            if (lastLine !== '$$') {
+              mathLines.push(lastLine.replace(/\$\$$/, ''));
+            }
+          }
+          formula = mathLines.join(' ').trim();
+        }
+
+        const formattedFormula = formatMathFormula(formula);
+        const safeFormula = escapePdfText(formattedFormula).slice(0, 95);
+
+        ensureSpace(34);
+        // Clean mathematical formulation card with left accent bar
+        currentOps.push(`0.97 0.98 1 rg 0.82 0.87 0.96 RG 0.5 w`);
+        currentOps.push(`${marginX} ${curY - 28} ${contentWidth} 28 re b`);
+        currentOps.push(`0.2 0.42 0.85 RG 2 w ${marginX} ${curY - 28} m ${marginX} ${curY} l S`);
+        currentOps.push(
+          `BT /F2 7 Tf 0.35 0.45 0.65 rg ${marginX + 12} ${curY - 11} Td (${escapePdfText('FORMULATION')}) Tj ET`
+        );
+        const estW = estimateHelveticaWidth(safeFormula, 10);
+        const mathX = Math.max(marginX + 12, marginX + (contentWidth - estW) / 2);
+        currentOps.push(
+          `BT /F2 10 Tf 0.08 0.14 0.32 rg ${mathX} ${curY - 22} Td (${safeFormula}) Tj ET`
+        );
+        curY -= 36;
+        continue;
+      }
+
+      // Markdown Table
+      if (trimmed.includes('|') && pIdx + 1 < lines.length) {
+        const nextTrimmed = lines[pIdx + 1].trim();
+        if (/^\|?\s*:?-+:?\s*(\|(\s*:?-+:?\s*))+\|?$/.test(nextTrimmed)) {
+          const headers = splitTableRow(trimmed);
+          pIdx += 2;
+          const rows: string[][] = [];
+          while (
+            pIdx < lines.length &&
+            lines[pIdx].trim().includes('|') &&
+            !lines[pIdx].trim().startsWith('#')
+          ) {
+            rows.push(splitTableRow(lines[pIdx]));
+            pIdx++;
+          }
+          pIdx--; // Adjust for loop increment
+
+          const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
+          const colWidth = contentWidth / colCount;
+
+          // Render Table Header
+          ensureSpace(22);
+          currentOps.push(`0.94 0.96 0.98 rg 0.82 0.86 0.9 RG 0.75 w`);
+          currentOps.push(`${marginX} ${curY - 18} ${contentWidth} 18 re b`);
+          headers.forEach((h, cIdx) => {
+            const cellX = marginX + cIdx * colWidth + 6;
+            const maxChars = Math.max(4, Math.floor(colWidth / 5.5));
+            const truncated = escapePdfText(h).slice(0, maxChars);
+            currentOps.push(
+              `BT /F2 8 Tf 0.08 0.12 0.22 rg ${cellX} ${curY - 12} Td (${truncated}) Tj ET`
+            );
+          });
+          curY -= 18;
+
+          // Render Table Rows
+          rows.forEach((row, rIdx) => {
+            ensureSpace(16);
+            if (rIdx % 2 === 1) {
+              currentOps.push(`0.98 0.99 1 rg`);
+              currentOps.push(`${marginX} ${curY - 16} ${contentWidth} 16 re f`);
+            }
+            currentOps.push(
+              `0.9 0.92 0.95 RG 0.5 w ${marginX} ${curY - 16} m ${marginX + contentWidth} ${curY - 16} l S`
+            );
+            row.forEach((cell, cIdx) => {
+              const cellX = marginX + cIdx * colWidth + 6;
+              const maxChars = Math.max(4, Math.floor(colWidth / 5.5));
+              const truncated = escapePdfText(cell).slice(0, maxChars);
+              currentOps.push(
+                `BT /F1 8 Tf 0.2 0.25 0.32 rg ${cellX} ${curY - 11} Td (${truncated}) Tj ET`
+              );
+            });
+            curY -= 16;
+          });
+          curY -= 8;
+          continue;
+        }
+      }
+
+      // Headings
+      const cleanHeading = trimmed.replace(/^[•*-]\s*(?:\*\*)?\s*(#{1,4})/, '$1');
+      if (cleanHeading.startsWith('### ')) {
+        ensureSpace(24);
+        const h3Text = cleanHeading.replace(/^###\s+/, '').replace(/\*\*/g, '').trim();
+        currentOps.push(
+          `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText(h3Text)}) Tj ET`
+        );
+        curY -= 18;
+        continue;
+      }
+
+      if (cleanHeading.startsWith('## ')) {
+        ensureSpace(28);
+        const h2Text = cleanHeading.replace(/^##\s+/, '').replace(/\*\*/g, '').trim();
+        currentOps.push(
+          `BT /F2 11.5 Tf 0.06 0.1 0.2 rg ${marginX} ${curY - 14} Td (${escapePdfText(h2Text)}) Tj ET`
+        );
+        curY -= 22;
+        continue;
+      }
+
+      if (cleanHeading.startsWith('# ')) {
+        ensureSpace(32);
+        const h1Text = cleanHeading.replace(/^#\s+/, '').replace(/\*\*/g, '').trim();
+        currentOps.push(
+          `BT /F2 13 Tf 0.06 0.1 0.2 rg ${marginX} ${curY - 16} Td (${escapePdfText(h1Text)}) Tj ET`
+        );
+        curY -= 24;
+        continue;
+      }
+
+      if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
+        ensureSpace(22);
+        const boldTitle = trimmed.slice(2, -2).trim();
+        currentOps.push(
+          `BT /F2 10 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText(boldTitle)}) Tj ET`
+        );
+        curY -= 16;
+        continue;
+      }
+
+      const isBullet =
+        trimmed.startsWith('* ') || trimmed.startsWith('- ') || trimmed.startsWith('• ');
+      const cleanBulletText = trimmed.replace(/^[-*•]\s+/, '').replace(/\*\*/g, '');
+      const wrapped = wordWrap(cleanBulletText, isBullet ? 84 : 90);
+      const targetLineWidth = contentWidth - (isBullet ? 12 : 0);
+
+      for (let idx = 0; idx < wrapped.length; idx++) {
+        ensureSpace(14);
+        const lineStr = wrapped[idx];
+        const indent = isBullet ? marginX + 12 : marginX;
+
+        if (isBullet && idx === 0) {
+          currentOps.push(
+            `BT /F1 9 Tf 0.4 0.45 0.55 rg ${marginX + 2} ${curY - 10} Td (${escapePdfText('•')}) Tj ET`
+          );
+        }
+
+        const isLastLine = idx === wrapped.length - 1;
+        const words = lineStr.trim().split(/\s+/);
+        let wordSpacing = 0;
+
+        if (!isLastLine && words.length > 1) {
+          const estWidth = estimateHelveticaWidth(lineStr, 9);
+          const diff = targetLineWidth - estWidth;
+          if (diff > 0 && diff < 70) {
+            wordSpacing = diff / (words.length - 1);
+          }
+        }
+
+        if (wordSpacing > 0) {
+          currentOps.push(
+            `BT /F1 9 Tf ${wordSpacing.toFixed(2)} Tw 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj 0 Tw ET`
+          );
+        } else {
+          currentOps.push(
+            `BT /F1 9 Tf 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj ET`
+          );
+        }
+        curY -= 13.5;
+      }
+    }
+  };
+
+  // --- RENDER TURNS ---
+  let turnCounter = 0;
+  for (let mIdx = 0; mIdx < messages.length; mIdx++) {
+    const msg = messages[mIdx];
+    turnCounter++;
+
+    if (msg.role === 'user') {
+      const userText = (msg.text || (msg as any).content || '').trim() || '(Empty inquiry)';
+      const queryLines = wordWrap(userText, 85);
+      const boxHeight = Math.max(32, queryLines.length * 13 + 18);
+
+      ensureSpace(boxHeight + 14);
+      currentOps.push(`0.96 0.97 0.99 rg 0.84 0.87 0.92 RG 0.5 w`);
+      currentOps.push(`${marginX} ${curY - boxHeight} ${contentWidth} ${boxHeight} re b`);
+
+      const timeLabel = msg.timestamp ? ` • ${msg.timestamp}` : ` • Turn ${turnCounter}`;
+      currentOps.push(
+        `BT /F2 8 Tf 0.3 0.38 0.55 rg ${marginX + 10} ${curY - 13} Td (${escapePdfText(`USER INQUIRY #${Math.ceil(turnCounter / 2)}${timeLabel}`)}) Tj ET`
+      );
+
+      let qY = curY - 25;
+      for (const ql of queryLines) {
+        currentOps.push(
+          `BT /F1 9.5 Tf 0.1 0.15 0.22 rg ${marginX + 10} ${qY} Td (${escapePdfText(ql)}) Tj ET`
+        );
+        qY -= 13;
+      }
+      curY -= boxHeight + 12;
+    } else {
+      // Assistant Turn
+      const rawAns =
+        msg.text ||
+        (msg as any).content ||
+        msg.response?.grounded_answer ||
+        msg.response?.answer ||
+        msg.response?.reply ||
+        msg.response?.response ||
+        '';
+
+      const citationsList = msg.citations || msg.response?.citations || [];
+      const { cleanText, citations } = cleanRagResponseText(rawAns, citationsList);
+
+      const durationSec = msg.durationSec ?? msg.response?.duration_sec;
+      const durationLabel = durationSec ? ` • Latency: ${Number(durationSec).toFixed(1)}s` : '';
+
+      ensureSpace(28);
+      currentOps.push(
+        `BT /F2 10.5 Tf 0.08 0.12 0.24 rg ${marginX} ${curY - 12} Td (${escapePdfText(`RAISE RESEARCH INTELLIGENCE${durationLabel}`)}) Tj ET`
+      );
+      currentOps.push(
+        `0.08 0.12 0.24 RG 1.25 w ${marginX} ${curY - 16} m ${marginX + 210} ${curY - 16} l S`
+      );
+      curY -= 26;
+
+      if (cleanText) {
+        renderMarkdownBlock(cleanText);
+      } else if (msg.error) {
+        ensureSpace(22);
+        currentOps.push(
+          `BT /F3 9 Tf 0.7 0.2 0.2 rg ${marginX} ${curY - 10} Td (${escapePdfText(`[Error: ${msg.error.message || 'Execution error'}]`)}) Tj ET`
+        );
+        curY -= 16;
+      }
+
+      // Render Citations if present
+      if (citations && citations.length > 0) {
+        curY -= 8;
+        ensureSpace(26);
+        currentOps.push(
+          `BT /F2 9.5 Tf 0.12 0.2 0.35 rg ${marginX} ${curY - 10} Td (${escapePdfText('References')}) Tj ET`
+        );
+        currentOps.push(
+          `0.12 0.35 0.6 RG 1 w ${marginX} ${curY - 13} m ${marginX + 75} ${curY - 13} l S`
+        );
+        curY -= 20;
+
+        citations.forEach((cit) => {
+          ensureSpace(34);
+          const headerStr = `[${cit.citation_index}] ${cit.pdf_filename || 'Audited Document'} - Page ${cit.primary_page || 'N/A'}${cit.university ? ` (${cit.university})` : ''}`;
+          currentOps.push(
+            `BT /F2 8.5 Tf 0.15 0.22 0.32 rg ${marginX} ${curY - 9} Td (${escapePdfText(headerStr)}) Tj ET`
+          );
+          curY -= 12;
+
+          if (cit.plain_text) {
+            const quoteLines = wordWrap(`"${cit.plain_text}"`, 88);
+            for (let qIdx = 0; qIdx < Math.min(quoteLines.length, 3); qIdx++) {
+              ensureSpace(11);
+              currentOps.push(
+                `BT /F3 8 Tf 0.32 0.38 0.45 rg ${marginX + 8} ${curY - 8} Td (${escapePdfText(quoteLines[qIdx])}) Tj ET`
+              );
+              curY -= 10.5;
+            }
+          }
+
+          const metaStr = `Chunk: ${cit.chunk_id || 'N/A'}${typeof cit.similarity === 'number' ? ` | Similarity: ${cit.similarity.toFixed(3)}` : ''}`;
+          ensureSpace(11);
+          currentOps.push(
+            `BT /F1 7 Tf 0.5 0.55 0.6 rg ${marginX + 8} ${curY - 7} Td (${escapePdfText(metaStr)}) Tj ET`
+          );
+          curY -= 12;
+        });
+      }
+
+      // Subtle divider between turns
+      ensureSpace(14);
+      currentOps.push(
+        `0.88 0.91 0.95 RG 0.5 w ${marginX} ${curY - 6} m ${marginX + contentWidth} ${curY - 6} l S`
+      );
+      curY -= 16;
+    }
+  }
+
+  // Push final page stream
+  if (currentOps.length > 0) {
+    pages.push(currentOps.join('\n'));
+  }
+
+  // Decorate each page with watermark, running footer and page numbers
+  const totalPages = Math.max(1, pages.length);
+  const finalPagesContent = pages.map((pageStream, pageIndex) => {
+    const pageNum = pageIndex + 1;
+    const watermarkOps = [
+      'q',
+      '0.95 0.96 0.98 rg', // Soft elegant diagonal RAISE watermark
+      'BT',
+      '/F2 52 Tf',
+      '0.7071 0.7071 -0.7071 0.7071 210 330 Tm',
+      `(${escapePdfText('RAISE')}) Tj`,
+      'ET',
+      'Q',
+    ].join('\n');
+    const footerOps = [
+      `0.85 0.88 0.92 RG 0.5 w ${marginX} 40 m ${marginX + contentWidth} 40 l S`,
+      `BT /F1 7.5 Tf 0.55 0.6 0.68 rg ${marginX} 28 Td (${escapePdfText(`RAISE Research Platform • Session: ${sessionTitle.slice(0, 42)}`)}) Tj ET`,
+      `BT /F2 7.5 Tf 0.45 0.5 0.6 rg ${marginX + contentWidth - 62} 28 Td (${escapePdfText(`Page ${pageNum} of ${totalPages}`)}) Tj ET`,
+    ].join('\n');
+    return `${watermarkOps}\n${pageStream}\n${footerOps}`;
+  });
+
+  // --- BUILD PDF 1.4 FILE STRUCTURE ---
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  let byteOffset = 0;
+
+  const appendString = (str: string) => {
+    const bytes = encoder.encode(str);
+    chunks.push(bytes);
+    byteOffset += bytes.length;
+  };
+
+  appendString('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+
+  // Object registry
+  const objectOffsets: number[] = [];
+
+  // 1: Catalog
+  objectOffsets[1] = byteOffset;
+  appendString('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+
+  // 2: Pages
+  const pageObjectIds: number[] = [];
+  let nextId = 6;
+  for (let i = 0; i < totalPages; i++) {
+    pageObjectIds.push(nextId);
+    nextId += 2;
+  }
+
+  objectOffsets[2] = byteOffset;
+  appendString(
+    `2 0 obj\n<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${totalPages} >>\nendobj\n`
+  );
+
+  // Fonts: 3: F1 (Helvetica), 4: F2 (Helvetica-Bold), 5: F3 (Helvetica-Oblique)
+  objectOffsets[3] = byteOffset;
+  appendString('3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n');
+
+  objectOffsets[4] = byteOffset;
+  appendString('4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n');
+
+  objectOffsets[5] = byteOffset;
+  appendString('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>\nendobj\n');
+
+  // Create Page & Content Stream Objects
+  for (let i = 0; i < totalPages; i++) {
+    const pageId = pageObjectIds[i];
+    const streamId = pageId + 1;
+    const streamContent = finalPagesContent[i] || '';
+    const streamBytes = encoder.encode(streamContent);
+
+    // Page object (ISO A4 Dimensions)
+    objectOffsets[pageId] = byteOffset;
+    appendString(
+      `${pageId} 0 obj\n<<\n  /Type /Page\n  /Parent 2 0 R\n  /MediaBox [0 0 ${pageWidth} ${pageHeight}]\n  /CropBox [0 0 ${pageWidth} ${pageHeight}]\n  /Contents ${streamId} 0 R\n  /Resources <<\n    /Font <<\n      /F1 3 0 R\n      /F2 4 0 R\n      /F3 5 0 R\n    >>\n  >>\n>>\nendobj\n`
+    );
+
+    // Stream object
+    objectOffsets[streamId] = byteOffset;
+    appendString(`${streamId} 0 obj\n<< /Length ${streamBytes.length} >>\nstream\n`);
+    chunks.push(streamBytes);
+    byteOffset += streamBytes.length;
+    appendString('\nendstream\nendobj\n');
+  }
+
+  // Info dictionary
+  const infoId = nextId;
+  nextId++;
+  const pdfDate = formatPdfDate(now);
+  objectOffsets[infoId] = byteOffset;
+
+  appendString(
+    `${infoId} 0 obj\n<<\n  /Title (${escapePdfText(`RAISE Transcript: ${sessionTitle.slice(0, 60)}`)})\n  /Subject (${escapePdfText('Research Assessment Intelligence & Semantic Extraction')})\n  /Author (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')})\n  /Creator (${escapePdfText('RAISE Semantic Research Workstation')})\n  /Producer (${escapePdfText('RAISE PDF Engine 1.4')})\n  /CreationDate (${pdfDate})\n  /ModDate (${pdfDate})\n  /Keywords (${escapePdfText(`RAISE, Transcript, Multi-Turn, Research, ${sessionTitle.slice(0, 30)}`)})\n>>\nendobj\n`
+  );
+
+  // Cross Reference Table
+  const xrefOffset = byteOffset;
+  const totalObjects = nextId;
+  appendString(`xref\n0 ${totalObjects}\n0000000000 65535 f \n`);
+  for (let i = 1; i < totalObjects; i++) {
+    const off = objectOffsets[i] || 0;
+    appendString(`${off.toString().padStart(10, '0')} 00000 n \n`);
+  }
+
+  // Trailer
+  appendString(
+    `trailer\n<< /Size ${totalObjects} /Root 1 0 R /Info ${infoId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  );
+
+  return new Blob(chunks as BlobPart[], { type: 'application/pdf' });
+}
+
+/**
+ * Downloads the full conversation transcript of a ChatSession as a formatted PDF (.pdf).
+ */
+export function exportSessionAsPdf(session: ChatSession, customFilename?: string): void {
+  const blob = generateSessionPdfBlob(session);
+  const titleSlug = slugify(session.title || 'conversation-transcript', 36);
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = customFilename || `raise-session-${titleSlug}-${dateStr}.pdf`;
   downloadBlob(blob, filename);
 }
 

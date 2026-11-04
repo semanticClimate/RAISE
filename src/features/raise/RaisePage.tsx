@@ -9,9 +9,14 @@ import {
 } from '../../components/chat/BackendErrorCard';
 import { ExportResponseDropdown } from '../../components/chat/ExportResponseDropdown';
 import {
+  LiveThoughtDuration,
   QueryLifecycleTracker,
   ThoughtDuration,
 } from '../../components/chat/QueryLifecycleTracker';
+import {
+  computeHistoricalDuration,
+  resolveTurnExecutionTime,
+} from '../../components/chat/thoughtDurationUtils';
 import type { LibraryItem } from '../../components/settings/SettingsLibraryTab';
 import { applyStoredTunerConfigToDom } from '../../components/ui/GridGradientTuner';
 import { SpecialTooltip } from '../../components/ui/SpecialTooltip';
@@ -20,7 +25,7 @@ import { sourceService } from '../../services/SourceService';
 import { systemService } from '../../services/SystemService';
 import { useFilterStore } from '../../stores/filterStore';
 import { useModeStore } from '../../stores/modeStore';
-import type { Citation, PersistedChatSession, SubgraphData, SubgraphQueryResponse } from '../../types';
+import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../../types';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
 import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { formatBytes } from '../../utils/formatters';
@@ -49,12 +54,11 @@ const MainSearchModal = lazy(() =>
   import('../sidebar/search/SearchModal').then((m) => ({ default: m.SearchModal }))
 );
 import { SourcesDrawer } from './components/SourcesDrawer';
-import { SuggestionBubbles } from './components/SuggestionBubbles';
 import { QueryBox } from './query-box';
-import { SubgraphViewerModal } from '../../components/chat/SubgraphViewerModal';
 import { EmptyWorkspaceNoticeCard } from './components/EmptyWorkspaceNoticeCard';
 import { PdfViewerModal } from './components/PdfViewerModal';
 import { isConversationalQuery } from '../../utils/queryClassifier';
+import { DEMO_SHOWCASE_SESSION, DEMO_SHOWCASE_SESSION_ID } from './showcaseSession';
 import type {
   ChatMessage,
   ChatSession,
@@ -73,7 +77,6 @@ import {
 } from './utils/speechUtils';
 import {
   filterRelevantBackendSuggestions,
-  generateContextualFollowUps,
 } from './utils/suggestionGenerator';
 
 // Re-export types and utilities for consumers & tests
@@ -121,7 +124,6 @@ export const RaisePage: React.FC = () => {
   const [isPipelineDrawerOpen, setIsPipelineDrawerOpen] = useState(false);
   const [isSourcesDrawerOpen, setIsSourcesDrawerOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const [activeSubgraph, setActiveSubgraph] = useState<SubgraphData | null>(null);
   const [activePdfCitation, setActivePdfCitation] = useState<Citation | null>(null);
   const {
     isOpen: isSettingsOpen,
@@ -446,13 +448,43 @@ export const RaisePage: React.FC = () => {
 
   // Helper to deduplicate consecutive identical message turns (e.g. repeated user queries or responses)
   const deduplicateTurns = (msgs: ChatMessage[]): ChatMessage[] => {
+    const extractText = (m: ChatMessage): string => {
+      const t =
+        m.text ||
+        (m as any).content ||
+        m.response?.grounded_answer ||
+        m.response?.answer ||
+        m.response?.reply ||
+        m.response?.response ||
+        m.response?.message ||
+        m.response?.content ||
+        m.response?.text ||
+        '';
+      return typeof t === 'string' ? t.trim() : '';
+    };
+
     const result: ChatMessage[] = [];
     for (let i = 0; i < msgs.length; i++) {
       const cur = msgs[i];
+      const curText = extractText(cur);
+      const hasContent = Boolean(
+        curText ||
+        cur.error ||
+        cur.isThinking ||
+        (cur.questionVersions && cur.questionVersions.length > 0 && cur.questionVersions[0].responseVersions?.length)
+      );
+
+      // Filter out orphaned empty assistant turns (neither thinking nor containing text/response)
+      if (cur.role === 'assistant' && !hasContent) {
+        continue;
+      }
+
       const prev = result[result.length - 1];
-      const curText = (cur.text || (cur as any).content || '').trim();
-      const prevText = prev ? (prev.text || (prev as any).content || '').trim() : '';
+      const prevText = prev ? extractText(prev) : '';
       if (prev && prev.role === cur.role && prevText === curText && curText !== '') {
+        continue;
+      }
+      if (prev && prev.role === 'user' && cur.role === 'user' && prevText.toLowerCase() === curText.toLowerCase() && curText !== '') {
         continue;
       }
       result.push(cur);
@@ -460,26 +492,30 @@ export const RaisePage: React.FC = () => {
     return result;
   };
 
-  // Chat Sessions state initialized from localStorage for instant, glitch-free loading
+  // Chat Sessions state initialized from localStorage with interactive Showcase Demo included
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
       const cached = localStorage.getItem('raise_recent_sessions_v2');
       if (cached) {
         const parsed = JSON.parse(cached) as ChatSession[];
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const isDemoDeleted = localStorage.getItem('raise_demo_showcase_deleted') === 'true';
           const cleaned = parsed.filter((s) => !isLegacySession(s));
+          const hasDemo = cleaned.some((s) => s.id === DEMO_SHOWCASE_SESSION_ID);
+          const withDemo = hasDemo || isDemoDeleted ? cleaned : [...cleaned, DEMO_SHOWCASE_SESSION];
           if (cleaned.length !== parsed.length) {
             try {
-              localStorage.setItem('raise_recent_sessions_v2', JSON.stringify(cleaned));
+              localStorage.setItem('raise_recent_sessions_v2', JSON.stringify(withDemo));
             } catch {}
           }
-          if (cleaned.length > 0) {
-            return cleaned;
+          if (withDemo.length > 0) {
+            return withDemo;
           }
         }
       }
     } catch {}
-    return [];
+    const isDemoDeleted = typeof window !== 'undefined' && localStorage.getItem('raise_demo_showcase_deleted') === 'true';
+    return isDemoDeleted ? [] : [DEMO_SHOWCASE_SESSION];
   });
 
   // Current session ID: restored from URL param, or localStorage only if persistence is explicitly enabled.
@@ -671,6 +707,10 @@ export const RaisePage: React.FC = () => {
                 }
               }
 
+              if (!merged.some((s) => s.id === DEMO_SHOWCASE_SESSION_ID)) {
+                merged.push(DEMO_SHOWCASE_SESSION);
+              }
+
               saveSessionsLocally(merged);
               return merged;
             });
@@ -690,8 +730,18 @@ export const RaisePage: React.FC = () => {
                   const remoteMsgs = deduplicateTurns(
                     (historyRes.data.messages as any[]).map((m: any, idx: number, arr: any[]) => {
                       const prevMsg = arr[idx - 1];
+                      const localExisting =
+                        conversation[idx] ||
+                        conversation.find(
+                          (c) =>
+                            c.role === 'assistant' &&
+                            (c.id === m.id || (m.created_at && c.created_at === m.created_at))
+                        );
                       let calcDuration =
-                        m.durationSec ?? m.response?.latency_sec ?? m.response?.execution_time;
+                        localExisting?.durationSec ??
+                        m.durationSec ??
+                        m.response?.latency_sec ??
+                        m.response?.execution_time;
                       if (!calcDuration && m.role === 'assistant' && m.created_at && prevMsg?.created_at) {
                         try {
                           const diff =
@@ -701,9 +751,6 @@ export const RaisePage: React.FC = () => {
                             calcDuration = Number(diff.toFixed(1));
                           }
                         } catch {}
-                      }
-                      if (!calcDuration && m.role === 'assistant') {
-                        calcDuration = 1.4;
                       }
                       return {
                         ...m,
@@ -983,22 +1030,6 @@ export const RaisePage: React.FC = () => {
   const activeDocNames = useMemo(() => {
     return sourceDocs.filter((d) => d.selected).map((d) => d.name);
   }, [sourceDocs]);
-
-  // Contextual high-probability follow-up query bubbles (NotebookLM & ChatGPT style)
-  const contextualBubbles = useMemo(() => {
-    const lastUserMsg = [...conversation].reverse().find((m) => m.role === 'user');
-    const lastAssistantMsg = [...conversation].reverse().find((m) => m.role === 'assistant');
-    const resp = lastAssistantMsg?.response;
-    return generateContextualFollowUps({
-      lastUserQuery: lastUserMsg?.text,
-      lastAssistantAnswer: lastAssistantMsg?.text,
-      citations: resp?.citations || [],
-      activeDocs: activeDocNames,
-      backendSuggestions: dynamicSuggestions,
-      backendFollowUps: (resp?.follow_up_inquiries || resp?.suggestions) ?? undefined,
-      backendDecomposed: resp?.decomposed_queries ?? undefined,
-    });
-  }, [conversation, activeDocNames, dynamicSuggestions]);
 
   const filteredSuggestions = useMemo(() => {
     if (dynamicSuggestions.length === 0) return [];
@@ -1317,6 +1348,7 @@ export const RaisePage: React.FC = () => {
   const streamRafRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
   const isSubmittingQueryRef = useRef<boolean>(false);
+  const queryStartTimeRef = useRef<number | null>(null);
 
   // Batched 60 FPS streaming flush to React conversation state
   const flushStreamToConversation = (
@@ -1350,11 +1382,27 @@ export const RaisePage: React.FC = () => {
     });
   };
 
-  const cancelPendingStreamRaf = () => {
+  const flushPendingStreamRafImmediately = (targetIndex: number | 'last') => {
     if (streamRafRef.current !== null) {
       cancelAnimationFrame(streamRafRef.current);
       streamRafRef.current = null;
     }
+    const currentText = latestStreamedTextRef.current;
+    if (!currentText) return;
+    setConversation((prev) => {
+      const updated = [...prev];
+      const idx = targetIndex === 'last' ? updated.length - 1 : targetIndex;
+      if (idx >= 0 && updated[idx] && updated[idx].role === 'assistant') {
+        if (updated[idx].text === currentText && (updated[idx] as any).content === currentText) return prev;
+        updated[idx] = {
+          ...updated[idx],
+          text: currentText,
+          content: currentText,
+        };
+        return updated;
+      }
+      return prev;
+    });
   };
 
   // Clean unmount cancellation without showing error UI
@@ -1685,9 +1733,7 @@ export const RaisePage: React.FC = () => {
           ? 'SIMULATED (Local Graph Fixture)'
           : neoData?.connected && neoData?.uri
             ? `CONNECTED (${neoData.uri}${neoData.total_nodes !== undefined ? ` • ${neoData.total_nodes} nodes` : ''})`
-            : caps.neo4jStatusAvailable
-              ? `CONNECTED (${neoData?.uri || 'Graph Substrate'})`
-              : 'DISCONNECTED';
+            : 'OFFLINE (In-Memory NetworkX Active)';
 
       const vectorStatus =
         currentMode === 'mock'
@@ -2020,15 +2066,27 @@ export const RaisePage: React.FC = () => {
         console.warn('Speech recognition error:', event.error);
         if (event.error === 'not-allowed') {
           setVoiceError(
-            'Microphone permission denied. Please allow microphone access in your browser.'
+            'Microphone access denied. Please click the permissions icon in your browser address bar to allow microphone input.'
+          );
+        } else if (event.error === 'service-not-allowed') {
+          setVoiceError(
+            'Speech recognition service is blocked by your browser or OS. If using Brave/Arc, enable Google Speech Services; on Mac/Safari, turn on Dictation in System Settings > Keyboard.'
+          );
+        } else if (event.error === 'network') {
+          setVoiceError(
+            'Speech recognition network service is unreachable. Please verify internet connectivity or type your query.'
+          );
+        } else if (event.error === 'audio-capture') {
+          setVoiceError(
+            'No microphone detected or microphone is in use by another application.'
           );
         } else if (event.error === 'no-speech') {
           // No speech detected, quietly ignore
         } else {
-          setVoiceError(`Voice recognition error: ${event.error}`);
+          setVoiceError(`Speech recognition unavailable (${event.error}). Please type your query.`);
         }
         stopVoiceListening();
-        setTimeout(() => setVoiceError(null), 5000);
+        setTimeout(() => setVoiceError(null), 6000);
       };
 
       recognition.onend = () => {
@@ -2122,16 +2180,19 @@ export const RaisePage: React.FC = () => {
       .reverse()
       .find((m) => m.role === 'user');
 
+    let committedFeedback: ChatMessage[] = [];
     setConversation((prev) => {
       const updated = [...prev];
       if (updated[messageIndex]) {
         updated[messageIndex] = { ...updated[messageIndex], feedback: newRating };
       }
-      if (currentSessionId) {
-        updateSessionInMemory(updated, currentSessionId);
-      }
+      committedFeedback = updated;
       return updated;
     });
+
+    if (currentSessionId && committedFeedback.length > 0) {
+      updateSessionInMemory(committedFeedback, currentSessionId);
+    }
 
     if (newRating) {
       chatService
@@ -2250,6 +2311,13 @@ export const RaisePage: React.FC = () => {
       }))
     );
     setConversation(normalizedCached);
+
+    if (session.id === DEMO_SHOWCASE_SESSION_ID) {
+      setConversation(DEMO_SHOWCASE_SESSION.messages);
+      setSourceDocs([]);
+      setIsPipelineDrawerOpen(false);
+      return;
+    }
     let initialSources = session.sources ?? [];
     if (
       initialSources.length === 0 &&
@@ -2347,8 +2415,18 @@ export const RaisePage: React.FC = () => {
           const remoteMsgs = deduplicateTurns(
             (res.data.messages as any[]).map((m: any, idx: number, arr: any[]) => {
               const prevMsg = arr[idx - 1];
+              const localExisting =
+                conversation[idx] ||
+                conversation.find(
+                  (c) =>
+                    c.role === 'assistant' &&
+                    (c.id === m.id || (m.created_at && c.created_at === m.created_at))
+                );
               let calcDuration =
-                m.durationSec ?? m.response?.latency_sec ?? m.response?.execution_time;
+                localExisting?.durationSec ??
+                m.durationSec ??
+                m.response?.latency_sec ??
+                m.response?.execution_time;
               if (!calcDuration && m.role === 'assistant' && m.created_at && prevMsg?.created_at) {
                 try {
                   const diff =
@@ -2358,9 +2436,6 @@ export const RaisePage: React.FC = () => {
                     calcDuration = Number(diff.toFixed(1));
                   }
                 } catch {}
-              }
-              if (!calcDuration && m.role === 'assistant') {
-                calcDuration = 1.4;
               }
               return {
                 ...m,
@@ -2472,17 +2547,35 @@ export const RaisePage: React.FC = () => {
   };
 
   const handleDeleteSession = (sessionId: string) => {
-    // Delete on PostgreSQL backend
+    // 1. Mark demo deleted if deleting the showcase demo
+    if (sessionId === DEMO_SHOWCASE_SESSION_ID) {
+      try {
+        localStorage.setItem('raise_demo_showcase_deleted', 'true');
+      } catch {}
+    }
+
+    // 2. Delete on PostgreSQL & Redis backend
     chatService.deleteChatSession?.(sessionId).catch((err) => {
       console.warn('Failed to delete chat session on backend:', err);
     });
 
+    // 3. Remove from pinned sessions if pinned
+    setPinnedSessionIds((prev) => {
+      const updated = prev.filter((id) => id !== sessionId);
+      try {
+        localStorage.setItem('raise_pinned_sessions', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    // 4. Remove from active sessions and localStorage
     setSessions((prev) => {
       const updated = prev.filter((s) => s.id !== sessionId);
       saveSessionsLocally(updated);
       return updated;
     });
 
+    // 5. If this was the currently open chat, cleanly reset workspace
     if (currentSessionId === sessionId) {
       handleNewChat();
     }
@@ -2579,6 +2672,9 @@ export const RaisePage: React.FC = () => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    const enterTimestamp = performance.now();
+    queryStartTimeRef.current = enterTimestamp;
+
     const initialQVer: QuestionVersion = {
       id: `qver-${Date.now()}`,
       question: q,
@@ -2587,10 +2683,12 @@ export const RaisePage: React.FC = () => {
       timestamp: 'Just now',
     };
 
+    const nowIso = new Date().toISOString();
     const userMsg: ChatMessage = {
       role: 'user',
       text: q,
       content: q,
+      created_at: nowIso,
       questionVersions: [initialQVer],
       currentQuestionVersionIndex: 0,
     };
@@ -2600,19 +2698,36 @@ export const RaisePage: React.FC = () => {
       text: '',
       content: '',
       isThinking: true,
+      created_at: nowIso,
       timestamp: 'Just now',
+      startedAtMs: enterTimestamp,
     };
 
-    // Prevent duplicate optimistic query appending if previous turn is identical
-    const lastExisting = conversation[conversation.length - 1];
+    // 1. Strip any trailing empty/orphan assistant turn from conversation
+    let cleanedConversation = [...conversation];
+    while (
+      cleanedConversation.length > 0 &&
+      cleanedConversation[cleanedConversation.length - 1].role === 'assistant' &&
+      !(
+        cleanedConversation[cleanedConversation.length - 1].text ||
+        (cleanedConversation[cleanedConversation.length - 1] as any).content ||
+        cleanedConversation[cleanedConversation.length - 1].response ||
+        cleanedConversation[cleanedConversation.length - 1].error
+      )
+    ) {
+      cleanedConversation.pop();
+    }
+
+    // 2. Prevent duplicate optimistic query appending if previous turn is identical
+    const lastExisting = cleanedConversation[cleanedConversation.length - 1];
     const isDuplicateLast =
       lastExisting &&
       lastExisting.role === 'user' &&
-      ((lastExisting.text || (lastExisting as any).content || '').trim() === q);
+      ((lastExisting.text || (lastExisting as any).content || '').trim().toLowerCase() === q.toLowerCase());
 
     const updatedConversation = isDuplicateLast
-      ? conversation
-      : [...conversation, userMsg, pendingAssistantMsg];
+      ? [...cleanedConversation.slice(0, -1), userMsg, pendingAssistantMsg]
+      : [...cleanedConversation, userMsg, pendingAssistantMsg];
     setConversation(updatedConversation);
     setQuery('');
     setActiveExecutingQuery(q);
@@ -2626,7 +2741,6 @@ export const RaisePage: React.FC = () => {
     }
     updateSessionInMemory(updatedConversation, threadId);
     const recentHistory = getFormattedChatHistory(conversation);
-    const executionStartTime = performance.now();
 
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
     const isCompareCmd = /^\/(?:compare|diff|versus|vs)\b/i.test(q);
@@ -2667,11 +2781,11 @@ export const RaisePage: React.FC = () => {
       );
 
       const res = await queryTask;
-      cancelPendingStreamRaf();
+      flushPendingStreamRafImmediately('last');
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
-        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
+        Math.max(0.1, Number(((performance.now() - enterTimestamp) / 1000).toFixed(1)));
 
       let assistantMsg: ChatMessage;
 
@@ -2692,6 +2806,7 @@ export const RaisePage: React.FC = () => {
           content: resolvedText,
           response: res.data,
           durationSec: elapsedSec,
+          created_at: new Date().toISOString(),
           persistenceFailed: !persisted,
           isThinking: false,
         };
@@ -2765,69 +2880,65 @@ export const RaisePage: React.FC = () => {
         }
       }
 
-      setConversation((prev) => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        const currentStreamed = latestStreamedTextRef.current || '';
-        const finalAns =
-          assistantMsg.text ||
-          (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant'
-            ? updated[lastIdx].text || (updated[lastIdx] as any).content || ''
-            : '') ||
-          currentStreamed;
+      const currentStreamed = latestStreamedTextRef.current || '';
+      const finalAns =
+        assistantMsg.text ||
+        currentStreamed ||
+        '';
 
-        const mergedAssistant: ChatMessage = {
-          ...assistantMsg,
-          text: finalAns,
-          content: finalAns,
-          isThinking: false,
-        };
+      const mergedAssistant: ChatMessage = {
+        ...assistantMsg,
+        text: finalAns,
+        content: finalAns,
+        durationSec: elapsedSec,
+        created_at: assistantMsg.created_at || new Date().toISOString(),
+        isThinking: false,
+      };
 
-        const initialRespVer: ResponseVersion = {
-          id: `resp-${Date.now()}`,
-          text: finalAns,
-          response: mergedAssistant.response,
-          error: mergedAssistant.error,
-          durationSec: elapsedSec,
-          timestamp: 'Just now',
-          isStopped: mergedAssistant.isStopped,
-        };
+      const initialRespVer: ResponseVersion = {
+        id: `resp-${Date.now()}`,
+        text: finalAns,
+        response: mergedAssistant.response,
+        error: mergedAssistant.error,
+        durationSec: elapsedSec,
+        timestamp: 'Just now',
+        created_at: new Date().toISOString(),
+        isStopped: mergedAssistant.isStopped,
+      };
 
-        let userIdx = -1;
-        for (let idx = updated.length - 1; idx >= 0; idx--) {
-          if (updated[idx].role === 'user') {
-            userIdx = idx;
-            break;
-          }
-        }
-        if (userIdx !== -1) {
-          const user = updated[userIdx];
-          user.questionVersions = [
+      // Synchronously compute committed conversation array to ensure reliable immediate state & memory persistence
+      const baseMsgs = [...updatedConversation];
+      const uIdx = baseMsgs.findIndex((m) => m === userMsg);
+      if (uIdx !== -1) {
+        baseMsgs[uIdx] = {
+          ...baseMsgs[uIdx],
+          questionVersions: [
             {
               ...initialQVer,
               responseVersions: [initialRespVer],
               currentResponseVersionIndex: 0,
             },
-          ];
-        }
+          ],
+        };
+      }
+      const lastBaseIdx = baseMsgs.length - 1;
+      let synchronousCommitted: ChatMessage[];
+      if (lastBaseIdx >= 0 && baseMsgs[lastBaseIdx]?.role === 'assistant') {
+        baseMsgs[lastBaseIdx] = mergedAssistant;
+        synchronousCommitted = deduplicateTurns(baseMsgs);
+      } else {
+        synchronousCommitted = deduplicateTurns([...baseMsgs, mergedAssistant]);
+      }
 
-        let committed: ChatMessage[];
-        if (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant') {
-          updated[lastIdx] = mergedAssistant;
-          committed = deduplicateTurns(updated);
-        } else {
-          committed = deduplicateTurns([...updated, mergedAssistant]);
-        }
+      setConversation(synchronousCommitted);
 
-        if (res.data && !assistantMsg.persistenceFailed) {
-          updateSessionInMemory(committed, threadId);
-        }
-        return committed;
-      });
+      if (res.data && !assistantMsg.persistenceFailed && synchronousCommitted.length > 0) {
+        updateSessionInMemory(synchronousCommitted, threadId);
+      }
     } catch (err: any) {
       if (isUnmountedRef.current) return;
       const elapsedSec =
-        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
+        Math.max(0.1, Number(((performance.now() - enterTimestamp) / 1000).toFixed(1)));
       const isManualAbort =
         isUserAbortingRef.current ||
         err?.name === 'AbortError' ||
@@ -2856,26 +2967,32 @@ export const RaisePage: React.FC = () => {
           durationSec: elapsedSec,
           timestamp: 'Just now',
         };
-        userMsg.questionVersions = [
-          {
-            ...initialQVer,
-            responseVersions: [initialRespVer],
-            currentResponseVersionIndex: 0,
-          },
-        ];
-        setConversation((prev) => {
-          const updated = [...prev];
-          const lastIdx = updated.length - 1;
-          let committed: ChatMessage[];
-          if (lastIdx >= 0 && updated[lastIdx]?.role === 'assistant') {
-            updated[lastIdx] = stoppedMsg;
-            committed = deduplicateTurns(updated);
-          } else {
-            committed = deduplicateTurns([...updated, stoppedMsg]);
-          }
-          updateSessionInMemory(committed, threadId);
-          return committed;
-        });
+        const baseMsgs = [...updatedConversation];
+        const uIdx = baseMsgs.findIndex((m) => m === userMsg);
+        if (uIdx !== -1) {
+          baseMsgs[uIdx] = {
+            ...baseMsgs[uIdx],
+            questionVersions: [
+              {
+                ...initialQVer,
+                responseVersions: [initialRespVer],
+                currentResponseVersionIndex: 0,
+              },
+            ],
+          };
+        }
+        const lastBaseIdx = baseMsgs.length - 1;
+        let synchronousCommitted: ChatMessage[];
+        if (lastBaseIdx >= 0 && baseMsgs[lastBaseIdx]?.role === 'assistant') {
+          baseMsgs[lastBaseIdx] = stoppedMsg;
+          synchronousCommitted = deduplicateTurns(baseMsgs);
+        } else {
+          synchronousCommitted = deduplicateTurns([...baseMsgs, stoppedMsg]);
+        }
+        setConversation(synchronousCommitted);
+        if (synchronousCommitted.length > 0) {
+          updateSessionInMemory(synchronousCommitted, threadId);
+        }
       } else {
         const errorDetails = createErrorDetails(null, err);
         const isNoLlm =
@@ -2938,6 +3055,7 @@ export const RaisePage: React.FC = () => {
       activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
+      queryStartTimeRef.current = null;
     }
   };
 
@@ -3041,7 +3159,8 @@ export const RaisePage: React.FC = () => {
     }
     updateSessionInMemory(updatedConversation, threadId);
     const recentHistory = getFormattedChatHistory(updatedConversation.slice(0, userIndex));
-    const executionStartTime = performance.now();
+    const enterTimestamp = performance.now();
+    queryStartTimeRef.current = enterTimestamp;
 
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
     const {
@@ -3078,11 +3197,11 @@ export const RaisePage: React.FC = () => {
       );
 
       const res = await queryTask;
-      cancelPendingStreamRaf();
+      flushPendingStreamRafImmediately(assistantIndex);
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
-        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
+        Math.max(0.1, Number(((performance.now() - enterTimestamp) / 1000).toFixed(1)));
 
       let answerText = '';
       let respData: Partial<SubgraphQueryResponse> | undefined;
@@ -3143,6 +3262,7 @@ export const RaisePage: React.FC = () => {
         currentResponseVersionIndex: 0,
       };
 
+      let committedEdited: ChatMessage[] = [];
       setConversation((prev) => {
         const updated = [...prev];
         updated[userIndex] = {
@@ -3162,15 +3282,16 @@ export const RaisePage: React.FC = () => {
             isStopped,
           };
         }
-        if (res.data && persisted) {
-          updateSessionInMemory(updated, threadId);
-        }
+        committedEdited = updated;
         return updated;
       });
+      if (res.data && persisted && committedEdited.length > 0) {
+        updateSessionInMemory(committedEdited, threadId);
+      }
     } catch (err: any) {
       if (isUnmountedRef.current) return;
       const elapsedSec =
-        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
+        Math.max(0.1, Number(((performance.now() - enterTimestamp) / 1000).toFixed(1)));
       const isManualAbort =
         isUserAbortingRef.current ||
         err?.name === 'AbortError' ||
@@ -3265,10 +3386,12 @@ export const RaisePage: React.FC = () => {
       activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
+      queryStartTimeRef.current = null;
     }
   };
 
   const handleSwitchQuestionVersion = (userIndex: number, targetQIdx: number) => {
+    let committedSwitchQ: ChatMessage[] = [];
     setConversation((prev) => {
       const updated = [...prev];
       const userMsg = updated[userIndex];
@@ -3332,11 +3455,13 @@ export const RaisePage: React.FC = () => {
         };
       }
 
-      if (currentSessionId) {
-        updateSessionInMemory(updated, currentSessionId);
-      }
+      committedSwitchQ = updated;
       return updated;
     });
+
+    if (currentSessionId && committedSwitchQ.length > 0) {
+      updateSessionInMemory(committedSwitchQ, currentSessionId);
+    }
   };
 
   const handleRegenerateResponse = async (assistantIndex: number) => {
@@ -3368,7 +3493,8 @@ export const RaisePage: React.FC = () => {
       setCurrentSessionId(threadId);
     }
     const recentHistory = getFormattedChatHistory(conversation.slice(0, userIndex));
-    const executionStartTime = performance.now();
+    const enterTimestamp = performance.now();
+    queryStartTimeRef.current = enterTimestamp;
 
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
     const {
@@ -3405,11 +3531,11 @@ export const RaisePage: React.FC = () => {
       );
 
       const res = await queryTask;
-      cancelPendingStreamRaf();
+      flushPendingStreamRafImmediately(assistantIndex);
 
       if (isUnmountedRef.current) return;
       const elapsedSec =
-        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
+        Math.max(0.1, Number(((performance.now() - enterTimestamp) / 1000).toFixed(1)));
 
       let newAnswerText = '';
       let newResponseData: Partial<SubgraphQueryResponse> | undefined;
@@ -3474,6 +3600,7 @@ export const RaisePage: React.FC = () => {
         currentResponseVersionIndex: newRespIdx,
       };
 
+      let committedRegen: ChatMessage[] = [];
       setConversation((prev) => {
         const updated = [...prev];
         updated[userIndex] = {
@@ -3490,15 +3617,16 @@ export const RaisePage: React.FC = () => {
           persistenceFailed: !persisted,
           isStopped,
         };
-        if (res.data && persisted) {
-          updateSessionInMemory(updated, threadId);
-        }
+        committedRegen = updated;
         return updated;
       });
+      if (res.data && persisted && committedRegen.length > 0) {
+        updateSessionInMemory(committedRegen, threadId);
+      }
     } catch (err: any) {
       if (isUnmountedRef.current) return;
       const elapsedSec =
-        Number(((performance.now() - executionStartTime) / 1000).toFixed(3)) || 0.01;
+        Math.max(0.1, Number(((performance.now() - enterTimestamp) / 1000).toFixed(1)));
       const isManualAbort =
         isUserAbortingRef.current ||
         err?.name === 'AbortError' ||
@@ -3597,6 +3725,7 @@ export const RaisePage: React.FC = () => {
       activeRequestIdRef.current = null;
       isUserAbortingRef.current = false;
       latestStreamedTextRef.current = '';
+      queryStartTimeRef.current = null;
     }
   };
 
@@ -3605,6 +3734,7 @@ export const RaisePage: React.FC = () => {
     if (userIndex < 0 || !conversation[userIndex] || conversation[userIndex].role !== 'user')
       return;
 
+    let committedSwitchResp: ChatMessage[] = [];
     setConversation((prev) => {
       const updated = [...prev];
       const userMsg = updated[userIndex];
@@ -3635,11 +3765,13 @@ export const RaisePage: React.FC = () => {
         durationSec: targetResp.durationSec,
       };
 
-      if (currentSessionId) {
-        updateSessionInMemory(updated, currentSessionId);
-      }
+      committedSwitchResp = updated;
       return updated;
     });
+
+    if (currentSessionId && committedSwitchResp.length > 0) {
+      updateSessionInMemory(committedSwitchResp, currentSessionId);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3798,8 +3930,6 @@ export const RaisePage: React.FC = () => {
         onOpenSources={() => setIsSourcesDrawerOpen(true)}
         onOpenMobileMenu={() => setIsPipelineDrawerOpen(true)}
         isDrawerOpen={isPipelineDrawerOpen}
-        onNewChat={handleNewChat}
-        onOpenControlCenter={() => openControlCenter(true)}
       />
 
       {/* Upper Side Notification: Unconfigured Pipeline Tunnel Notice */}
@@ -3858,7 +3988,6 @@ export const RaisePage: React.FC = () => {
         isDrawerOpen={isPipelineDrawerOpen}
         onToggleDrawer={() => setIsPipelineDrawerOpen((prev) => !prev)}
         onNewChat={handleNewChat}
-        onOpenControlCenter={() => openControlCenter(true)}
         onOpenSearch={() => {
           setIsPipelineDrawerOpen(false);
           setIsSearchModalOpen(true);
@@ -4298,53 +4427,46 @@ export const RaisePage: React.FC = () => {
                     );
                   }
 
-                  const calcHistoryDuration = (() => {
-                    const prevUserMsg = conversation[i - 1];
-                    if (prevUserMsg && (msg as any).created_at && (prevUserMsg as any).created_at) {
-                      try {
-                        const diff =
-                          (new Date((msg as any).created_at).getTime() -
-                            new Date((prevUserMsg as any).created_at).getTime()) /
-                          1000;
-                        if (diff > 0 && diff < 120) {
-                          return Number(diff.toFixed(1));
-                        }
-                      } catch {}
-                    }
-                    return 1.4;
-                  })();
+                  const prevUserMsg = conversation[i - 1];
+                  const calcHistoryDuration = computeHistoricalDuration(
+                    (prevUserMsg as any)?.created_at,
+                    (msg as any)?.created_at
+                  );
 
-                  const executionTimeSec: number =
-                    (typeof activeResp?.durationSec === 'number' && activeResp.durationSec > 0
-                      ? activeResp.durationSec
-                      : null) ??
-                    (typeof msg.durationSec === 'number' && msg.durationSec > 0
-                      ? msg.durationSec
-                      : null) ??
-                    (typeof activeResp?.response?.latency_sec === 'number' &&
-                    (activeResp?.response?.latency_sec ?? 0) > 0
-                      ? activeResp?.response?.latency_sec
-                      : null) ??
-                    (typeof msg.response?.latency_sec === 'number' && (msg.response?.latency_sec ?? 0) > 0
-                      ? msg.response?.latency_sec
-                      : null) ??
-                    (typeof (activeResp?.response as any)?.execution_time === 'number' &&
-                    ((activeResp?.response as any)?.execution_time ?? 0) > 0
-                      ? (activeResp?.response as any)?.execution_time
-                      : null) ??
-                    (typeof (msg.response as any)?.execution_time === 'number' &&
-                    ((msg.response as any)?.execution_time ?? 0) > 0
-                      ? (msg.response as any)?.execution_time
-                      : null) ??
-                    (typeof (activeResp?.response as any)?.elapsed_ms === 'number' &&
-                    ((activeResp?.response as any)?.elapsed_ms ?? 0) > 0
-                      ? Number((activeResp?.response as any)?.elapsed_ms) / 1000
-                      : null) ??
-                    (typeof (msg.response as any)?.elapsed_ms === 'number' &&
-                    ((msg.response as any)?.elapsed_ms ?? 0) > 0
-                      ? Number((msg.response as any)?.elapsed_ms) / 1000
-                      : null) ??
-                    calcHistoryDuration;
+                  const executionTimeSec = resolveTurnExecutionTime({
+                    activeRespDuration: activeResp?.durationSec,
+                    msgDuration: msg.durationSec,
+                    activeResp,
+                    msg,
+                    calcHistoryDuration,
+                  });
+
+                  const rawTurnContent =
+                    activeResp?.text ||
+                    (activeResp as any)?.content ||
+                    activeResp?.response?.grounded_answer ||
+                    activeResp?.response?.answer ||
+                    activeResp?.response?.reply ||
+                    activeResp?.response?.response ||
+                    activeResp?.response?.message ||
+                    activeResp?.response?.content ||
+                    activeResp?.response?.text ||
+                    activeResp?.response?.output ||
+                    msg.text ||
+                    (msg as any).content ||
+                    msg.response?.grounded_answer ||
+                    msg.response?.answer ||
+                    msg.response?.reply ||
+                    msg.response?.response ||
+                    msg.response?.message ||
+                    msg.response?.content ||
+                    msg.response?.text ||
+                    msg.response?.output ||
+                    '';
+
+                  const resolvedContent = rawTurnContent
+                    .replace(/from the frontend to begin/gi, 'to RAISE to begin')
+                    .trim();
 
                   return (
                     <div
@@ -4353,25 +4475,22 @@ export const RaisePage: React.FC = () => {
                     >
                       {/* Unified Single-Line Thinking & Searching Tracker while active; Thought Duration when complete */}
                       {isCurrentlyActive ? (
-                        activeExecutingQuery && isConversationalQuery(activeExecutingQuery) ? (
-                          // Sid says: Fast conversational chat ("hi", "hello", identity) bypasses heavy multi-step research pipeline skeleton/stage bars
-                          null
-                        ) : activeExecutingQuery ? (
-                          <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mb-2">
+                        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mb-2">
+                          {activeExecutingQuery && !isConversationalQuery(activeExecutingQuery) ? (
                             <QueryLifecycleTracker
                               query={activeExecutingQuery}
                               onAbort={handleAbortActiveQuery}
                             />
-                          </div>
-                        ) : (
-                          <div
-                            data-testid="gateway-connecting-fallback"
-                            className="inline-flex items-center gap-2 py-1.5 px-3 mb-2 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-medium animate-in fade-in select-none"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-ping" />
-                            <span>Connecting to gateway...</span>
-                          </div>
-                        )
+                          ) : (
+                            <LiveThoughtDuration
+                              startTimeMs={
+                                (msg as any).startedAtMs ||
+                                queryStartTimeRef.current ||
+                                performance.now()
+                              }
+                            />
+                          )}
+                        </div>
                       ) : (
                         !msg.error &&
                         !isStopped && (
@@ -4382,9 +4501,7 @@ export const RaisePage: React.FC = () => {
                       )}
 
                       {/* AI Response Card Box */}
-                      {(Boolean(msg.text || (msg as any).content || msg.response) ||
-                        isCurrentlyActive ||
-                        msg.isThinking) && (
+                      {(Boolean(resolvedContent) || isCurrentlyActive) && (
                         <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
                           {/* Save-failure warning banner if generation succeeded but persistence failed */}
                           {msg.persistenceFailed && (
@@ -4465,19 +4582,6 @@ export const RaisePage: React.FC = () => {
                               (c: any, idx: number) => normalizeCitation(c, idx + 1, defaultDoc)
                             );
 
-                            const rawContent =
-                              msg.text ||
-                              (msg as any).content ||
-                              msg.response?.grounded_answer ||
-                              msg.response?.answer ||
-                              msg.response?.reply ||
-                              '';
-
-                            const resolvedContent = rawContent.replace(
-                              /from the frontend to begin/gi,
-                              'to RAISE to begin'
-                            );
-
                             return (
                               <div className="text-sm leading-relaxed text-slate-800 dark:text-slate-200 select-text">
                                 {!resolvedContent && isCurrentlyActive ? (
@@ -4485,7 +4589,7 @@ export const RaisePage: React.FC = () => {
                                     <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
                                     <span>Responding...</span>
                                   </div>
-                                ) : (
+                                ) : resolvedContent ? (
                                   <>
                                     <AnswerMarkdown
                                       content={resolvedContent}
@@ -4497,6 +4601,11 @@ export const RaisePage: React.FC = () => {
                                       <span className="inline-block w-1.5 h-4 ml-1 bg-blue-500 align-middle animate-pulse" />
                                     )}
                                   </>
+                                ) : (
+                                  <div className="flex items-center gap-2 py-1 text-slate-500 dark:text-slate-400 text-xs font-mono">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                                    <span>Responding...</span>
+                                  </div>
                                 )}
 
                                 {/* 1-click Attach Document Button if empty workspace / drawer notice */}
@@ -4518,7 +4627,7 @@ export const RaisePage: React.FC = () => {
                       )}
 
                       {/* AI Response Action Toolbar OUTSIDE the box, placed identically to Question action bar */}
-                      {Boolean((msg.text || (msg as any).content) && !msg.error) && (
+                      {Boolean(resolvedContent && !msg.error) && (
                         <div className="w-full max-w-[clamp(36rem,90vw,58rem)] flex items-center justify-start gap-1 mt-1.5 ml-1 text-slate-500 dark:text-slate-400">
                           {/* 1. Copy Response Button */}
                           <ActionTooltip
@@ -4526,7 +4635,9 @@ export const RaisePage: React.FC = () => {
                           >
                             <button
                               type="button"
-                              onClick={() => handleCopyText(msg.text || (msg as any).content || '', `resp-${i}`)}
+                              onClick={() =>
+                                handleCopyText(resolvedContent, `resp-${i}`)
+                              }
                               title={copiedKey === `resp-${i}` ? 'Copied!' : 'Copy response'}
                               aria-label="Copy response"
                               className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
@@ -4564,8 +4675,14 @@ export const RaisePage: React.FC = () => {
                           <ActionTooltip label="Export response">
                             <ExportResponseDropdown
                               query={prevUser?.text || (prevUser as any)?.content || msg.response?.query || 'Research Inquiry'}
-                              answerText={msg.text || (msg as any).content || ''}
-                              response={msg.response}
+                              answerText={
+                                activeResp?.text ||
+                                (activeResp as any)?.content ||
+                                msg.text ||
+                                (msg as any).content ||
+                                ''
+                              }
+                              response={activeResp?.response || msg.response}
                             />
                           </ActionTooltip>
 
@@ -4599,7 +4716,16 @@ export const RaisePage: React.FC = () => {
                           <ActionTooltip label={isSpeaking ? 'Stop speaking' : 'Read aloud'}>
                             <button
                               type="button"
-                              onClick={() => handleToggleSpeak(msg.text || (msg as any).content || '', `msg-${i}`)}
+                              onClick={() =>
+                                handleToggleSpeak(
+                                  activeResp?.text ||
+                                    (activeResp as any)?.content ||
+                                    msg.text ||
+                                    (msg as any).content ||
+                                    '',
+                                  `msg-${i}`
+                                )
+                              }
                               title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
                               aria-label={isSpeaking ? 'Stop speaking' : 'Read aloud'}
                               className={`p-1.5 rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center ${
@@ -4836,15 +4962,6 @@ export const RaisePage: React.FC = () => {
                           className="mt-2 mb-1"
                         />
                       )}
-
-                      {/* Modular Follow-up Suggestions (ChatGPT & NotebookLM vertical stack in chat stream) */}
-                      {i === conversation.length - 1 && (
-                        <SuggestionBubbles
-                          suggestions={contextualBubbles}
-                          onSelect={(b) => handleExecuteQuery(b)}
-                          disabled={isLoading}
-                        />
-                      )}
                     </div>
                   );
                 }
@@ -4961,7 +5078,6 @@ export const RaisePage: React.FC = () => {
             onStopVoiceListening={stopVoiceListening}
             voiceError={voiceError}
             onDismissVoiceError={() => setVoiceError(null)}
-            onNewChat={handleNewChat}
           />
         </div>
       </main>
@@ -5045,14 +5161,6 @@ export const RaisePage: React.FC = () => {
         isOpen={Boolean(activePdfCitation)}
         citation={activePdfCitation}
         onClose={() => setActivePdfCitation(null)}
-      />
-
-      {/* ─── KNOWLEDGE GRAPH SUBGRAPH EXPLORER MODAL ─── */}
-      <SubgraphViewerModal
-        isOpen={Boolean(activeSubgraph)}
-        subgraph={activeSubgraph}
-        onClose={() => setActiveSubgraph(null)}
-        query={activeExecutingQuery || activeSession?.title}
       />
 
       {/* ─── LITTLE ERROR POPUP TOAST (THEME AWARE & RESPONSIVE POSITIONING) ─── */}

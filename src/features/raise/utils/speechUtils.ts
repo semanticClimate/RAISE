@@ -18,7 +18,13 @@ export const getTurnQuestionVersions = (
   const initialResp: ResponseVersion = {
     id: `resp-init-${Date.now()}`,
     text: assistantMsg && assistantMsg.role === 'assistant' ? assistantMsg.text : '',
-    response: assistantMsg && assistantMsg.role === 'assistant' ? assistantMsg.response : undefined,
+    content:
+      assistantMsg && assistantMsg.role === 'assistant'
+        ? (assistantMsg as any).content || assistantMsg.text
+        : '',
+    response:
+      assistantMsg && assistantMsg.role === 'assistant' ? assistantMsg.response : undefined,
+    durationSec: assistantMsg?.durationSec,
     timestamp: 'Original',
   };
   return [

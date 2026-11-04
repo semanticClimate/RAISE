@@ -207,9 +207,9 @@ export const NeuralStep: React.FC = () => {
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-150">
       <div>
-        <h3 className="text-base font-bold text-white tracking-tight">Neural Substrates</h3>
+        <h3 className="text-base font-bold text-white tracking-tight">AI Retrieval & Embedding Models</h3>
         <p className="text-xs text-slate-400 mt-0.5">
-          Compact retrieval pipeline: dense vector embeddings, cross-encoder rerankers, and hallucination verifiers.
+          Select your models for semantic document search, relevance reranking, and factual claim verification.
         </p>
       </div>
 

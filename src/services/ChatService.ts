@@ -232,6 +232,11 @@ export class ChatService implements ChatServiceInterface {
         const synthesizedResp: SubgraphQueryResponse = {
           query: req.query,
           grounded_answer: resolvedStreamText,
+          answer: resolvedStreamText,
+          reply: resolvedStreamText,
+          response: resolvedStreamText,
+          content: resolvedStreamText,
+          text: resolvedStreamText,
           latency_sec: durationSec,
           execution_time: durationSec,
           traceability_score:
@@ -330,9 +335,15 @@ export class ChatService implements ChatServiceInterface {
             ? 'unable_to_verify'
             : ((data.quality_gate_decision as SubgraphQueryResponse['quality_gate_decision']) || 'accept');
 
+      const cleanAnswer = sanitizeStreamText(answerText);
       const synthesizedResp: SubgraphQueryResponse = {
         query: req.query,
-        grounded_answer: sanitizeStreamText(answerText),
+        grounded_answer: cleanAnswer,
+        answer: cleanAnswer,
+        reply: cleanAnswer,
+        response: cleanAnswer,
+        content: cleanAnswer,
+        text: cleanAnswer,
         latency_sec:
           typeof data.latency_sec === 'number' && data.latency_sec > 0
             ? data.latency_sec

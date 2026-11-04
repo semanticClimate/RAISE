@@ -60,9 +60,6 @@ export interface QueryBoxProps {
   voiceError: string | null;
   onDismissVoiceError: () => void;
 
-  /** Quick action to clear conversation and start fresh */
-  onNewChat?: () => void;
-
   /** Optional custom class name applied to outer section */
   className?: string;
 }
@@ -110,7 +107,6 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
   onStopVoiceListening,
   voiceError,
   onDismissVoiceError,
-  onNewChat,
   className = '',
 }) => {
   const slashCommands = useSlashCommands({
@@ -400,20 +396,6 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
                 conversationLength={conversationLength}
                 variant="desktop"
               />
-              {conversationLength > 0 && onNewChat && (
-                <button
-                  type="button"
-                  onClick={onNewChat}
-                  title="Start New Chat / Reset Conversation"
-                  aria-label="Start New Chat"
-                  className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200/80 dark:border-white/10 transition-colors cursor-pointer active:scale-95 select-none"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span>New Chat</span>
-                </button>
-              )}
             </div>
 
             {/* Right / Lower Side: Fast/Expert, Mic, and Enter actions kept in the same place, fully responsive */}

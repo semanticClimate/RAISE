@@ -105,7 +105,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
         llmMode: 'cloud_groq',
         groqApiKey: '',
         geminiApiKey: '',
-        neo4jMode: 'local',
+        neo4jMode: 'in_memory_fallback',
         neo4jUri: 'bolt://localhost:7687',
         neo4jPassword: '',
         postgresMode: 'in_memory_fallback',

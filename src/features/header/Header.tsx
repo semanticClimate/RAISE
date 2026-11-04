@@ -6,8 +6,6 @@ export interface HeaderProps {
   onOpenSources: () => void;
   onOpenMobileMenu: () => void;
   isDrawerOpen?: boolean;
-  onNewChat?: () => void;
-  onOpenControlCenter?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,8 +13,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSources,
   onOpenMobileMenu,
   isDrawerOpen = false,
-  onNewChat,
-  onOpenControlCenter,
 }) => {
   return (
     <header
@@ -51,61 +47,13 @@ export const Header: React.FC<HeaderProps> = ({
         </span>
       </div>
 
-      {/* Right Utility Icons: New Chat, Control Center, Sources Drawer Trigger */}
+      {/* Right Utility Icons: Sources Drawer Trigger */}
       <div
         className={`relative flex items-center gap-1.5 sm:gap-2 pr-3 sm:pr-0 transition-opacity duration-200 ${
           isDrawerOpen ? 'opacity-0 pointer-events-none' : 'pointer-events-auto'
         }`}
         id="settingsContainer"
       >
-        {onNewChat && (
-          <SpecialTooltip label="New Chat" position="bottom">
-            <button
-              id="navNewChatBtn"
-              type="button"
-              onClick={onNewChat}
-              aria-label="New Chat"
-              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5 rounded-lg active:scale-95 transition-all flex items-center justify-center cursor-pointer"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.75"
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          </SpecialTooltip>
-        )}
-
-        {onOpenControlCenter && (
-          <SpecialTooltip label="Control Center" position="bottom">
-            <button
-              id="navControlCenterBtn"
-              type="button"
-              onClick={onOpenControlCenter}
-              aria-label="Control Center"
-              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5 rounded-lg active:scale-95 transition-all flex items-center justify-center cursor-pointer"
-            >
-              <svg
-                className="w-5 h-5 text-indigo-500 dark:text-indigo-400"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.75"
-                viewBox="0 0 24 24"
-              >
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
-            </button>
-          </SpecialTooltip>
-        )}
-
         <SpecialTooltip label="Drawer" position="bottom">
           <button
             id="navSourcesBtn"

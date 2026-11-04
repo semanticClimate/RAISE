@@ -1,7 +1,6 @@
 import type React from 'react';
 import { useRef } from 'react';
 import { useClickOutside } from '../../hooks';
-import { SpecialTooltip } from '../../components/ui/SpecialTooltip';
 import type { ChatSession } from '../../types';
 import { ChatSessionList, NewChatButton } from './chat';
 import { SidebarSearchButton } from './search';
@@ -13,7 +12,6 @@ export interface SidebarProps {
   onNewChat: () => void;
   onOpenSearch: () => void;
   onOpenSettings?: () => void;
-  onOpenControlCenter?: () => void;
   onOpenUsage: () => void;
   onLogout: () => void;
 
@@ -46,7 +44,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onOpenSearch,
   onOpenSettings,
-  onOpenControlCenter,
   onOpenUsage,
   onLogout,
   sessions,
@@ -116,47 +113,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Row 3: Search feature - Search button */}
         <SidebarSearchButton isDrawerOpen={isDrawerOpen} onClick={onOpenSearch} />
-
-        {/* Row 4: Control Center trigger button */}
-        {onOpenControlCenter && (
-          <div className="flex items-center h-10 shrink-0">
-            <button
-              type="button"
-              onClick={onOpenControlCenter}
-              className="w-full flex items-center group cursor-pointer text-left transition-all active:scale-[0.98]"
-              aria-label="Control Center"
-            >
-              <div className="w-14 sm:w-16 flex items-center justify-center shrink-0">
-                <SpecialTooltip
-                  label="Control Center"
-                  position="right"
-                  disabled={isDrawerOpen}
-                >
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 group-hover:text-slate-900 group-hover:bg-slate-100 dark:text-slate-400 dark:group-hover:text-white dark:group-hover:bg-white/10 transition-colors shrink-0">
-                    <svg
-                      className="w-5 h-5 text-indigo-500 dark:text-indigo-400"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                    </svg>
-                  </div>
-                </SpecialTooltip>
-              </div>
-              <div
-                className={`flex-1 flex items-center pl-1 pr-3 overflow-hidden transition-opacity duration-200 ${
-                  isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none w-0'
-                }`}
-              >
-                <span className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-slate-950 dark:group-hover:text-white whitespace-nowrap">
-                  Control Center
-                </span>
-              </div>
-            </button>
-          </div>
-        )}
 
         {/* Middle Section: Chat sessions feature */}
         <div

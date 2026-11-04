@@ -21,6 +21,7 @@ export interface ResponseVersion {
   error?: BackendErrorDetails;
   durationSec?: number;
   timestamp?: string;
+  created_at?: string;
   isStopped?: boolean;
 }
 
@@ -45,6 +46,8 @@ export interface ChatMessage {
   isStopped?: boolean;
   isThinking?: boolean;
   timestamp?: string;
+  created_at?: string;
+  startedAtMs?: number;
   feedback?: 'thumbs_up' | 'thumbs_down' | null;
   id?: string;
 }

@@ -1,11 +1,12 @@
 import { Sparkles } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
+import { formatThoughtDuration } from './thoughtDurationUtils';
 
 /**
  * Mapping table from backend stages to user-friendly thoughts.
  */
-export const STAGE_THOUGHT_MAP: Record<string, string> = {
+const STAGE_THOUGHT_MAP: Record<string, string> = {
   RECEIVED: 'Thinking...',
   ROUTING: 'Thinking...',
   QUERY_DECOMPOSITION: 'Thinking...',
@@ -15,15 +16,6 @@ export const STAGE_THOUGHT_MAP: Record<string, string> = {
   RERANKING: 'Reviewing sources...',
   SYNTHESIS: 'Generating response...',
 };
-
-export const RESEARCH_STEPS = [
-  { key: 'ROUTING', label: 'Thinking...' },
-  { key: 'QUERY_DECOMPOSITION', label: 'Thinking...' },
-  { key: 'VECTOR_RETRIEVAL', label: 'Searching documents...' },
-  { key: 'GRAPH_RETRIEVAL', label: 'Searching documents...' },
-  { key: 'FUSION', label: 'Reviewing sources...' },
-  { key: 'SYNTHESIS', label: 'Generating response...' },
-];
 
 export interface QueryLifecycleTrackerProps {
   query?: string;
@@ -38,7 +30,7 @@ export interface QueryLifecycleTrackerProps {
  * Resolves the active friendly status phrase from either an explicit stage
  * or the elapsed time during autonomous pipeline execution.
  */
-export function getFriendlyThought(stage?: string, elapsedSec = 0): string {
+function getFriendlyThought(stage?: string, elapsedSec = 0): string {
   if (stage) {
     const normalized = stage.toUpperCase().trim();
     if (STAGE_THOUGHT_MAP[normalized]) {
@@ -64,30 +56,6 @@ export function getFriendlyThought(stage?: string, elapsedSec = 0): string {
   return STAGE_THOUGHT_MAP.ROUTING;
 }
 
-/**
- * Formats elapsed duration into human-readable seconds or milliseconds based strictly
- * on actual measured execution time (never hardcoded):
- * - When durationSec is invalid or <= 0, returns null
- * - When < 1s, outputs e.g. "450ms"
- * - When >= 1s and < 60s, outputs e.g. "1.8s"
- * - When >= 60s, outputs e.g. "1m 12s"
- */
-export function formatThoughtDuration(durationSec?: number | null): string | null {
-  if (typeof durationSec !== 'number' || Number.isNaN(durationSec) || durationSec <= 0) {
-    return null;
-  }
-  if (durationSec < 1) {
-    const ms = Math.round(durationSec * 1000);
-    return `${Math.max(ms, 1)}ms`;
-  }
-  if (durationSec >= 60) {
-    const mins = Math.floor(durationSec / 60);
-    const secs = Math.round(durationSec % 60);
-    return `${mins}m ${secs}s`;
-  }
-  return `${durationSec.toFixed(1)}s`;
-}
-
 export interface ThoughtDurationProps {
   executionTimeSec?: number | null;
   decomposedQueries?: string[];
@@ -101,14 +69,17 @@ export interface ThoughtDurationProps {
 
 /**
  * Clean Thought Badge (Gemini / ChatGPT style):
- * Displays above the AI response card: `✦ Thought for {X}s` (or `✦ Thought` if no duration recorded).
+ * Displays above the AI response card: `✦ Thought for {X}s` based strictly on genuine measured duration.
  * Does not show any expandable accordion or fake hardcoded durations.
  */
 export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
   executionTimeSec,
   className = '',
 }) => {
-  const formattedTime = formatThoughtDuration(executionTimeSec) || '1.4s';
+  const formattedTime = formatThoughtDuration(executionTimeSec);
+  if (!formattedTime) {
+    return null;
+  }
 
   return (
     <div
@@ -122,6 +93,50 @@ export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
         />
         <span className="font-medium tracking-tight">
           Thought for {formattedTime}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+export interface LiveThoughtDurationProps {
+  startTimeMs: number;
+  className?: string;
+}
+
+/**
+ * Live Thought Duration:
+ * Renders immediately when user presses Enter, ticking live elapsed seconds until the response card finishes.
+ */
+export const LiveThoughtDuration: React.FC<LiveThoughtDurationProps> = ({
+  startTimeMs,
+  className = '',
+}) => {
+  const [elapsed, setElapsed] = useState<number>(() =>
+    Math.max(0.1, Number(((performance.now() - startTimeMs) / 1000).toFixed(1)))
+  );
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed(
+        Math.max(0.1, Number(((performance.now() - startTimeMs) / 1000).toFixed(1)))
+      );
+    }, 100);
+    return () => clearInterval(timer);
+  }, [startTimeMs]);
+
+  return (
+    <div
+      className={`thought-duration-container mb-2 ml-0.5 select-none ${className}`}
+      data-testid="live-thought-duration"
+    >
+      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-500/10 border border-indigo-200/80 dark:border-indigo-500/20 shadow-2xs">
+        <Sparkles
+          className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 animate-spin"
+          aria-hidden="true"
+        />
+        <span className="font-medium tracking-tight">
+          Thought for {elapsed.toFixed(1)}s
         </span>
       </div>
     </div>

@@ -61,16 +61,21 @@ export const EngineStep: React.FC = () => {
       .getModelCatalog()
       .then((catalog) => {
         if (catalog && catalog.length > 0) {
-          const formatted: DynamicLLMModel[] = catalog.map((m) => ({
-            provider: m.source || 'ollama',
-            displayName: m.name || m.id,
-            model: m.id,
-            status: m.status || 'READY',
-            isActive: m.status === 'READY',
-            tier: m.tier,
-            sizeGb: m.download_size_gb,
-            ramGb: m.min_ram_gb,
-          }));
+          const formatted: DynamicLLMModel[] = catalog.map((m) => {
+            const isInstalled = m.source === 'ollama_local' || m.tier === 'Installed (Local Engine)';
+            return {
+              provider: m.source || 'ollama',
+              displayName: m.name || m.id,
+              model: m.id,
+              status: isInstalled ? 'READY' : 'AVAILABLE_FOR_PULL',
+              isActive: isInstalled,
+              tier: isInstalled ? 'Installed Locally' : 'Available for Pull (Not Downloaded)',
+              sizeGb: m.download_size_gb,
+              ramGb: m.min_ram_gb,
+              isInstalled,
+              source: m.source,
+            };
+          });
           setDynamicModels(formatted);
           if (!config.selectedLocalModel && formatted.length > 0) {
             updateConfig({ selectedLocalModel: formatted[0].model });
@@ -86,6 +91,8 @@ export const EngineStep: React.FC = () => {
               tier: m.tier,
               sizeGb: m.model.includes('3b') ? 2.0 : m.model.includes('7b') ? 4.7 : 4.9,
               ramGb: m.model.includes('3b') ? 4.0 : m.model.includes('7b') ? 8.0 : 16.0,
+              isInstalled: false,
+              source: m.provider,
             }));
             setDynamicModels(formatted);
             if (!config.selectedLocalModel && formatted.length > 0) {

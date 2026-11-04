@@ -37,6 +37,8 @@ export interface DynamicLLMModel {
   tier?: string;
   sizeGb?: number;
   ramGb?: number;
+  isInstalled?: boolean;
+  source?: string;
 }
 
 export interface SystemHardwareInfo {

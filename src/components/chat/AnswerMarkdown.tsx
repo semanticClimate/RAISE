@@ -10,8 +10,6 @@ import { CitationBadge, resolveCitationDetail } from '../citations/CitationBadge
 import { ComparabilityBadge, isComparabilityStatus } from './ComparabilityBadge';
 import { KaTexRenderer } from './KaTexRenderer';
 
-export { formatTableAsMarkdown } from '../../utils/tableFormatter';
-
 export interface AnswerMarkdownProps {
   content: string;
   citations?: Citation[];
@@ -201,7 +199,7 @@ type Block =
   | { type: 'callout'; variant: 'info' | 'warning'; text: string }
   | { type: 'paragraph'; text: string };
 
-export function parseMarkdownBlocks(text: string): Block[] {
+function parseMarkdownBlocks(text: string): Block[] {
   const lines = text.split('\n');
   const blocks: Block[] = [];
   let i = 0;
@@ -567,35 +565,10 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
   className = '',
   onViewPdf,
 }) => {
-  // Sid says: Debounce content flushing via requestAnimationFrame to coalesce micro token bursts and eliminate layout jumps
-  const [displayedContent, setDisplayedContent] = useState(content);
-  const rafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (displayedContent === content) return;
-
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-    }
-
-    rafRef.current = requestAnimationFrame(() => {
-      setDisplayedContent(content);
-      rafRef.current = null;
-    });
-
-    return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, [content, displayedContent]);
-
-  const targetContent = displayedContent || content;
-  if (!targetContent) return null;
+  if (!content) return null;
 
   // Sanitize any raw JSON token fragments or leaked stream tokens
-  const sanitized = sanitizeStreamText(targetContent);
+  const sanitized = sanitizeStreamText(content);
 
   // Clean RAG artifacts, unpack verbose in-text citations, and normalize layout
   const { cleanText: preparedText, citations: enrichedCitations } = cleanRagResponseText(

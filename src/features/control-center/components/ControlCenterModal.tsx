@@ -273,14 +273,10 @@ export const ControlCenterModal: React.FC = () => {
                 <h2 className="text-sm font-bold tracking-tight text-white uppercase font-mono leading-none">
                   Control Center
                 </h2>
-                {isSetupMode ? (
+                {isSetupMode && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
                     <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
                     Setup
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
-                    Active
                   </span>
                 )}
               </div>

@@ -77,7 +77,10 @@ export const useModeStore = create<ModeState>((set, get) => ({
   apiBaseUrl: getApiBaseUrl(),
   gatewayUsername: getStoredUsername(),
   apiKey: getStoredApiKey(),
-  isTunnelConfigured: Boolean(initialTunnel && initialTunnel.trim() !== ''),
+  isTunnelConfigured: Boolean(
+    (initialTunnel && initialTunnel.trim() !== '') ||
+    (config.apiBaseUrl && config.apiBaseUrl.trim() !== '')
+  ),
   latencyMs: 0,
   lastConnectedAt: getStoredLastConnectedAt(),
   capabilities: null,
@@ -206,7 +209,8 @@ export const useModeStore = create<ModeState>((set, get) => ({
       return;
     }
 
-    if (!isTunnelConfigured) {
+    const targetUrl = get().apiBaseUrl || config.apiBaseUrl;
+    if (!isTunnelConfigured && !targetUrl) {
       set({
         appMode: 'offline',
         capabilities: null,
