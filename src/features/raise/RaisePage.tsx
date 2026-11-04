@@ -752,6 +752,10 @@ export const RaisePage: React.FC = () => {
                           }
                         } catch {}
                       }
+                      if (!calcDuration && m.role === 'assistant') {
+                        const txt = m.text || m.content || '';
+                        calcDuration = txt.length > 0 ? Math.min(Math.max(0.6, Number((0.4 + txt.length / 280).toFixed(1))), 4.8) : 0.8;
+                      }
                       return {
                         ...m,
                         text: m?.text || m?.content || '',
@@ -2436,6 +2440,10 @@ export const RaisePage: React.FC = () => {
                     calcDuration = Number(diff.toFixed(1));
                   }
                 } catch {}
+              }
+              if (!calcDuration && m.role === 'assistant') {
+                const txt = m.text || m.content || '';
+                calcDuration = txt.length > 0 ? Math.min(Math.max(0.6, Number((0.4 + txt.length / 280).toFixed(1))), 4.8) : 0.8;
               }
               return {
                 ...m,
@@ -4476,20 +4484,13 @@ export const RaisePage: React.FC = () => {
                       {/* Unified Single-Line Thinking & Searching Tracker while active; Thought Duration when complete */}
                       {isCurrentlyActive ? (
                         <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mb-2">
-                          {activeExecutingQuery && !isConversationalQuery(activeExecutingQuery) ? (
-                            <QueryLifecycleTracker
-                              query={activeExecutingQuery}
-                              onAbort={handleAbortActiveQuery}
-                            />
-                          ) : (
-                            <LiveThoughtDuration
-                              startTimeMs={
-                                (msg as any).startedAtMs ||
-                                queryStartTimeRef.current ||
-                                performance.now()
-                              }
-                            />
-                          )}
+                          <LiveThoughtDuration
+                            startTimeMs={
+                              (msg as any).startedAtMs ||
+                              queryStartTimeRef.current ||
+                              performance.now()
+                            }
+                          />
                         </div>
                       ) : (
                         !msg.error &&
