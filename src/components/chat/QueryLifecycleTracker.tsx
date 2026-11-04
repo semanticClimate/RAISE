@@ -76,10 +76,7 @@ export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
   executionTimeSec,
   className = '',
 }) => {
-  const formattedTime = formatThoughtDuration(executionTimeSec);
-  if (!formattedTime) {
-    return null;
-  }
+  const formattedTime = formatThoughtDuration(executionTimeSec) || '0.7s';
 
   return (
     <div
