@@ -354,7 +354,7 @@ export class SourceService {
   }
 
   /**
-   * Resolved URL for prAISED Extracted Markdown
+   * Resolved URL for Parsed Extracted Markdown
    */
   public getExtractedMarkdownUrl(filename: string): string {
     const base = getApiBaseUrl().replace(/\/+$/, '');

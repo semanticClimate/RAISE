@@ -94,7 +94,7 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
     link.href = blobUrl;
     link.download =
       type === 'markdown'
-        ? `${documentName.replace(/\.[^/.]+$/, '')}.praised.md`
+        ? `${documentName.replace(/\.[^/.]+$/, '')}.parsed.md`
         : `${documentName.replace(/\.[^/.]+$/, '')}.okf_catalog.json`;
     document.body.appendChild(link);
     link.click();
@@ -102,7 +102,7 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
     URL.revokeObjectURL(blobUrl);
   };
 
-  const modalTitle = type === 'markdown' ? 'prAISED Extracted Markdown' : 'OKF Catalog Overview';
+  const modalTitle = type === 'markdown' ? 'Parsed Extracted Markdown' : 'OKF Catalog Overview';
   const modalSubtitle =
     type === 'markdown'
       ? 'Structure-preserving IBM Docling Markdown with layout & table extraction'
@@ -234,7 +234,7 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
             <div className="h-full flex flex-col items-center justify-center text-xs text-slate-400 dark:text-slate-500 gap-3">
               <Loader2 className="w-7 h-7 text-indigo-500 animate-spin" />
               <span className="font-medium">
-                Fetching {type === 'markdown' ? 'prAISED extracted markdown' : 'OKF catalog'} from gateway...
+                Fetching {type === 'markdown' ? 'Parsed extracted markdown' : 'OKF catalog'} from gateway...
               </span>
             </div>
           ) : error ? (
