@@ -111,7 +111,10 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-[160] flex items-center justify-center p-[clamp(0.5rem,2vw,1.5rem)] bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 select-none"
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="w-[min(96vw,56rem)] h-[min(90vh,52rem)] bg-white dark:bg-[#141722] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
@@ -213,7 +216,10 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer ml-1"
               aria-label="Close modal"
             >
@@ -269,7 +275,10 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 text-xs font-medium transition-all active:scale-95 cursor-pointer shadow-xs"
           >
             Close

@@ -170,11 +170,11 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({ citation }) =>
           </div>
 
           <a
-            href={sourceService.getViewerUrl(citation.pdf_filename, activePage, citation.plain_text)}
+            href={sourceService.getPdfUrl(citation.pdf_filename, activePage)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors px-2.5 py-1 rounded-xl shadow-2xs"
-            title="Open Google Drive viewer in a standalone browser tab"
+            title="Open PDF in browser default viewer in a standalone tab"
           >
             <span>Open in Tab</span>
             <ExternalLink className="w-3 h-3 ml-0.5" />

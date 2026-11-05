@@ -9,9 +9,6 @@ import {
 } from '../../components/chat/BackendErrorCard';
 import { ExportResponseDropdown } from '../../components/chat/ExportResponseDropdown';
 import {
-  ActiveStreamingBubble,
-} from '../../components/chat/ActiveStreamingBubble';
-import {
   LiveThoughtDuration,
   ThoughtDuration,
 } from '../../components/chat/QueryLifecycleTracker';
@@ -4460,26 +4457,6 @@ export const RaisePage: React.FC = () => {
                   const resolvedContent = rawTurnContent
                     .replace(/from the frontend to begin/gi, 'to RAISE to begin')
                     .trim();
-
-                  if (isCurrentlyActive) {
-                    return (
-                      <ActiveStreamingBubble
-                        key={`assistant-streaming-turn-${i}`}
-                        content={resolvedContent}
-                        isCurrentlyActive={true}
-                        isStopped={isStopped}
-                        persistenceFailed={msg.persistenceFailed}
-                        executionTimeSec={executionTimeSec}
-                        startedAtMs={
-                          (msg as any).startedAtMs ||
-                          queryStartTimeRef.current ||
-                          performance.now()
-                        }
-                        onAbort={handleAbortActiveQuery}
-                        onViewPdf={handleOpenPdfViewer}
-                      />
-                    );
-                  }
 
                   return (
                     <div

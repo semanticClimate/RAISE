@@ -198,8 +198,8 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
     );
   }, [rawDocuments]);
 
-  // React hook replacing window keydown ESC listener
-  useEscapeKey(onClose, isOpen);
+  // React hook replacing window keydown ESC listener (only when child modal is not open)
+  useEscapeKey(onClose, isOpen && !artifactModal.isOpen);
 
   const isItemIndexed = (item: LibraryItem): boolean => {
     if (item.status === 'processing') return false;

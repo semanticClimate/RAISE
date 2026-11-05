@@ -218,10 +218,20 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, durationMs: number = 2500) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    if (durationMs > 0) {
+      toastTimeoutRef.current = setTimeout(() => {
+        setToastMessage(null);
+        toastTimeoutRef.current = null;
+      }, durationMs);
+    }
   };
 
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -245,18 +255,25 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
     });
   };
 
+  const handleViewPdf = (item: LibraryItem) => {
+    if (typeof window !== 'undefined') {
+      const pdfUrl = sourceService.getPdfUrl(item.name, 1);
+      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   const handleScanFolder = async () => {
     if (isScanning) return;
     setIsScanning(true);
-    showToast('Scanning data/documents/ for newly added documents...');
+    showToast('Scanning data/documents/ for newly added documents...', 0);
     try {
       await sourceService.scanDocuments();
       await fetchLibraryDocuments();
-      showToast('Disk scan completed & library reconciled with data/documents/');
+      showToast('Disk scan completed & library reconciled with data/documents/', 3000);
     } catch (err: any) {
       console.warn('Folder scan request completed:', err);
       await fetchLibraryDocuments();
-      showToast('Folder scan completed');
+      showToast('Folder scan completed', 2500);
     } finally {
       setIsScanning(false);
     }
@@ -422,14 +439,25 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   };
 
   const handleDownloadItem = (item: LibraryItem) => {
+    if (item.type === 'pdf') {
+      const pdfUrl = sourceService.getPdfUrl(item.name);
+      const a = document.createElement('a');
+      a.href = pdfUrl;
+      a.download = item.name;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast(`Downloading "${item.name}"`);
+      return;
+    }
     const content = `RAISE Knowledge Base Document\n\nFilename: ${item.name}\nSize: ${item.size}\nUploaded: ${item.uploadedAt}\nPages: ${item.pages || 1}\n\nStatus: ${item.status}\nGrounding: GraphRAG Knowledge Base`;
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = item.name.endsWith('.pdf')
-      ? item.name.replace('.pdf', '_metadata.txt')
-      : item.name;
+    a.download = item.name.endsWith('.txt') ? item.name : `${item.name}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -885,6 +913,19 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                             <BookOpen className="w-3.5 h-3.5" />
                           </button>
                         )}
+                        {item.type === 'pdf' && (
+                          <button
+                            type="button"
+                            onClick={() => handleViewPdf(item)}
+                            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/15 transition-colors cursor-pointer"
+                            title="Open PDF in browser default viewer"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleDownloadItem(item)}
@@ -1055,6 +1096,19 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                                   title="View OKF Catalog"
                                 >
                                   <BookOpen className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {item.type === 'pdf' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewPdf(item)}
+                                  className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                                  title="Open PDF in browser default viewer"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
                                 </button>
                               )}
                               <button
@@ -1265,6 +1319,21 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                         >
                           <BookOpen className="w-3.5 h-3.5 text-emerald-500" />
                           <span>OKF Catalog</span>
+                        </button>
+                      )}
+
+                      {item.type === 'pdf' && (
+                        <button
+                          type="button"
+                          onClick={() => handleViewPdf(item)}
+                          className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#18191a] hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                          title="Open PDF in browser default viewer"
+                        >
+                          <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          <span>View PDF</span>
                         </button>
                       )}
 

@@ -662,7 +662,7 @@ class ApiClient {
       return { text: '', error: normErr, status: 0 };
     } finally {
       clearTimeout(timer);
-      if (options.signal?.aborted && reader) {
+      if (reader) {
         try {
           reader.cancel().catch(() => {});
         } catch {
