@@ -31,7 +31,7 @@ export class SystemService {
         body: JSON.stringify(payload || {}),
         signal,
         skipModeCheck: true,
-        timeoutMs: 4000,
+        timeoutMs: 9000,
       }
     );
   }

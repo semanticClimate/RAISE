@@ -533,8 +533,8 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
   };
 
   const handleOpenStandaloneTab = () => {
-    const standaloneUrl = `#/viewer?file=${encodeURIComponent(filename)}&page=${currentPage}&excerpt=${encodeURIComponent(excerpt || '')}`;
-    window.open(standaloneUrl, '_blank', 'noopener,noreferrer');
+    const directPdfUrl = sourceService.getPdfUrl(filename, currentPage);
+    window.open(directPdfUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

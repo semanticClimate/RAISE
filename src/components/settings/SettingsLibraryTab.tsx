@@ -1,7 +1,9 @@
+import { BookOpen, FileText, FolderSync } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sourceService } from '../../services/SourceService';
 import { formatBytes } from '../../utils/formatters';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
+import { ExtractedDocumentModal } from '../library/ExtractedDocumentModal';
 
 export interface LibraryItem {
   id: string;
@@ -20,6 +22,10 @@ export interface LibraryItem {
   is_protected?: boolean;
   is_prebaked?: boolean;
   ownership?: string;
+  has_extracted_md?: boolean;
+  extracted_md_url?: string;
+  has_okf_catalog?: boolean;
+  okf_catalog_url?: string;
 }
 
 export const INITIAL_LIBRARY_ITEMS: LibraryItem[] = [];
@@ -45,6 +51,10 @@ export function documentItemToLibraryItem(doc: {
   is_protected?: boolean;
   can_delete?: boolean;
   deletable?: boolean;
+  has_extracted_md?: boolean;
+  extracted_md_url?: string;
+  has_okf_catalog?: boolean;
+  okf_catalog_url?: string;
 }): LibraryItem {
   const fname = doc.filename || doc.name || 'document';
   const ext = fname.split('.').pop()?.toLowerCase() || '';
@@ -103,6 +113,10 @@ export function documentItemToLibraryItem(doc: {
     is_prebaked: doc.is_prebaked || doc.is_prebuilt || isProtected,
     is_protected: isProtected,
     can_delete: canDelete,
+    has_extracted_md: doc.has_extracted_md,
+    extracted_md_url: doc.extracted_md_url,
+    has_okf_catalog: doc.has_okf_catalog,
+    okf_catalog_url: doc.okf_catalog_url,
   };
 }
 
@@ -208,6 +222,44 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [artifactModal, setArtifactModal] = useState<{
+    isOpen: boolean;
+    documentName: string;
+    type: 'markdown' | 'okf';
+    url?: string;
+  }>({
+    isOpen: false,
+    documentName: '',
+    type: 'markdown',
+  });
+
+  const handleOpenArtifactModal = (item: LibraryItem, type: 'markdown' | 'okf') => {
+    setArtifactModal({
+      isOpen: true,
+      documentName: item.name,
+      type,
+      url: type === 'markdown' ? item.extracted_md_url : item.okf_catalog_url,
+    });
+  };
+
+  const handleScanFolder = async () => {
+    if (isScanning) return;
+    setIsScanning(true);
+    showToast('Scanning data/documents/ for newly added documents...');
+    try {
+      await sourceService.scanDocuments();
+      await fetchLibraryDocuments();
+      showToast('Disk scan completed & library reconciled with data/documents/');
+    } catch (err: any) {
+      console.warn('Folder scan request completed:', err);
+      await fetchLibraryDocuments();
+      showToast('Folder scan completed');
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   // Filter and sort items
@@ -503,8 +555,19 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
           </p>
         </div>
 
-        {/* Upload file trigger - Premium Gray */}
+        {/* Upload file trigger & Scan Folder */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleScanFolder}
+            disabled={isScanning}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10 active:scale-95 text-xs font-medium transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+            title="Scan data/documents/ to immediately discover any PDFs dropped onto disk"
+          >
+            <FolderSync className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin text-indigo-500' : ''}`} />
+            <span>{isScanning ? 'Scanning...' : 'Scan Folder'}</span>
+          </button>
+
           <input
             type="file"
             ref={fileInputRef}
@@ -738,6 +801,38 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                     </svg>
                     <span className="truncate">{item.uploadedAt}</span>
                   </p>
+                  {indexed && (item.has_extracted_md || item.has_okf_catalog) && (
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      {item.has_extracted_md && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenArtifactModal(item, 'markdown');
+                          }}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 transition-all cursor-pointer"
+                          title="View prAISED Extracted Markdown"
+                        >
+                          <FileText className="w-2.5 h-2.5" />
+                          <span>prAISED MD</span>
+                        </button>
+                      )}
+                      {item.has_okf_catalog && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenArtifactModal(item, 'okf');
+                          }}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 transition-all cursor-pointer"
+                          title="View Open Knowledge Formulation Overview"
+                        >
+                          <BookOpen className="w-2.5 h-2.5" />
+                          <span>OKF Catalog</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer: Quick Actions (Single circular loader when parsing, delete x when indexed) */}
@@ -770,6 +865,26 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                       </div>
                     ) : (
                       <>
+                        {item.has_extracted_md && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenArtifactModal(item, 'markdown')}
+                            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/15 transition-colors cursor-pointer"
+                            title="View prAISED Markdown"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {item.has_okf_catalog && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenArtifactModal(item, 'okf')}
+                            className="p-1 rounded-md text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/15 transition-colors cursor-pointer"
+                            title="View OKF Catalog"
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleDownloadItem(item)}
@@ -922,6 +1037,26 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                             </div>
                           ) : (
                             <>
+                              {item.has_extracted_md && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenArtifactModal(item, 'markdown')}
+                                  className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                                  title="View prAISED Markdown"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {item.has_okf_catalog && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenArtifactModal(item, 'okf')}
+                                  className="p-1 rounded-md text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                                  title="View OKF Catalog"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleDownloadItem(item)}
@@ -1109,6 +1244,30 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                         </button>
                       )}
 
+                      {item.has_extracted_md && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenArtifactModal(item, 'markdown')}
+                          className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#18191a] hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                          title="View prAISED Extracted Markdown"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>prAISED MD</span>
+                        </button>
+                      )}
+
+                      {item.has_okf_catalog && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenArtifactModal(item, 'okf')}
+                          className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#18191a] hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                          title="View OKF Catalog"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>OKF Catalog</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => handleDownloadItem(item)}
@@ -1183,6 +1342,15 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
           })}
         </div>
       )}
+
+      {/* Extracted Document / OKF Overview Modal */}
+      <ExtractedDocumentModal
+        isOpen={artifactModal.isOpen}
+        onClose={() => setArtifactModal((prev) => ({ ...prev, isOpen: false }))}
+        documentName={artifactModal.documentName}
+        type={artifactModal.type}
+        url={artifactModal.url}
+      />
     </div>
   );
 };

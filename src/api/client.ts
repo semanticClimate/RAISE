@@ -306,6 +306,8 @@ class ApiClient {
       details: `Streaming SSE request to ${url}`,
     });
 
+    let onAbort: (() => void) | null = null;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     try {
       const response = await fetch(url, {
         ...options,
@@ -385,7 +387,23 @@ class ApiClient {
         return { text, error: null, status: response.status };
       }
 
-      const reader = response.body.getReader();
+      reader = response.body.getReader();
+      onAbort = () => {
+        try {
+          reader?.cancel().catch(() => {});
+        } catch {
+          // ignore
+        }
+      };
+
+      if (options.signal) {
+        if (options.signal.aborted) {
+          onAbort();
+        } else {
+          options.signal.addEventListener('abort', onAbort, { once: true });
+        }
+      }
+
       const decoder = new TextDecoder();
       let fullText = '';
       let buffer = '';
@@ -642,6 +660,18 @@ class ApiClient {
         error: `Stream exception: ${normErr.message} (Target: ${url})`,
       });
       return { text: '', error: normErr, status: 0 };
+    } finally {
+      clearTimeout(timer);
+      if (options.signal?.aborted && reader) {
+        try {
+          reader.cancel().catch(() => {});
+        } catch {
+          // ignore
+        }
+      }
+      if (options.signal && onAbort) {
+        options.signal.removeEventListener('abort', onAbort);
+      }
     }
   }
 }

@@ -87,6 +87,15 @@ export const LaunchStep: React.FC = () => {
     } catch {}
   };
 
+  const getSubstrateDisplayMode = (rawMode?: string): string => {
+    if (!rawMode || rawMode === 'in_memory_fallback') {
+      return 'Local Embedded (Zero-Dependency)';
+    }
+    if (rawMode === 'local') return 'Local Daemon';
+    if (rawMode === 'cloud') return 'Cloud Endpoint';
+    return rawMode;
+  };
+
   const substrates = [
     {
       name: 'ChromaDB Vector Store',
@@ -99,25 +108,43 @@ export const LaunchStep: React.FC = () => {
     {
       name: 'Neo4j Graph Database',
       role: 'Knowledge Graph',
-      mode: config.knowledgeGraph?.mode || config.neo4jMode || 'in_memory_fallback',
-      status: testResults?.neo4j?.online ? 'Online' : testResults ? 'Offline' : (config.knowledgeGraph?.mode === 'in_memory_fallback' ? 'In-Memory Ready' : 'Configured'),
-      online: testResults?.neo4j?.online ?? (config.knowledgeGraph?.mode === 'in_memory_fallback'),
+      mode: getSubstrateDisplayMode(config.knowledgeGraph?.mode || config.neo4jMode),
+      status: testResults?.neo4j?.online
+        ? 'Online'
+        : testResults
+          ? 'Offline'
+          : (!config.knowledgeGraph?.mode || config.knowledgeGraph?.mode === 'in_memory_fallback'
+            ? 'Local Embedded (Zero-Dependency)'
+            : 'Configured'),
+      online: testResults?.neo4j?.online ?? (!config.knowledgeGraph?.mode || config.knowledgeGraph?.mode === 'in_memory_fallback'),
       latency: testResults?.neo4j?.latency_ms ? `${testResults.neo4j.latency_ms}ms` : undefined,
     },
     {
       name: 'Redis Fast Bus',
       role: 'Response Cache & Signals',
-      mode: config.cacheAndSignals?.mode || config.redisMode || 'in_memory_fallback',
-      status: testResults?.redis?.online ? 'Online' : testResults ? 'Offline' : (config.cacheAndSignals?.mode === 'in_memory_fallback' ? 'In-Memory Ready' : 'Configured'),
-      online: testResults?.redis?.online ?? (config.cacheAndSignals?.mode === 'in_memory_fallback'),
+      mode: getSubstrateDisplayMode(config.cacheAndSignals?.mode || config.redisMode),
+      status: testResults?.redis?.online
+        ? 'Online'
+        : testResults
+          ? 'Offline'
+          : (!config.cacheAndSignals?.mode || config.cacheAndSignals?.mode === 'in_memory_fallback'
+            ? 'Local Embedded (Zero-Dependency)'
+            : 'Configured'),
+      online: testResults?.redis?.online ?? (!config.cacheAndSignals?.mode || config.cacheAndSignals?.mode === 'in_memory_fallback'),
       latency: testResults?.redis?.latency_ms ? `${testResults.redis.latency_ms}ms` : undefined,
     },
     {
       name: 'PostgreSQL Store',
       role: 'Session Memory & Chat History',
-      mode: config.sessionMemory?.mode || config.postgresMode || 'in_memory_fallback',
-      status: testResults?.postgres?.online ? 'Online' : testResults ? 'Offline' : (config.sessionMemory?.mode === 'in_memory_fallback' ? 'In-Memory Ready' : 'Configured'),
-      online: testResults?.postgres?.online ?? (config.sessionMemory?.mode === 'in_memory_fallback'),
+      mode: getSubstrateDisplayMode(config.sessionMemory?.mode || config.postgresMode),
+      status: testResults?.postgres?.online
+        ? 'Online'
+        : testResults
+          ? 'Offline'
+          : (!config.sessionMemory?.mode || config.sessionMemory?.mode === 'in_memory_fallback'
+            ? 'Local Embedded (Zero-Dependency)'
+            : 'Configured'),
+      online: testResults?.postgres?.online ?? (!config.sessionMemory?.mode || config.sessionMemory?.mode === 'in_memory_fallback'),
     },
   ];
 
@@ -176,10 +203,10 @@ export const LaunchStep: React.FC = () => {
             <Sparkles className="w-5 h-5 text-sky-400 shrink-0" />
             <div>
               <h4 className="text-sm font-bold text-white">
-                Workstation Active (In-Memory Fallback Mode)
+                Local Embedded (Zero-Dependency Mode)
               </h4>
               <p className="text-xs text-slate-300 mt-0.5">
-                ChromaDB vector store is active. {offlineSubstrates.map((s) => s.name.split(' ')[0]).join(', ')} are offline — running on in-process Python memory (NetworkX, SQLite, fakeredis).
+                Running on local in-process SQLite and NetworkX graph with embedded ChromaDB vector store. No cloud credentials or Docker services required.
               </p>
             </div>
           </div>

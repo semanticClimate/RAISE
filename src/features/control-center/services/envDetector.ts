@@ -54,15 +54,29 @@ const INVALID_SECRET_VALUES = new Set([
 ]);
 
 /**
- * Filter out dummy placeholders, short words, or non-secret config values
+ * Filter out dummy placeholders, short words, masked values, or non-secret config values
  */
-function isValidSecret(val?: string): boolean {
+export function isValidSecret(val?: string): boolean {
   if (!val) return false;
   const trimmed = val.trim();
   // Legitimate API keys / tokens are at least 10 characters long
   if (trimmed.length < 10) return false;
+  // Exclude masked backend telemetry strings, asterisks, bullets, or ellipsis:
+  if (
+    trimmed.includes('...') ||
+    trimmed.includes('*') ||
+    trimmed.includes('•') ||
+    trimmed.includes('\u2022')
+  ) {
+    return false;
+  }
   if (INVALID_SECRET_VALUES.has(trimmed.toLowerCase())) return false;
-  if (trimmed.startsWith('your_') || trimmed.startsWith('<your-') || trimmed.includes('placeholder')) {
+  if (
+    trimmed.startsWith('your_') ||
+    trimmed.startsWith('<your-') ||
+    trimmed.includes('placeholder') ||
+    trimmed.includes('dummy')
+  ) {
     return false;
   }
   return true;

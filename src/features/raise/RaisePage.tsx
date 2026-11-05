@@ -9,8 +9,10 @@ import {
 } from '../../components/chat/BackendErrorCard';
 import { ExportResponseDropdown } from '../../components/chat/ExportResponseDropdown';
 import {
+  ActiveStreamingBubble,
+} from '../../components/chat/ActiveStreamingBubble';
+import {
   LiveThoughtDuration,
-  QueryLifecycleTracker,
   ThoughtDuration,
 } from '../../components/chat/QueryLifecycleTracker';
 import {
@@ -57,7 +59,6 @@ import { SourcesDrawer } from './components/SourcesDrawer';
 import { QueryBox } from './query-box';
 import { EmptyWorkspaceNoticeCard } from './components/EmptyWorkspaceNoticeCard';
 import { PdfViewerModal } from './components/PdfViewerModal';
-import { isConversationalQuery } from '../../utils/queryClassifier';
 import { DEMO_SHOWCASE_SESSION, DEMO_SHOWCASE_SESSION_ID } from './showcaseSession';
 import type {
   ChatMessage,
@@ -1318,26 +1319,10 @@ export const RaisePage: React.FC = () => {
     if (!filename) return;
     const safePage = Math.max(1, pageNumber || 1);
 
-    // Look for matching citation in current active conversation to retrieve plain_text excerpt
-    let matchedExcerpt = '';
-    for (const msg of conversation) {
-      if (msg.response?.citations) {
-        const cit = msg.response.citations.find(
-          (c: any) =>
-            (c.pdf_filename === filename || c.filename === filename) &&
-            (c.primary_page === safePage || c.page_number === safePage || c.page === safePage)
-        );
-        if (cit?.plain_text || cit?.snippet || cit?.text) {
-          matchedExcerpt = cit.plain_text || cit.snippet || cit.text || '';
-          break;
-        }
-      }
-    }
-
-    // Sid says: Open directly in a new browser tab, never as an in-page popup modal
-    const viewerUrl = sourceService.getViewerUrl(filename, safePage, matchedExcerpt);
+    // Sid says: Open directly in a new browser tab with browser default PDF viewer, never with duplicate custom toolbars
+    const pdfUrl = sourceService.getPdfUrl(filename, safePage);
     if (typeof window !== 'undefined') {
-      window.open(viewerUrl, '_blank', 'noopener,noreferrer');
+      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -1576,7 +1561,7 @@ export const RaisePage: React.FC = () => {
 
   const [isAutoScrollLocked, setIsAutoScrollLocked] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [activeExecutingQuery, setActiveExecutingQuery] = useState<string>('');
+  const [_activeExecutingQuery, setActiveExecutingQuery] = useState<string>('');
 
   const createErrorDetails = (apiErr?: any, rawError?: any): BackendErrorDetails => {
     const isAborted =
@@ -4476,6 +4461,26 @@ export const RaisePage: React.FC = () => {
                     .replace(/from the frontend to begin/gi, 'to RAISE to begin')
                     .trim();
 
+                  if (isCurrentlyActive) {
+                    return (
+                      <ActiveStreamingBubble
+                        key={`assistant-streaming-turn-${i}`}
+                        content={resolvedContent}
+                        isCurrentlyActive={true}
+                        isStopped={isStopped}
+                        persistenceFailed={msg.persistenceFailed}
+                        executionTimeSec={executionTimeSec}
+                        startedAtMs={
+                          (msg as any).startedAtMs ||
+                          queryStartTimeRef.current ||
+                          performance.now()
+                        }
+                        onAbort={handleAbortActiveQuery}
+                        onViewPdf={handleOpenPdfViewer}
+                      />
+                    );
+                  }
+
                   return (
                     <div
                       key={`assistant-turn-${i}`}
@@ -4495,7 +4500,7 @@ export const RaisePage: React.FC = () => {
                       ) : (
                         !msg.error &&
                         !isStopped && (
-                          <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto">
+                          <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mb-2">
                             <ThoughtDuration executionTimeSec={executionTimeSec} />
                           </div>
                         )
@@ -4967,33 +4972,6 @@ export const RaisePage: React.FC = () => {
                   );
                 }
               })}
-              {isLoading &&
-                regeneratingIndex === null &&
-                conversation[conversation.length - 1]?.role === 'user' && (
-                  <div className="w-full mb-3">
-                    {activeExecutingQuery && isConversationalQuery(activeExecutingQuery) ? (
-                      <div className="ai-response-card w-full bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 shadow-sm dark:shadow-xl transition-all animate-in fade-in">
-                        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs font-mono">
-                          <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-                          <span>Responding...</span>
-                        </div>
-                      </div>
-                    ) : activeExecutingQuery ? (
-                      <QueryLifecycleTracker
-                        query={activeExecutingQuery}
-                        onAbort={handleAbortActiveQuery}
-                      />
-                    ) : (
-                      <div
-                        data-testid="gateway-connecting-fallback"
-                        className="inline-flex items-center gap-2 py-1.5 px-3 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-medium animate-in fade-in select-none"
-                      >
-                        <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-ping" />
-                        <span>Connecting to gateway...</span>
-                      </div>
-                    )}
-                  </div>
-                )}
             </div>
           )}
 

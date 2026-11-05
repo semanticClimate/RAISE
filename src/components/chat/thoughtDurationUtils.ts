@@ -19,7 +19,7 @@
  */
 export function formatThoughtDuration(durationSec?: number | null): string {
   if (typeof durationSec !== 'number' || Number.isNaN(durationSec) || durationSec <= 0) {
-    return '0.7s';
+    return '';
   }
   if (durationSec >= 60) {
     const mins = Math.floor(durationSec / 60);

@@ -18,6 +18,10 @@ export const DocumentItemSchema = z
     owner: z.string().optional(),
     uploaded_at: z.string().optional(),
     library: z.string().optional(),
+    has_extracted_md: z.boolean().optional(),
+    extracted_md_url: z.string().optional(),
+    has_okf_catalog: z.boolean().optional(),
+    okf_catalog_url: z.string().optional(),
   })
   .passthrough();
 

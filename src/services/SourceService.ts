@@ -182,19 +182,10 @@ export class SourceService {
   }
 
   /**
-   * Standalone Google Drive-style PDF viewer tab route
+   * High-speed direct PDF URL opened in browser default viewer
    */
-  public getViewerUrl(filename: string, pageNumber: number = 1, excerpt?: string): string {
-    const cleanFilename = encodeURIComponent(filename);
-    const safePage = Math.max(1, pageNumber || 1);
-    const exc = excerpt ? `&excerpt=${encodeURIComponent(excerpt)}` : '';
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      const pathname = window.location.pathname.endsWith('/')
-        ? window.location.pathname
-        : `${window.location.pathname}/`;
-      return `${window.location.origin}${pathname}#/viewer?file=${cleanFilename}&page=${safePage}${exc}`;
-    }
-    return `#/viewer?file=${cleanFilename}&page=${safePage}${exc}`;
+  public getViewerUrl(filename: string, pageNumber: number = 1, _excerpt?: string): string {
+    return this.getPdfUrl(filename, pageNumber);
   }
 
   /**
@@ -346,6 +337,98 @@ export class SourceService {
     return () => {
       closed = true;
     };
+  }
+
+  /**
+   * Triggers instant disk scan to discover any PDFs dropped into data/documents/
+   */
+  public async scanDocuments(signal?: AbortSignal): Promise<ApiResponse<DocumentListResponse>> {
+    return apiClient.request<DocumentListResponse>(
+      ENDPOINTS.DOCUMENTS_SCAN,
+      undefined,
+      {
+        method: 'POST',
+        signal,
+      }
+    );
+  }
+
+  /**
+   * Resolved URL for prAISED Extracted Markdown
+   */
+  public getExtractedMarkdownUrl(filename: string): string {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    return `${base}${ENDPOINTS.DOCUMENT_EXTRACTED_MD(filename)}`;
+  }
+
+  /**
+   * Resolved URL for OKF Catalog
+   */
+  public getOkfCatalogUrl(filename: string): string {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    return `${base}${ENDPOINTS.DOCUMENT_OKF_CATALOG(filename)}`;
+  }
+
+  /**
+   * Fetches raw extracted markdown content for a document
+   */
+  public async fetchExtractedMarkdown(
+    filenameOrUrl: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const url =
+      filenameOrUrl.startsWith('http://') || filenameOrUrl.startsWith('https://')
+        ? filenameOrUrl
+        : filenameOrUrl.startsWith('/')
+          ? `${base}${filenameOrUrl}`
+          : `${base}${ENDPOINTS.DOCUMENT_EXTRACTED_MD(filenameOrUrl)}`;
+
+    const resp = await fetch(url, { method: 'GET', signal });
+    if (!resp.ok) {
+      throw new Error(`Failed to load extracted markdown: ${resp.status} ${resp.statusText}`);
+    }
+    return await resp.text();
+  }
+
+  /**
+   * Fetches OKF catalog for a document (returns parsed JSON or raw markdown text)
+   */
+  public async fetchOkfCatalog(
+    filenameOrUrl: string,
+    signal?: AbortSignal
+  ): Promise<{ text: string; data?: any }> {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const rawUrl =
+      filenameOrUrl.startsWith('http://') || filenameOrUrl.startsWith('https://')
+        ? filenameOrUrl
+        : filenameOrUrl.startsWith('/')
+          ? `${base}${filenameOrUrl}`
+          : `${base}${ENDPOINTS.DOCUMENT_OKF_CATALOG(filenameOrUrl)}`;
+
+    const urlWithJson = rawUrl.includes('?') ? `${rawUrl}&format=json` : `${rawUrl}?format=json`;
+
+    try {
+      const resp = await fetch(urlWithJson, { method: 'GET', signal });
+      if (resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const json = await resp.json();
+          return { text: JSON.stringify(json, null, 2), data: json };
+        }
+        const text = await resp.text();
+        return { text };
+      }
+    } catch {
+      // fallback to raw URL
+    }
+
+    const fallbackResp = await fetch(rawUrl, { method: 'GET', signal });
+    if (!fallbackResp.ok) {
+      throw new Error(`Failed to load OKF catalog: ${fallbackResp.status} ${fallbackResp.statusText}`);
+    }
+    const text = await fallbackResp.text();
+    return { text };
   }
 }
 

@@ -195,15 +195,15 @@ export function resolveCitationDetail(
       ? sourceService.getPdfUrl(rawFileName, pageNumber)
       : undefined;
 
-  // Sid says: Primary URL points to external web URL for web records or standalone viewer tab
+  // Sid says: Primary URL points to external web URL for web records or direct browser PDF viewer
   const candidatePrimaryUrl =
     (isWeb && webUrl
       ? webUrl
-      : (rawFileName
-          ? sourceService.getViewerUrl(rawFileName, safePage, cit?.plain_text)
+      : pdfUrl ||
+        (rawFileName
+          ? sourceService.getPdfUrl(rawFileName, safePage)
           : undefined) ||
-        singlePageViewUrl ||
-        pdfUrl);
+        singlePageViewUrl);
 
   const primaryUrl = isSafeUrl(candidatePrimaryUrl) ? (candidatePrimaryUrl as string) : '#';
 

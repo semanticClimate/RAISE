@@ -46,6 +46,11 @@ export const ENDPOINTS = {
   UPLOAD: '/api/upload',
   DOCUMENTS: '/api/documents',
   DOCUMENTS_MANIFEST: '/api/documents/manifest',
+  DOCUMENTS_SCAN: '/api/documents/scan',
+  DOCUMENT_EXTRACTED_MD: (filename: string) =>
+    `/api/documents/${encodeURIComponent(filename)}/extracted-markdown`,
+  DOCUMENT_OKF_CATALOG: (filename: string) =>
+    `/api/documents/${encodeURIComponent(filename)}/okf-catalog`,
   UPLOAD_ACADEMIC_PDFS: '/api/upload-academic-pdfs',
   DELETE_DOCUMENT: '/api/documents/delete',
   DELETE_DOCUMENT_BY_ID: (id: string) => `/api/documents/${encodeURIComponent(id)}`,

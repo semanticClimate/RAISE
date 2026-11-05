@@ -306,7 +306,7 @@ export const platformAdapter = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(payload || {}),
-      }, 4000);
+      }, 9000);
       if (res.ok) {
         return (await res.json()) as ConnectionTestResult;
       }
@@ -547,11 +547,37 @@ export const platformAdapter = {
         const data = (await res.json()) as { message?: string };
         return { success: true, message: data.message || 'Configuration applied' };
       }
+      let errorMessage = `Backend rejected configuration (${res.status})`;
+      try {
+        const errJson = (await res.json()) as any;
+        if (typeof errJson.detail === 'string') {
+          errorMessage = errJson.detail;
+        } else if (Array.isArray(errJson.detail)) {
+          // FastAPI / Pydantic validation error array
+          const details = errJson.detail
+            .map((d: any) => `${d.loc?.slice(1).join('.') || d.loc?.join('.') || 'field'}: ${d.msg}`)
+            .join('; ');
+          errorMessage = `Validation error: ${details}`;
+        } else if (errJson.message) {
+          errorMessage = errJson.message;
+        } else {
+          errorMessage = JSON.stringify(errJson);
+        }
+      } catch {
+        const raw = await res.text().catch(() => '');
+        if (raw) errorMessage = raw;
+      }
+      return {
+        success: false,
+        message: errorMessage,
+      };
     } catch (err) {
       if (!isTestEnv) console.error('Failed to save config via FastAPI:', err);
+      return {
+        success: false,
+        message: `Network error connecting to backend: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
-
-    return { success: true, message: 'Saved locally in browser store' };
   },
 
   /**
@@ -572,35 +598,67 @@ export const platformAdapter = {
       }
     }
 
-    // Try FastAPI endpoint if available, else smooth progress simulation
+    // Standardized FastAPI endpoint with JSON body and proper SSE parsing
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     try {
       const res = await fetch(resolveApiUrl('/api/system/models/pull'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model_name: modelName }),
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({
+          model_name: modelName,
+        }),
       });
       if (res.ok && res.body) {
-        const reader = res.body.getReader();
+        reader = res.body.getReader();
         const decoder = new TextDecoder();
-        while (true) {
+        let buffer = '';
+        let streamFinished = false;
+
+        while (!streamFinished) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          try {
-            const parsed = JSON.parse(chunk.replace(/^data:\s*/, '')) as {
-              percent?: number;
-              status?: string;
-            };
-            if (typeof parsed.percent === 'number') {
-              onProgress(parsed.percent, parsed.status || 'Downloading...');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') {
+              streamFinished = true;
+              break;
             }
-          } catch {
-            // ignore
+            if (trimmed.startsWith('data:')) {
+              const rawData = trimmed.replace(/^data:\s*/, '');
+              try {
+                const parsed = JSON.parse(rawData) as {
+                  percent?: number;
+                  status?: string;
+                };
+                if (typeof parsed.percent === 'number') {
+                  onProgress(parsed.percent, parsed.status || 'Downloading...');
+                  if (parsed.percent >= 100) {
+                    streamFinished = true;
+                    break;
+                  }
+                }
+              } catch {
+                // ignore malformed or partial json
+              }
+            }
           }
         }
+        try {
+          await reader.cancel();
+        } catch {}
         return;
       }
     } catch {
+      if (reader) {
+        try {
+          await reader.cancel();
+        } catch {}
+      }
       // Fallback smooth simulation
     }
 

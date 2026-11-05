@@ -1,4 +1,4 @@
-import { BookOpen, Check, Copy } from 'lucide-react';
+import { BookOpen, Check, Copy, Sparkles } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import type { Citation } from '../../types';
 import { sourceService } from '../../services/SourceService';
@@ -759,12 +759,33 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
     return <React.Fragment key={keyPrefix}>{elements}</React.Fragment>;
   };
 
-  const blocks = parseMarkdownBlocks(cleanContent);
+  // Extract and format reasoning tokens inside <think>...</think>
+  let thoughtText: string | null = null;
+  let parsedContent = cleanContent;
+  const thinkMatch = cleanContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/i);
+  if (thinkMatch) {
+    thoughtText = thinkMatch[1].trim();
+    parsedContent = cleanContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/i, '').trim();
+  }
+
+  const blocks = parseMarkdownBlocks(parsedContent);
 
   return (
     <div
       className={`space-y-3 leading-relaxed text-slate-800 dark:text-slate-200 font-sans text-[15px] ${className}`}
     >
+      {thoughtText && (
+        <details className="mb-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02] p-3 text-xs group">
+          <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-400 select-none flex items-center gap-2 hover:text-slate-900 dark:hover:text-slate-200">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <span>Reasoning Chain</span>
+            <span className="text-[10px] text-slate-400 group-open:hidden font-mono">(click to expand)</span>
+          </summary>
+          <div className="mt-2.5 pt-2.5 border-t border-slate-200/60 dark:border-white/5 font-mono text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+            {thoughtText}
+          </div>
+        </details>
+      )}
       {blocks.map((block, idx) => {
         switch (block.type) {
           case 'heading': {
@@ -976,7 +997,7 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
               const detail = resolveCitationDetail(cit, citIdx + 1);
               const targetUrl = detail.isWeb
                 ? (detail.webUrl || detail.primaryUrl)
-                : sourceService.getViewerUrl(detail.fileName, detail.pageNumber || 1, detail.plainText);
+                : sourceService.getPdfUrl(detail.fileName, detail.pageNumber || 1);
 
               return (
                 <a

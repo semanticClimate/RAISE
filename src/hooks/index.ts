@@ -8,3 +8,6 @@ export { useDocumentLibrary } from './useDocumentLibrary';
 export { useDynamicModels, type DynamicModelItem, type UseDynamicModelsResult } from './useDynamicModels';
 export { useScrollLock } from './useScrollLock';
 export { useSlashCommands, type UseSlashCommandsOptions } from './useSlashCommands';
+export { useSessionHydration, type UseSessionHydrationOptions, type UseSessionHydrationResult } from './useSessionHydration';
+export { useDocumentVault, type UseDocumentVaultOptions, type UseDocumentVaultResult } from './useDocumentVault';
+export { useSessionDrawer, type UseSessionDrawerOptions, type UseSessionDrawerResult } from './useSessionDrawer';

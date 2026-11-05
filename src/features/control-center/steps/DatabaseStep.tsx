@@ -239,10 +239,10 @@ export const DatabaseStep: React.FC = () => {
         >
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-emerald-400" />
-            <span>In-Memory</span>
+            <span>Local Embedded (Zero-Dependency)</span>
           </div>
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
-            0 GB • Instant
+            Zero Setup • Instant
           </span>
         </button>
 
@@ -295,7 +295,7 @@ export const DatabaseStep: React.FC = () => {
           <thead>
             <tr className="border-b border-white/10 bg-black/40 text-xs font-semibold text-slate-300">
               <th className="py-2.5 px-4">Substrate</th>
-              <th className="py-2.5 px-3 text-center">In-Memory</th>
+              <th className="py-2.5 px-3 text-center">Local Embedded (Zero-Dependency)</th>
               <th className="py-2.5 px-3 text-center">Local</th>
               <th className="py-2.5 px-3 text-center">Cloud</th>
             </tr>
@@ -336,7 +336,7 @@ export const DatabaseStep: React.FC = () => {
                     </div>
                   </td>
 
-                  {/* Python Memory Cell */}
+                  {/* Local Embedded (Zero-Dependency) Cell */}
                   <td className="py-3.5 px-3 text-center">
                     <button
                       type="button"
@@ -346,13 +346,13 @@ export const DatabaseStep: React.FC = () => {
                           ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
-                      title="Select Python In-Memory"
-                      aria-label={`Select Python In-Memory for ${sub.name}`}
+                      title="Select Local Embedded (Zero-Dependency)"
+                      aria-label={`Select Local Embedded (Zero-Dependency) for ${sub.name}`}
                     >
                       {isMemory ? (
                         <>
                           <Check className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Python In-Memory</span>
+                          <span className="sr-only">Local Embedded (Zero-Dependency)</span>
                         </>
                       ) : (
                         <span>-</span>

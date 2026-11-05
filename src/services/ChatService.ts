@@ -143,6 +143,20 @@ export class ChatService implements ChatServiceInterface {
 
     // 1. If streaming callback is provided, attempt streaming via POST /api/chat
     if (onStreamChunk) {
+      if (signal) {
+        signal.addEventListener(
+          'abort',
+          () => {
+            if (req.thread_id) {
+              this.abortChat({
+                session_id: req.thread_id,
+                request_id: req.request_id,
+              }).catch(() => {});
+            }
+          },
+          { once: true }
+        );
+      }
       const streamRes = await apiClient.requestStream(
         ENDPOINTS.CHAT,
         {
