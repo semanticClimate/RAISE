@@ -1,4 +1,4 @@
-import { BookOpen, FileText, FolderSync } from 'lucide-react';
+import { FileText, FolderSync } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sourceService } from '../../services/SourceService';
 import { formatBytes } from '../../utils/formatters';
@@ -829,36 +829,20 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                     </svg>
                     <span className="truncate">{item.uploadedAt}</span>
                   </p>
-                  {indexed && (item.has_extracted_md || item.has_okf_catalog) && (
+                  {indexed && item.has_extracted_md && (
                     <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                      {item.has_extracted_md && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenArtifactModal(item, 'markdown');
-                          }}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 transition-all cursor-pointer"
-                          title="View Parsed Extracted Markdown"
-                        >
-                          <FileText className="w-2.5 h-2.5" />
-                          <span>Parsed MD</span>
-                        </button>
-                      )}
-                      {item.has_okf_catalog && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenArtifactModal(item, 'okf');
-                          }}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 transition-all cursor-pointer"
-                          title="View Open Knowledge Formulation Overview"
-                        >
-                          <BookOpen className="w-2.5 h-2.5" />
-                          <span>OKF Catalog</span>
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenArtifactModal(item, 'markdown');
+                        }}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 transition-all cursor-pointer"
+                        title="View Parsed Extracted Markdown"
+                      >
+                        <FileText className="w-2.5 h-2.5" />
+                        <span>Parsed MD</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -901,16 +885,6 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                             title="View Parsed Markdown"
                           >
                             <FileText className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {item.has_okf_catalog && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenArtifactModal(item, 'okf')}
-                            className="p-1 rounded-md text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/15 transition-colors cursor-pointer"
-                            title="View OKF Catalog"
-                          >
-                            <BookOpen className="w-3.5 h-3.5" />
                           </button>
                         )}
                         {item.type === 'pdf' && (
@@ -1086,16 +1060,6 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                                   title="View Parsed Markdown"
                                 >
                                   <FileText className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {item.has_okf_catalog && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenArtifactModal(item, 'okf')}
-                                  className="p-1 rounded-md text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                                  title="View OKF Catalog"
-                                >
-                                  <BookOpen className="w-3.5 h-3.5" />
                                 </button>
                               )}
                               {item.type === 'pdf' && (
@@ -1307,18 +1271,6 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                         >
                           <FileText className="w-3.5 h-3.5 text-indigo-500" />
                           <span>Parsed MD</span>
-                        </button>
-                      )}
-
-                      {item.has_okf_catalog && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenArtifactModal(item, 'okf')}
-                          className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#18191a] hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
-                          title="View OKF Catalog"
-                        >
-                          <BookOpen className="w-3.5 h-3.5 text-emerald-500" />
-                          <span>OKF Catalog</span>
                         </button>
                       )}
 
