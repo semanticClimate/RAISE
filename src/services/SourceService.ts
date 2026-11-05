@@ -371,24 +371,44 @@ export class SourceService {
 
   /**
    * Fetches raw extracted markdown content for a document
+   * Seamlessly tries both /extracted-markdown and /markdown endpoints
    */
   public async fetchExtractedMarkdown(
     filenameOrUrl: string,
     signal?: AbortSignal
   ): Promise<string> {
     const base = getApiBaseUrl().replace(/\/+$/, '');
-    const url =
+    const cleanDoc = filenameOrUrl
+      .replace(/^https?:\/\/[^/]+/i, '')
+      .replace(/^\/api\/documents\//i, '')
+      .replace(/\/(extracted-markdown|markdown)$/i, '');
+
+    const candidates = [
       filenameOrUrl.startsWith('http://') || filenameOrUrl.startsWith('https://')
         ? filenameOrUrl
         : filenameOrUrl.startsWith('/')
           ? `${base}${filenameOrUrl}`
-          : `${base}${ENDPOINTS.DOCUMENT_EXTRACTED_MD(filenameOrUrl)}`;
+          : `${base}${ENDPOINTS.DOCUMENT_EXTRACTED_MD(filenameOrUrl)}`,
+      `${base}/api/documents/${encodeURIComponent(cleanDoc)}/extracted-markdown`,
+      `${base}/api/documents/${encodeURIComponent(cleanDoc)}/markdown`,
+    ];
 
-    const resp = await fetch(url, { method: 'GET', signal });
-    if (!resp.ok) {
-      throw new Error(`Failed to load extracted markdown: ${resp.status} ${resp.statusText}`);
+    const uniqueUrls = Array.from(new Set(candidates));
+    let lastError: Error | null = null;
+
+    for (const u of uniqueUrls) {
+      try {
+        const resp = await fetch(u, { method: 'GET', signal });
+        if (resp.ok) {
+          return await resp.text();
+        }
+        lastError = new Error(`Failed to load extracted markdown: ${resp.status} ${resp.statusText}`);
+      } catch (err: any) {
+        lastError = err;
+      }
     }
-    return await resp.text();
+
+    throw lastError || new Error('Failed to load extracted markdown');
   }
 
   /**

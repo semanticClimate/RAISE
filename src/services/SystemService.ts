@@ -398,6 +398,48 @@ export class SystemService {
       };
     }
   }
+
+  /**
+   * Checks neural model stack readiness (/api/ready)
+   * Returns 200 { ready: true } when models are fully loaded
+   * Returns 503 { ready: false, message: ... } when still warming up
+   */
+  public async checkReadiness(customUrl?: string): Promise<{
+    ready: boolean;
+    status: number;
+    message?: string;
+  }> {
+    const rawTarget = (customUrl || getApiBaseUrl()).trim().replace(/\/+$/, '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    try {
+      const res = await fetch(`${rawTarget}${ENDPOINTS.READY}`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'Cache-Control': 'no-cache',
+        },
+      });
+      clearTimeout(timer);
+      const data: any = await res.json().catch(() => null);
+      if (res.status === 200 && (data?.ready === true || data?.status === 'ready' || data?.status === 'healthy')) {
+        return { ready: true, status: 200, message: data?.message || 'Neural inference models ready' };
+      }
+      return {
+        ready: false,
+        status: res.status,
+        message: data?.message || 'Neural inference models are actively loading...',
+      };
+    } catch {
+      clearTimeout(timer);
+      return {
+        ready: false,
+        status: 0,
+        message: 'Unable to reach readiness probe',
+      };
+    }
+  }
 }
 
 export const systemService = new SystemService();

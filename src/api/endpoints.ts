@@ -3,6 +3,7 @@ export const ENDPOINTS = {
   INDEX: '/',
   HEALTH: '/api/health',
   HEALTH_ALT: '/health',
+  READY: '/api/ready',
   OPENAPI: '/openapi.json',
   SWAGGER: '/docs',
   REDOC: '/redoc',

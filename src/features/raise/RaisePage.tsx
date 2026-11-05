@@ -12,6 +12,7 @@ import {
   LiveThoughtDuration,
   ThoughtDuration,
 } from '../../components/chat/QueryLifecycleTracker';
+import { VerifiedClaimsBadge } from '../../components/chat/VerifiedClaimsBadge';
 import {
   computeHistoricalDuration,
   resolveTurnExecutionTime,
@@ -115,6 +116,8 @@ export const RaisePage: React.FC = () => {
     setUsername,
     setApiKey,
     clearTunnelUrl,
+    isNeuralReady,
+    readinessMessage,
   } = useModeStore();
   const isOnline = isTunnelConfigured && appMode === 'connected';
 
@@ -151,6 +154,12 @@ export const RaisePage: React.FC = () => {
   const setControlCenterTab = useControlCenterStore((s) => s.setActiveTab);
 
   const [dynamicLlms, setDynamicLlms] = useState<Array<{ provider: string; status?: string }>>([]);
+  const [activeStreamingStage, setActiveStreamingStage] = useState<{
+    node?: string;
+    stage?: string;
+    label?: string;
+    detail?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (appMode !== 'connected') return;
@@ -2767,10 +2776,14 @@ export const RaisePage: React.FC = () => {
         (_chunk, fullAccumulated) => {
           // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
           flushStreamToConversation('last', fullAccumulated);
+        },
+        (stageUpdate) => {
+          setActiveStreamingStage(stageUpdate);
         }
       );
 
       const res = await queryTask;
+      setActiveStreamingStage(null);
       flushPendingStreamRafImmediately('last');
 
       if (isUnmountedRef.current) return;
@@ -3183,10 +3196,14 @@ export const RaisePage: React.FC = () => {
         (_chunk, fullAccumulated) => {
           // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
           flushStreamToConversation(assistantIndex, fullAccumulated);
+        },
+        (stageUpdate) => {
+          setActiveStreamingStage(stageUpdate);
         }
       );
 
       const res = await queryTask;
+      setActiveStreamingStage(null);
       flushPendingStreamRafImmediately(assistantIndex);
 
       if (isUnmountedRef.current) return;
@@ -3517,10 +3534,14 @@ export const RaisePage: React.FC = () => {
         (_chunk, fullAccumulated) => {
           // Rapid SSE token chunk received (~2ms): buffer in ref and batch flush via requestAnimationFrame (60 FPS)
           flushStreamToConversation(assistantIndex, fullAccumulated);
+        },
+        (stageUpdate) => {
+          setActiveStreamingStage(stageUpdate);
         }
       );
 
       const res = await queryTask;
+      setActiveStreamingStage(null);
       flushPendingStreamRafImmediately(assistantIndex);
 
       if (isUnmountedRef.current) return;
@@ -3929,6 +3950,21 @@ export const RaisePage: React.FC = () => {
           settingsJunction.open('gateway');
         }}
       />
+
+      {/* Upper Side Notification: Neural Inference Models Warmup Banner */}
+      {isOnline && !isNeuralReady && (
+        <div className="fixed top-14 sm:top-16 left-0 sm:left-16 right-0 z-30 flex justify-center px-[clamp(0.5rem,2vw,1rem)] pt-1 pointer-events-none animate-in fade-in slide-in-from-top-1 duration-200">
+          <div
+            data-testid="neural-warmup-notice"
+            className="pointer-events-auto inline-flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-amber-500/15 dark:bg-amber-950/75 border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-sm backdrop-blur-md text-[clamp(10px,2.4vw,12px)] select-none"
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-ping" />
+            <span className="leading-tight font-medium">
+              {readinessMessage || 'Warming up AI neural models (embeddings, reranker, NLI)...'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Upper Side Notification: Gateway Disconnected / Offline Notice with Retry & Connect */}
       {appMode === 'offline' && (
@@ -4472,6 +4508,8 @@ export const RaisePage: React.FC = () => {
                               queryStartTimeRef.current ||
                               performance.now()
                             }
+                            stage={activeStreamingStage?.stage || activeStreamingStage?.node}
+                            stageLabel={activeStreamingStage?.label || activeStreamingStage?.detail}
                           />
                         </div>
                       ) : (
@@ -4565,6 +4603,17 @@ export const RaisePage: React.FC = () => {
                               (c: any, idx: number) => normalizeCitation(c, idx + 1, defaultDoc)
                             );
 
+                            const verifiedClaimsCandidate =
+                              (Array.isArray(activeResp?.response?.verified_claims) && activeResp.response.verified_claims.length > 0
+                                ? activeResp.response.verified_claims
+                                : null) ||
+                              (Array.isArray(msg.response?.verified_claims) && msg.response.verified_claims.length > 0
+                                ? msg.response.verified_claims
+                                : null) ||
+                              (Array.isArray((msg as any).verified_claims) && (msg as any).verified_claims.length > 0
+                                ? (msg as any).verified_claims
+                                : null);
+
                             return (
                               <div className="text-sm leading-relaxed text-slate-800 dark:text-slate-200 select-text">
                                 {!resolvedContent && isCurrentlyActive ? (
@@ -4580,6 +4629,9 @@ export const RaisePage: React.FC = () => {
                                       showCitations={true}
                                       onViewPdf={handleOpenPdfViewer}
                                     />
+                                    {verifiedClaimsCandidate && verifiedClaimsCandidate.length > 0 && (
+                                      <VerifiedClaimsBadge claims={verifiedClaimsCandidate} />
+                                    )}
                                     {isCurrentlyActive && (
                                       <span className="inline-block w-1.5 h-4 ml-1 bg-blue-500 align-middle animate-pulse" />
                                     )}

@@ -30,6 +30,8 @@ interface ModeState {
   capabilities: BackendCapabilities | null;
   isProbing: boolean;
   probeError: string | null;
+  isNeuralReady: boolean;
+  readinessMessage: string | null;
 
   setConfigMode: (mode: ConfigMode) => void;
   setBaseUrl: (url: string) => void;
@@ -37,6 +39,7 @@ interface ModeState {
   setApiKey: (key: string) => void;
   clearTunnelUrl: () => void;
   runCapabilityProbe: () => Promise<void>;
+  checkReadiness: () => Promise<boolean>;
   testConnection: (customUrl?: string) => Promise<{
     success: boolean;
     status: number;
@@ -86,6 +89,8 @@ export const useModeStore = create<ModeState>((set, get) => ({
   capabilities: null,
   isProbing: false,
   probeError: null,
+  isNeuralReady: true,
+  readinessMessage: null,
 
   setConfigMode: (mode: ConfigMode) => {
     setApiMode(mode);
@@ -229,6 +234,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
       if (caps.apiReachable) {
         computedMode = 'connected';
         setStoredLastConnectedAt();
+        get().checkReadiness();
       } else {
         computedMode = 'offline';
       }
@@ -247,6 +253,31 @@ export const useModeStore = create<ModeState>((set, get) => ({
         isProbing: false,
         probeError: err instanceof Error ? err.message : String(err ?? 'Capability probe failed'),
       });
+    }
+  },
+
+  checkReadiness: async () => {
+    const targetUrl = get().apiBaseUrl || config.apiBaseUrl;
+    if (!targetUrl) return true;
+    try {
+      const res = await systemService.checkReadiness(targetUrl);
+      if (res.ready) {
+        set({ isNeuralReady: true, readinessMessage: null });
+        return true;
+      }
+      set({
+        isNeuralReady: false,
+        readinessMessage: res.message || 'Warming up AI neural models (embeddings, reranker, NLI)...',
+      });
+      setTimeout(() => {
+        if (get().appMode === 'connected') {
+          get().checkReadiness();
+        }
+      }, 2500);
+      return false;
+    } catch {
+      set({ isNeuralReady: true, readinessMessage: null });
+      return true;
     }
   },
 }));

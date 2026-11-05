@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { FileText } from 'lucide-react';
 import { CircularUploadProgress } from '../../../components/ui/CircularUploadProgress';
+import { ExtractedDocumentModal } from '../../../components/library/ExtractedDocumentModal';
 import { useModeStore } from '../../../stores/modeStore';
 import type { SourceDocument } from '../../../types';
 import { formatBytes } from '../../../utils/formatters';
@@ -41,6 +43,17 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
 }) => {
   const { appMode } = useModeStore();
   const isOnline = appMode === 'connected';
+
+  const [artifactModal, setArtifactModal] = useState<{
+    isOpen: boolean;
+    documentName: string;
+    type: 'markdown' | 'okf';
+    url?: string;
+  }>({
+    isOpen: false,
+    documentName: '',
+    type: 'markdown',
+  });
 
   if (!isOpen) return null;
 
@@ -497,6 +510,25 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
                           <span className="hidden sm:inline">View PDF</span>
                         </button>
                       )}
+                      {ready && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setArtifactModal({
+                              isOpen: true,
+                              documentName: doc.name,
+                              type: 'markdown',
+                            });
+                          }}
+                          className="px-2 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-[#a8c7fa] bg-slate-100 hover:bg-slate-200/80 dark:bg-white/[0.06] dark:hover:bg-white/10 rounded-lg border border-slate-200/80 dark:border-white/10 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                          title={`View Parsed Markdown for ${doc.name}`}
+                          aria-label={`View Parsed Markdown for ${doc.name}`}
+                        >
+                          <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                          <span className="hidden sm:inline">Markdown</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -584,6 +616,15 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Extracted Markdown & OKF Catalog Modal */}
+      <ExtractedDocumentModal
+        isOpen={artifactModal.isOpen}
+        onClose={() => setArtifactModal((prev) => ({ ...prev, isOpen: false }))}
+        documentName={artifactModal.documentName}
+        type={artifactModal.type}
+        url={artifactModal.url}
+      />
     </div>
   );
 };

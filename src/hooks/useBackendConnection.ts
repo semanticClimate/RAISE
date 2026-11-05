@@ -62,6 +62,8 @@ export interface UseBackendConnectionResult {
   backendVersion: string;
   isVersionAligned: boolean;
   isWsConnected: boolean;
+  isNeuralReady: boolean;
+  readinessMessage: string | null;
 
   // Actions
   connect: (targetUrl: string) => Promise<{ success: boolean; error?: string; latencyMs: number }>;
@@ -209,6 +211,51 @@ export function useBackendConnection(
 
     return found;
   }, [setBaseUrl, runCapabilityProbe]);
+
+  // Neural model stack readiness state (/api/ready)
+  const [isNeuralReady, setIsNeuralReady] = useState(true);
+  const [readinessMessage, setReadinessMessage] = useState<string | null>(null);
+
+  // Poll /api/ready when connected to track neural pre-warming status
+  useEffect(() => {
+    if (!isConnected || !apiBaseUrl) {
+      setIsNeuralReady(true);
+      setReadinessMessage(null);
+      return;
+    }
+
+    let isMounted = true;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const probeReadiness = async () => {
+      try {
+        const readyRes = await systemService.checkReadiness(apiBaseUrl);
+        if (!isMounted) return;
+
+        if (readyRes.ready) {
+          setIsNeuralReady(true);
+          setReadinessMessage(null);
+        } else {
+          setIsNeuralReady(false);
+          setReadinessMessage(
+            readyRes.message || 'Warming up AI neural models (embeddings, reranker, NLI)...'
+          );
+          // Poll again in 2.5s while warming up
+          pollTimer = setTimeout(probeReadiness, 2500);
+        }
+      } catch {
+        if (!isMounted) return;
+        setIsNeuralReady(true); // Don't block if endpoint is not present on legacy backends
+      }
+    };
+
+    probeReadiness();
+
+    return () => {
+      isMounted = false;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [isConnected, apiBaseUrl]);
 
   // Periodic heartbeat when connected to keep latency and liveness authoritative
   useEffect(() => {
@@ -370,6 +417,8 @@ export function useBackendConnection(
       backendVersion,
       isVersionAligned,
       isWsConnected,
+      isNeuralReady,
+      readinessMessage,
       connect,
       disconnect,
       scanLocalPorts,
@@ -393,6 +442,8 @@ export function useBackendConnection(
       backendVersion,
       isVersionAligned,
       isWsConnected,
+      isNeuralReady,
+      readinessMessage,
       connect,
       disconnect,
       scanLocalPorts,

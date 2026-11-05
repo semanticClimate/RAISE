@@ -992,7 +992,7 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
             <span>Sources:</span>
           </div>
 
-          <div className="flex flex-col gap-1.5 pl-0.5 min-w-0">
+          <div className="flex flex-wrap gap-2 pt-0.5 min-w-0">
             {enrichedCitations.map((cit, citIdx) => {
               const detail = resolveCitationDetail(cit, citIdx + 1);
               const targetUrl = detail.isWeb
@@ -1023,13 +1023,18 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
                       window.open(targetUrl, '_blank', 'noopener,noreferrer');
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 text-[12px] text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] transition-all no-underline font-normal w-fit"
+                  className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-xl bg-slate-100/80 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/10 hover:bg-slate-200/60 dark:hover:bg-white/[0.08] hover:border-blue-400 dark:hover:border-blue-500/50 text-[12px] text-slate-800 dark:text-slate-200 transition-all no-underline font-normal w-fit cursor-pointer shadow-2xs group/cit"
+                  title={`${detail.fileName}${detail.pageNumber !== undefined && detail.pageNumber > 0 ? ` (p. ${detail.pageNumber})` : ''}`}
                 >
-                  <span className="font-mono font-semibold shrink-0">[{detail.index}]</span>
-                  <span className="truncate max-w-[400px] sm:max-w-none">{detail.fileName}</span>
+                  <span className="font-mono font-semibold text-blue-600 dark:text-blue-400 shrink-0">
+                    [{detail.index}]
+                  </span>
+                  <span className="truncate max-w-[280px] sm:max-w-none group-hover/cit:text-blue-600 dark:group-hover/cit:text-blue-400 transition-colors">
+                    {detail.fileName}
+                  </span>
                   {detail.pageNumber !== undefined && detail.pageNumber > 0 && (
                     <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] shrink-0">
-                      (p.{detail.pageNumber})
+                      (p. {detail.pageNumber})
                     </span>
                   )}
                 </a>

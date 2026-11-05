@@ -104,26 +104,51 @@ export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
       </button>
 
       {isExpanded && (
-        <div className="mt-2 p-3 text-xs bg-slate-50 dark:bg-[#111420] border border-slate-200 dark:border-white/10 rounded-xl space-y-1.5 animate-in fade-in max-w-md">
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span>Query Intake &amp; Decomposition</span>
-            <span className="text-[11px] font-mono text-emerald-500">Completed</span>
+        <div className="mt-2 p-3 text-xs bg-slate-50 dark:bg-[#111420] border border-slate-200 dark:border-white/10 rounded-xl space-y-2 animate-in fade-in max-w-md shadow-sm">
+          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Query Intake &amp; Decomposition</span>
+            </span>
+            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              Completed
+            </span>
           </div>
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span>Hybrid Dense + BM25 Vector Retrieval</span>
-            <span className="text-[11px] font-mono text-emerald-500">Completed</span>
+          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Hybrid Dense + BM25 Vector Retrieval</span>
+            </span>
+            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              Completed
+            </span>
           </div>
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span>Knowledge Graph Multi-Hop Traversal</span>
-            <span className="text-[11px] font-mono text-emerald-500">Completed</span>
+          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Knowledge Graph Multi-Hop Traversal</span>
+            </span>
+            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              Completed
+            </span>
           </div>
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span>Cross-Encoder Neural Reranking</span>
-            <span className="text-[11px] font-mono text-emerald-500">Completed</span>
+          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Cross-Encoder Neural Reranking</span>
+            </span>
+            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              Completed
+            </span>
           </div>
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span>Citation Grounding &amp; Synthesis</span>
-            <span className="text-[11px] font-mono text-emerald-500">Completed</span>
+          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Citation Grounding &amp; Synthesis</span>
+            </span>
+            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              Completed
+            </span>
           </div>
         </div>
       )}
@@ -133,15 +158,20 @@ export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
 
 export interface LiveThoughtDurationProps {
   startTimeMs: number;
+  stage?: string;
+  stageLabel?: string;
   className?: string;
 }
 
 /**
  * Live Thought Duration:
- * Renders immediately when query begins, ticking live elapsed seconds in active present tense.
+ * Renders immediately when query begins, ticking live elapsed seconds in active present tense
+ * with dynamic stage phrasing matching the active execution pipeline phase.
  */
 export const LiveThoughtDuration: React.FC<LiveThoughtDurationProps> = ({
   startTimeMs,
+  stage,
+  stageLabel,
   className = '',
 }) => {
   const [elapsed, setElapsed] = useState<number>(() =>
@@ -157,10 +187,18 @@ export const LiveThoughtDuration: React.FC<LiveThoughtDurationProps> = ({
     return () => clearInterval(timer);
   }, [startTimeMs]);
 
+  const activeLabel =
+    stageLabel?.trim() ||
+    (stage && STAGE_THOUGHT_MAP[stage.toUpperCase().trim()]) ||
+    getFriendlyThought(stage, elapsed) ||
+    'Thinking...';
+
   return (
     <div
       className={`thought-duration-container mb-2 ml-0.5 select-none ${className}`}
       data-testid="live-thought-duration"
+      role="status"
+      aria-live="polite"
     >
       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-500/10 border border-indigo-200/80 dark:border-indigo-500/20 shadow-2xs">
         <Sparkles
@@ -168,7 +206,7 @@ export const LiveThoughtDuration: React.FC<LiveThoughtDurationProps> = ({
           aria-hidden="true"
         />
         <span className="font-medium tracking-tight">
-          Thinking... ({elapsed.toFixed(1)}s)
+          {activeLabel} ({elapsed.toFixed(1)}s)
         </span>
       </div>
     </div>
