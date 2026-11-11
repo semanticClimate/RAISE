@@ -1782,14 +1782,14 @@ export const RaisePage: React.FC = () => {
 
   useEffect(() => {
     if (!isAutoScrollLocked) {
+      const scrollBehavior: ScrollBehavior = isLoading ? 'auto' : 'smooth';
       if (typeof contentContainerRef.current?.scrollTo === 'function') {
         contentContainerRef.current.scrollTo({
           top: contentContainerRef.current.scrollHeight,
-          behavior: 'smooth',
+          behavior: scrollBehavior,
         });
-      }
-      if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
-        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      } else if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
+        messagesEndRef.current.scrollIntoView({ behavior: scrollBehavior, block: 'end' });
       }
     }
   }, [conversation, isLoading, isAutoScrollLocked]);
