@@ -68,7 +68,7 @@ export const BranchNotifications: React.FC<BranchNotificationsProps> = ({
     <>
       {/* Branch indicator immediately below this response */}
       {isForkBannerVisible && (
-        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2 px-3 py-1.5 bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-500/30 rounded-xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
+        <div className="w-full max-w-3xl mx-auto mt-2 px-3 py-1.5 bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-500/30 rounded-xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
           <div className="flex items-center gap-2 min-w-0">
             <GitBranch className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
             <span className="truncate">
@@ -107,7 +107,7 @@ export const BranchNotifications: React.FC<BranchNotificationsProps> = ({
 
       {/* Original session indicator immediately below this response */}
       {isOriginalBannerVisible && (
-        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2 px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
+        <div className="w-full max-w-3xl mx-auto mt-2 px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
               Original

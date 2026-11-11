@@ -7,7 +7,7 @@ export interface RaiseHeroHeaderProps {
 export const RaiseHeroHeader: React.FC<RaiseHeroHeaderProps> = ({ hasSourcesAttached }) => {
   return (
     <section
-      className="w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto mb-4 sm:mb-6 text-center sm:text-left pt-2 sm:pt-0 select-none space-y-3.5"
+      className="w-full max-w-3xl mx-auto mb-4 sm:mb-6 text-center sm:text-left pt-2 sm:pt-0 select-none space-y-3.5"
       data-purpose="hero-header"
     >
       <div>

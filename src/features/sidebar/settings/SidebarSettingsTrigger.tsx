@@ -66,22 +66,6 @@ export const SidebarSettingsTrigger: React.FC<SidebarSettingsTriggerProps> = ({
           >
             {displayName}
           </div>
-          <div className="text-[10px] flex items-center gap-1">
-            <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
-              <svg
-                className="w-2.5 h-2.5 text-emerald-500"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              Online
-            </span>
-          </div>
         </div>
         <svg
           className={`w-4 h-4 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}

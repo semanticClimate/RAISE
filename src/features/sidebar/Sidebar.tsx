@@ -113,41 +113,43 @@ const SidebarBase: React.FC<SidebarProps> = ({
         {/* Row 3: Search feature - Search button */}
         <SidebarSearchButton isDrawerOpen={isDrawerOpen} onClick={onOpenSearch} />
 
-        {/* Middle Section: Chat sessions feature - only rendered in DOM when drawer is open */}
-        {isDrawerOpen && (
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            {/* Recents Section Header */}
-            <div className="px-3 pt-1 pb-1.5 flex items-center justify-between shrink-0">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Recents
-              </span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                ({sessions.length})
-              </span>
-            </div>
+        {/* Middle Section: Chat sessions feature */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {isDrawerOpen && (
+            <>
+              {/* Recents Section Header */}
+              <div className="px-3 pt-1 pb-1.5 flex items-center justify-between shrink-0">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Recents
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                  ({sessions.length})
+                </span>
+              </div>
 
-            {/* List of Chat Sessions */}
-            <ChatSessionList
-              displayedSessions={sessions}
-              currentSessionId={currentSessionId}
-              pinnedSessionIds={pinnedSessionIds}
-              activeSessionMenuId={activeSessionMenuId}
-              renamingSessionId={renamingSessionId}
-              newSessionTitle={newSessionTitle}
-              setNewSessionTitle={setNewSessionTitle}
-              onSelectSession={onSelectSession}
-              onTogglePinSession={onTogglePinSession}
-              setActiveSessionMenuId={setActiveSessionMenuId}
-              setRenamingSessionId={setRenamingSessionId}
-              handleSaveRename={handleSaveRename}
-              handleDeleteSession={handleDeleteSession}
-            />
-          </div>
-        )}
+              {/* List of Chat Sessions */}
+              <ChatSessionList
+                displayedSessions={sessions}
+                currentSessionId={currentSessionId}
+                pinnedSessionIds={pinnedSessionIds}
+                activeSessionMenuId={activeSessionMenuId}
+                renamingSessionId={renamingSessionId}
+                newSessionTitle={newSessionTitle}
+                setNewSessionTitle={setNewSessionTitle}
+                onSelectSession={onSelectSession}
+                onTogglePinSession={onTogglePinSession}
+                setActiveSessionMenuId={setActiveSessionMenuId}
+                setRenamingSessionId={setRenamingSessionId}
+                handleSaveRename={handleSaveRename}
+                handleDeleteSession={handleDeleteSession}
+              />
+            </>
+          )}
+        </div>
 
         {/* Bottom Row: Settings feature - User / Gateway Status Button & Popover */}
         <div
-          className="pt-2 border-t border-slate-200/80 dark:border-white/[0.06] shrink-0 relative"
+          className="mt-auto pt-2 border-t border-slate-200/80 dark:border-white/[0.06] shrink-0 relative"
           ref={userMenuRef}
         >
           <UserProfileMenu

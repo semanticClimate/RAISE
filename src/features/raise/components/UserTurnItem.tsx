@@ -44,7 +44,7 @@ export const UserTurnItemBase: React.FC<UserTurnItemProps> = ({
   return (
     <div
       key={`user-turn-${index}`}
-      className="content-visibility-auto flex flex-col items-end group/query w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto"
+      className="content-visibility-auto flex flex-col items-end group/query w-full max-w-3xl mx-auto"
     >
       {editingMessageIndex === index ? (
         /* Inline Question Editor */

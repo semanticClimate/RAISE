@@ -170,7 +170,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
   return (
     <div
       key={`assistant-turn-${turnIndex}`}
-      className="content-visibility-auto flex flex-col items-start w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto"
+      className="content-visibility-auto flex flex-col items-start w-full max-w-3xl mx-auto"
     >
       {/* Thought Duration Header OUTSIDE response box */}
       <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
@@ -186,7 +186,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
           )}
       </div>
 
-      <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
+      <div className="ai-response-card w-full max-w-3xl mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-sm dark:shadow-xl transition-all">
         {/* Answer Markdown Content */}
         {resolvedContent ? (
           <AnswerMarkdown

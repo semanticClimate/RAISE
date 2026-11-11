@@ -23,7 +23,6 @@ export const LaunchStep: React.FC = () => {
 
   const [isTestingSubstrates, setIsTestingSubstrates] = useState(false);
   const [testResults, setTestResults] = useState<ConnectionTestResult | null>(null);
-  const [testNotice, setTestNotice] = useState<string | null>(null);
 
   const isCloud = config.llmDeployment
     ? config.llmDeployment === 'cloud'
@@ -49,7 +48,6 @@ export const LaunchStep: React.FC = () => {
 
   const handleTestAllSubstrates = async () => {
     setIsTestingSubstrates(true);
-    setTestNotice('Testing live substrates connectivity...');
     try {
       const results = await platformAdapter.testConnections({
         neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
@@ -62,12 +60,10 @@ export const LaunchStep: React.FC = () => {
         redis_uri: config.cacheAndSignals?.uri,
       });
       setTestResults(results);
-      setTestNotice('All substrate connection probes finished.');
     } catch {
-      setTestNotice('Substrate probe encountered offline endpoints.');
+      // endpoints offline or unreachable
     } finally {
       setIsTestingSubstrates(false);
-      setTimeout(() => setTestNotice(null), 4000);
     }
   };
 
@@ -219,13 +215,6 @@ export const LaunchStep: React.FC = () => {
             <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin' : ''}`} />
             <span>Test Substrates</span>
           </button>
-        </div>
-      )}
-
-      {testNotice && (
-        <div className="p-2.5 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-mono flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-          <span>{testNotice}</span>
         </div>
       )}
 
