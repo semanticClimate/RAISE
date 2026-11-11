@@ -529,11 +529,19 @@ class ApiClient {
 
               // If the SSE stream delivers the final synthesized answer directly in the metadata payload without micro-tokens, unpack it immediately to avoid empty response box
               if (!fullText.trim()) {
+                const candArr = Array.isArray(p?.candidates) ? (p.candidates as any[]) : [];
+                const candText =
+                  candArr[0]?.content?.parts?.[0]?.text ||
+                  (candArr[0]?.delta?.parts?.[0]?.text as string | undefined);
+
                 const answerInMeta =
                   getStringField(p, 'grounded_answer') ??
                   getStringField(p, 'answer') ??
                   getStringField(p, 'reply') ??
-                  getStringField(p, 'response');
+                  getStringField(p, 'response') ??
+                  getStringField(p, 'output') ??
+                  getStringField(p, 'result') ??
+                  candText;
                 if (answerInMeta) {
                   fullText = sanitizeStreamText(answerInMeta);
                   onChunk?.(fullText, fullText);
@@ -544,14 +552,21 @@ class ApiClient {
 
             // 4. Check for incremental micro-token streaming payloads
             const deltaObj = asRecord(p?.delta);
+            const candArr = Array.isArray(p?.candidates) ? (p.candidates as any[]) : [];
+            const candText =
+              candArr[0]?.content?.parts?.[0]?.text ||
+              (candArr[0]?.delta?.parts?.[0]?.text as string | undefined) ||
+              (Array.isArray(deltaObj?.parts) && (deltaObj.parts as any[])[0]?.text);
+
             const token =
               getStringField(p, 'token') ??
               getStringField(p, 'text') ??
               getStringField(p, 'content') ??
               getStringField(deltaObj, 'content') ??
+              (typeof candText === 'string' ? candText : undefined) ??
               (typeof p?.delta === 'string' ? p.delta : undefined) ??
               (!fullText.trim()
-                ? (getStringField(p, 'grounded_answer') ?? getStringField(p, 'answer') ?? getStringField(p, 'response') ?? getStringField(p, 'reply'))
+                ? (getStringField(p, 'grounded_answer') ?? getStringField(p, 'answer') ?? getStringField(p, 'response') ?? getStringField(p, 'reply') ?? getStringField(p, 'output') ?? getStringField(p, 'result'))
                 : undefined) ??
               null;
             if (typeof token === 'string') {
@@ -635,12 +650,19 @@ class ApiClient {
       // Final pass: ensure no residual JSON tokens or SSE markers remain
       fullText = sanitizeStreamText(fullText);
 
-      // Sid says: Guard against empty response bug - fallback to answer/grounded_answer/reply in streamMetadata
+      // Guard against empty response bug - fallback to answer/grounded_answer/reply in streamMetadata
       if (!fullText.trim() && streamMetadata) {
+        const fallbackCand = Array.isArray((streamMetadata as any).candidates)
+          ? (streamMetadata as any).candidates[0]?.content?.parts?.[0]?.text
+          : undefined;
         const fallbackAns =
           getStringField(streamMetadata, 'grounded_answer') ??
           getStringField(streamMetadata, 'answer') ??
           getStringField(streamMetadata, 'reply') ??
+          getStringField(streamMetadata, 'response') ??
+          getStringField(streamMetadata, 'output') ??
+          getStringField(streamMetadata, 'result') ??
+          fallbackCand ??
           '';
         if (fallbackAns) {
           fullText = sanitizeStreamText(fallbackAns);

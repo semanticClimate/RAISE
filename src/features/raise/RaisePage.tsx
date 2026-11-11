@@ -469,6 +469,11 @@ export const RaisePage: React.FC = () => {
         m.response?.message ||
         m.response?.content ||
         m.response?.text ||
+        m.response?.output ||
+        (m.response as any)?.result ||
+        (m.response as any)?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        (m.response as any)?.choices?.[0]?.message?.content ||
+        (m.response as any)?.choices?.[0]?.text ||
         '';
       return typeof t === 'string' ? t.trim() : '';
     };
@@ -481,6 +486,7 @@ export const RaisePage: React.FC = () => {
         curText ||
         cur.error ||
         cur.isThinking ||
+        cur.response ||
         (cur.questionVersions && cur.questionVersions.length > 0 && cur.questionVersions[0].responseVersions?.length)
       );
 
@@ -603,6 +609,13 @@ export const RaisePage: React.FC = () => {
     parentTitle: string;
     parentSessionId: string;
     turnNum: number;
+    turnIndex?: number;
+    sessionId?: string;
+  } | null>(null);
+
+  const [originalNotification, setOriginalNotification] = useState<{
+    branchTitle: string;
+    branchSessionId: string;
     turnIndex?: number;
     sessionId?: string;
   } | null>(null);
@@ -2293,6 +2306,7 @@ export const RaisePage: React.FC = () => {
     setExpandedQVersionsIndex(null);
     setExpandedRespVersionsIndex(null);
     setForkNotification(null);
+    setOriginalNotification(null);
     setIsAutoScrollLocked(false);
     setShowScrollToBottom(false);
     setCurrentSessionId(session.id);
@@ -2507,6 +2521,7 @@ export const RaisePage: React.FC = () => {
     setExpandedQVersionsIndex(null);
     setExpandedRespVersionsIndex(null);
     setForkNotification(null);
+    setOriginalNotification(null);
     setIsAutoScrollLocked(false);
     setShowScrollToBottom(false);
 
@@ -2809,6 +2824,14 @@ export const RaisePage: React.FC = () => {
           (typeof (res.data as any).reply === 'string' ? (res.data as any).reply : '') ||
           (typeof (res.data as any).content === 'string' ? (res.data as any).content : '') ||
           (typeof (res.data as any).text === 'string' ? (res.data as any).text : '') ||
+          (typeof (res.data as any).output === 'string' ? (res.data as any).output : '') ||
+          (typeof (res.data as any).result === 'string' ? (res.data as any).result : '') ||
+          (typeof (res.data as any).candidates?.[0]?.content?.parts?.[0]?.text === 'string'
+            ? (res.data as any).candidates[0].content.parts[0].text
+            : '') ||
+          (typeof (res.data as any).choices?.[0]?.message?.content === 'string'
+            ? (res.data as any).choices[0].message.content
+            : '') ||
           latestStreamedTextRef.current ||
           '';
         const resolvedText = sanitizeStreamText(rawAns);
@@ -2893,10 +2916,16 @@ export const RaisePage: React.FC = () => {
       }
 
       const currentStreamed = latestStreamedTextRef.current || '';
-      const finalAns =
+      let finalAns =
         assistantMsg.text ||
         currentStreamed ||
         '';
+
+      if (!finalAns.trim() && res.data && !assistantMsg.error && !assistantMsg.isStopped) {
+        if (res.data.citations && res.data.citations.length > 0) {
+          finalAns = 'Retrieved relevant citations for your inquiry.';
+        }
+      }
 
       const mergedAssistant: ChatMessage = {
         ...assistantMsg,
@@ -3338,6 +3367,16 @@ export const RaisePage: React.FC = () => {
           (typeof res.data.grounded_answer === 'string' ? res.data.grounded_answer : '') ||
           (typeof res.data.answer === 'string' ? res.data.answer : '') ||
           (typeof (res.data as any).reply === 'string' ? (res.data as any).reply : '') ||
+          (typeof (res.data as any).content === 'string' ? (res.data as any).content : '') ||
+          (typeof (res.data as any).text === 'string' ? (res.data as any).text : '') ||
+          (typeof (res.data as any).output === 'string' ? (res.data as any).output : '') ||
+          (typeof (res.data as any).result === 'string' ? (res.data as any).result : '') ||
+          (typeof (res.data as any).candidates?.[0]?.content?.parts?.[0]?.text === 'string'
+            ? (res.data as any).candidates[0].content.parts[0].text
+            : '') ||
+          (typeof (res.data as any).choices?.[0]?.message?.content === 'string'
+            ? (res.data as any).choices[0].message.content
+            : '') ||
           latestStreamedTextRef.current ||
           '';
         answerText = sanitizeStreamText(rawAns);
@@ -3678,6 +3717,16 @@ export const RaisePage: React.FC = () => {
           (typeof res.data.grounded_answer === 'string' ? res.data.grounded_answer : '') ||
           (typeof res.data.answer === 'string' ? res.data.answer : '') ||
           (typeof (res.data as any).reply === 'string' ? (res.data as any).reply : '') ||
+          (typeof (res.data as any).content === 'string' ? (res.data as any).content : '') ||
+          (typeof (res.data as any).text === 'string' ? (res.data as any).text : '') ||
+          (typeof (res.data as any).output === 'string' ? (res.data as any).output : '') ||
+          (typeof (res.data as any).result === 'string' ? (res.data as any).result : '') ||
+          (typeof (res.data as any).candidates?.[0]?.content?.parts?.[0]?.text === 'string'
+            ? (res.data as any).candidates[0].content.parts[0].text
+            : '') ||
+          (typeof (res.data as any).choices?.[0]?.message?.content === 'string'
+            ? (res.data as any).choices[0].message.content
+            : '') ||
           latestStreamedTextRef.current ||
           '';
         newAnswerText = sanitizeStreamText(rawAns);
@@ -4540,7 +4589,6 @@ export const RaisePage: React.FC = () => {
                     isLoading &&
                       (isRegenerating ||
                         (i === conversation.length - 1 &&
-                          !msg.response &&
                           !msg.error &&
                           !msg.isStopped))
                   );
@@ -4596,6 +4644,11 @@ export const RaisePage: React.FC = () => {
                     activeResp?.response?.content ||
                     activeResp?.response?.text ||
                     activeResp?.response?.output ||
+                    (activeResp?.response as any)?.result ||
+                    (activeResp?.response as any)?.data ||
+                    (activeResp?.response as any)?.candidates?.[0]?.content?.parts?.[0]?.text ||
+                    (activeResp?.response as any)?.choices?.[0]?.message?.content ||
+                    (activeResp?.response as any)?.choices?.[0]?.text ||
                     msg.text ||
                     (msg as any).content ||
                     msg.response?.grounded_answer ||
@@ -4606,6 +4659,11 @@ export const RaisePage: React.FC = () => {
                     msg.response?.content ||
                     msg.response?.text ||
                     msg.response?.output ||
+                    (msg.response as any)?.result ||
+                    (msg.response as any)?.data ||
+                    (msg.response as any)?.candidates?.[0]?.content?.parts?.[0]?.text ||
+                    (msg.response as any)?.choices?.[0]?.message?.content ||
+                    (msg.response as any)?.choices?.[0]?.text ||
                     '';
 
                   const resolvedContent = rawTurnContent
@@ -4615,7 +4673,7 @@ export const RaisePage: React.FC = () => {
                   return (
                     <div
                       key={`assistant-turn-${i}`}
-                      className="content-visibility-auto flex flex-col items-center group/response w-full mb-5"
+                      className={`flex flex-col items-center group/response w-full mb-5 ${isCurrentlyActive ? '' : 'content-visibility-auto'}`}
                     >
                       {/* Unified Single-Line Thinking & Searching Tracker while active; Thought Duration when complete */}
                       {isCurrentlyActive ? (
@@ -4640,7 +4698,7 @@ export const RaisePage: React.FC = () => {
                       )}
 
                       {/* AI Response Card Box */}
-                      {(Boolean(resolvedContent) || isCurrentlyActive) && (
+                      {(Boolean(resolvedContent) || isCurrentlyActive || (!msg.error && !isStopped)) && (
                         <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
                           {/* Save-failure warning banner if generation succeeded but persistence failed */}
                           {msg.persistenceFailed && (
@@ -4755,9 +4813,15 @@ export const RaisePage: React.FC = () => {
                                     )}
                                   </>
                                 ) : (
-                                  <div className="flex items-center gap-2 py-1 text-slate-500 dark:text-slate-400 text-xs font-mono">
-                                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-                                    <span>Responding...</span>
+                                  <div className="py-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                                    <span>Response completed.</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRegenerateResponse(i)}
+                                      className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                                    >
+                                      Regenerate
+                                    </button>
                                   </div>
                                 )}
 
@@ -5154,7 +5218,18 @@ export const RaisePage: React.FC = () => {
                                   const parentId =
                                     forkNotification?.parentSessionId || activeSession?.forkedFromSessionId;
                                   const parent = sessions.find((s) => s.id === parentId);
-                                  if (parent) handleSelectSession(parent);
+                                  if (parent) {
+                                    const currentTitle = activeSession?.title || 'Branch';
+                                    const currentId = currentSessionId || '';
+                                    const branchTurnIdx = forkNotification?.turnIndex ?? activeSession?.forkedAtTurnIndex ?? i;
+                                    handleSelectSession(parent);
+                                    setOriginalNotification({
+                                      branchTitle: currentTitle,
+                                      branchSessionId: currentId,
+                                      turnIndex: branchTurnIdx,
+                                      sessionId: parent.id,
+                                    });
+                                  }
                                 }}
                                 className="text-[11px] underline font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
@@ -5172,6 +5247,66 @@ export const RaisePage: React.FC = () => {
                           </div>
                         </div>
                       )}
+
+                      {/* Original session indicator immediately below this response */}
+                      {Boolean(
+                        currentSessionId &&
+                          ((originalNotification &&
+                            originalNotification.sessionId === currentSessionId &&
+                            originalNotification.turnIndex === i) ||
+                            (!originalNotification &&
+                              sessions.some(
+                                (s) =>
+                                  s.forkedFromSessionId === currentSessionId &&
+                                  (s.forkedAtTurnIndex === i || (!s.forkedAtTurnIndex && i === 1))
+                              )))
+                      ) && (() => {
+                        const matchingBranch = sessions.find(
+                          (s) =>
+                            s.forkedFromSessionId === currentSessionId &&
+                            (s.forkedAtTurnIndex === i || (!s.forkedAtTurnIndex && i === 1))
+                        );
+                        const bTitle =
+                          originalNotification?.branchTitle || matchingBranch?.title || 'Branch';
+                        const bSessionId =
+                          originalNotification?.branchSessionId || matchingBranch?.id;
+
+                        return (
+                          <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2 px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
+                                Original session
+                              </span>
+                              <span className="text-slate-400 dark:text-slate-500">•</span>
+                              <span className="truncate text-slate-600 dark:text-slate-300">
+                                Branch: <span className="font-medium text-slate-800 dark:text-slate-100">"{bTitle}"</span>
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2.5 shrink-0 ml-2">
+                              {bSessionId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const bSession = sessions.find((s) => s.id === bSessionId);
+                                    if (bSession) handleSelectSession(bSession);
+                                  }}
+                                  className="text-[11px] underline font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 cursor-pointer"
+                                >
+                                  View branch
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setOriginalNotification(null)}
+                                className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none ml-1"
+                                aria-label="Dismiss banner"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 }

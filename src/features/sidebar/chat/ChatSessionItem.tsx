@@ -10,6 +10,7 @@ export interface ChatSessionItemProps {
   isMenuOpen: boolean;
   isRenaming: boolean;
   isPinned: boolean;
+  hasBranches?: boolean;
   newSessionTitle: string;
   setNewSessionTitle: (title: string) => void;
   onSelect: (session: ChatSession) => void;
@@ -27,6 +28,7 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
   isMenuOpen,
   isRenaming,
   isPinned,
+  hasBranches,
   newSessionTitle,
   setNewSessionTitle,
   onSelect,
@@ -80,7 +82,7 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
                 <span>
                   {session.timestamp || formatSessionDate(session.updated_at || session.created_at)}
                 </span>
-                {session.forkedFromSessionId && (
+                {session.forkedFromSessionId ? (
                   <span
                     className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.2 rounded font-medium bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-500/30"
                     title={`Forked from: ${session.forkedFromTitle || 'Original chat'}`}
@@ -88,7 +90,14 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
                     <GitBranch className="w-2.5 h-2.5" />
                     <span>Branch</span>
                   </span>
-                )}
+                ) : hasBranches ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.2 rounded font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-500/30"
+                    title="Original chat thread with branched hypotheses"
+                  >
+                    <span>Original</span>
+                  </span>
+                ) : null}
               </div>
             </div>
           )}
