@@ -264,15 +264,15 @@ class ProviderRouter:
         except Exception:
             pass
 
-        # 3. Probe vLLM Container (Port 8002 / 8000)
+        # 3. Probe vLLM Container (Port 8002 - avoid port 8000 which is FastAPI itself)
         vllm_alive = False
-        for port in (8002, 8000):
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8002/v1/models", headers={"User-Agent": "RAISE"})
+            with urllib.request.urlopen(req, timeout=0.3) as resp:
+                if resp.status == 200:
                     vllm_alive = True
-                    break
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         if vllm_alive or ("vllm" in self.providers and "vllm" not in self.disabled_providers and self.providers["vllm"].is_available()):
             available.append({
