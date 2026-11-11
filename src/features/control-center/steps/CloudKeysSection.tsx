@@ -43,7 +43,14 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
       const res = await platformAdapter.pingApiKey(provider, key);
       setKeyVerification(id, res.available, res.latencyMs, res.error);
       if (res.available) {
-        refetchLiveModels();
+        if (provider && provider !== 'unknown') {
+          await platformAdapter.saveConfig({
+            [`${provider}_api_key`]: key.trim(),
+            llm_mode: `cloud_${provider}`,
+            llm_backend: provider,
+          });
+        }
+        await refetchLiveModels();
       }
     } catch (err: any) {
       setKeyVerification(id, false, undefined, err?.message || 'Connection failed');
@@ -119,12 +126,13 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
                     {((config.apiKeys || []).length > 1 || hasKey) && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           removeApiKey(item.id);
                           if (item.provider && item.provider !== 'unknown') {
-                            platformAdapter.saveConfig({
+                            await platformAdapter.saveConfig({
                               [`${item.provider}_api_key`]: '',
                             });
+                            refetchLiveModels();
                           }
                         }}
                         className="text-slate-400 hover:text-rose-400 transition-colors p-1 cursor-pointer flex items-center gap-1 text-[11px]"

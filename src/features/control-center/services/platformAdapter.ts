@@ -544,7 +544,13 @@ export const platformAdapter = {
         body: JSON.stringify(config),
       });
       if (res.ok) {
-        const data = (await res.json()) as { message?: string };
+        const data = (await res.json()) as any;
+        if (data && (data.success === false || data.status === 'error')) {
+          return {
+            success: false,
+            message: data.message || data.error?.message || 'Configuration error',
+          };
+        }
         return { success: true, message: data.message || 'Configuration applied' };
       }
       let errorMessage = `Backend rejected configuration (${res.status})`;
@@ -558,6 +564,10 @@ export const platformAdapter = {
             .map((d: any) => `${d.loc?.slice(1).join('.') || d.loc?.join('.') || 'field'}: ${d.msg}`)
             .join('; ');
           errorMessage = `Validation error: ${details}`;
+        } else if (typeof errJson.error === 'string') {
+          errorMessage = errJson.error;
+        } else if (errJson.error && typeof errJson.error === 'object') {
+          errorMessage = errJson.error.message || errJson.error.code || JSON.stringify(errJson.error);
         } else if (errJson.message) {
           errorMessage = errJson.message;
         } else {
