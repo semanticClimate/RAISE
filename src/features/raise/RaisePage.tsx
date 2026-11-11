@@ -4698,7 +4698,7 @@ export const RaisePage: React.FC = () => {
                       )}
 
                       {/* AI Response Card Box */}
-                      {(Boolean(resolvedContent) || isCurrentlyActive || (!msg.error && !isStopped)) && (
+                      {(Boolean(resolvedContent) || isCurrentlyActive) && (
                         <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
                           {/* Save-failure warning banner if generation succeeded but persistence failed */}
                           {msg.persistenceFailed && (
@@ -4812,18 +4812,7 @@ export const RaisePage: React.FC = () => {
                                       <span className="inline-block w-1.5 h-4 ml-1 bg-blue-500 align-middle animate-pulse" />
                                     )}
                                   </>
-                                ) : (
-                                  <div className="py-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                                    <span>Response completed.</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRegenerateResponse(i)}
-                                      className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                                    >
-                                      Regenerate
-                                    </button>
-                                  </div>
-                                )}
+                                ) : null}
 
                                 {/* 1-click Attach Document Button if empty workspace / drawer notice */}
                                 {(resolvedContent.includes('No documents have been uploaded to the workspace') ||
