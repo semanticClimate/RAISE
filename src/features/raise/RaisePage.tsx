@@ -4419,19 +4419,6 @@ export const RaisePage: React.FC = () => {
                               </button>
                             </ActionTooltip>
 
-                            {/* Fork Conversation from this turn (branch hypothesis) */}
-                            <ActionTooltip label="Fork conversation from this turn (branch hypothesis)">
-                              <button
-                                type="button"
-                                onClick={() => handleForkConversation(i)}
-                                title="Fork conversation from this turn"
-                                aria-label="Fork conversation from this turn"
-                                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
-                              >
-                                <GitFork className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                              </button>
-                            </ActionTooltip>
-
                             {/* Question Versions Control (‹ X/Y ›) - Only show if user has edited question (totalQVers > 1) */}
                             {totalQVers > 1 &&
                               (expandedQVersionsIndex === i ? (
