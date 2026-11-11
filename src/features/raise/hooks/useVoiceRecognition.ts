@@ -38,7 +38,9 @@ export function useVoiceRecognition({
       audioAnimFrameRef.current = null;
     }
     if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
       audioStreamRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -160,7 +162,9 @@ export function useVoiceRecognition({
           .getUserMedia({ audio: true })
           .then((stream) => {
             if (!recognitionRef.current) {
-              stream.getTracks().forEach((t) => t.stop());
+              stream.getTracks().forEach((t) => {
+                t.stop();
+              });
               return;
             }
             audioStreamRef.current = stream;

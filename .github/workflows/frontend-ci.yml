@@ -43,8 +43,9 @@ jobs:
       - name: Initialize Biome Configuration
         run: |
           if [ ! -f biome.json ] && [ ! -f biome.jsonc ]; then
-            printf '{"$schema":"https://biomejs.dev/schemas/2.6.3/schema.json","vcs":{"enabled":true,"clientKind":"git","useIgnoreFile":true},"files":{"ignoreUnknown":true,"includes":["src/**","biome.json","package.json","tsconfig.json","vite.config.ts"]},"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"none","correctness":{"preset":"recommended"},"suspicious":{"preset":"recommended","noExplicitAny":"off","noArrayIndexKey":"off","noAssignInExpressions":"off","noControlCharactersInRegex":"off"}}},"assist":{"enabled":false},"css":{"parser":{"tailwindDirectives":true}}}' > biome.json
+            printf '{"$schema":"https://biomejs.dev/schemas/2.6.6/schema.json","vcs":{"enabled":true,"clientKind":"git","useIgnoreFile":true},"files":{"ignoreUnknown":true,"includes":["src/**","biome.json","package.json","tsconfig.json","vite.config.ts"]},"formatter":{"enabled":false},"linter":{"enabled":true,"rules":{"preset":"none","correctness":{"preset":"recommended"},"suspicious":{"preset":"recommended","noExplicitAny":"off","noArrayIndexKey":"off","noAssignInExpressions":"off","noControlCharactersInRegex":"off"}}},"assist":{"enabled":false},"css":{"parser":{"tailwindDirectives":true}}}' > biome.json
           fi
+          biome migrate --write || true
 
       - name: Run Biome Lint & Correctness Checks
         run: biome check --formatter-enabled=false src || biome lint src

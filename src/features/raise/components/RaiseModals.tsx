@@ -160,7 +160,9 @@ export const RaiseModals: React.FC<RaiseModalsProps> = ({
             onOpenUploadFromPC={onBrowseFileClick}
             onViewPdf={onOpenPdfViewer}
             onAttachAll={(items) => {
-              items.forEach((item) => onSelectLibraryDocument(item));
+              items.forEach((item) => {
+                onSelectLibraryDocument(item);
+              });
             }}
           />
         </Suspense>
