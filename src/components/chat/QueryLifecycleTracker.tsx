@@ -8,6 +8,8 @@ import { formatThoughtDuration } from './thoughtDurationUtils';
  */
 const STAGE_THOUGHT_MAP: Record<string, string> = {
   RECEIVED: 'Thinking...',
+  QUERY_INTAKE: 'Analyzing query intent & entities...',
+  INTAKE: 'Analyzing query intent & entities...',
   ROUTING: 'Routing query strategy...',
   COREFERENCE_RESOLUTION: 'Resolving entities & context...',
   QUERY_DECOMPOSITION: 'Decomposing sub-questions...',
