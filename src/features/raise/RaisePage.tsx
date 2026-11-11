@@ -29,6 +29,7 @@ import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../.
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
 import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { formatBytes } from '../../utils/formatters';
+import { isConversationalQuery } from '../../utils/queryClassifier';
 import { isLegacySession } from '../../utils/storageCleaner';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
 import { terminalLogger } from '../../utils/terminalLogger';
@@ -2741,9 +2742,10 @@ export const RaisePage: React.FC = () => {
     updateSessionInMemory(updatedConversation, threadId);
     const recentHistory = getFormattedChatHistory(conversation);
 
+    const isConversational = isConversationalQuery(q);
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
     const isCompareCmd = /^\/(?:compare|diff|versus|vs)\b/i.test(q);
-    if (isCompareCmd && activeDocNames.length < 2) {
+    if (!isConversational && isCompareCmd && activeDocNames.length < 2) {
       setIsSourcesDrawerOpen(true);
     }
     const {
@@ -2761,16 +2763,16 @@ export const RaisePage: React.FC = () => {
         {
           request_id: reqId,
           query: q,
-          hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
-          top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
-          mode: parseMode,
+          hops: isConversational ? 0 : (filterHops ?? (parseMode === 'expert' ? 3 : 1)),
+          top_k: isConversational ? 0 : (filterTopK ?? (parseMode === 'expert' ? 8 : 4)),
+          mode: isConversational ? 'conversational' : parseMode,
           thread_id: threadId,
           chat_history: recentHistory,
-          active_docs: activeDocNames,
+          active_docs: isConversational ? [] : activeDocNames,
           document_filter:
-            storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined),
-          parser: parseMode === 'expert' ? 'docling' : 'fast',
-          full_potential: parseMode === 'expert',
+            isConversational ? undefined : (storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined)),
+          parser: isConversational ? 'fast' : (parseMode === 'expert' ? 'docling' : 'fast'),
+          full_potential: !isConversational && parseMode === 'expert',
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
@@ -3166,6 +3168,7 @@ export const RaisePage: React.FC = () => {
     const enterTimestamp = performance.now();
     queryStartTimeRef.current = enterTimestamp;
 
+    const isConversational = isConversationalQuery(trimmed);
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
     const {
       hops: filterHops,
@@ -3182,16 +3185,16 @@ export const RaisePage: React.FC = () => {
         {
           request_id: reqId,
           query: trimmed,
-          hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
-          top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
-          mode: parseMode,
+          hops: isConversational ? 0 : (filterHops ?? (parseMode === 'expert' ? 3 : 1)),
+          top_k: isConversational ? 0 : (filterTopK ?? (parseMode === 'expert' ? 8 : 4)),
+          mode: isConversational ? 'conversational' : parseMode,
           thread_id: threadId,
           chat_history: recentHistory,
-          active_docs: activeDocNames,
+          active_docs: isConversational ? [] : activeDocNames,
           document_filter:
-            storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined),
-          parser: parseMode === 'expert' ? 'docling' : 'fast',
-          full_potential: parseMode === 'expert',
+            isConversational ? undefined : (storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined)),
+          parser: isConversational ? 'fast' : (parseMode === 'expert' ? 'docling' : 'fast'),
+          full_potential: !isConversational && parseMode === 'expert',
         },
         controller.signal,
         (_chunk, fullAccumulated) => {
@@ -3505,6 +3508,7 @@ export const RaisePage: React.FC = () => {
     const enterTimestamp = performance.now();
     queryStartTimeRef.current = enterTimestamp;
 
+    const isConversational = isConversationalQuery(activeQuestion);
     const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
     const {
       hops: filterHops,
@@ -3521,16 +3525,16 @@ export const RaisePage: React.FC = () => {
         {
           request_id: reqId,
           query: activeQuestion,
-          hops: filterHops ?? (parseMode === 'expert' ? 3 : 1),
-          top_k: filterTopK ?? (parseMode === 'expert' ? 8 : 4),
-          mode: parseMode,
+          hops: isConversational ? 0 : (filterHops ?? (parseMode === 'expert' ? 3 : 1)),
+          top_k: isConversational ? 0 : (filterTopK ?? (parseMode === 'expert' ? 8 : 4)),
+          mode: isConversational ? 'conversational' : parseMode,
           thread_id: threadId,
           chat_history: recentHistory,
-          active_docs: activeDocNames,
+          active_docs: isConversational ? [] : activeDocNames,
           document_filter:
-            storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined),
-          parser: parseMode === 'expert' ? 'docling' : 'fast',
-          full_potential: parseMode === 'expert',
+            isConversational ? undefined : (storeDocFilter || (activeDocNames.length === 1 ? activeDocNames[0] : undefined)),
+          parser: isConversational ? 'fast' : (parseMode === 'expert' ? 'docling' : 'fast'),
+          full_potential: !isConversational && parseMode === 'expert',
         },
         controller.signal,
         (_chunk, fullAccumulated) => {

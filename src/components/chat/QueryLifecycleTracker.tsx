@@ -11,6 +11,8 @@ const STAGE_THOUGHT_MAP: Record<string, string> = {
   QUERY_INTAKE: 'Analyzing query intent & entities...',
   INTAKE: 'Analyzing query intent & entities...',
   ROUTING: 'Routing query strategy...',
+  CONVERSATIONAL: 'Conversational dialogue...',
+  PERSONA: 'Persona memory synthesis...',
   COREFERENCE_RESOLUTION: 'Resolving entities & context...',
   QUERY_DECOMPOSITION: 'Decomposing sub-questions...',
   VECTOR_RETRIEVAL: 'Dense vector retrieval...',

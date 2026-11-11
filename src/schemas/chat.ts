@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 export const SubgraphQueryRequestSchema = z.object({
   query: z.string().min(1, 'Query cannot be empty'),
-  hops: z.number().int().min(1).max(3).default(2),
-  top_k: z.number().int().min(1).max(10).default(4),
-  mode: z.enum(['fast', 'expert']).optional(),
+  hops: z.number().int().min(0).max(3).default(2),
+  top_k: z.number().int().min(0).max(10).default(4),
+  mode: z.enum(['fast', 'expert', 'conversational', 'auto']).optional(),
   stream: z.boolean().optional(),
   document_filter: z.string().nullable().optional(),
   active_docs: z.array(z.string()).optional(),
