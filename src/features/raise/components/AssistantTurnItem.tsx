@@ -193,22 +193,16 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
         )}
       </div>
 
-      <div className="ai-response-card w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-sm dark:shadow-xl transition-all">
-        {/* Answer Markdown Content */}
-        {resolvedContent ? (
+      {Boolean(resolvedContent) && (
+        <div className="ai-response-card w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-sm dark:shadow-xl transition-all">
           <AnswerMarkdown
             content={resolvedContent}
             citations={stableCitations}
             showCitations={true}
             onViewPdf={onOpenPdfViewer}
           />
-        ) : isCurrentlyActive ? (
-          <div className="flex items-center gap-2 py-4 text-sm text-slate-500 dark:text-slate-400">
-            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-            <span className="font-mono text-xs">Synthesizing research synthesis...</span>
-          </div>
-        ) : null}
-      </div>
+        </div>
+      )}
 
       {/* Action Toolbar placed OUTSIDE response box */}
       {Boolean(resolvedContent) && !isCurrentlyActive && (

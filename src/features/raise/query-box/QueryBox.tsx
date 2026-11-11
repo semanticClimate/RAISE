@@ -247,6 +247,7 @@ const QueryBoxBase: React.FC<QueryBoxProps> = ({
             <textarea
               ref={textareaRef}
               value={query}
+              disabled={isLoading}
               role="combobox"
               aria-label="Ask a research inquiry (Cmd/Ctrl + K to focus)"
               aria-expanded={showSuggestions}
@@ -258,6 +259,7 @@ const QueryBoxBase: React.FC<QueryBoxProps> = ({
                   : undefined
               }
               onChange={(e) => {
+                if (isLoading) return;
                 const val = e.target.value;
                 onQueryChange(val);
                 if (val.startsWith('/')) {
@@ -267,11 +269,18 @@ const QueryBoxBase: React.FC<QueryBoxProps> = ({
                 }
               }}
               onFocus={() => {
+                if (isLoading) return;
                 if (!query.startsWith('/') && (conversationLength === 0 || query.length > 0)) {
                   setShowSuggestions(true);
                 }
               }}
               onKeyDown={(e) => {
+                if (isLoading) {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                  }
+                  return;
+                }
                 if (slashCommands.isOpen) {
                   if (slashCommands.handleKeyDown(e)) {
                     return;
@@ -314,13 +323,9 @@ const QueryBoxBase: React.FC<QueryBoxProps> = ({
                     setActiveSuggestionIndex(-1);
                   } else {
                     e.preventDefault();
-                    if (isLoading) {
-                      onAbort();
-                    } else {
-                      setShowSuggestions(false);
-                      setActiveSuggestionIndex(-1);
-                      onSubmit();
-                    }
+                    setShowSuggestions(false);
+                    setActiveSuggestionIndex(-1);
+                    onSubmit();
                   }
                 } else if (e.key === 'Escape') {
                   if (showSuggestions) {
@@ -330,7 +335,7 @@ const QueryBoxBase: React.FC<QueryBoxProps> = ({
                   }
                 }
               }}
-              className={`w-full bg-transparent border-0 resize-none text-[13.5px] sm:text-[clamp(0.875rem,2vw,1rem)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-0 py-0.5 px-0 leading-snug sm:leading-relaxed font-normal focus:outline-none overflow-y-auto no-scrollbar scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
+              className={`w-full bg-transparent border-0 resize-none text-[13.5px] sm:text-[clamp(0.875rem,2vw,1rem)] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-0 py-0.5 px-0 leading-snug sm:leading-relaxed font-normal focus:outline-none overflow-y-auto no-scrollbar scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden disabled:opacity-50 disabled:cursor-not-allowed ${
                 conversationLength === 0
                   ? 'min-h-[22px] sm:min-h-[52px]'
                   : 'min-h-[22px] sm:min-h-[24px]'
@@ -340,11 +345,13 @@ const QueryBoxBase: React.FC<QueryBoxProps> = ({
                 msOverflowStyle: 'none',
               }}
               placeholder={
-                isListening
-                  ? 'Listening... Speak your research inquiry'
-                  : conversationLength === 0
-                    ? ''
-                    : 'Ask a follow-up inquiry...'
+                isLoading
+                  ? 'AI is responding... (stop response to ask another question)'
+                  : isListening
+                    ? 'Listening... Speak your research inquiry'
+                    : conversationLength === 0
+                      ? ''
+                      : 'Ask a follow-up inquiry...'
               }
               rows={1}
             />
