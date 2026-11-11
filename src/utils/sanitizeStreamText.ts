@@ -46,14 +46,8 @@ export function sanitizeStreamText(text: string): string {
     // Strip terminal SSE stream marker
     .replace(/\[DONE\]/g, '');
 
-  // 4. Strip non-printable control characters (except \t, \n, \r) like \x08 backspaces
-  cleaned = cleaned
-    .split('')
-    .filter((char) => {
-      const code = char.charCodeAt(0);
-      return (code >= 32 && code !== 127) || code === 9 || code === 10 || code === 13;
-    })
-    .join('');
+  // 4. Strip non-printable control characters (except \t, \n, \r) without allocating arrays
+  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 
   // 5. Strip literal escaped control character sequences from PDF/OCR extractors (e.g. \x08, \u0008)
   cleaned = cleaned.replace(
@@ -67,7 +61,16 @@ export function sanitizeStreamText(text: string): string {
   // 7. Normalize excess blank lines
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
 
-  // 8. Replace internal phrasing: "from the frontend to begin" -> "to RAISE to begin"
+  // 8. Strip robotic introductory meta-filler in scientific RAG responses
+  cleaned = cleaned.replace(
+    /^(?:Examining the (?:text|document|context|provided text)[,:]?\s*(?:the core issue appears to be\s*)?|Based on the (?:provided|attached) (?:text|documents?|sources?|context)[,:]?\s*|Looking at the (?:provided|attached) (?:text|documents?|sources?|context)[,:]?\s*|According to the (?:provided|attached) (?:text|documents?|sources?|context)[,:]?\s*)/i,
+    ''
+  );
+  if (cleaned.length > 0 && /^[a-z]/.test(cleaned)) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+
+  // 9. Replace internal phrasing: "from the frontend to begin" -> "to RAISE to begin"
   cleaned = cleaned.replace(/from the frontend to begin/gi, 'to RAISE to begin');
 
   return cleaned;

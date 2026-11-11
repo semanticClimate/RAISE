@@ -286,7 +286,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
           if (envData.llmKeys.length > 0) {
             for (const envKey of envData.llmKeys) {
               const existingIdx = updatedApiKeys.findIndex(
-                (k) => k.key === envKey.key || (k.provider === envKey.provider && k.fromEnv)
+                (k) => k.key === envKey.key || k.provider === envKey.provider
               );
               if (existingIdx >= 0) {
                 updatedApiKeys[existingIdx] = {

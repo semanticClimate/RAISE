@@ -43,6 +43,7 @@ tmp/
 *.txt
 *.log
 *demoSession*
+BACKEND_IMPROVEMENTS_AND_SPEC.md
 
 # Tests, Mocks & Test Fixtures (never pushed to deployment)
 __tests__/

@@ -78,13 +78,17 @@ export function useDynamicModels(): UseDynamicModelsResult {
   const models = useMemo(() => dynamicLLMsQuery.data ?? [], [dynamicLLMsQuery.data]);
   const discoveredProviders = useMemo(() => discoveredQuery.data ?? {}, [discoveredQuery.data]);
 
-  const activeItem = useMemo(() => {
-    return models.find((m) => m.isActive) || (models.length > 0 ? models[0] : null);
+  const readyModels = useMemo(() => {
+    return models.filter((m) => m.status === 'READY');
   }, [models]);
+
+  const activeItem = useMemo(() => {
+    return readyModels.find((m) => m.isActive) || (readyModels.length > 0 ? readyModels[0] : null);
+  }, [readyModels]);
 
   const activeModel = activeItem?.model ?? null;
   const activeProvider = activeItem?.provider ?? null;
-  const hasActiveModel = models.some((m) => m.status === 'READY' || m.isActive);
+  const hasActiveModel = readyModels.length > 0;
 
   const refetch = useCallback(async () => {
     await Promise.all([

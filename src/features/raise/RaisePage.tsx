@@ -159,7 +159,7 @@ export const RaisePage: React.FC = () => {
       >
         <title>RAISE — Research AI Synthesizer Engine</title>
         <main
-          className={`w-full max-w-3xl mx-auto px-3 sm:px-4 ${
+          className={`w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto px-3 sm:px-4 ${
             c.chatSessions.conversation.length === 0
               ? 'flex-1 flex flex-col justify-center min-h-full py-4 sm:py-6 sm:-translate-y-6'
               : 'pt-2 pb-3 sm:pb-4 flex-1 flex flex-col min-h-full'
@@ -227,7 +227,7 @@ export const RaisePage: React.FC = () => {
           )}
 
           <div
-            className={`w-full max-w-3xl mx-auto px-0 transition-all duration-300 ${
+            className={`w-full max-w-[clamp(26rem,80vw,44rem)] mx-auto px-0 transition-all duration-300 ${
               c.chatSessions.conversation.length === 0
                 ? 'w-full'
                 : 'sticky bottom-3 sm:bottom-5 z-30 mt-2 sm:mt-3'

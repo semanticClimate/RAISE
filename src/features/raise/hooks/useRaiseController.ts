@@ -59,6 +59,7 @@ export function useRaiseController() {
   const setControlCenterTab = useControlCenterStore((s) => s.setActiveTab);
 
   const isLlmConfigured = useMemo(() => {
+    if (appMode === 'connected') return true;
     if (ccConfig.llmDeployment === 'local') return Boolean(ccConfig.selectedLocalModel);
     const hasConfiguredKey = ccConfig.apiKeys?.some(
       (k) => k.key && k.key.trim().length > 0 && k.provider !== 'unknown'
@@ -66,7 +67,7 @@ export function useRaiseController() {
     if (hasConfiguredKey) return true;
     const envCreds = detectEnvCredentials();
     return envCreds.llmKeys.length > 0;
-  }, [ccConfig]);
+  }, [appMode, ccConfig]);
 
   const [query, setQuery] = useState('');
   const [parseMode, setParseMode] = useState<'fast' | 'expert'>('expert');

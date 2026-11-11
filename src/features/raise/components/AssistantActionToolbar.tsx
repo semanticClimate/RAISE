@@ -47,7 +47,7 @@ export const AssistantActionToolbar: React.FC<AssistantActionToolbarProps> = ({
   handleSwitchResponseVersion,
 }) => {
   return (
-    <div className="flex items-center gap-1 mt-3 -ml-1 text-slate-500 dark:text-slate-400 select-none">
+    <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 select-none">
       {/* Copy Response Button */}
       <ActionTooltip label={copiedKey === `ans-${turnIndex}` ? 'Copied!' : 'Copy response'}>
         <button

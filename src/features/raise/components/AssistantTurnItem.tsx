@@ -8,7 +8,6 @@ import {
   LiveThoughtDuration,
   ThoughtDuration,
 } from '../../../components/chat/QueryLifecycleTracker';
-import { VerifiedClaimsBadge } from '../../../components/chat/VerifiedClaimsBadge';
 import {
   computeHistoricalDuration,
   resolveTurnExecutionTime,
@@ -141,17 +140,30 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
     calcHistoryDuration,
   });
 
-  const rawTurnContent =
-    activeResp?.text ||
-    (activeResp as any)?.content ||
-    activeResp?.response?.grounded_answer ||
-    activeResp?.response?.answer ||
-    activeResp?.response?.reply ||
-    activeResp?.response?.content ||
-    activeResp?.response?.text ||
-    msg.text ||
-    (msg as any).content ||
-    '';
+  const hasMultipleVersions = respVersions.length > 1;
+  const rawTurnContent = hasMultipleVersions
+    ? activeResp?.text ||
+      (activeResp as any)?.content ||
+      activeResp?.response?.grounded_answer ||
+      activeResp?.response?.answer ||
+      activeResp?.response?.reply ||
+      activeResp?.response?.content ||
+      activeResp?.response?.text ||
+      msg.text ||
+      (msg as any).content ||
+      ''
+    : msg.text ||
+      (msg as any).content ||
+      msg.response?.grounded_answer ||
+      msg.response?.answer ||
+      msg.response?.reply ||
+      msg.response?.content ||
+      msg.response?.text ||
+      activeResp?.text ||
+      (activeResp as any)?.content ||
+      activeResp?.response?.grounded_answer ||
+      activeResp?.response?.answer ||
+      '';
 
   const resolvedContent = rawTurnContent;
 
@@ -170,7 +182,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
   return (
     <div
       key={`assistant-turn-${turnIndex}`}
-      className="content-visibility-auto flex flex-col items-start w-full max-w-3xl mx-auto"
+      className="content-visibility-auto flex flex-col items-start w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto"
     >
       {/* Thought Duration Header OUTSIDE response box */}
       <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
@@ -179,14 +191,9 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
         ) : (
           <ThoughtDuration executionTimeSec={executionTimeSec} />
         )}
-
-        {activeResp?.response?.verified_claims &&
-          activeResp.response.verified_claims.length > 0 && (
-            <VerifiedClaimsBadge claims={activeResp.response.verified_claims} />
-          )}
       </div>
 
-      <div className="ai-response-card w-full max-w-3xl mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-sm dark:shadow-xl transition-all">
+      <div className="ai-response-card w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-sm dark:shadow-xl transition-all">
         {/* Answer Markdown Content */}
         {resolvedContent ? (
           <AnswerMarkdown
@@ -201,9 +208,11 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
             <span className="font-mono text-xs">Synthesizing research synthesis...</span>
           </div>
         ) : null}
+      </div>
 
-        {/* Action Toolbar */}
-        {Boolean(resolvedContent) && !isCurrentlyActive && (
+      {/* Action Toolbar placed OUTSIDE response box */}
+      {Boolean(resolvedContent) && !isCurrentlyActive && (
+        <div className="w-full flex items-center justify-between px-1 mt-1.5">
           <AssistantActionToolbar
             turnIndex={turnIndex}
             msg={msg}
@@ -225,8 +234,8 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
             setExpandedRespVersionsIndex={setExpandedRespVersionsIndex}
             handleSwitchResponseVersion={handleSwitchResponseVersion}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Response Stopped Notice */}
       {isStopped && !isCurrentlyActive && (
