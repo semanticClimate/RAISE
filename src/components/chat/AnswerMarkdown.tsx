@@ -41,9 +41,15 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
         <button
           type="button"
           onClick={handleCopy}
-          className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-slate-700/60"
+          aria-label={copied ? 'Copied code' : 'Copy code'}
+          title={copied ? 'Copied!' : 'Copy code'}
+          className="flex items-center justify-center p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors cursor-pointer"
         >
-          {copied ? 'Copied!' : 'Copy'}
+          {copied ? (
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-white" />
+          )}
         </button>
       </div>
       <pre className="p-3.5 overflow-x-auto font-mono text-[12.5px] leading-relaxed">

@@ -1,4 +1,4 @@
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { formatThoughtDuration } from './thoughtDurationUtils';
@@ -90,14 +90,12 @@ export interface ThoughtDurationProps {
 /**
  * Clean Thought Badge (Gemini / ChatGPT style):
  * Displays above the AI response card: `✦ Thought for {X}s` based strictly on genuine measured duration.
- * Interactive dropdown expands to show the 5 pipeline stages.
  */
 export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
   executionTimeSec,
   decomposedQueries: _decomposedQueries,
   className = '',
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
   const formattedTime = formatThoughtDuration(executionTimeSec);
   if (!formattedTime) return null;
 
@@ -105,69 +103,12 @@ export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
     <div
       className={`thought-duration-container mb-2 ml-0.5 select-none ${className}`}
       data-testid="thought-duration"
+      role="status"
     >
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/10 hover:bg-slate-200/60 dark:hover:bg-white/[0.08] transition-all cursor-pointer shadow-2xs"
-        aria-expanded={isExpanded}
-      >
+      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/10 shadow-2xs">
         <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
         <span>Thought for {formattedTime}</span>
-        <ChevronDown
-          className={`w-3 h-3 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {isExpanded && (
-        <div className="mt-2 p-3 text-xs bg-slate-50 dark:bg-[#111420] border border-slate-200 dark:border-white/10 rounded-xl space-y-2 animate-in fade-in max-w-md shadow-sm">
-          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Query Intake &amp; Decomposition</span>
-            </span>
-            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              Completed
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Hybrid Dense + BM25 Vector Retrieval</span>
-            </span>
-            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              Completed
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Knowledge Graph Multi-Hop Traversal</span>
-            </span>
-            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              Completed
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Cross-Encoder Neural Reranking</span>
-            </span>
-            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              Completed
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Citation Grounding &amp; Synthesis</span>
-            </span>
-            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              Completed
-            </span>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
