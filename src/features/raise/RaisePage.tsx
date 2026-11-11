@@ -5236,14 +5236,6 @@ export const RaisePage: React.FC = () => {
                                 View original
                               </button>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => setForkNotification(null)}
-                              className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none ml-1"
-                              aria-label="Dismiss banner"
-                            >
-                              ×
-                            </button>
                           </div>
                         </div>
                       )}
@@ -5295,14 +5287,6 @@ export const RaisePage: React.FC = () => {
                                   View branch
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => setOriginalNotification(null)}
-                                className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none ml-1"
-                                aria-label="Dismiss banner"
-                              >
-                                ×
-                              </button>
                             </div>
                           </div>
                         );
