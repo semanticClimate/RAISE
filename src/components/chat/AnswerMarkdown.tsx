@@ -115,24 +115,14 @@ const TableBlock: React.FC<TableBlockProps> = ({
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 bg-white/95 dark:bg-slate-800/95 hover:bg-slate-100 dark:hover:bg-slate-700/80 border border-slate-200/90 dark:border-slate-700/80 shadow-2xs backdrop-blur-xs transition-all cursor-pointer select-none opacity-80 hover:opacity-100 group-hover/table:opacity-100 focus:opacity-100"
-          title={copied ? 'Copied' : 'Copy table'}
+          className="flex items-center justify-center p-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 bg-white/95 dark:bg-slate-800/95 hover:bg-slate-100 dark:hover:bg-slate-700/80 border border-slate-200/90 dark:border-slate-700/80 shadow-2xs backdrop-blur-xs transition-all cursor-pointer select-none opacity-80 hover:opacity-100 group-hover/table:opacity-100 focus:opacity-100"
+          title={copied ? 'Copied table' : 'Copy table'}
           aria-label={copied ? 'Copied table' : 'Copy table'}
         >
           {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
-              <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-medium">
-                Copied
-              </span>
-            </>
+            <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
           ) : (
-            <>
-              <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-              <span className="text-slate-600 dark:text-slate-300 text-[11px] font-medium">
-                Copy
-              </span>
-            </>
+            <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
           )}
         </button>
       </div>
