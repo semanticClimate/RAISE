@@ -426,6 +426,9 @@ export class SystemService {
       if (res.status === 200 && (data?.ready === true || data?.status === 'ready' || data?.status === 'healthy')) {
         return { ready: true, status: 200, message: data?.message || 'Neural inference models ready' };
       }
+      if (res.status === 404 || res.status === 405) {
+        return { ready: true, status: res.status, message: 'Readiness probe not implemented on backend' };
+      }
       return {
         ready: false,
         status: res.status,
