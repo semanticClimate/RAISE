@@ -3051,6 +3051,7 @@ export const RaisePage: React.FC = () => {
         });
       }
     } finally {
+      setActiveStreamingStage(null);
       isSubmittingQueryRef.current = false;
       setIsLoading(false);
       setActiveExecutingQuery('');
@@ -3386,6 +3387,7 @@ export const RaisePage: React.FC = () => {
         });
       }
     } finally {
+      setActiveStreamingStage(null);
       setIsLoading(false);
       setRegeneratingIndex(null);
       setActiveExecutingQuery('');
@@ -3729,6 +3731,7 @@ export const RaisePage: React.FC = () => {
         });
       }
     } finally {
+      setActiveStreamingStage(null);
       setIsLoading(false);
       setRegeneratingIndex(null);
       setActiveExecutingQuery('');

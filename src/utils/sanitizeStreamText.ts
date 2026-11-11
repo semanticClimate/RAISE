@@ -29,10 +29,21 @@ export function sanitizeStreamText(text: string): string {
     }
   );
 
-  // 3. Strip stray SSE line artifacts if any leaked into final text
+  // 3. Strip stray SSE line artifacts, event headers, and leaked protocol objects
   cleaned = cleaned
-    .replace(/^data:\s*/gm, '')
-    .replace(/^:\s*keepalive\s*$/gm, '')
+    // Strip stray SSE event declarations e.g. "event: stage" or "event: token"
+    .replace(/^[ \t]*event:\s*[a-zA-Z0-9_\-]+\s*$/gm, '')
+    // Strip intermediate pipeline stage progression objects e.g. {"stage": "VECTOR_RETRIEVAL", ...}
+    .replace(/\{"(?:stage|node)":\s*"[^"]*".*?\}\n?/g, '')
+    // Strip stream error packets e.g. {"error": {"code": "...", "message": "..."}}
+    .replace(/\{"error":\s*\{.*?\}\}\n?/g, '')
+    // Strip leaked terminal status metadata objects e.g. {"status": "SUCCESS", "citations": ...}
+    .replace(/\{"status":\s*"(?:SUCCESS|completed|error)".*?\}\n?/g, '')
+    // Strip SSE data prefixes
+    .replace(/^[ \t]*data:\s*/gm, '')
+    // Strip keepalive comments
+    .replace(/^[ \t]*:\s*keepalive\s*$/gm, '')
+    // Strip terminal SSE stream marker
     .replace(/\[DONE\]/g, '');
 
   // 4. Strip non-printable control characters (except \t, \n, \r) like \x08 backspaces

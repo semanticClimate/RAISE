@@ -283,7 +283,7 @@ class ApiClient {
 
     const headers: Record<string, string> = {
       'X-Request-ID': `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      Accept: 'text/event-stream, text/plain; q=0.9, */*; q=0.8',
+      Accept: 'text/event-stream, application/json; q=0.9, text/plain; q=0.2, */*; q=0.1',
       ...(options.headers as Record<string, string>),
     };
 
@@ -336,11 +336,11 @@ class ApiClient {
       }
 
       const contentType = response.headers.get('content-type') || '';
-      const isSse =
+      let isSse =
         contentType.includes('text/event-stream') || contentType.includes('application/x-ndjson');
 
-      // Fast-path: If server returns standard JSON or non-streaming text directly
-      if (!isSse) {
+      // Fast-path: If server explicitly returns standard JSON (not an event stream)
+      if (contentType.includes('application/json')) {
         const rawText = await response.text();
         let extractedText = rawText;
         let metadata: Record<string, unknown> | undefined;
@@ -369,13 +369,15 @@ class ApiClient {
           endpoint,
           status: response.status,
           durationMs: Date.now() - startTime,
-          message: `Direct response completed (${sanitized.length} characters)`,
+          message: `Direct JSON response completed (${sanitized.length} characters)`,
         });
         return { text: sanitized, error: null, status: response.status, metadata };
       }
 
       if (!response.body) {
         const text = await response.text();
+        const sanitized = sanitizeStreamText(text);
+        onChunk?.(sanitized, sanitized);
         logToTerminal({
           type: 'RES',
           method,
@@ -384,7 +386,7 @@ class ApiClient {
           durationMs: Date.now() - startTime,
           message: `Stream completed (static body)`,
         });
-        return { text, error: null, status: response.status };
+        return { text: sanitized, error: null, status: response.status };
       }
 
       reader = response.body.getReader();
@@ -408,6 +410,7 @@ class ApiClient {
       let fullText = '';
       let buffer = '';
       let streamMetadata: Record<string, unknown> | undefined;
+      let streamError: ApiError | null = null;
       let isStreamComplete = false;
 
       const asRecord = (v: unknown): Record<string, unknown> | null =>
@@ -469,6 +472,24 @@ class ApiClient {
               if (p) {
                 options.onStageUpdate?.(p);
               }
+              return;
+            }
+
+            // 2. Check for error payload: {"error": {"code": "...", "message": "..."}}
+            if (p?.error !== undefined) {
+              currentEvent = '';
+              const errObj = asRecord(p.error) || { message: String(p.error) };
+              const code = getStringField(errObj, 'code') || 'STREAM_ERROR';
+              const message =
+                getStringField(errObj, 'message') || 'An error occurred during streaming';
+              streamError = {
+                code,
+                message,
+                status: response.status,
+                endpoint,
+                retryable: code !== 'CANCELLED',
+                timestamp: new Date().toISOString(),
+              };
               return;
             }
 
@@ -574,6 +595,11 @@ class ApiClient {
         const raw = decoder.decode(value, { stream: true });
         buffer += raw;
 
+        // Dynamic SSE detection: fallback if proxy/intermediary stripped text/event-stream header
+        if (!isSse && (buffer.startsWith(':') || buffer.includes('event:') || buffer.includes('data:'))) {
+          isSse = true;
+        }
+
         // Line-buffer whenever newlines or SSE markers are present
         if (buffer.includes('\n') || isSse || buffer.includes('data:')) {
           const lines = buffer.split('\n');
@@ -631,7 +657,7 @@ class ApiClient {
         message: `Stream completed successfully (${fullText.length} characters)`,
       });
 
-      return { text: fullText, error: null, status: response.status, metadata: streamMetadata };
+      return { text: fullText, error: streamError, status: response.status, metadata: streamMetadata };
     } catch (err: unknown) {
       clearTimeout(timer);
       const errMessage = getErrorMessage(err);
