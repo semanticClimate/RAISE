@@ -1,0 +1,70 @@
+# ==============================================================================
+# RAISE Academic GraphRAG Studio — Unified Runtime Dependencies
+# ==============================================================================
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+# --- 1. Core Frameworks, Web Server & State Machine ---
+langgraph>=0.2.0
+langchain-core>=0.3.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+jinja2>=3.1.5
+python-multipart>=0.0.27
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.0
+antlr4-python3-runtime>=4.13.2
+sse-starlette>=2.0.0
+orjson>=3.9.0
+
+# --- 2. High-Performance Analytical & Embedded Engines ---
+duckdb>=1.0.0
+polars>=1.0.0
+kuzu>=0.7.0
+
+# --- 3. Vector, Graph & Relational Databases ---
+neo4j>=5.26.0
+chromadb>=0.4.24
+lancedb>=0.10.0
+networkx>=3.2.0
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.0
+sqlmodel>=0.0.14
+redis>=5.0.0
+msgpack>=1.1.2
+
+# --- 4. Embeddings, Local Models & Inference ---
+sentence-transformers>=6.1.0
+accelerate>=0.28.0
+fastembed>=0.4.0
+transformers>=5.22.0
+torch>=2.2.0
+huggingface-hub>=0.23.0
+hf-transfer>=0.1.8
+openai>=1.12.0
+litellm>=1.50.0
+instructor>=1.5.0
+guardrails-ai>=0.5.0
+dspy>=2.5.0
+outlines>=0.1.0
+
+# --- 5. Object Storage ---
+boto3>=1.34.0
+botocore>=1.34.0
+
+# --- 6. Document Processing & Extraction ---
+gliner>=0.2.0
+docling>=2.12.0
+pymupdf>=1.24.0
+pypdf>=5.1.0
+python-docx>=0.8.11
+openpyxl>=3.1.0
+
+# --- 7. Networking, Analytics & Observability ---
+httpx>=0.27.0
+requests>=2.32.3
+numpy>=1.26.0
+pandas>=2.2.0
+structlog>=24.0.0
+cachetools>=5.3.0
+psutil>=5.9.0
