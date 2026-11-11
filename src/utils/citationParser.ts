@@ -1,4 +1,11 @@
 import type { Citation } from '../types';
+import {
+  extractVerifiedPageNumber,
+  normalizeCitation,
+  stripCitationsForCopy,
+} from './citationNormalizer';
+
+export { extractVerifiedPageNumber, normalizeCitation, stripCitationsForCopy };
 
 export interface CitationToken {
   type: 'text' | 'citation';
@@ -7,380 +14,12 @@ export interface CitationToken {
   citation?: Citation;
 }
 
-/**
- * Universal Citation Normalizer
- * Guarantees that every citation object has:
- * - A valid, 1-indexed citation_index
- * - An accurate physical PDF primary_page (recovers from page, page_number, physical_page, or chunk_id like _p020_)
- * - A clean, human-readable pdf_filename (recovers from filename, document_name, source, or defaultDocName)
- * - Clean plain_text, heading, and similarity score
-/**
- * Rigorous physical page extractor:
- * 1. Checks explicit page properties across backend conventions:
- *    - primary_page, page, page_number, physical_page, page_no (and their metadata.* variants)
- * 2. Scans chunk_id / id for structural page signatures:
- *    - `parent_005` or `_parent_005` -> 5 (crucial for LangGraph parent document retriever)
- *    - `_p098_c98_01` or `p098` or `_p020_` -> 98, 20
- *    - `page_16`, `page-16`, `page16` -> 16
- * 3. Scans section heading / title:
- *    - "BRIC ANNUAL REPORT 2025 | 5" -> 5
- *    - "98 | BRIC ANNUAL REPORT 2025" -> 98
- *    - "Section (Page 5)" or "Page 98" -> 5, 98
- * 4. Disambiguation:
- *    - If an explicit property is 1, but chunk_id or heading indicates a specific page > 1,
- *      the chunk_id / heading page takes precedence (preventing unverified fallback 1).
- */
-export function extractVerifiedPageNumber(raw: any): number | undefined {
-  if (!raw) return undefined;
-
-  // Handle string input: e.g. "Doc.pdf (Page 5)" or "Doc.pdf#page=14"
-  if (typeof raw === 'string') {
-    const pMatch =
-      raw.match(/#page=(\d+)/i) ||
-      raw.match(/(?:page|p\.?)[=:\s]*(\d+)/i) ||
-      raw.match(/\|\s*0*(\d+)\s*$/) ||
-      raw.match(/^\s*0*(\d+)\s*\|/);
-    if (pMatch) {
-      const p = parseInt(pMatch[1], 10);
-      if (p > 0) return p;
-    }
-    return undefined;
-  }
-
-  // 1. Check explicit page fields provided by backend parsers (PyMuPDF, Docling, ChromaDB)
-  const candidateKeys = [
-    raw.primary_page,
-    raw.printed_page,
-    raw.physical_page,
-    raw.page,
-    raw.page_number,
-    raw.page_no,
-    raw.source_page,
-    raw.page_start,
-    raw.start_page,
-    Array.isArray(raw.source_pages) && raw.source_pages.length > 0
-      ? raw.source_pages[0]
-      : undefined,
-    raw.page_idx !== undefined ? raw.page_idx + 1 : undefined,
-    raw.prov?.[0]?.page_no,
-    raw.prov?.[0]?.page,
-    raw.metadata?.primary_page,
-    raw.metadata?.printed_page,
-    raw.metadata?.physical_page,
-    raw.metadata?.page,
-    raw.metadata?.page_number,
-    raw.metadata?.page_no,
-    raw.metadata?.source_page,
-    raw.metadata?.page_start,
-    raw.metadata?.start_page,
-    Array.isArray(raw.metadata?.source_pages) && raw.metadata?.source_pages.length > 0
-      ? raw.metadata?.source_pages[0]
-      : undefined,
-    raw.metadata?.page_idx !== undefined ? raw.metadata?.page_idx + 1 : undefined,
-    raw.metadata?.prov?.[0]?.page_no,
-    raw.metadata?.prov?.[0]?.page,
-  ];
-
-  for (const cand of candidateKeys) {
-    if (typeof cand === 'number' && cand > 0) {
-      return cand;
-    }
-    if (typeof cand === 'string' && !Number.isNaN(parseInt(cand, 10))) {
-      const p = parseInt(cand, 10);
-      if (p > 0) return p;
-    }
-  }
-
-  // 1b. Check page extracted from direct single-page extraction endpoints (/pages/29/pdf, /pages/29/image, /pages/29/view)
-  const candidateUrls = [
-    raw.page_url,
-    raw.page_image_url,
-    raw.page_view_url,
-    raw.url,
-    raw.metadata?.page_url,
-    raw.metadata?.page_image_url,
-    raw.metadata?.page_view_url,
-    raw.metadata?.url,
-  ];
-  for (const u of candidateUrls) {
-    if (typeof u === 'string') {
-      const match = u.match(/\/pages\/(\d+)(?:\/|\?|$)/i) || u.match(/[?&#]page=(\d+)/i);
-      if (match) {
-        const p = parseInt(match[1], 10);
-        if (p > 0) return p;
-      }
-    }
-  }
-
-  // 2. Fallback: Check chunk_id / id for explicit page markers (e.g. #page=8, _docling_p12, page_14, _p098_c01)
-  // NOTE: Do NOT treat parent_005 as a page number (parent_XXX is a LangChain chunk index, not a PDF page)
-  const chunkIdStr = String(
-    raw.chunk_id || raw.id || raw.metadata?.chunk_id || raw.metadata?.id || ''
-  );
-  if (chunkIdStr) {
-    const match =
-      chunkIdStr.match(/#page=0*(\d+)/i) ||
-      chunkIdStr.match(/(?:_docling_p|_p|p-|page[_-])0*(\d+)(?:[_\D]|$)/i);
-    if (match) {
-      const p = parseInt(match[1], 10);
-      if (p > 0) return p;
-    }
-  }
-
-  // 3. Fallback: Check plain_text / text / excerpt signatures
-  const textStr = String(
-    raw.plain_text ||
-      raw.text ||
-      raw.content ||
-      raw.snippet ||
-      raw.metadata?.plain_text ||
-      raw.metadata?.text ||
-      ''
-  );
-  if (textStr) {
-    const tMatch =
-      textStr.match(/<!--\s*page:?\s*0*(\d+)\s*-->/i) ||
-      textStr.match(/\[(?:Doc:[^,]+,\s*)?PDF Page\s*0*(\d+)\]/i) ||
-      textStr.match(/\[Page\s*0*(\d+)\]/i) ||
-      textStr.match(/\b(?:PDF\s+Page|Doc\s+Page|Page)\s*[:#-]?\s*0*(\d+)\b/i);
-    if (tMatch) {
-      const p = parseInt(tMatch[1], 10);
-      if (p > 0) return p;
-    }
-  }
-
-  // 4. Fallback: Check heading / title signatures
-  const headingStr = String(
-    raw.heading || raw.title || raw.metadata?.heading || raw.metadata?.title || ''
-  );
-  if (headingStr) {
-    const hMatch =
-      headingStr.match(/(?:page|p\.?)\s*0*(\d+)/i) ||
-      headingStr.match(/\|\s*0*(\d+)\s*$/) ||
-      headingStr.match(/^\s*0*(\d+)\s*\|/);
-    if (hMatch) {
-      const p = parseInt(hMatch[1], 10);
-      if (p > 0) return p;
-    }
-  }
-
-  return undefined;
+export interface CleanRagResponseResult {
+  cleanText: string;
+  citations: Citation[];
 }
 
-/**
- * Universal Citation Normalizer
- * Guarantees that every citation object has:
- * - A valid, 1-indexed citation_index
- * - An accurate physical PDF primary_page (recovers from page, page_number, physical_page, or chunk_id like parent_005 or _p020_)
- * - A clean, human-readable pdf_filename (recovers from filename, document_name, source, or defaultDocName)
- * - Clean plain_text, heading, and similarity score
- */
-export function normalizeCitation(
-  raw: any,
-  indexFallback: number = 1,
-  defaultDocName?: string
-): Citation {
-  if (!raw) {
-    return {
-      citation_index: indexFallback,
-      chunk_id: `cit-${indexFallback}`,
-      document_id: defaultDocName || 'Audited Document',
-      pdf_filename: defaultDocName || 'Audited Document',
-      primary_page: undefined as any,
-      heading: '',
-      plain_text: '',
-      university: '',
-      similarity: 0.9,
-    };
-  }
 
-  // Handle case where citation is passed as a string filename or "Doc.pdf (Page X)"
-  if (typeof raw === 'string') {
-    const cleanStr = raw.trim();
-    const isWebStr = cleanStr.startsWith('http://') || cleanStr.startsWith('https://');
-    const pageFromStr = extractVerifiedPageNumber(cleanStr);
-    const cleanFile = cleanStr
-      .replace(/\s*\(.*?\)/, '')
-      .replace(/#page=\d+/, '')
-      .trim();
-    const finalFilename = cleanFile || defaultDocName || 'Audited Document';
-    return {
-      citation_index: indexFallback,
-      chunk_id: `cit-${indexFallback}`,
-      document_id: finalFilename,
-      pdf_filename: finalFilename,
-      primary_page: pageFromStr && pageFromStr > 0 ? pageFromStr : (undefined as any),
-      heading: '',
-      plain_text: '',
-      university: '',
-      similarity: 0.95,
-      source_type: isWebStr ? 'EXTERNAL_PUBLIC_RECORD' : undefined,
-      url: isWebStr ? cleanStr : undefined,
-      page_url: isWebStr ? cleanStr : undefined,
-      page_view_url: isWebStr ? cleanStr : undefined,
-    };
-  }
-
-  // 1. Extract physical page number across all backend naming conventions
-  const page = extractVerifiedPageNumber(raw);
-
-  // 2. Extract PDF filename across all backend naming conventions
-  let filename =
-    raw.pdf_filename ||
-    raw.filename ||
-    raw.file_name ||
-    raw.document_name ||
-    raw.doc_name ||
-    raw.source ||
-    raw.metadata?.pdf_filename ||
-    raw.metadata?.filename ||
-    raw.metadata?.file_name ||
-    raw.metadata?.document_name ||
-    raw.metadata?.doc_name ||
-    raw.metadata?.source ||
-    defaultDocName ||
-    'Audited Document';
-
-  if (typeof filename === 'string') {
-    filename = filename.trim();
-    // Strip leading path if it contains directory separators
-    const lastSlash = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
-    if (lastSlash >= 0) {
-      filename = filename.slice(lastSlash + 1).trim();
-    }
-  }
-
-  // If still generic or missing, recover from chunk_id prefix if available
-  const chunkId = raw.chunk_id || raw.id || raw.metadata?.chunk_id;
-  if (
-    (!filename || filename === 'Audited Document' || filename === 'Document') &&
-    typeof chunkId === 'string'
-  ) {
-    const stemMatch = chunkId.match(/^([a-zA-Z0-9_\-\s]+?)(?:_p\d+|_parent|\.pdf|$)/i);
-    if (stemMatch && stemMatch[1] && stemMatch[1].length > 3 && !stemMatch[1].startsWith('chk_') && !stemMatch[1].startsWith('cit-')) {
-      filename = stemMatch[1].endsWith('.pdf') ? stemMatch[1] : `${stemMatch[1]}.pdf`;
-    }
-  }
-
-  // 3. Extract citation index
-  const citIdx =
-    typeof raw.citation_index === 'number' && raw.citation_index > 0
-      ? raw.citation_index
-      : typeof raw.index === 'number' && raw.index > 0
-        ? raw.index
-        : indexFallback;
-
-  const safePage = page && page > 0 ? page : 1;
-  const encodedName = encodeURIComponent(filename);
-
-  const isWebSource =
-    raw.source_type === 'EXTERNAL_PUBLIC_RECORD' ||
-    raw.source_type?.toLowerCase() === 'web' ||
-    Boolean(raw.url) ||
-    (typeof filename === 'string' && (filename.startsWith('http://') || filename.startsWith('https://')));
-
-  const rawUrl =
-    typeof raw.url === 'string' && raw.url.trim()
-      ? raw.url.trim()
-      : typeof raw.metadata?.url === 'string' && raw.metadata.url.trim()
-        ? raw.metadata.url.trim()
-        : typeof filename === 'string' && (filename.startsWith('http://') || filename.startsWith('https://'))
-          ? filename
-          : undefined;
-
-  const pageUrl =
-    raw.page_url ||
-    raw.metadata?.page_url ||
-    (isWebSource && rawUrl ? rawUrl : `/api/pdf/${encodedName}/pages/${safePage}/pdf`);
-  const pageViewUrl =
-    raw.page_view_url ||
-    raw.metadata?.page_view_url ||
-    (isWebSource && rawUrl ? rawUrl : `/api/pdf/${encodedName}/pages/${safePage}/view`);
-  const pageImageUrl =
-    raw.page_image_url ||
-    raw.metadata?.page_image_url ||
-    (isWebSource ? undefined : `/api/pdf/${encodedName}/pages/${safePage}/image`);
-
-  return {
-    citation_index: citIdx,
-    chunk_id: chunkId || `chk-${citIdx}`,
-    document_id: raw.document_id || raw.doc_id || raw.metadata?.doc_id || filename,
-    doc_id: raw.doc_id || raw.document_id || raw.metadata?.doc_id,
-    pdf_filename: filename,
-    filename: raw.filename || raw.pdf_filename || raw.metadata?.filename || filename,
-    primary_page: page && page > 0 ? page : (undefined as any),
-    page: page && page > 0 ? page : undefined,
-    page_number: page && page > 0 ? page : undefined,
-    heading:
-      raw.heading ||
-      raw.section_heading ||
-      raw.metadata?.heading ||
-      raw.metadata?.section_heading ||
-      raw.title ||
-      '',
-    plain_text:
-      raw.plain_text ||
-      raw.text ||
-      raw.content ||
-      raw.excerpt ||
-      raw.snippet ||
-      raw.metadata?.excerpt ||
-      '',
-    snippet: raw.snippet || raw.excerpt || raw.plain_text || raw.text,
-    text: raw.text || raw.plain_text || raw.excerpt || raw.content,
-    university: raw.university || raw.metadata?.university || '',
-    similarity:
-      typeof raw.similarity === 'number'
-        ? raw.similarity
-        : typeof raw.relevance_score === 'number'
-          ? raw.relevance_score
-          : 0.9,
-    score:
-      typeof raw.score === 'number'
-        ? raw.score
-        : typeof raw.relevance_score === 'number'
-          ? raw.relevance_score
-          : typeof raw.similarity === 'number'
-            ? raw.similarity
-            : undefined,
-    printed_page: raw.printed_page || raw.metadata?.printed_page,
-    page_url: pageUrl,
-    page_image_url: pageImageUrl,
-    page_view_url: pageViewUrl,
-    source_type: raw.source_type || raw.metadata?.source_type || (isWebSource ? 'EXTERNAL_PUBLIC_RECORD' : undefined),
-    url: rawUrl,
-    metadata: raw.metadata,
-  };
-}
-
-/**
- * Strips all inline citation brackets like [1], [2], [1, 2], and parenthetical citations
- * from text so that user clipboard copy operations contain clean, readable prose
- * without bracket artifacts.
- */
-export function stripCitationsForCopy(rawText: string): string {
-  if (!rawText) return '';
-
-  // 1. Remove verbose parenthetical citations if present: (File.pdf, Page 8) [1]
-  let text = rawText.replace(
-    /(?:\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?,\s*(?:page|p\.?)\s*\d+[^()\n]*?|(?:page|p\.?)\s*\d+[^()\n]*?,\s*[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)\s*(?:\[\d+(?:\s*,\s*\d+)*\])?|\[\d+(?:\s*,\s*\d+)*\]\s*\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?,\s*(?:page|p\.?)\s*\d+[^()\n]*?|(?:page|p\.?)\s*\d+[^()\n]*?,\s*[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)|\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)\s*\[\d+(?:\s*,\s*\d+)*\]|\((?:page|p\.?)\s*\d+[^()\n]*?\)\s*\[\d+(?:\s*,\s*\d+)*\])/gi,
-    ''
-  );
-
-  // 2. Strip bracketed citations like [1], [2], [1, 2], [1, 2, 3] and adjacent [1][2]
-  text = text.replace(/\s*\[\d+(?:\s*,\s*\d+)*\]/g, '');
-
-  // 3. Clean up spaces before punctuation (e.g. "claim ." -> "claim.")
-  text = text.replace(/\s+([.,;:!?])/g, '$1');
-
-  // 4. Clean up trailing/excess spaces per line
-  text = text
-    .split('\n')
-    .map((line) => line.replace(/[ \t]{2,}/g, ' ').trimEnd())
-    .join('\n');
-
-  return text.trim();
-}
 
 /**
  * Merges adjacent citation brackets and deduplicates indices:
@@ -409,15 +48,19 @@ export function deduplicateAndMergeCitations(text: string): string {
   });
 
   // 2. Iteratively deduplicate repeated identical adjacent citation brackets:
-  // Matches e.g. [1] [1], [1][1], [1], [1], [1, 2] [1, 2]
+  // Using prev !== result to avoid stateful /g lastIndex fighting
   const duplicateAdjacentRegex = /\[(\d+(?:\s*,\s*\d+)*)\](?:[ \t]*,?[ \t]*|;[ \t]*)\[\1\]/g;
-  while (duplicateAdjacentRegex.test(result)) {
+  let prev = '';
+  while (prev !== result) {
+    prev = result;
     result = result.replace(duplicateAdjacentRegex, '[$1]');
   }
 
   // Also handle single-index duplicate pairs like [1] [1]
   const duplicatePairRegex = /\[(\d+)\](?:[ \t]*,?[ \t]*|;[ \t]*)\[\1\]/g;
-  while (duplicatePairRegex.test(result)) {
+  prev = '';
+  while (prev !== result) {
+    prev = result;
     result = result.replace(duplicatePairRegex, '[$1]');
   }
 
@@ -495,20 +138,8 @@ export function parseCitations(text: string, citations: Citation[] = []): Citati
   return tokens;
 }
 
-export interface CleanRagResponseResult {
-  cleanText: string;
-  citations: Citation[];
-}
-
 /**
  * Prunes redundant citation clutter across consecutive sentences, paragraphs, and list items.
- * Adheres to standard scholarly and academic citation practices (APA 7th §8.1, Chicago 17th §14.28):
- * - Within a paragraph/bullet: if the same citation appears multiple times across consecutive sentences,
- *   only keep the trailing citation covering the paragraph.
- * - Under a cited section or introductory topic statement: redundant repetition of the same citation
- *   on every child attribute bullet (e.g. "Patent Name", "Inventors", "Application Number") is omitted.
- * - Across consecutive bullet lists: when consecutive items share the identical citation set,
- *   the citation is retained on the introducing item or conclusion rather than repeated on every bullet.
  */
 export function pruneRedundantCitations(text: string): string {
   if (!text) return '';
@@ -526,10 +157,7 @@ export function pruneRedundantCitations(text: string): string {
       continue;
     }
 
-    // 1. Merge adjacent identical citation brackets e.g. [1] [1] -> [1]
-    line = deduplicateAndMergeCitations(line);
-
-    // 2. Intra-line deduplication:
+    // Intra-line deduplication:
     // If the exact same citation appears 2+ times on the SAME line:
     // e.g. "CMCNPs [1]. These nanoparticles deliver siRNA [1]."
     // Keep only the concluding citation on the item.
@@ -562,13 +190,26 @@ export function pruneRedundantCitations(text: string): string {
   return res;
 }
 
+// LRU Memoization Cache for cleanRagResponseText
+interface CleanRagCacheEntry {
+  rawText: string;
+  result: CleanRagResponseResult;
+}
+
+const MAX_CACHE = 64;
+const cleanRagCache = new Map<string, CleanRagCacheEntry>();
+
+function getCacheKey(rawText: string, citationsLength: number): string {
+  return `${rawText.length}:${rawText.slice(0, 64)}:${rawText.slice(-64)}:${citationsLength}`;
+}
+
 /**
  * Robust cleaner and normalizer for RAG responses.
- * 1. Strips non-printable control characters (\x00-\x08\x0B\x0C\x0E-\x1F\x7F) like backspaces from OCR/PDF extraction.
- * 2. Unpacks verbose in-text citations like `(Annual Report.pdf, Page 8) [1]:` into clean `[1]` citation markers.
- * 3. Enriches and synchronizes the citations array with filenames and page numbers discovered in text.
- * 4. Ensures proper line breaks and paragraphs around bullet lists (•) and numbered items.
- * 5. Structures list items with distinct headings and readable indented excerpt blocks.
+ * 1. Strips non-printable control characters with single zero-allocation regex.
+ * 2. Temporarily masks fenced code blocks (```...```) and math blocks ($$...$$).
+ * 3. Fast-path guards verbose citation extraction.
+ * 4. Deduplicates and formats citations and markdown structure.
+ * 5. Uses LRU memoization (MAX_CACHE = 64) for instantaneous re-renders.
  */
 export function cleanRagResponseText(
   rawText: string,
@@ -576,17 +217,20 @@ export function cleanRagResponseText(
 ): CleanRagResponseResult {
   if (!rawText) return { cleanText: '', citations: [] };
 
+  const cacheKey = getCacheKey(rawText, initialCitations.length);
+  const cached = cleanRagCache.get(cacheKey);
+  if (cached && cached.rawText === rawText) {
+    // Refresh LRU order
+    cleanRagCache.delete(cacheKey);
+    cleanRagCache.set(cacheKey, cached);
+    return cached.result;
+  }
+
   // Normalize unicode (e.g. mathematical bold digits [𝟏] -> [1])
   let text = rawText.normalize('NFKC');
 
-  // 1. Strip non-printable control characters (except \t, \n, \r)
-  text = text
-    .split('')
-    .filter((char) => {
-      const code = char.charCodeAt(0);
-      return (code >= 32 && code !== 127) || code === 9 || code === 10 || code === 13;
-    })
-    .join('');
+  // 1. Strip non-printable control characters with zero-allocation regex
+  text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 
   // Strip literal escaped control character sequences (e.g. \x08, \u0008)
   text = text.replace(
@@ -597,7 +241,15 @@ export function cleanRagResponseText(
   // 2. Normalize newlines
   text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  // 3. Collect and normalize existing citations
+  // 3. Mask fenced code blocks and $$ math blocks before structural regexes
+  const codeBlocks: string[] = [];
+  text = text.replace(/```[\s\S]*?```|\$\$[\s\S]*?\$\$/g, (match) => {
+    const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+    codeBlocks.push(match);
+    return placeholder;
+  });
+
+  // 4. Collect and normalize existing citations
   const citMap = new Map<number, Citation>();
   let maxIndex = 0;
   for (let i = 0; i < initialCitations.length; i++) {
@@ -608,46 +260,51 @@ export function cleanRagResponseText(
 
   let nextAllocIndex = maxIndex + 1;
 
-  // 4. Extract and clean verbose parenthetical in-text citations
-  const verboseCitationRegex =
-    /(?:\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?,\s*(?:page|p\.?)\s*(\d+)[^()\n]*?|(?:page|p\.?)\s*(\d+)[^()\n]*?,\s*[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)\s*(?:\[(\d+)\])?|\[(\d+)\]\s*\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?,\s*(?:page|p\.?)\s*(\d+)[^()\n]*?|(?:page|p\.?)\s*(\d+)[^()\n]*?,\s*[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)|\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)\s*\[(\d+)\]|\((?:page|p\.?)\s*(\d+)[^()\n]*?\)\s*\[(\d+)\]|\(([^()\n]+?\.(?:pdf|docx?|txt|md|xlsx?)\s*,\s*(?:page|p\.?)\s*(\d+)[^()\n]*?)\))/gi;
+  // 5. Fast-path guard around verbose parenthetical in-text citations
+  if (
+    text.includes('(') &&
+    (/\.(?:pdf|docx?|txt|md|xlsx?)\b/i.test(text) || /(?:page|p\.?)\s*\d+/i.test(text))
+  ) {
+    const verboseCitationRegex =
+      /(?:\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?,\s*(?:page|p\.?)\s*(\d+)[^()\n]*?|(?:page|p\.?)\s*(\d+)[^()\n]*?,\s*[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)\s*(?:\[(\d+)\])?|\[(\d+)\]\s*\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?,\s*(?:page|p\.?)\s*(\d+)[^()\n]*?|(?:page|p\.?)\s*(\d+)[^()\n]*?,\s*[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)|\((?:[^()\n]*?\.(?:pdf|docx?|txt|md|xlsx?)[^()\n]*?)\)\s*\[(\d+)\]|\((?:page|p\.?)\s*(\d+)[^()\n]*?\)\s*\[(\d+)\]|\(([^()\n]+?\.(?:pdf|docx?|txt|md|xlsx?)\s*,\s*(?:page|p\.?)\s*(\d+)[^()\n]*?)\))/gi;
 
-  text = text.replace(verboseCitationRegex, (fullMatch) => {
-    const numMatch = fullMatch.match(/\[(\d+)\]/);
-    const fileMatch = fullMatch.match(/([a-zA-Z0-9_\- .]+\.(?:pdf|docx?|txt|md|xlsx?))/i);
-    const pageMatch = fullMatch.match(/(?:page|p\.?)\s*(\d+)/i);
+    text = text.replace(verboseCitationRegex, (fullMatch) => {
+      const numMatch = fullMatch.match(/\[(\d+)\]/);
+      const fileMatch = fullMatch.match(/([a-zA-Z0-9_\- .]+\.(?:pdf|docx?|txt|md|xlsx?))/i);
+      const pageMatch = fullMatch.match(/(?:page|p\.?)\s*(\d+)/i);
 
-    const explicitIdx = numMatch ? parseInt(numMatch[1], 10) : null;
-    const idx = explicitIdx || nextAllocIndex++;
-    if (idx >= nextAllocIndex) nextAllocIndex = idx + 1;
+      const explicitIdx = numMatch ? parseInt(numMatch[1], 10) : null;
+      const idx = explicitIdx || nextAllocIndex++;
+      if (idx >= nextAllocIndex) nextAllocIndex = idx + 1;
 
-    const filename = fileMatch ? fileMatch[1].trim() : '';
-    const page = pageMatch ? parseInt(pageMatch[1], 10) : undefined;
+      const filename = fileMatch ? fileMatch[1].trim() : '';
+      const page = pageMatch ? parseInt(pageMatch[1], 10) : undefined;
 
-    if (!citMap.has(idx)) {
-      citMap.set(idx, {
-        citation_index: idx,
-        pdf_filename: filename,
-        primary_page: page,
-        chunk_id: `extracted-${idx}`,
-        document_id: filename || `doc-${idx}`,
-        heading: '',
-        plain_text: '',
-        university: '',
-        similarity: 1.0,
-      });
-    } else {
-      const existing = citMap.get(idx)!;
-      if (filename && (!existing.pdf_filename || existing.pdf_filename === 'Document')) {
-        existing.pdf_filename = filename;
+      if (!citMap.has(idx)) {
+        citMap.set(idx, {
+          citation_index: idx,
+          pdf_filename: filename,
+          primary_page: page,
+          chunk_id: `extracted-${idx}`,
+          document_id: filename || `doc-${idx}`,
+          heading: '',
+          plain_text: '',
+          university: '',
+          similarity: 1.0,
+        });
+      } else {
+        const existing = citMap.get(idx)!;
+        if (filename && (!existing.pdf_filename || existing.pdf_filename === 'Document')) {
+          existing.pdf_filename = filename;
+        }
+        if (page && (!existing.primary_page || existing.primary_page <= 0)) {
+          existing.primary_page = page;
+        }
       }
-      if (page && (!existing.primary_page || existing.primary_page <= 0)) {
-        existing.primary_page = page;
-      }
-    }
 
-    return ` [${idx}] `;
-  });
+      return ` [${idx}] `;
+    });
+  }
 
   // Normalize spacing around citation brackets: " [1] :" -> " [1]:"
   text = text.replace(/[ \t]+(\[\d+\])/g, ' $1');
@@ -656,54 +313,38 @@ export function cleanRagResponseText(
   // Merge adjacent / repeated citations early
   text = deduplicateAndMergeCitations(text);
 
-  // 1. Strip malformed bullet prefixes from headings early: e.g. "* ### Title" -> "### Title"
+  // Clean headings and structure
   text = text.replace(/^[ \t]*[•*-]\s*(#{1,4})/gm, '$1');
-
-  // 2. Clean malformed headings with leading bullets and trailing stars like "• **### Title**"
   text = text.replace(
     /^[ \t]*[•*-]\s*(?:\*\*)?\s*(#{1,4})\s*([^#\n]+?)(?:\*\*)?\s*$/gm,
     '\n\n$1 $2\n\n'
   );
-
-  // 3. Separate headings where bold title is glued to subsequent paragraph text:
-  // e.g. "### **Research Study: PTBP2**A study from BRIC-ILS..." -> "### Research Study: PTBP2\n\nA study from BRIC-ILS..."
   text = text.replace(
     /^[ \t]*(?:[•*-]\s*)?(#{1,4})\s*(?:\*\*)?([^*\n]+?)\*\*\s*([A-Za-z0-9])/gm,
     '\n\n$1 $2\n\n$3'
   );
-
-  // 3. Clean malformed headings with wrapping/trailing asterisks like "### **Title**" or "### Title**"
   text = text.replace(/^(#{1,4})\s*(?:\*\*)?\s*([^*\n]+?)\s*(?:\*\*)?\s*$/gm, '$1 $2');
-
-  // 4. Clean standalone section titles into clean H3 markdown headings
   text = text.replace(
     /^[ \t]*(?:\*\*)?\s*(Key Strategic Conclusions|Institutional Strategic Outcomes|Overarching Institutional Conclusions|Strategic Framework and Economic Targets)(?:\*\*)?[ \t]*$/gm,
     '\n\n### $1\n\n'
   );
-
-  // 5. Separate standalone bold section titles glued directly to body text on the same line:
-  // e.g. "**Patent: Biomimetic Polymeric Nanoformulation**The report highlights..." -> "### Patent: Biomimetic Polymeric Nanoformulation\n\nThe report highlights..."
   text = text.replace(/^[ \t]*\*\*([A-Z][^*\n]{3,80}?)\*\*\s*([A-Z][a-z]+)/gm, '\n\n### $1\n\n$2');
-
-  // 6. Separate headings running directly into sentence words without newline/space:
-  // e.g. "### Patent: Biomimetic Polymeric Nanoformulation for OsteosarcomaThe report highlights..."
-  // -> "### Patent: Biomimetic Polymeric Nanoformulation for Osteosarcoma\n\nThe report highlights..."
   text = text.replace(
     /^(#{1,4}\s+[A-Za-z0-9\s:—–-]{5,80}?[a-z0-9])([A-Z][a-z]+\s+(?:report|study|paper|findings?|data|analysis|investigates|demonstrates|presents|highlights|reveals|shows|concludes|from|in|is|are|was|were|aims|focuses|describes|utilizes|developed|designed)\b)/gm,
     '$1\n\n$2'
   );
 
-  // Separate bullets onto distinct lines (including glued bullets without space)
+  // Separate bullets onto distinct lines
   text = text.replace(/([^\n])\s*•\s*/g, '$1\n\n• ');
   text = text.replace(/\s*•\s*/g, '\n\n• ').trim();
 
-  // Support standard Markdown hyphens (- ) and asterisks (* ) as well
+  // Support standard Markdown hyphens (- ) and asterisks (* )
   text = text.replace(/([^\n])\n(- \*\*)/g, '$1\n\n$2');
   text = text.replace(/([^\n])\n(-\s+)/g, '$1\n\n$2');
   text = text.replace(/([^\n])\n(\*\s+)/g, '$1\n\n$2');
   text = text.replace(/([^\n])\s*-\s+\*\*/g, '$1\n\n- **');
 
-  // Clean title + citation + colon followed by space(s) into clean indented layout
+  // Clean title + citation + colon
   text = text.replace(
     /([•-])\s*(\*\*[^*]+\*\*)\s*(\[\d+\])?\s*[:—–-]?\s+/g,
     (_, bullet, title, cit) => {
@@ -711,7 +352,7 @@ export function cleanRagResponseText(
     }
   );
 
-  // Separate numbered lists that were inline (e.g., "Intro: 1. **Title**")
+  // Separate numbered lists that were inline
   text = text.replace(/([.:;!?])\s+(\d+\.)\s+\*\*/g, '$1\n\n$2 **');
   text = text.replace(/([^\n])\n(\d+\.\s+\*\*)/g, '$1\n\n$2');
 
@@ -720,7 +361,7 @@ export function cleanRagResponseText(
   text = text.replace(/\n{3,}/g, '\n\n');
 
   // If the text does not contain any inline citation markers but citations exist,
-  // append citations at the end of the text so the user can always inspect them
+  // append citations at the end of the text
   if (!/\[\d+\]/.test(text) && citMap.size > 0) {
     const badges = Array.from(new Set(citMap.keys()))
       .sort((a, b) => a - b)
@@ -729,9 +370,29 @@ export function cleanRagResponseText(
     text = `${text.trim()} ${badges}`;
   }
 
-  // Final deduplication & merging of citation markers and floating punctuation
+  // Final deduplication & merging of citation markers
   text = deduplicateAndMergeCitations(text);
   text = pruneRedundantCitations(text);
 
-  return { cleanText: text, citations: Array.from(citMap.values()) };
+  // Restore masked code blocks and math blocks
+  if (codeBlocks.length > 0) {
+    text = text.replace(/__CODE_BLOCK_(\d+)__/g, (_, idx) => {
+      const bIdx = parseInt(idx, 10);
+      return codeBlocks[bIdx] !== undefined ? codeBlocks[bIdx] : _;
+    });
+  }
+
+  const result: CleanRagResponseResult = {
+    cleanText: text,
+    citations: Array.from(citMap.values()),
+  };
+
+  // Cache result in LRU
+  if (cleanRagCache.size >= MAX_CACHE) {
+    const oldestKey = cleanRagCache.keys().next().value;
+    if (oldestKey) cleanRagCache.delete(oldestKey);
+  }
+  cleanRagCache.set(cacheKey, { rawText, result });
+
+  return result;
 }

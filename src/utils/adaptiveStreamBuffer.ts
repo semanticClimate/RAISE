@@ -12,10 +12,15 @@
  *  3. Extreme burst (>400 chars/sec / >100 tok/s):
  *     Adapts flush window to ~45ms (~22 FPS) to give the client browser plenty of
  *     idle time for KaTeX/Markdown DOM layout and GPU compositing.
- *  4. UI Thread Contention Backoff:
- *     Measures execution time of the React reconciliation callback. If it exceeds 12ms,
+ *  4. Document Length Scaling:
+ *     Sets minimum interval floor based on accumulated document length (30ms for >2.5k, 45ms for >6k)
+ *     so large documents don't starve the UI thread even at low velocities.
+ *  5. Real Post-Paint Frame Contention Backoff:
+ *     Measures post-paint frame time with requestAnimationFrame. If paint delta exceeds 24ms,
  *     the buffer automatically increases the interval by +8ms (up to maxIntervalMs).
- *  5. Immediate Terminal Flush:
+ *  6. Efficient Sleep Schedule:
+ *     Replaces busy-wait requestAnimationFrame loop with targeted setTimeout sleeping.
+ *  7. Immediate Terminal Flush:
  *     `flushImmediately()` synchronously delivers the exact accumulated text with 0ms lag
  *     the instant the stream finishes or stops.
  */
@@ -58,7 +63,7 @@ export class AdaptiveStreamBuffer {
 
   /**
    * Ingests a new accumulated stream payload from the SSE reader.
-   * Calculates velocity and schedules an adaptive frame flush.
+   * Calculates velocity, factors in document length, and schedules an adaptive frame flush.
    */
   public push(accumulatedText: string): void {
     if (this.isDestroyed) return;
@@ -72,6 +77,7 @@ export class AdaptiveStreamBuffer {
       this.recentSamples.shift();
     }
 
+    let velocityIntervalMs = this.minIntervalMs;
     if (this.recentSamples.length >= 2) {
       const oldest = this.recentSamples[0];
       const deltaMs = Math.max(10, now - oldest.timestamp);
@@ -80,17 +86,30 @@ export class AdaptiveStreamBuffer {
 
       if (charsPerSec > 400) {
         // Extreme burst (>100 tok/s): smooth at ~22 FPS to prevent layout thrashing
-        this.currentIntervalMs = this.maxIntervalMs;
+        velocityIntervalMs = this.maxIntervalMs;
       } else if (charsPerSec > 150) {
         // High burst (~40-90 tok/s): smooth at ~35 FPS
-        this.currentIntervalMs = Math.round(
+        velocityIntervalMs = Math.round(
           this.minIntervalMs + (this.maxIntervalMs - this.minIntervalMs) * 0.5
         );
       } else {
         // Normal pace (<35 tok/s): standard 60 FPS
-        this.currentIntervalMs = this.minIntervalMs;
+        velocityIntervalMs = this.minIntervalMs;
       }
     }
+
+    // Scale flush interval by document length
+    let lengthFloorMs = this.minIntervalMs;
+    if (accumulatedText.length > 6000) {
+      lengthFloorMs = 45;
+    } else if (accumulatedText.length > 2500) {
+      lengthFloorMs = 30;
+    }
+
+    this.currentIntervalMs = Math.min(
+      this.maxIntervalMs,
+      Math.max(velocityIntervalMs, lengthFloorMs)
+    );
 
     this.scheduleFrame(now);
   }
@@ -111,13 +130,18 @@ export class AdaptiveStreamBuffer {
         this.lastFlushedText = this.latestText;
         this.lastFlushTime = frameStart;
         this.onFlush(this.latestText);
-      }
 
-      // Check if flush took significant time (UI thread / KaTeX contention)
-      const frameElapsed = this.getNow() - frameStart;
-      if (frameElapsed > 12) {
-        // UI thread contention detected: back off interval to leave GPU headroom
-        this.currentIntervalMs = Math.min(this.maxIntervalMs, this.currentIntervalMs + 8);
+        // Measure real post-paint frame time instead of synchronous setState call
+        if (typeof requestAnimationFrame !== 'undefined') {
+          requestAnimationFrame(() => {
+            if (this.isDestroyed) return;
+            const paintDelta = this.getNow() - frameStart;
+            if (paintDelta > 24) {
+              // Frame dropped / UI thread contention: back off interval
+              this.currentIntervalMs = Math.min(this.maxIntervalMs, this.currentIntervalMs + 8);
+            }
+          });
+        }
       }
 
       // If more text accumulated while flushing, reschedule for next cycle
@@ -132,17 +156,19 @@ export class AdaptiveStreamBuffer {
       } else {
         this.timeoutId = setTimeout(executeFlush, 0);
       }
+    } else if (remainingDelay > 16) {
+      // Avoid spinning requestAnimationFrame every 16ms when waiting
+      this.timeoutId = setTimeout(() => {
+        this.timeoutId = null;
+        if (typeof requestAnimationFrame !== 'undefined') {
+          this.rafId = requestAnimationFrame(executeFlush);
+        } else {
+          executeFlush();
+        }
+      }, remainingDelay - 8);
     } else {
       if (typeof requestAnimationFrame !== 'undefined') {
-        this.rafId = requestAnimationFrame(() => {
-          this.rafId = null;
-          const frameNow = this.getNow();
-          if (frameNow - this.lastFlushTime >= this.currentIntervalMs) {
-            executeFlush();
-          } else {
-            this.scheduleFrame(frameNow);
-          }
-        });
+        this.rafId = requestAnimationFrame(executeFlush);
       } else {
         this.timeoutId = setTimeout(executeFlush, remainingDelay);
       }

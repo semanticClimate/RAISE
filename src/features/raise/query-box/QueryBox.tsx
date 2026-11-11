@@ -1,9 +1,13 @@
-import type React from 'react';
-import { VoiceInputButton } from '../../../components/input/VoiceInputButton';
+import React from 'react';
 import { useSlashCommands } from '../../../hooks';
 import type { DynamicSuggestion, SourceDocument } from '../../../types';
-import { AddSourceButton, AttachedDocChips, FastExpertToggle } from '../query-controls';
-import { getCommandIcon, SlashCommandMenu } from './SlashCommandMenu';
+import { AttachedDocChips } from '../query-controls';
+import { QueryBoxFormActions } from './QueryBoxFormActions';
+import { QueryBoxVoiceError } from './QueryBoxVoiceError';
+import { QuerySuggestionsList } from './QuerySuggestionsList';
+import { SlashCommandMenu, getCommandIcon } from './SlashCommandMenu';
+import { useQueryBoxTypewriter } from './useQueryBoxTypewriter';
+import { useTextareaAutoHeight } from './useTextareaAutoHeight';
 
 export interface QueryBoxProps {
   /** Current text query entered by the user */
@@ -64,21 +68,14 @@ export interface QueryBoxProps {
   className?: string;
 }
 
-/**
- * QueryBox Component
- * Dedicated prompt and question input interface where the user submits research queries.
- *
- * Isolated from + button and mode controls (located in `../query-controls/`)
- * for easy modification, styling adjustments, and feature extensions.
- */
-export const QueryBox: React.FC<QueryBoxProps> = ({
+const QueryBoxBase: React.FC<QueryBoxProps> = ({
   query,
   onQueryChange,
   onSubmit,
   onAbort,
   isLoading,
   conversationLength,
-  placeholderText = 'Ask any question..',
+  placeholderText: explicitPlaceholder,
   textareaRef,
   showSuggestions,
   setShowSuggestions,
@@ -109,6 +106,12 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
   onDismissVoiceError,
   className = '',
 }) => {
+  // 1. Local typewriter placeholder hook (prevents whole-page re-renders on keystroke/idle ticks)
+  const animatedPlaceholder = useQueryBoxTypewriter(conversationLength, query, explicitPlaceholder);
+
+  // 2. Local textarea auto-height calculation (isolates scrollHeight reads from parent)
+  useTextareaAutoHeight(textareaRef, query, conversationLength);
+
   const slashCommands = useSlashCommands({
     query,
     onQueryChange: (newQuery) => {
@@ -145,41 +148,18 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
       <div className="interactive-query-box">
         {conversationLength === 0 && <div aria-hidden="true" className="beam-shimmer-sweep" />}
 
-        {/* Screen-reader accessible suggestions list (visually hidden to prevent UI clutter) */}
-        {showSuggestions && filteredSuggestions.length > 0 && (
-          <div
-            id="query-suggestions-list"
-            data-testid="query-suggestions-list"
-            role="listbox"
-            aria-label="Prompt Suggestions"
-            className="sr-only"
-          >
-            {filteredSuggestions.map((item, sIdx) => {
-              const isHighlighted = activeSuggestionIndex === sIdx;
-              return (
-                <div
-                  key={item.query}
-                  id={`query-suggestion-${sIdx}`}
-                  data-testid={`query-suggestion-item-${sIdx}`}
-                  role="option"
-                  aria-selected={isHighlighted}
-                  tabIndex={-1}
-                  onClick={() => {
-                    onQueryChange(item.query);
-                    setShowSuggestions(false);
-                    setActiveSuggestionIndex(-1);
-                    textareaRef?.current?.focus();
-                  }}
-                  onMouseEnter={() => setActiveSuggestionIndex(sIdx)}
-                >
-                  <span>{item.query}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* Screen-reader accessible suggestions list */}
+        <QuerySuggestionsList
+          showSuggestions={showSuggestions}
+          filteredSuggestions={filteredSuggestions}
+          activeSuggestionIndex={activeSuggestionIndex}
+          onQueryChange={onQueryChange}
+          setShowSuggestions={setShowSuggestions}
+          setActiveSuggestionIndex={setActiveSuggestionIndex}
+          textareaRef={textareaRef}
+        />
 
-        {/* Mobile Attached Sources: Floating chip strip cleanly placed ABOVE the WhatsApp question box */}
+        {/* Mobile Attached Sources: Floating chip strip cleanly placed ABOVE the question box */}
         <AttachedDocChips
           selectedDocs={selectedDocs}
           isDocReady={isDocReady}
@@ -200,7 +180,7 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
           onClose={slashCommands.dismiss}
         />
 
-        {/* WhatsApp-Style Input Bar on Mobile / Full RAG Card on Desktop */}
+        {/* Input Bar on Mobile / Full RAG Card on Desktop */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -249,12 +229,13 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
                   </span>
                 ) : (
                   <>
-                    <span className="animated-ask-placeholder">{placeholderText}</span>
+                    <span className="animated-ask-placeholder">{animatedPlaceholder}</span>
                     <span className="hidden sm:inline-block w-[2px] h-[1.15em] bg-indigo-500/85 dark:bg-indigo-400/90 ml-0.5 animated-cursor-blink align-middle rounded-full" />
                   </>
                 )}
               </div>
             )}
+
             {/* Active Slash Command Indicator Chip */}
             {activeCmdName && (
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mb-1.5 rounded-lg bg-indigo-500/15 dark:bg-indigo-500/20 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-xs font-mono font-medium shrink-0 select-none animate-in fade-in">
@@ -369,130 +350,38 @@ export const QueryBox: React.FC<QueryBoxProps> = ({
             />
           </div>
 
-          <div
-            className={`contents sm:flex sm:order-2 sm:w-full sm:items-center sm:justify-between sm:gap-2 relative z-20 ${
-              conversationLength === 0 ? 'sm:pt-1.5' : 'sm:pt-1'
-            }`}
-          >
-            {/* Attachments Section: On mobile, only + button on the left (order-1). On desktop, + button and desktop chips on lower-left */}
-            <div className="order-1 sm:order-none flex items-center gap-1.5 sm:gap-2 shrink-0 select-none">
-              <AddSourceButton
-                isOpen={addSourceMenuOpen === 'input'}
-                onToggle={() => setAddSourceMenuOpen((prev) => (prev === 'input' ? null : 'input'))}
-                onClose={() => setAddSourceMenuOpen(null)}
-                fileInputRef={fileInputRef}
-                onFileUpload={onFileUpload}
-                onOpenLibraryPicker={onOpenLibraryPicker}
-                parseMode={parseMode}
-                onSelectMode={setParseMode}
-                conversationLength={conversationLength}
-              />
-              <AttachedDocChips
-                selectedDocs={selectedDocs}
-                isDocReady={isDocReady}
-                onRemoveDoc={onRemoveAttachedDoc}
-                onOpenDrawer={onOpenSourcesDrawer}
-                onViewPdf={onViewPdf}
-                conversationLength={conversationLength}
-                variant="desktop"
-              />
-            </div>
-
-            {/* Right / Lower Side: Fast/Expert, Mic, and Enter actions kept in the same place, fully responsive */}
-            <div className="order-3 sm:order-none flex items-center justify-end space-x-1 sm:space-x-2 shrink-0 ml-auto">
-              <FastExpertToggle
-                parseMode={parseMode}
-                onSelectMode={setParseMode}
-                isOnline={isOnline}
-                variant="desktop"
-              />
-
-              <VoiceInputButton
-                isListening={isListening}
-                isVoiceSpeaking={isVoiceSpeaking}
-                voiceAudioLevels={voiceAudioLevels}
-                voiceDurationSec={voiceDurationSec}
-                hasSpeechContent={query.trim().length > 0}
-                onToggleVoice={onToggleVoice}
-                onSubmitVoice={() => {
-                  onStopVoiceListening();
-                  onSubmit();
-                }}
-                formatVoiceDuration={formatVoiceDuration}
-              />
-
-              {/* Right-Aligned Action: Submit / Stop Button (Only visible when user has typed text or while loading) */}
-              {(query.trim().length > 0 || isLoading) && (
-                <button
-                  type="submit"
-                  title={isLoading ? 'Stop generating' : 'Send question'}
-                  aria-label={isLoading ? 'Stop generating query process' : 'Execute RAG Query'}
-                  className={`${
-                    conversationLength === 0
-                      ? 'w-7.5 h-7.5 sm:w-8 sm:h-8'
-                      : 'w-6.5 h-6.5 sm:w-8 sm:h-8'
-                  } rounded-full transition-all flex items-center justify-center shrink-0 bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-200 shadow-md cursor-pointer active:scale-95 animate-in fade-in zoom-in-90 duration-150`}
-                >
-                  {isLoading ? (
-                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-xs bg-white dark:bg-black" />
-                  ) : (
-                    <svg
-                      className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white dark:text-black"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        d="M5 10l7-7m0 0l7 7m-7-7v18"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2.5"
-                      />
-                    </svg>
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
+          <QueryBoxFormActions
+            query={query}
+            isLoading={isLoading}
+            conversationLength={conversationLength}
+            addSourceMenuOpen={addSourceMenuOpen}
+            setAddSourceMenuOpen={setAddSourceMenuOpen}
+            fileInputRef={fileInputRef}
+            onFileUpload={onFileUpload}
+            onOpenLibraryPicker={onOpenLibraryPicker}
+            selectedDocs={selectedDocs}
+            isDocReady={isDocReady}
+            onRemoveAttachedDoc={onRemoveAttachedDoc}
+            onOpenSourcesDrawer={onOpenSourcesDrawer}
+            onViewPdf={onViewPdf}
+            parseMode={parseMode}
+            setParseMode={setParseMode}
+            isOnline={isOnline}
+            isListening={isListening}
+            isVoiceSpeaking={isVoiceSpeaking}
+            voiceAudioLevels={voiceAudioLevels}
+            voiceDurationSec={voiceDurationSec}
+            formatVoiceDuration={formatVoiceDuration}
+            onToggleVoice={onToggleVoice}
+            onStopVoiceListening={onStopVoiceListening}
+            onSubmit={onSubmit}
+          />
         </form>
 
-        {/* Voice query error message banner if mic access fails */}
-        {voiceError && (
-          <div className="mt-2 px-3 py-1.5 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl flex items-center justify-between gap-2 animate-in fade-in duration-150">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <svg
-                className="w-4 h-4 text-rose-500 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-              <span>{voiceError}</span>
-            </div>
-            <button
-              type="button"
-              onClick={onDismissVoiceError}
-              className="p-1 text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 rounded-md cursor-pointer"
-              aria-label="Dismiss error"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
-        )}
+        <QueryBoxVoiceError voiceError={voiceError} onDismiss={onDismissVoiceError} />
       </div>
     </section>
   );
 };
+
+export const QueryBox = React.memo(QueryBoxBase);
