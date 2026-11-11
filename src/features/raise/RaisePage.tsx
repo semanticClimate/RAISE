@@ -209,9 +209,28 @@ export const RaisePage: React.FC = () => {
 
           <div ref={c.autoScroll.messagesEndRef} />
 
+          {/* Floating Scroll to Bottom Down Arrow Button (ChatGPT / Gemini style) */}
+          {c.autoScroll.showScrollToBottom && (
+            <div className="sticky bottom-20 sm:bottom-24 z-40 flex justify-center pointer-events-none mb-2">
+              <button
+                type="button"
+                data-testid="scroll-to-bottom-btn"
+                aria-label="Scroll to bottom"
+                onClick={c.autoScroll.scrollToBottom}
+                className="pointer-events-auto flex items-center justify-center w-8 h-8 rounded-full bg-white dark:bg-[#181b26] border border-slate-300 dark:border-white/10 text-slate-600 dark:text-slate-300 shadow-md hover:bg-slate-50 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white transition-all active:scale-95 cursor-pointer animate-in fade-in slide-in-from-bottom-2 duration-150"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <div
-            className={`w-full max-w-[clamp(38rem,94vw,62rem)] mx-auto px-0 transition-all duration-300 ${
-              c.chatSessions.conversation.length === 0 ? 'w-full' : 'sticky bottom-0 z-20 pb-2'
+            className={`w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto px-0 transition-all duration-300 ${
+              c.chatSessions.conversation.length === 0
+                ? 'w-full'
+                : 'sticky bottom-3 sm:bottom-5 z-30 mt-2 sm:mt-3'
             }`}
           >
             <QueryBox

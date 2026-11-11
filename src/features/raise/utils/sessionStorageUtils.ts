@@ -1,11 +1,9 @@
 import { isLegacySession } from '../../../utils/storageCleaner';
-import { DEMO_SHOWCASE_SESSION, DEMO_SHOWCASE_SESSION_ID } from '../showcaseSession';
 import type { ChatMessage, ChatSession } from '../types';
 import { deduplicateTurns } from './messageNormalizer';
 
 export const SESSIONS_STORAGE_KEY = 'raise_recent_sessions_v2';
 export const CURRENT_SESSION_KEY = 'raise_current_session_id';
-export const DEMO_DELETED_KEY = 'raise_demo_showcase_deleted';
 export const PERSIST_ON_RELOAD_KEY = 'raise_persist_session_on_reload';
 
 let debounceSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -17,7 +15,6 @@ export function pruneSessionForStorage(session: ChatSession): ChatSession {
   return {
     ...session,
     messages: (session.messages || []).map((m) => {
-      // Retain essential display fields, citations, and versions; strip huge debug payloads
       const { ...cleanMsg } = m;
       if (cleanMsg.response) {
         cleanMsg.response = {
@@ -37,22 +34,17 @@ export function pruneSessionForStorage(session: ChatSession): ChatSession {
 
 export function loadSessionsLocally(): ChatSession[] {
   try {
-    if (typeof window === 'undefined') return [DEMO_SHOWCASE_SESSION];
+    if (typeof window === 'undefined') return [];
     const cached = localStorage.getItem(SESSIONS_STORAGE_KEY);
-    const isDemoDeleted = localStorage.getItem(DEMO_DELETED_KEY) === 'true';
-
     if (cached) {
       const parsed = JSON.parse(cached) as ChatSession[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const cleaned = parsed.filter((s) => !isLegacySession(s));
-        const hasDemo = cleaned.some((s) => s.id === DEMO_SHOWCASE_SESSION_ID);
-        const withDemo = hasDemo || isDemoDeleted ? cleaned : [...cleaned, DEMO_SHOWCASE_SESSION];
-        return withDemo;
+        return parsed.filter((s) => !isLegacySession(s));
       }
     }
-    return isDemoDeleted ? [] : [DEMO_SHOWCASE_SESSION];
+    return [];
   } catch {
-    return [DEMO_SHOWCASE_SESSION];
+    return [];
   }
 }
 
@@ -62,8 +54,16 @@ export function saveSessionsLocally(newSessions: ChatSession[], immediate: boole
       if (typeof window === 'undefined') return;
       const pruned = newSessions.map(pruneSessionForStorage);
       localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(pruned));
-    } catch (e) {
-      console.warn('Failed to cache chat sessions locally:', e);
+    } catch (err: unknown) {
+      // Handle QuotaExceededError by keeping only recent 15 sessions
+      if (err instanceof Error && err.name === 'QuotaExceededError') {
+        try {
+          const minimal = newSessions.slice(0, 15).map(pruneSessionForStorage);
+          localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(minimal));
+        } catch {
+          // fallback ignore
+        }
+      }
     }
   };
 
@@ -73,27 +73,18 @@ export function saveSessionsLocally(newSessions: ChatSession[], immediate: boole
     return;
   }
 
-  if (debounceSaveTimer) {
-    clearTimeout(debounceSaveTimer);
-  }
+  if (debounceSaveTimer) clearTimeout(debounceSaveTimer);
   debounceSaveTimer = setTimeout(performSave, 350);
 }
 
 export function getInitialSessionId(): string | null {
   try {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlSession = urlParams.get('session') || urlParams.get('session_id');
-      if (urlSession && urlSession.trim()) {
-        return urlSession.trim();
+      const shouldPersist = localStorage.getItem(PERSIST_ON_RELOAD_KEY) === 'true';
+      const stored = shouldPersist ? localStorage.getItem(CURRENT_SESSION_KEY)?.trim() : null;
+      if (stored) {
+        return stored;
       }
-    }
-    const shouldPersist = localStorage.getItem(PERSIST_ON_RELOAD_KEY) === 'true';
-    if (!shouldPersist) return null;
-
-    const savedCurrentId = localStorage.getItem(CURRENT_SESSION_KEY);
-    if (savedCurrentId && savedCurrentId.trim()) {
-      return savedCurrentId.trim();
     }
   } catch {}
   return null;
@@ -102,11 +93,8 @@ export function getInitialSessionId(): string | null {
 export function getInitialConversation(): ChatMessage[] {
   try {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlSession = urlParams.get('session') || urlParams.get('session_id');
       const shouldPersist = localStorage.getItem(PERSIST_ON_RELOAD_KEY) === 'true';
       const targetId =
-        urlSession?.trim() ||
         (shouldPersist ? localStorage.getItem(CURRENT_SESSION_KEY)?.trim() : null);
 
       if (targetId) {

@@ -48,20 +48,20 @@ export const BranchNotifications: React.FC<BranchNotificationsProps> = ({
           turnIndex === (activeSession.forkedAtTurnIndex ?? totalConversationTurns - 1)))
   );
 
+  const matchingBranch = originalNotification
+    ? sessions.find(
+        (s) =>
+          s.forkedFromSessionId === currentSessionId &&
+          s.id === originalNotification.branchSessionId
+      )
+    : sessions.find((s) => s.forkedFromSessionId === currentSessionId);
+
+  const targetTurnIndex = matchingBranch?.forkedAtTurnIndex;
   const isOriginalBannerVisible = Boolean(
     currentSessionId &&
-      ((originalNotification &&
-        sessions.some(
-          (s) =>
-            s.forkedFromSessionId === currentSessionId &&
-            s.id === originalNotification.branchSessionId
-        )) ||
-        (!originalNotification &&
-          sessions.some(
-            (s) =>
-              s.forkedFromSessionId === currentSessionId &&
-              (s.forkedAtTurnIndex === turnIndex || (!s.forkedAtTurnIndex && turnIndex === 1))
-          )))
+      matchingBranch &&
+      targetTurnIndex !== undefined &&
+      turnIndex === targetTurnIndex
   );
 
   return (
@@ -106,43 +106,15 @@ export const BranchNotifications: React.FC<BranchNotificationsProps> = ({
       )}
 
       {/* Original session indicator immediately below this response */}
-      {isOriginalBannerVisible && (() => {
-        const matchingBranch = sessions.find(
-          (s) =>
-            s.forkedFromSessionId === currentSessionId &&
-            (s.forkedAtTurnIndex === turnIndex || (!s.forkedAtTurnIndex && turnIndex === 1))
-        );
-        const bTitle = originalNotification?.branchTitle || matchingBranch?.title || 'Branch';
-        const bSessionId = originalNotification?.branchSessionId || matchingBranch?.id;
-
-        return (
-          <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2 px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
-                Original session
-              </span>
-              <span className="text-slate-400 dark:text-slate-500">•</span>
-              <span className="truncate text-slate-600 dark:text-slate-300">
-                Branch: <span className="font-medium text-slate-800 dark:text-slate-100">"{bTitle}"</span>
-              </span>
-            </div>
-            <div className="flex items-center gap-2.5 shrink-0 ml-2">
-              {bSessionId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const bSession = sessions.find((s) => s.id === bSessionId);
-                    if (bSession) onSelectSession(bSession);
-                  }}
-                  className="text-[11px] underline font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 cursor-pointer"
-                >
-                  View branch
-                </button>
-              )}
-            </div>
+      {isOriginalBannerVisible && (
+        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2 px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
+              Original
+            </span>
           </div>
-        );
-      })()}
+        </div>
+      )}
     </>
   );
 };

@@ -15,6 +15,9 @@ export const getTurnQuestionVersions = (
   if (userMsg.questionVersions && userMsg.questionVersions.length > 0) {
     return userMsg.questionVersions;
   }
+  if (assistantMsg?.questionVersions && assistantMsg.questionVersions.length > 0) {
+    return assistantMsg.questionVersions;
+  }
   const extractedAssistantText =
     (assistantMsg && assistantMsg.role === 'assistant'
       ? assistantMsg.text ||
@@ -30,8 +33,9 @@ export const getTurnQuestionVersions = (
         ''
       : '');
 
+  const idSuffix = userMsg.created_at || (userMsg as any).id || 'orig';
   const initialResp: ResponseVersion = {
-    id: `resp-init-${Date.now()}`,
+    id: `resp-init-${idSuffix}`,
     text: extractedAssistantText,
     content: extractedAssistantText,
     response:
@@ -41,9 +45,9 @@ export const getTurnQuestionVersions = (
   };
   return [
     {
-      id: `qver-init-${Date.now()}`,
+      id: `qver-init-${idSuffix}`,
       question: userMsg.text || (userMsg as any).content || '',
-      responseVersions: initialResp.text || initialResp.response ? [initialResp] : [],
+      responseVersions: [initialResp],
       currentResponseVersionIndex: 0,
       timestamp: 'Original',
     },

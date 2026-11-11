@@ -13,65 +13,21 @@ export interface SidebarSettingsTriggerProps {
 export const SidebarSettingsTrigger: React.FC<SidebarSettingsTriggerProps> = ({
   gatewayUsername,
   isOnline,
-  isTunnelConfigured = false,
+  isTunnelConfigured: _isTunnelConfigured = false,
   isDrawerOpen,
   isUserMenuOpen,
   onToggleUserMenu,
-  onOpenSettings,
+  onOpenSettings: _onOpenSettings,
 }) => {
-  const hasUser = Boolean(
-    isOnline &&
-      isTunnelConfigured &&
-      gatewayUsername &&
-      gatewayUsername.trim() !== '' &&
-      gatewayUsername !== 'Operator'
-  );
+  const displayName = gatewayUsername && gatewayUsername.trim() !== '' ? gatewayUsername : 'Member';
+  const initial = displayName.charAt(0).toUpperCase();
 
-  // When no explicit user profile is configured: render standard Settings button directly
-  if (!hasUser) {
-    return (
-      <button
-        id="railSettingsBtn"
-        data-testid="sidebar-settings-btn"
-        type="button"
-        aria-label="Settings"
-        onClick={onOpenSettings}
-        className="w-full flex items-center group cursor-pointer text-left transition-all active:scale-[0.98] py-1 px-1 sm:px-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 relative text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-      >
-        <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center shrink-0">
-          <svg
-            className="w-5 h-5 transition-transform group-hover:rotate-45 duration-300"
-            fill="none"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="1.8"
-            viewBox="0 0 24 24"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </div>
-        <div
-          className={`flex-1 flex items-center pl-1.5 pr-2 min-w-0 overflow-hidden transition-opacity duration-200 ${
-            isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none w-0'
-          }`}
-        >
-          <span className="text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white truncate">
-            Settings
-          </span>
-        </div>
-      </button>
-    );
-  }
-
-  // When explicit user profile exists: render profile button + status dot
   return (
     <button
       id="userGatewayMenuBtn"
       data-testid="user-gateway-menu-btn"
       type="button"
-      aria-label={`User status: ${gatewayUsername}, ${isOnline ? 'Online' : 'Disconnected'}`}
+      aria-label={`User status: ${displayName}, ${isOnline ? 'Online' : 'Connected'}`}
       aria-haspopup="menu"
       aria-expanded={isUserMenuOpen}
       onClick={onToggleUserMenu}
@@ -79,30 +35,23 @@ export const SidebarSettingsTrigger: React.FC<SidebarSettingsTriggerProps> = ({
     >
       <div className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center shrink-0 relative">
         <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-indigo-600 text-white font-bold text-xs shadow-xs shrink-0">
-          {gatewayUsername.charAt(0).toUpperCase()}
-          {isOnline ? (
-            <span
-              data-testid="user-online-dot"
-              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#12141d] flex items-center justify-center text-white"
+          {initial}
+          <span
+            data-testid="user-online-dot"
+            className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#12141d] flex items-center justify-center text-white"
+          >
+            <svg
+              className="w-2 h-2 text-white"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              <svg
-                className="w-2 h-2 text-white"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </span>
-          ) : (
-            <span
-              data-testid="user-offline-dot"
-              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-[#12141d]"
-            />
-          )}
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </span>
         </div>
       </div>
       <div
@@ -115,30 +64,23 @@ export const SidebarSettingsTrigger: React.FC<SidebarSettingsTriggerProps> = ({
             className="text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white truncate"
             data-testid="sidebar-user-name"
           >
-            {gatewayUsername}
+            {displayName}
           </div>
           <div className="text-[10px] flex items-center gap-1">
-            {isOnline ? (
-              <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
-                <svg
-                  className="w-2.5 h-2.5 text-emerald-500"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                Online
-              </span>
-            ) : (
-              <span className="text-rose-500 font-medium flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                Disconnected
-              </span>
-            )}
+            <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+              <svg
+                className="w-2.5 h-2.5 text-emerald-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Online
+            </span>
           </div>
         </div>
         <svg

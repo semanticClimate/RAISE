@@ -183,13 +183,20 @@ export const AssistantActionToolbar: React.FC<AssistantActionToolbarProps> = ({
         </button>
       </ActionTooltip>
 
+      {/* Export Dropdown - positioned on the left side with toolbar actions */}
+      <ExportResponseDropdown
+        query="Academic Research Response"
+        answerText={resolvedContent}
+        response={msg.response}
+      />
+
       {/* Response Versions Navigation */}
       {totalRespVers > 1 &&
         (expandedRespVersionsIndex === turnIndex ? (
           <div
             data-version-nav="true"
             onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-0.5 bg-slate-100/90 dark:bg-[#1a1e2d] border border-indigo-300/80 dark:border-indigo-500/40 rounded-lg px-1 py-0.5 ml-0.5 animate-in fade-in zoom-in-95 duration-150"
+            className="flex items-center gap-0.5 bg-slate-100/90 dark:bg-[#1a1e2d] border border-indigo-300/80 dark:border-indigo-500/40 rounded-lg px-1 py-0.5 ml-auto animate-in fade-in zoom-in-95 duration-150"
           >
             <ActionTooltip label="Previous response version">
               <button
@@ -238,7 +245,7 @@ export const AssistantActionToolbar: React.FC<AssistantActionToolbarProps> = ({
             <button
               type="button"
               onClick={() => setExpandedRespVersionsIndex(turnIndex)}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer select-none"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 ml-auto transition-colors cursor-pointer select-none"
             >
               <span className="text-[11px] font-medium">
                 {currentRespVerNum}/{totalRespVers}
@@ -246,15 +253,6 @@ export const AssistantActionToolbar: React.FC<AssistantActionToolbarProps> = ({
             </button>
           </ActionTooltip>
         ))}
-
-      {/* Export Dropdown */}
-      <div className="ml-auto">
-        <ExportResponseDropdown
-          query="Academic Research Response"
-          answerText={resolvedContent}
-          response={msg.response}
-        />
-      </div>
     </div>
   );
 };

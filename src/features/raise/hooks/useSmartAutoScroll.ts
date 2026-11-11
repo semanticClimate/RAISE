@@ -14,7 +14,7 @@ export function useSmartAutoScroll({ conversation, isLoading }: UseSmartAutoScro
   const isAutoScrollLockedRef = useRef(false);
   isAutoScrollLockedRef.current = isAutoScrollLocked;
 
-  // Auto-scroll on new conversation tokens / state update
+  // Auto-scroll on new conversation tokens / state update ONLY IF not locked by user
   useEffect(() => {
     if (!isAutoScrollLocked) {
       const scrollBehavior: ScrollBehavior = isLoading ? 'auto' : 'smooth';
@@ -53,34 +53,20 @@ export function useSmartAutoScroll({ conversation, isLoading }: UseSmartAutoScro
 
     let rafId: number | null = null;
 
-    const isContentBelowFold = (): boolean => {
-      if (conversation.length === 0) return false;
-      const container = contentContainerRef.current;
-      const scrollHeight = container
-        ? container.scrollHeight
-        : document.documentElement.scrollHeight || document.body.scrollHeight;
-      const clientHeight = container ? container.clientHeight : window.innerHeight;
-      if (scrollHeight <= clientHeight + 60) return false;
-
-      if (messagesEndRef.current) {
-        const rect = messagesEndRef.current.getBoundingClientRect();
-        if (rect.top <= clientHeight + 40) {
-          return false;
-        }
-      }
-
-      const scrollTop = container
-        ? container.scrollTop
-        : window.scrollY || document.documentElement.scrollTop;
-      const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
-      return distanceFromBottom > 90;
-    };
-
     const checkScrollPosition = () => {
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
-        if (isContentBelowFold()) {
+        const container = contentContainerRef.current;
+        if (!container) return;
+
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+        const scrollTop = container.scrollTop;
+        const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+
+        // If distance from bottom is > 80px, user scrolled up
+        if (distanceFromBottom > 80) {
           setIsAutoScrollLocked(true);
           setShowScrollToBottom(true);
         } else {
@@ -91,33 +77,24 @@ export function useSmartAutoScroll({ conversation, isLoading }: UseSmartAutoScro
     };
 
     const handleWheel = (e: WheelEvent) => {
-      if (e.deltaY < -4) {
-        if (isContentBelowFold()) {
-          setIsAutoScrollLocked(true);
-          setShowScrollToBottom(true);
-        } else {
-          setIsAutoScrollLocked(false);
-          setShowScrollToBottom(false);
-        }
-      } else if (e.deltaY > 4) {
-        if (!isContentBelowFold()) {
-          setIsAutoScrollLocked(false);
-          setShowScrollToBottom(false);
-        }
+      // User wheeled up: immediately lock auto-scroll and show button
+      if (e.deltaY < -2) {
+        setIsAutoScrollLocked(true);
+        setShowScrollToBottom(true);
+      } else if (e.deltaY > 2) {
+        checkScrollPosition();
       }
     };
 
     const containerEl = contentContainerRef.current;
     containerEl?.addEventListener('scroll', checkScrollPosition, { passive: true });
-    window.addEventListener('scroll', checkScrollPosition, { passive: true });
-    window.addEventListener('wheel', handleWheel, { passive: true });
+    containerEl?.addEventListener('wheel', handleWheel, { passive: true });
     window.addEventListener('resize', checkScrollPosition, { passive: true });
 
     return () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
       containerEl?.removeEventListener('scroll', checkScrollPosition);
-      window.removeEventListener('scroll', checkScrollPosition);
-      window.removeEventListener('wheel', handleWheel);
+      containerEl?.removeEventListener('wheel', handleWheel);
       window.removeEventListener('resize', checkScrollPosition);
     };
   }, [conversation.length]);

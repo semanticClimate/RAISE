@@ -3,12 +3,10 @@ import { getStoredUsername } from '../../../app/config';
 import { chatService } from '../../../services/ChatService';
 import type { PersistedChatSession } from '../../../types';
 import { formatSessionDate, generateUUID, truncateSessionTitle } from '../../../utils/uuid';
-import { DEMO_SHOWCASE_SESSION, DEMO_SHOWCASE_SESSION_ID } from '../showcaseSession';
 import type { ChatMessage, ChatSession, SourceDocument } from '../types';
 import { deduplicateTurns, harvestSourcesFromMessagesAndDocs } from '../utils/messageNormalizer';
 import {
   CURRENT_SESSION_KEY,
-  DEMO_DELETED_KEY,
   getInitialConversation,
   getInitialSessionId,
   loadSessionsLocally,
@@ -150,13 +148,6 @@ export function useChatSessions({
       );
       setConversation(normalizedCached);
 
-      if (session.id === DEMO_SHOWCASE_SESSION_ID) {
-        setConversation(DEMO_SHOWCASE_SESSION.messages);
-        setSourceDocs([]);
-        setIsPipelineDrawerOpen(false);
-        return;
-      }
-
       let initialSources = session.sources ?? [];
       if (
         initialSources.length === 0 &&
@@ -251,11 +242,6 @@ export function useChatSessions({
 
   const handleDeleteSession = useCallback(
     (sessionId: string) => {
-      if (sessionId === DEMO_SHOWCASE_SESSION_ID) {
-        try {
-          localStorage.setItem(DEMO_DELETED_KEY, 'true');
-        } catch {}
-      }
       setSessions((prev) => {
         const updated = prev.filter((s) => s.id !== sessionId);
         saveSessionsLocally(updated, true);
@@ -270,9 +256,6 @@ export function useChatSessions({
   );
 
   const handleDeleteAllChats = useCallback(async () => {
-    try {
-      localStorage.setItem(DEMO_DELETED_KEY, 'true');
-    } catch {}
     setSessions([]);
     saveSessionsLocally([], true);
     handleNewChat();

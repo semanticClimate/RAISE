@@ -313,6 +313,13 @@ export function useChatStream({
           } else {
             base.push(mergedAssistant);
           }
+          if (lastIdx > 0 && base[lastIdx - 1]?.role === 'user') {
+            base[lastIdx - 1] = {
+              ...base[lastIdx - 1],
+              questionVersions: [initialQVer],
+              currentQuestionVersionIndex: 0,
+            };
+          }
           const committed = deduplicateTurns(base);
           if (res.data && !assistantMsg.persistenceFailed && committed.length > 0) {
             updateSessionInMemory(committed, threadId);

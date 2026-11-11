@@ -170,23 +170,23 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
   return (
     <div
       key={`assistant-turn-${turnIndex}`}
-      className="content-visibility-auto flex flex-col items-start w-full max-w-[clamp(28rem,85vw,44rem)] mx-auto"
+      className="content-visibility-auto flex flex-col items-start w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto"
     >
-      <div className="w-full bg-white/70 dark:bg-[#131622]/80 border border-slate-200/80 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.25rem)] shadow-xs dark:shadow-md backdrop-blur-md">
-        {/* Thought Duration Header */}
-        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-100 dark:border-white/[0.04]">
-          {isCurrentlyActive ? (
-            <LiveThoughtDuration startTimeMs={msg.startedAtMs || Date.now()} />
-          ) : (
-            <ThoughtDuration executionTimeSec={executionTimeSec} />
+      {/* Thought Duration Header OUTSIDE response box */}
+      <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
+        {isCurrentlyActive ? (
+          <LiveThoughtDuration startTimeMs={msg.startedAtMs || Date.now()} />
+        ) : (
+          <ThoughtDuration executionTimeSec={executionTimeSec} />
+        )}
+
+        {activeResp?.response?.verified_claims &&
+          activeResp.response.verified_claims.length > 0 && (
+            <VerifiedClaimsBadge claims={activeResp.response.verified_claims} />
           )}
+      </div>
 
-          {activeResp?.response?.verified_claims &&
-            activeResp.response.verified_claims.length > 0 && (
-              <VerifiedClaimsBadge claims={activeResp.response.verified_claims} />
-            )}
-        </div>
-
+      <div className="ai-response-card w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-[clamp(0.875rem,2.5vw,1.5rem)] shadow-sm dark:shadow-xl transition-all">
         {/* Answer Markdown Content */}
         {resolvedContent ? (
           <AnswerMarkdown

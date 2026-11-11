@@ -11,17 +11,17 @@ import {
   Zap,
 } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useScrollLock } from '../../../hooks';
 import { useModeStore } from '../../../stores/modeStore';
 import { detectHostOS, platformAdapter } from '../services/platformAdapter';
-import { isValidSecret } from '../services/envDetector';
 import { DatabaseStep } from '../steps/DatabaseStep';
 import { EngineStep } from '../steps/EngineStep';
 import { LaunchStep } from '../steps/LaunchStep';
 import { NeuralStep } from '../steps/NeuralStep';
 import { PlatformStep } from '../steps/PlatformStep';
 import { useControlCenterStore } from '../store/useControlCenterStore';
+import { useControlCenterSave } from '../hooks/useControlCenterSave';
 
 export const ControlCenterModal: React.FC = () => {
   const {
@@ -35,10 +35,14 @@ export const ControlCenterModal: React.FC = () => {
     completeFirstRun,
   } = useControlCenterStore();
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [connectNotice, setConnectNotice] = useState<string | null>(null);
-  const { appMode } = useModeStore();
+  const { appMode, readinessMessage } = useModeStore();
   const isConnected = appMode === 'connected';
+
+  const { isSaving, connectNotice, setConnectNotice, handleFinalStart } = useControlCenterSave(
+    config,
+    completeFirstRun,
+    setOpen
+  );
 
   // Detect whether modal is rendered in first-time setup or onboarding context
   const isSetupMode = useMemo(() => {
@@ -96,35 +100,30 @@ export const ControlCenterModal: React.FC = () => {
   const tabs = [
     {
       id: 'platform' as const,
-      stepNumber: 1,
       label: 'Device',
       icon: Laptop,
       isCompleted: Boolean(config.targetPlatform),
     },
     {
       id: 'models' as const,
-      stepNumber: 2,
       label: 'Models',
       icon: Cpu,
       isCompleted: hasConfiguredKey,
     },
     {
       id: 'neural' as const,
-      stepNumber: 3,
       label: 'Neural',
       icon: Layers,
       isCompleted: Boolean(config.embeddingModel && config.rerankerModel),
     },
     {
       id: 'databases' as const,
-      stepNumber: 4,
       label: 'Storage',
       icon: Database,
       isCompleted: true,
     },
     {
       id: 'launch' as const,
-      stepNumber: 5,
       label: 'Launch',
       icon: Zap,
       isCompleted: hasConfiguredKey,
@@ -133,7 +132,6 @@ export const ControlCenterModal: React.FC = () => {
 
   const currentTabIdx = tabs.findIndex((t) => t.id === activeTab);
 
-  // Step readiness gate: user can freely configure all sections
   const isCurrentStepReady = useMemo(() => {
     switch (activeTab) {
       case 'platform':
@@ -143,29 +141,18 @@ export const ControlCenterModal: React.FC = () => {
       case 'neural':
         return Boolean(config.embeddingModel && config.rerankerModel);
       case 'databases':
-        return true;
       case 'launch':
-        return true;
       default:
         return true;
     }
-  }, [
-    activeTab,
-    config.targetPlatform,
-    config.embeddingModel,
-    config.rerankerModel,
-  ]);
+  }, [activeTab, config.targetPlatform, config.embeddingModel, config.rerankerModel]);
 
   const stepBlockReason = useMemo(() => {
     if (activeTab === 'neural' && (!config.embeddingModel || !config.rerankerModel)) {
       return 'Select embedding & reranker models';
     }
     return null;
-  }, [
-    activeTab,
-    config.embeddingModel,
-    config.rerankerModel,
-  ]);
+  }, [activeTab, config.embeddingModel, config.rerankerModel]);
 
   const handleNext = () => {
     if (!isCurrentStepReady) {
@@ -195,90 +182,8 @@ export const ControlCenterModal: React.FC = () => {
     }
   };
 
-  const handleFinalStart = async () => {
-    setIsSaving(true);
-    try {
-      const isCloud = config.llmDeployment === 'cloud';
-      const keyMap: Record<string, string> = {};
-      for (const entry of config.apiKeys || []) {
-        if (entry.key && entry.key.trim()) {
-          keyMap[entry.provider] = entry.key.trim();
-        }
-      }
-
-      const primaryCloudProvider =
-        (config.apiKeys || []).find(
-          (k) => k?.key && k.key.trim() && k.provider !== 'unknown'
-        )?.provider || 'groq';
-      const activeBackend = isCloud ? primaryCloudProvider : 'ollama';
-      const activeLlmMode = isCloud ? `cloud_${primaryCloudProvider}` : 'local_ollama';
-
-      const sanitizeSecret = (val?: string): string | undefined => {
-        if (!val) return undefined;
-        const trimmed = val.trim();
-        if (!isValidSecret(trimmed)) {
-          return undefined;
-        }
-        return trimmed;
-      };
-
-      const saveRes = await platformAdapter.saveConfig({
-        llm_mode: activeLlmMode,
-        llm_backend: activeBackend,
-        groq_api_key: sanitizeSecret(keyMap['groq'] || config.groqApiKey),
-        gemini_api_key: sanitizeSecret(keyMap['gemini'] || config.geminiApiKey),
-        openai_api_key: sanitizeSecret(keyMap['openai']),
-        anthropic_api_key: sanitizeSecret(keyMap['anthropic']),
-        deepseek_api_key: sanitizeSecret(keyMap['deepseek']),
-        nvidia_api_key: sanitizeSecret(keyMap['nvidia']),
-        mistral_api_key: sanitizeSecret(keyMap['mistral']),
-        cohere_api_key: sanitizeSecret(keyMap['cohere']),
-        openrouter_api_key: sanitizeSecret(keyMap['openrouter']),
-        selected_local_model: config.selectedLocalModel,
-        ollama_model: config.selectedLocalModel,
-        tunnel_url: config.tunnelUrl,
-        huggingface_token: sanitizeSecret(config.huggingfaceToken),
-        embedding_model: config.embeddingModel,
-        reranker_model: config.rerankerModel,
-        nli_verifier_model: config.nliVerifierModel,
-        neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
-        neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
-        neo4j_user: config.knowledgeGraph?.user,
-        neo4j_password: sanitizeSecret(config.knowledgeGraph?.password || config.neo4jPassword),
-        postgres_mode: config.sessionMemory?.mode || config.postgresMode,
-        postgres_uri: config.sessionMemory?.uri,
-        redis_mode: config.cacheAndSignals?.mode || config.redisMode,
-        redis_uri: config.cacheAndSignals?.uri,
-      });
-
-      if (!saveRes.success) {
-        setConnectNotice(saveRes.message || 'Configuration rejected by backend');
-        setTimeout(() => setConnectNotice(null), 6000);
-        setIsSaving(false);
-        return;
-      }
-
-      // Persist onboarding completion flag to localStorage
-      try {
-        localStorage.setItem('raise_onboarding_completed', 'true');
-        if (typeof window !== 'undefined' && window.history?.replaceState) {
-          const cleanUrl = window.location.pathname + (window.location.hash.split('?')[0] || '');
-          window.history.replaceState({}, document.title, cleanUrl);
-        }
-      } catch {}
-      completeFirstRun();
-      setOpen(false);
-    } catch (err) {
-      setConnectNotice(`Connection error: ${err instanceof Error ? err.message : String(err)}`);
-      setTimeout(() => setConnectNotice(null), 6000);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-5 animate-in fade-in duration-200">
-      {/* Centered Modal Container */}
       <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0e1017] border border-white/10 shadow-[0_0_60px_-15px_rgba(99,102,241,0.35)] overflow-hidden text-slate-100 font-sans shrink-0 ring-1 ring-white/5">
         {/* Top Header */}
         <div className="h-16 px-6 border-b border-white/10 bg-[#131624] shrink-0 flex items-center justify-between">
@@ -295,6 +200,12 @@ export const ControlCenterModal: React.FC = () => {
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
                     <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
                     Setup
+                  </span>
+                )}
+                {readinessMessage && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                    <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-400" />
+                    Neural Loading
                   </span>
                 )}
               </div>
@@ -340,7 +251,7 @@ export const ControlCenterModal: React.FC = () => {
           </div>
         )}
 
-        {/* Enhanced Visual Stepper Navigation */}
+        {/* Visual Stepper Navigation - NO step numbers (1, 2, 3, 4, 5) */}
         <div className="h-14 border-b border-white/10 bg-[#10131e] px-4 sm:px-6 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -351,31 +262,19 @@ export const ControlCenterModal: React.FC = () => {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`group h-9 flex items-center gap-2.5 px-3.5 rounded-xl transition-all shrink-0 cursor-pointer text-xs ${
+                className={`group h-9 flex items-center gap-2 px-3.5 rounded-xl transition-all shrink-0 cursor-pointer text-xs ${
                   isActive
                     ? 'bg-white text-black font-bold shadow-md ring-1 ring-white/20'
                     : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
                 }`}
               >
-                {/* Step status indicator pill */}
-                <span
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono transition-colors ${
-                    isActive
-                      ? 'bg-black text-white font-bold'
-                      : tab.isCompleted
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-white/10 text-slate-400 border border-white/10'
-                  }`}
-                >
-                  {tab.isCompleted && !isActive ? (
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  ) : (
-                    tab.stepNumber
-                  )}
-                </span>
-                <Icon
-                  className={`w-3.5 h-3.5 ${isActive ? 'text-black' : 'text-slate-400 group-hover:text-white'}`}
-                />
+                {tab.isCompleted && !isActive ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                ) : (
+                  <Icon
+                    className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-black' : 'text-slate-400 group-hover:text-white'}`}
+                  />
+                )}
                 <span className="truncate">{tab.label}</span>
               </button>
             );
