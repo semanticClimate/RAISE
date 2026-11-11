@@ -603,6 +603,7 @@ export const RaisePage: React.FC = () => {
     parentTitle: string;
     parentSessionId: string;
     turnNum: number;
+    turnIndex?: number;
   } | null>(null);
 
   const pageDocumentTitle = useMemo(() => {
@@ -3162,12 +3163,13 @@ export const RaisePage: React.FC = () => {
       }
     } catch {}
 
-    // Notify user of successful branch creation
+    // Notify user of successful branch creation immediately below this response turn
     const calculatedTurnNum = Math.floor(turnIndex / 2) + 1;
     setForkNotification({
       parentTitle,
       parentSessionId: currentSessionId || '',
       turnNum: calculatedTurnNum,
+      turnIndex,
     });
   };
 
@@ -4230,48 +4232,6 @@ export const RaisePage: React.FC = () => {
             </section>
           )}
 
-          {/* Hypothesis Fork Lineage Header */}
-          {(forkNotification || activeSession?.forkedFromSessionId) && (
-            <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mb-4 px-3.5 py-2.5 bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-500/30 rounded-xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
-              <div className="flex items-center gap-2 min-w-0">
-                <GitBranch className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <span className="truncate">
-                  <strong>Hypothesis Branch:</strong> Forked from{' '}
-                  <em className="font-medium">"{forkNotification?.parentTitle || activeSession?.forkedFromTitle || 'Parent Thread'}"</em>
-                  {activeSession?.forkedAtTurnIndex !== undefined && (
-                    <span> at Turn #{Math.floor(activeSession.forkedAtTurnIndex / 2) + 1}</span>
-                  )}
-                  . Original session preserved.
-                </span>
-              </div>
-              <div className="flex items-center gap-2.5 shrink-0 ml-3">
-                {(forkNotification?.parentSessionId || activeSession?.forkedFromSessionId) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const parentId = forkNotification?.parentSessionId || activeSession?.forkedFromSessionId;
-                      const parent = sessions.find((s) => s.id === parentId);
-                      if (parent) handleSelectSession(parent);
-                    }}
-                    className="underline hover:text-indigo-600 dark:hover:text-indigo-300 font-medium cursor-pointer"
-                  >
-                    View original
-                  </button>
-                )}
-                {forkNotification && (
-                  <button
-                    type="button"
-                    onClick={() => setForkNotification(null)}
-                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none"
-                    aria-label="Dismiss banner"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Conversation Stream */}
           {conversation.length > 0 && (
             <div className="space-y-6 mb-6">
@@ -5162,6 +5122,49 @@ export const RaisePage: React.FC = () => {
                           onRetry={() => handleRegenerateResponse(i)}
                           className="mt-2 mb-1"
                         />
+                      )}
+
+                      {/* Hypothesis Branch Notification immediately after this response */}
+                      {(forkNotification?.turnIndex === i ||
+                        (!forkNotification &&
+                          activeSession?.forkedFromSessionId &&
+                          i === (activeSession.forkedAtTurnIndex ?? conversation.length - 1))) && (
+                        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2.5 px-3.5 py-2.5 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200/90 dark:border-indigo-500/40 rounded-xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <GitBranch className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                            <span className="truncate">
+                              <strong>Hypothesis Branch:</strong> Forked from{' '}
+                              <em className="font-medium">
+                                "{forkNotification?.parentTitle || activeSession?.forkedFromTitle || 'Parent Thread'}"
+                              </em>
+                              <span> at Turn #{Math.floor(i / 2) + 1}</span>. Original session preserved.
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5 shrink-0 ml-3">
+                            {(forkNotification?.parentSessionId || activeSession?.forkedFromSessionId) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const parentId =
+                                    forkNotification?.parentSessionId || activeSession?.forkedFromSessionId;
+                                  const parent = sessions.find((s) => s.id === parentId);
+                                  if (parent) handleSelectSession(parent);
+                                }}
+                                className="underline hover:text-indigo-600 dark:hover:text-indigo-300 font-medium cursor-pointer"
+                              >
+                                View original
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setForkNotification(null)}
+                              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none"
+                              aria-label="Dismiss banner"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
