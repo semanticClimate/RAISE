@@ -263,6 +263,10 @@ export const PersistedChatSessionSchema = z
     sources: z.array(z.any()).nullish(),
     attached_docs: z.array(z.string()).nullish(),
     is_saved: z.boolean().optional().default(false),
+    forkedFromSessionId: z.string().nullish(),
+    forkedFromTitle: z.string().nullish(),
+    forkedAtTurnIndex: z.number().int().nullish(),
+    forkedAtTimestamp: z.string().nullish(),
   })
   .passthrough();
 

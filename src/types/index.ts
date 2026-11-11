@@ -65,6 +65,10 @@ export interface ChatSession {
   updated_at?: string;
   is_saved?: boolean;
   attached_docs?: string[];
+  forkedFromSessionId?: string;
+  forkedFromTitle?: string;
+  forkedAtTurnIndex?: number;
+  forkedAtTimestamp?: string;
 }
 
 export interface SourceDocument {

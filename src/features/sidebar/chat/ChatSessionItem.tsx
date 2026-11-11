@@ -1,4 +1,5 @@
 import type React from 'react';
+import { GitBranch } from 'lucide-react';
 import type { ChatSession } from '../../../types';
 import { formatSessionDate } from '../../../utils/uuid';
 import { exportSessionAsPdf } from '../../../utils/exportFormats';
@@ -79,6 +80,15 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
                 <span>
                   {session.timestamp || formatSessionDate(session.updated_at || session.created_at)}
                 </span>
+                {session.forkedFromSessionId && (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.2 rounded font-medium bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-500/30"
+                    title={`Forked from: ${session.forkedFromTitle || 'Original chat'}`}
+                  >
+                    <GitBranch className="w-2.5 h-2.5" />
+                    <span>Branch</span>
+                  </span>
+                )}
               </div>
             </div>
           )}

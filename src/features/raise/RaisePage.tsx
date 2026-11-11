@@ -1,5 +1,6 @@
 import type React from 'react';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GitBranch, GitFork } from 'lucide-react';
 import { getStoredUsername, setStoredApiKey, setStoredUsername } from '../../app/config';
 import { AnswerMarkdown } from '../../components/chat/AnswerMarkdown';
 import {
@@ -27,6 +28,7 @@ import { useFilterStore } from '../../stores/filterStore';
 import { useModeStore } from '../../stores/modeStore';
 import type { Citation, PersistedChatSession, SubgraphQueryResponse } from '../../types';
 import { normalizeCitation, stripCitationsForCopy } from '../../utils/citationParser';
+import { AdaptiveStreamBuffer } from '../../utils/adaptiveStreamBuffer';
 import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { formatBytes } from '../../utils/formatters';
 import { isConversationalQuery } from '../../utils/queryClassifier';
@@ -596,6 +598,12 @@ export const RaisePage: React.FC = () => {
   const activeSession = useMemo(() => {
     return sessions.find((s) => s.id === currentSessionId);
   }, [sessions, currentSessionId]);
+
+  const [forkNotification, setForkNotification] = useState<{
+    parentTitle: string;
+    parentSessionId: string;
+    turnNum: number;
+  } | null>(null);
 
   const pageDocumentTitle = useMemo(() => {
     if (activeSession?.title && activeSession.title.trim() && activeSession.title !== 'New Chat') {
@@ -1341,73 +1349,68 @@ export const RaisePage: React.FC = () => {
   const isUserAbortingRef = useRef<boolean>(false);
   const isUnmountedRef = useRef<boolean>(false);
   const latestStreamedTextRef = useRef<string>('');
-  const streamRafRef = useRef<number | null>(null);
+  const adaptiveBufferRef = useRef<AdaptiveStreamBuffer | null>(null);
+  const streamTargetIndexRef = useRef<number | 'last'>('last');
   const activeRequestIdRef = useRef<string | null>(null);
   const isSubmittingQueryRef = useRef<boolean>(false);
   const queryStartTimeRef = useRef<number | null>(null);
 
-  // Batched 60 FPS streaming flush to React conversation state
+  // Sub-60fps Adaptive Token Stream Buffer:
+  // Dynamically throttles React state reconciliation during 100+ tokens/sec LLM bursts
+  // while immediately flushing the final response on stream completion.
   const flushStreamToConversation = (
     targetIndex: number | 'last',
     accumulatedText: string
   ) => {
     latestStreamedTextRef.current = accumulatedText;
-    if (streamRafRef.current !== null) return;
+    streamTargetIndexRef.current = targetIndex;
 
-    streamRafRef.current = requestAnimationFrame(() => {
-      streamRafRef.current = null;
-      if (isUnmountedRef.current) return;
-      const currentText = latestStreamedTextRef.current;
-      setConversation((prev) => {
-        const updated = [...prev];
-        const idx = targetIndex === 'last' ? updated.length - 1 : targetIndex;
-        if (idx >= 0 && updated[idx] && updated[idx].role === 'assistant') {
-          if (updated[idx].text === currentText && (updated[idx] as any).content === currentText) return prev;
-          updated[idx] = {
-            ...updated[idx],
-            text: currentText,
-            content: currentText,
-          };
-          return updated;
-        }
-        if (targetIndex === 'last' && (!updated[idx] || updated[idx].role !== 'assistant')) {
-          return [...updated, { role: 'assistant', text: currentText, content: currentText }];
-        }
-        return prev;
+    if (!adaptiveBufferRef.current) {
+      adaptiveBufferRef.current = new AdaptiveStreamBuffer({
+        minIntervalMs: 16,
+        maxIntervalMs: 45,
+        onFlush: (text) => {
+          if (isUnmountedRef.current) return;
+          const idx = streamTargetIndexRef.current;
+          setConversation((prev) => {
+            const updated = [...prev];
+            const targetIdx = idx === 'last' ? updated.length - 1 : idx;
+            if (targetIdx >= 0 && updated[targetIdx] && updated[targetIdx].role === 'assistant') {
+              if (updated[targetIdx].text === text && (updated[targetIdx] as any).content === text) return prev;
+              updated[targetIdx] = {
+                ...updated[targetIdx],
+                text,
+                content: text,
+              };
+              return updated;
+            }
+            if (idx === 'last' && (!updated[targetIdx] || updated[targetIdx].role !== 'assistant')) {
+              return [...updated, { role: 'assistant', text, content: text }];
+            }
+            return prev;
+          });
+        },
       });
-    });
+    }
+
+    adaptiveBufferRef.current.push(accumulatedText);
   };
 
   const flushPendingStreamRafImmediately = (targetIndex: number | 'last') => {
-    if (streamRafRef.current !== null) {
-      cancelAnimationFrame(streamRafRef.current);
-      streamRafRef.current = null;
+    streamTargetIndexRef.current = targetIndex;
+    if (adaptiveBufferRef.current) {
+      adaptiveBufferRef.current.flushImmediately();
+      adaptiveBufferRef.current.reset();
     }
-    const currentText = latestStreamedTextRef.current;
-    if (!currentText) return;
-    setConversation((prev) => {
-      const updated = [...prev];
-      const idx = targetIndex === 'last' ? updated.length - 1 : targetIndex;
-      if (idx >= 0 && updated[idx] && updated[idx].role === 'assistant') {
-        if (updated[idx].text === currentText && (updated[idx] as any).content === currentText) return prev;
-        updated[idx] = {
-          ...updated[idx],
-          text: currentText,
-          content: currentText,
-        };
-        return updated;
-      }
-      return prev;
-    });
   };
 
   // Clean unmount cancellation without showing error UI
   useEffect(() => {
     return () => {
       isUnmountedRef.current = true;
-      if (streamRafRef.current !== null) {
-        cancelAnimationFrame(streamRafRef.current);
-        streamRafRef.current = null;
+      if (adaptiveBufferRef.current) {
+        adaptiveBufferRef.current.destroy();
+        adaptiveBufferRef.current = null;
       }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -3065,6 +3068,109 @@ export const RaisePage: React.FC = () => {
     }
   };
 
+  /**
+   * Session Branching & Hypothesis Forking:
+   * Clones conversational lineage up to target turn and forks a new independent thread
+   * while preserving the original session lineage completely intact.
+   */
+  const handleForkConversation = (turnIndex: number) => {
+    if (conversation.length === 0) return;
+
+    // Determine slice range: if user turn, include following assistant response if present
+    let targetEndIndex = turnIndex;
+    if (conversation[turnIndex]?.role === 'user' && conversation[turnIndex + 1]?.role === 'assistant') {
+      targetEndIndex = turnIndex + 1;
+    }
+
+    const slicedMessages = conversation.slice(0, targetEndIndex + 1);
+    if (slicedMessages.length === 0) return;
+
+    const clonedMessages: ChatMessage[] = JSON.parse(JSON.stringify(slicedMessages)) as ChatMessage[];
+    const newSessionId = generateUUID();
+
+    // Find parent session info
+    const parentSession = sessions.find((s) => s.id === currentSessionId);
+    const parentTitle = parentSession?.title || 'Original Chat';
+
+    // Turn query text for title
+    const targetUserMsg =
+      conversation[turnIndex]?.role === 'user'
+        ? conversation[turnIndex]
+        : conversation[turnIndex - 1]?.role === 'user'
+          ? conversation[turnIndex - 1]
+          : conversation[0];
+    const queryText = targetUserMsg?.text || (targetUserMsg as any)?.content || 'Research Inquiry';
+    const forkedTitle = `[Fork] ${truncateSessionTitle(queryText, 34)}`;
+    const dateFormatted = formatSessionDate(new Date());
+
+    const forkedSession: ChatSession = {
+      id: newSessionId,
+      thread_id: newSessionId,
+      session_id: newSessionId,
+      username: getStoredUsername(),
+      title: forkedTitle,
+      timestamp: dateFormatted,
+      messages: clonedMessages,
+      selectedSourceIds: sourceDocs.filter((d) => d.selected).map((d) => d.id),
+      sources: [...sourceDocs],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      forkedFromSessionId: currentSessionId || undefined,
+      forkedFromTitle: parentTitle,
+      forkedAtTurnIndex: turnIndex,
+      forkedAtTimestamp: new Date().toISOString(),
+    };
+
+    // Update sessions list & local storage
+    setSessions((prev) => {
+      const updated = [forkedSession, ...prev];
+      saveSessionsLocally(updated);
+      return updated;
+    });
+
+    // Asynchronously persist to backend PostgreSQL & Redis
+    const persistPayload: PersistedChatSession = {
+      session_id: forkedSession.id,
+      thread_id: forkedSession.id,
+      username: forkedSession.username || getStoredUsername(),
+      title: forkedSession.title,
+      messages: forkedSession.messages || [],
+      selectedSourceIds: forkedSession.selectedSourceIds,
+      sources: forkedSession.sources,
+      attached_docs: forkedSession.attached_docs,
+      is_saved: false,
+      created_at: forkedSession.created_at,
+      updated_at: forkedSession.updated_at,
+      forkedFromSessionId: forkedSession.forkedFromSessionId,
+      forkedFromTitle: forkedSession.forkedFromTitle,
+      forkedAtTurnIndex: forkedSession.forkedAtTurnIndex,
+      forkedAtTimestamp: forkedSession.forkedAtTimestamp,
+    };
+    chatService.persistChatSession?.(persistPayload).catch((err) => {
+      console.warn('Could not persist forked session to backend:', err);
+    });
+
+    // Switch active session
+    setCurrentSessionId(newSessionId);
+    setConversation(clonedMessages);
+    try {
+      localStorage.setItem('raise_current_session_id', newSessionId);
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('session', newSessionId);
+        window.history.replaceState({}, document.title, url.toString());
+      }
+    } catch {}
+
+    // Notify user of successful branch creation
+    const calculatedTurnNum = Math.floor(turnIndex / 2) + 1;
+    setForkNotification({
+      parentTitle,
+      parentSessionId: currentSessionId || '',
+      turnNum: calculatedTurnNum,
+    });
+  };
+
   const handleSaveEditedQuestion = async (userIndex: number, newQuestionText: string) => {
     const trimmed = newQuestionText.trim();
     if (!trimmed || isLoading) return;
@@ -4124,7 +4230,47 @@ export const RaisePage: React.FC = () => {
             </section>
           )}
 
-          {/* Conversation Stream */}
+          {/* Hypothesis Fork Lineage Header */}
+          {(forkNotification || activeSession?.forkedFromSessionId) && (
+            <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mb-4 px-3.5 py-2.5 bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-500/30 rounded-xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <GitBranch className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span className="truncate">
+                  <strong>Hypothesis Branch:</strong> Forked from{' '}
+                  <em className="font-medium">"{forkNotification?.parentTitle || activeSession?.forkedFromTitle || 'Parent Thread'}"</em>
+                  {activeSession?.forkedAtTurnIndex !== undefined && (
+                    <span> at Turn #{Math.floor(activeSession.forkedAtTurnIndex / 2) + 1}</span>
+                  )}
+                  . Original session preserved.
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0 ml-3">
+                {(forkNotification?.parentSessionId || activeSession?.forkedFromSessionId) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const parentId = forkNotification?.parentSessionId || activeSession?.forkedFromSessionId;
+                      const parent = sessions.find((s) => s.id === parentId);
+                      if (parent) handleSelectSession(parent);
+                    }}
+                    className="underline hover:text-indigo-600 dark:hover:text-indigo-300 font-medium cursor-pointer"
+                  >
+                    View original
+                  </button>
+                )}
+                {forkNotification && (
+                  <button
+                    type="button"
+                    onClick={() => setForkNotification(null)}
+                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none"
+                    aria-label="Dismiss banner"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Conversation Stream */}
           {conversation.length > 0 && (
@@ -4270,6 +4416,19 @@ export const RaisePage: React.FC = () => {
                                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                 </svg>
+                              </button>
+                            </ActionTooltip>
+
+                            {/* Fork Conversation from this turn (branch hypothesis) */}
+                            <ActionTooltip label="Fork conversation from this turn (branch hypothesis)">
+                              <button
+                                type="button"
+                                onClick={() => handleForkConversation(i)}
+                                title="Fork conversation from this turn"
+                                aria-label="Fork conversation from this turn"
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+                              >
+                                <GitFork className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                               </button>
                             </ActionTooltip>
 
@@ -4873,6 +5032,19 @@ export const RaisePage: React.FC = () => {
                               >
                                 <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
                               </svg>
+                            </button>
+                          </ActionTooltip>
+
+                          {/* Fork / Branch Conversation Button */}
+                          <ActionTooltip label="Fork conversation from this response (branch hypothesis)">
+                            <button
+                              type="button"
+                              onClick={() => handleForkConversation(i)}
+                              title="Fork conversation from this response"
+                              aria-label="Fork conversation from this response"
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+                            >
+                              <GitFork className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                             </button>
                           </ActionTooltip>
 
