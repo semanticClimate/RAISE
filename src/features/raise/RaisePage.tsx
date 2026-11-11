@@ -604,6 +604,7 @@ export const RaisePage: React.FC = () => {
     parentSessionId: string;
     turnNum: number;
     turnIndex?: number;
+    sessionId?: string;
   } | null>(null);
 
   const pageDocumentTitle = useMemo(() => {
@@ -2291,6 +2292,7 @@ export const RaisePage: React.FC = () => {
     setCopiedKey(null);
     setExpandedQVersionsIndex(null);
     setExpandedRespVersionsIndex(null);
+    setForkNotification(null);
     setIsAutoScrollLocked(false);
     setShowScrollToBottom(false);
     setCurrentSessionId(session.id);
@@ -2504,6 +2506,7 @@ export const RaisePage: React.FC = () => {
     setCopiedKey(null);
     setExpandedQVersionsIndex(null);
     setExpandedRespVersionsIndex(null);
+    setForkNotification(null);
     setIsAutoScrollLocked(false);
     setShowScrollToBottom(false);
 
@@ -3089,9 +3092,10 @@ export const RaisePage: React.FC = () => {
     const clonedMessages: ChatMessage[] = JSON.parse(JSON.stringify(slicedMessages)) as ChatMessage[];
     const newSessionId = generateUUID();
 
-    // Find parent session info
+    // Find parent session info and strip any existing [Fork]/[Branch] prefix
     const parentSession = sessions.find((s) => s.id === currentSessionId);
-    const parentTitle = parentSession?.title || 'Original Chat';
+    const rawParentTitle = parentSession?.title || 'Previous chat';
+    const cleanParentTitle = rawParentTitle.replace(/^\[(?:Fork|Branch)\]\s*/i, '').trim() || 'Previous chat';
 
     // Turn query text for title
     const targetUserMsg =
@@ -3101,7 +3105,7 @@ export const RaisePage: React.FC = () => {
           ? conversation[turnIndex - 1]
           : conversation[0];
     const queryText = targetUserMsg?.text || (targetUserMsg as any)?.content || 'Research Inquiry';
-    const forkedTitle = `[Fork] ${truncateSessionTitle(queryText, 34)}`;
+    const forkedTitle = `[Branch] ${truncateSessionTitle(cleanParentTitle || queryText, 32)}`;
     const dateFormatted = formatSessionDate(new Date());
 
     const forkedSession: ChatSession = {
@@ -3117,7 +3121,7 @@ export const RaisePage: React.FC = () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       forkedFromSessionId: currentSessionId || undefined,
-      forkedFromTitle: parentTitle,
+      forkedFromTitle: cleanParentTitle,
       forkedAtTurnIndex: turnIndex,
       forkedAtTimestamp: new Date().toISOString(),
     };
@@ -3166,10 +3170,11 @@ export const RaisePage: React.FC = () => {
     // Notify user of successful branch creation immediately below this response turn
     const calculatedTurnNum = Math.floor(turnIndex / 2) + 1;
     setForkNotification({
-      parentTitle,
+      parentTitle: cleanParentTitle,
       parentSessionId: currentSessionId || '',
       turnNum: calculatedTurnNum,
       turnIndex,
+      sessionId: newSessionId,
     });
   };
 
@@ -5124,23 +5129,24 @@ export const RaisePage: React.FC = () => {
                         />
                       )}
 
-                      {/* Hypothesis Branch Notification immediately after this response */}
-                      {(forkNotification?.turnIndex === i ||
-                        (!forkNotification &&
-                          activeSession?.forkedFromSessionId &&
-                          i === (activeSession.forkedAtTurnIndex ?? conversation.length - 1))) && (
-                        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2.5 px-3.5 py-2.5 bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200/90 dark:border-indigo-500/40 rounded-xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
+                      {/* Branch indicator immediately below this response */}
+                      {Boolean(
+                        currentSessionId &&
+                          ((forkNotification &&
+                            forkNotification.sessionId === currentSessionId &&
+                            forkNotification.turnIndex === i) ||
+                            (!forkNotification &&
+                              activeSession?.forkedFromSessionId &&
+                              i === (activeSession.forkedAtTurnIndex ?? conversation.length - 1)))
+                      ) && (
+                        <div className="w-full max-w-[clamp(36rem,90vw,58rem)] mx-auto mt-2 px-3 py-1.5 bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-500/30 rounded-xl flex items-center justify-between text-xs text-indigo-900 dark:text-indigo-200 shadow-2xs animate-in fade-in slide-in-from-top-1">
                           <div className="flex items-center gap-2 min-w-0">
-                            <GitBranch className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                            <GitBranch className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                             <span className="truncate">
-                              <strong>Hypothesis Branch:</strong> Forked from{' '}
-                              <em className="font-medium">
-                                "{forkNotification?.parentTitle || activeSession?.forkedFromTitle || 'Parent Thread'}"
-                              </em>
-                              <span> at Turn #{Math.floor(i / 2) + 1}</span>. Original session preserved.
+                              Branch of <span className="font-semibold text-slate-800 dark:text-slate-100">"{forkNotification?.parentTitle || activeSession?.forkedFromTitle || 'Previous chat'}"</span>
                             </span>
                           </div>
-                          <div className="flex items-center gap-2.5 shrink-0 ml-3">
+                          <div className="flex items-center gap-2.5 shrink-0 ml-2">
                             {(forkNotification?.parentSessionId || activeSession?.forkedFromSessionId) && (
                               <button
                                 type="button"
@@ -5150,7 +5156,7 @@ export const RaisePage: React.FC = () => {
                                   const parent = sessions.find((s) => s.id === parentId);
                                   if (parent) handleSelectSession(parent);
                                 }}
-                                className="underline hover:text-indigo-600 dark:hover:text-indigo-300 font-medium cursor-pointer"
+                                className="text-[11px] underline font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
                                 View original
                               </button>
@@ -5158,7 +5164,7 @@ export const RaisePage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setForkNotification(null)}
-                              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none"
+                              className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer text-sm leading-none ml-1"
                               aria-label="Dismiss banner"
                             >
                               ×

@@ -43,7 +43,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
           onClick={handleCopy}
           aria-label={copied ? 'Copied code' : 'Copy code'}
           title={copied ? 'Copied!' : 'Copy code'}
-          className="flex items-center justify-center p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors cursor-pointer"
+          className="flex items-center justify-center p-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-700/60 active:scale-95 transition-all cursor-pointer"
         >
           {copied ? (
             <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -115,14 +115,14 @@ const TableBlock: React.FC<TableBlockProps> = ({
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center justify-center p-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 bg-white/95 dark:bg-slate-800/95 hover:bg-slate-100 dark:hover:bg-slate-700/80 border border-slate-200/90 dark:border-slate-700/80 shadow-2xs backdrop-blur-xs transition-all cursor-pointer select-none opacity-80 hover:opacity-100 group-hover/table:opacity-100 focus:opacity-100"
-          title={copied ? 'Copied table' : 'Copy table'}
           aria-label={copied ? 'Copied table' : 'Copy table'}
+          title={copied ? 'Copied!' : 'Copy table'}
+          className="flex items-center justify-center p-1.5 rounded-md text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white bg-white/95 dark:bg-slate-800/95 hover:bg-slate-100 dark:hover:bg-slate-700/80 border border-slate-200/90 dark:border-slate-700/80 shadow-2xs backdrop-blur-xs active:scale-95 transition-all cursor-pointer select-none opacity-80 hover:opacity-100 group-hover/table:opacity-100 focus:opacity-100"
         >
           {copied ? (
-            <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
           ) : (
-            <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+            <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-white" />
           )}
         </button>
       </div>
