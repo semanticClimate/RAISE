@@ -3,6 +3,7 @@ import type React from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { documentsQueryOptions } from '../../api/queryOptions';
 import { useEscapeKey, useScrollLock } from '../../hooks';
+import { useDocumentViewerStore } from '../../stores/useDocumentViewerStore';
 import { documentItemToLibraryItem, type LibraryItem } from '../settings/SettingsLibraryTab';
 import { sourceService } from '../../services/SourceService';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
@@ -556,12 +557,13 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                       )
                     ) : (
                       <div className="flex items-center gap-1.5">
-                        {onViewPdf && item.type === 'pdf' && (
+                        {item.type === 'pdf' && (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onViewPdf(item.name, 1);
+                              useDocumentViewerStore.getState().openDocument(item.name, 1);
+                              onViewPdf?.(item.name, 1);
                             }}
                             className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-[#a8c7fa] hover:bg-slate-100 dark:hover:bg-white/10 transition-colors flex items-center gap-1 cursor-pointer"
                             title={`Open ${item.name} in new tab`}

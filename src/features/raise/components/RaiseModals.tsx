@@ -1,4 +1,5 @@
 import React, { Suspense, lazy } from 'react';
+import { SectionErrorBoundary } from '../../../components/ui/SectionErrorBoundary';
 import { isLocalEnvironment } from '../../control-center/services/platformAdapter';
 import type { ChatSession, SourceDocument } from '../types';
 import { PdfViewerModal } from './PdfViewerModal';
@@ -168,11 +169,13 @@ export const RaiseModals: React.FC<RaiseModalsProps> = ({
         </Suspense>
       )}
 
-      <PdfViewerModal
-        isOpen={Boolean(activePdfCitation)}
-        citation={activePdfCitation}
-        onClose={onClosePdfViewer}
-      />
+      <SectionErrorBoundary fallbackTitle="PDF Viewer encountered an error">
+        <PdfViewerModal
+          isOpen={Boolean(activePdfCitation)}
+          citation={activePdfCitation}
+          onClose={onClosePdfViewer}
+        />
+      </SectionErrorBoundary>
     </>
   );
 };

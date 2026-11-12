@@ -1,6 +1,7 @@
 import type React from 'react';
 import { getApiBaseUrl } from '../../app/config';
 import { sourceService } from '../../services/SourceService';
+import { useDocumentViewerStore } from '../../stores/useDocumentViewerStore';
 import type { Citation } from '../../types';
 import { extractVerifiedPageNumber } from '../../utils/citationParser';
 
@@ -232,9 +233,10 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.stopPropagation();
     // Sid says: Open directly in a new browser tab, never as an in-page popup modal
-    if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+    if (!item.isWeb && item.fileName && item.fileName !== 'Audited Document') {
       e.preventDefault();
-      onViewPdf(item.fileName, item.pageNumber || 1, 'page');
+      useDocumentViewerStore.getState().openDocument(item.fileName, item.pageNumber || 1);
+      onViewPdf?.(item.fileName, item.pageNumber || 1, 'page');
       return;
     }
     const target = item.isWeb ? item.webUrl || item.primaryUrl : item.primaryUrl;

@@ -1,5 +1,6 @@
 import React from 'react';
 import { CircularUploadProgress } from '../../../components/ui/CircularUploadProgress';
+import { useDocumentViewerStore } from '../../../stores/useDocumentViewerStore';
 import type { SourceDocument } from '../../../types';
 import { formatBytes } from '../../../utils/formatters';
 
@@ -124,12 +125,13 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
           </div>
         ) : (
           <div className="flex items-center gap-1">
-            {onViewPdf && isReady && doc.name.toLowerCase().endsWith('.pdf') && (
+            {isReady && doc.name.toLowerCase().endsWith('.pdf') && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onViewPdf(doc.name, 1);
+                  useDocumentViewerStore.getState().openDocument(doc.name, 1);
+                  onViewPdf?.(doc.name, 1);
                 }}
                 className="px-2 py-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 rounded-lg border border-indigo-200/80 dark:border-indigo-500/30 transition-all cursor-pointer flex items-center gap-1 shrink-0"
                 title={`Open ${doc.name} in new tab`}

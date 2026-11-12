@@ -1,4 +1,5 @@
 import React from 'react';
+import { RAISE_LAYOUT } from '../../../styles/layoutTokens';
 import type { ChatMessage, ChatSession } from '../types';
 import { AssistantTurnItem } from './AssistantTurnItem';
 import { UserTurnItem } from './UserTurnItem';
@@ -76,10 +77,7 @@ export const ConversationStreamBase: React.FC<ConversationStreamProps> = ({
 }) => {
   if (conversation.length === 0) {
     return (
-      <section
-        className="w-full max-w-[clamp(26rem,80vw,44rem)] mx-auto mb-4 sm:mb-6 text-left px-1 select-none space-y-3.5"
-        data-purpose="hero-header"
-      >
+      <section className={RAISE_LAYOUT.queryHeader} data-purpose="hero-header">
         <div>
           <h1 className="text-[clamp(1.5rem,4.5vw,2.25rem)] font-semibold tracking-tight text-slate-900 dark:text-white mb-1.5">
             Welcome to RAISE

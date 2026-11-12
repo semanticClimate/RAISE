@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useModeStore } from '../../../stores/modeStore';
+import { useDocumentViewerStore } from '../../../stores/useDocumentViewerStore';
 import { detectEnvCredentials } from '../../control-center/services/envDetector';
 import { useControlCenterStore } from '../../control-center/store/useControlCenterStore';
 import { settingsJunction, useSettingsJunction } from '../../settings/junction';
@@ -221,16 +222,7 @@ export function useRaiseController() {
   }, [appMode, openControlCenter, setControlCenterTab]);
 
   const handleOpenPdfViewer = useCallback((fileName: string, pageNumber: number = 1) => {
-    setActivePdfCitation({
-      pdf_filename: fileName,
-      fileName,
-      filename: fileName,
-      primary_page: pageNumber,
-      page_number: pageNumber,
-      page: pageNumber,
-      snippetText: '',
-      plain_text: '',
-    });
+    useDocumentViewerStore.getState().openDocument(fileName, pageNumber);
   }, []);
 
   const selectedDocs = useMemo(

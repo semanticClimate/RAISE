@@ -1,5 +1,6 @@
 import type React from 'react';
 import { CircularUploadProgress } from '../../../components/ui/CircularUploadProgress';
+import { useDocumentViewerStore } from '../../../stores/useDocumentViewerStore';
 import type { SourceDocument } from '../../../types';
 
 export interface AttachedDocChipsProps {
@@ -46,12 +47,14 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
               <span
                 onClick={() => {
                   if (ready) {
-                    if (onViewPdf && file.name.toLowerCase().endsWith('.pdf')) {
-                      onViewPdf(file.name, 1);
+                    if (file.name.toLowerCase().endsWith('.pdf')) {
+                      useDocumentViewerStore.getState().openDocument(file.name, 1);
+                      onViewPdf?.(file.name, 1);
                     } else if (onOpenDrawer) {
                       onOpenDrawer();
-                    } else if (onViewPdf) {
-                      onViewPdf(file.name, 1);
+                    } else {
+                      useDocumentViewerStore.getState().openDocument(file.name, 1);
+                      onViewPdf?.(file.name, 1);
                     }
                   }
                 }}
@@ -113,12 +116,14 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 if (ready) {
-                  if (onViewPdf && file.name.toLowerCase().endsWith('.pdf')) {
-                    onViewPdf(file.name, 1);
+                  if (file.name.toLowerCase().endsWith('.pdf')) {
+                    useDocumentViewerStore.getState().openDocument(file.name, 1);
+                    onViewPdf?.(file.name, 1);
                   } else if (onOpenDrawer) {
                     onOpenDrawer();
-                  } else if (onViewPdf) {
-                    onViewPdf(file.name, 1);
+                  } else {
+                    useDocumentViewerStore.getState().openDocument(file.name, 1);
+                    onViewPdf?.(file.name, 1);
                   }
                 } else {
                   onOpenDrawer?.();
