@@ -107,9 +107,12 @@ class CrossEncoderReranker:
 
     AVAILABLE_RERANKERS = {
         "bge-reranker-large": "BAAI/bge-reranker-large",
+        "BAAI/bge-reranker-large": "BAAI/bge-reranker-large",
         "bge-reranker-base": "BAAI/bge-reranker-base",
+        "BAAI/bge-reranker-base": "BAAI/bge-reranker-base",
         "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
         "jina-reranker-v3.5": "BAAI/bge-reranker-large",
+        "jinaai/jina-reranker-v3.5": "BAAI/bge-reranker-large",
         "jina-reranker": "BAAI/bge-reranker-large",
         "default": "BAAI/bge-reranker-large",
     }
