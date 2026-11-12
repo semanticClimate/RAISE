@@ -116,7 +116,8 @@ async def graphrag_subgraph_query(
         if len(query) > 2500:
             raise HTTPException(status_code=400, detail="Query exceeds maximum allowed length of 2500 characters")
 
-        return query_service.execute_subgraph_workflow(
+        logger.info(f"[GRAPH-RAG] 🧬 Subgraph exploration requested: \"{query[:100]}\" | Hops: {hops} | Scope: {active_docs or 'All Documents'}")
+        result = query_service.execute_subgraph_workflow(
             query=query,
             session_id=thread_id,
             hops=hops,
@@ -125,6 +126,11 @@ async def graphrag_subgraph_query(
             active_docs=active_docs,
             mode=mode,
         )
+        subg = result.get("subgraph") or {}
+        n_cnt = len(subg.get("nodes", [])) if isinstance(subg, dict) else 0
+        e_cnt = len(subg.get("edges", [])) if isinstance(subg, dict) else 0
+        logger.info(f"[GRAPH-RAG] 🧬 Subgraph traversed: {n_cnt} nodes, {e_cnt} relationships resolved")
+        return result
     except HTTPException:
         raise
     except Exception as e:

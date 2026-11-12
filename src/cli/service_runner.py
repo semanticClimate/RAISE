@@ -51,6 +51,25 @@ from src.cli.system_launcher import get_synthesizer_status
 
 logger = logging.getLogger("RAISE_ServiceRunner")
 
+# Global console prompt synchronization lock
+_console_lock = threading.Lock()
+_active_repl_prompt: Optional[str] = None
+
+
+def print_supervisor_event(text: str) -> None:
+    """
+    Prints a real-time event to the interactive terminal without mangling or
+    overwriting the user's active keyboard prompt line.
+    """
+    with _console_lock:
+        global _active_repl_prompt
+        if _active_repl_prompt:
+            # Erase active prompt line via ANSI sequence, print event, then redraw prompt
+            sys.stdout.write(f"\r\033[K{text}\n{_active_repl_prompt}")
+            sys.stdout.flush()
+        else:
+            print(text)
+
 
 # ==============================================================================
 # Helper Utilities & Port Management
@@ -124,32 +143,57 @@ def print_live_status_dashboard(focused_doc: Optional[str] = None) -> None:
     print(C.BANNER + "╔" + "═" * 76 + "╗" + C.RESET)
     print(f"{C.BANNER}║{C.RESET} {C.TITLE}🩺  RAISE WORKSTATION HEALTH & SUBSYSTEM DIAGNOSTICS{C.RESET}{' ' * 23}{C.BANNER}║{C.RESET}")
 
-    # 1. Hardware Summary
-    hw = fetch_json_endpoint("http://127.0.0.1:8000/api/system/hardware")
+    # 1. Hardware Summary (with instantaneous local fallback)
+    hw = fetch_json_endpoint("http://127.0.0.1:8000/api/system/hardware", timeout=1.5)
     if hw:
         gpu_str = f"{hw.get('gpu_name', 'None')} ({hw.get('vram_gb', 0)}GB VRAM)" if hw.get("cuda_available") else "CPU Only (CUDA Inactive)"
         ram_str = f"{hw.get('available_ram_gb', 0):.1f} GB avail / {hw.get('total_ram_gb', 0):.1f} GB total"
         hw_line = f"GPU: {gpu_str} | RAM: {ram_str} ({hw.get('cpu_count', 0)} Cores)"
     else:
-        hw_line = "Probing system hardware..."
+        try:
+            import psutil
+            ram = psutil.virtual_memory()
+            ram_str = f"{ram.available / (1024**3):.1f} GB avail / {ram.total / (1024**3):.1f} GB total"
+            cpu_cnt = os.cpu_count() or 4
+            gpu_str = "CPU Only"
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    gpu_name = torch.cuda.get_device_name(0)
+                    vram_gb = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1)
+                    gpu_str = f"{gpu_name} ({vram_gb}GB VRAM)"
+            except Exception:
+                pass
+            hw_line = f"GPU: {gpu_str} | RAM: {ram_str} ({cpu_cnt} Cores)"
+        except Exception:
+            hw_line = "Hardware detection ready"
     print(f"{C.BANNER}║{C.RESET} {C.MUTED}Hardware: {hw_line}{C.RESET}")
     print(C.BANNER + "╠" + "═" * 76 + "╣" + C.RESET)
 
     # 2. Subsystems
     # Backend Config & Models
-    cfg = fetch_json_endpoint("http://127.0.0.1:8000/api/system/config")
+    cfg = fetch_json_endpoint("http://127.0.0.1:8000/api/system/config", timeout=1.5)
     synth = get_synthesizer_status()
 
-    # ChromaDB Count
+    # ChromaDB Count (Lightweight PersistentClient check without loading PyTorch weights in supervisor)
     chroma_count = 0
-    chroma_model = "bge-base-en-v1.5"
+    chroma_model = "google/embeddinggemma-2"
     chroma_online = False
     try:
-        from src.infrastructure.vector.chroma import LocalVectorEngine
-        ve = LocalVectorEngine()
-        if ve.collection:
-            chroma_count = ve.collection.count()
-            chroma_model = ve.model_key
+        import chromadb
+        repo_root = BASE_DIR.parent if BASE_DIR.name == "backend" else BASE_DIR
+        candidates = [
+            repo_root / "backend" / ".chromadb_embeddinggemma_2",
+            repo_root / "backend" / ".chromadb_bge_large",
+            BASE_DIR / ".chromadb_embeddinggemma_2",
+            BASE_DIR / ".chromadb_bge_large",
+        ]
+        target_chroma = next((p for p in candidates if p.exists()), None)
+        if target_chroma:
+            client = chromadb.PersistentClient(path=str(target_chroma))
+            cols = client.list_collections()
+            chroma_count = sum(c.count() for c in cols)
+            chroma_model = "google/embeddinggemma-2" if "embeddinggemma" in target_chroma.name else "BAAI/bge-large-en-v1.5"
             chroma_online = True
     except Exception:
         pass
@@ -358,7 +402,7 @@ class DualProcessSupervisor:
             return False
 
     def _stream_output(self, stream, prefix: str, is_err: bool):
-        """Reads process output line by line and appends to log buffers."""
+        """Reads process output line by line, formats real-time operational telemetry, and preserves clean console state."""
         log_file = self.backend_log_file if "BACKEND" in prefix else self.frontend_log_file
         with open(log_file, "a", encoding="utf-8", errors="replace") as f_out:
             for line in iter(stream.readline, ""):
@@ -376,24 +420,87 @@ class DualProcessSupervisor:
                     if len(target_list) > 100:
                         target_list.pop(0)
 
-                # Format and print important operational lines
                 clean_line = sanitize_text(line)
-                if is_err:
-                    if any(kw in clean_line.lower() for kw in ("error", "traceback", "exception", "failed")):
-                        print(f"{C.DANGER}[{prefix}] {clean_line}{C.RESET}")
-                    elif "warning" in clean_line.lower():
-                        print(f"{C.WARN}[{prefix}] {clean_line}{C.RESET}")
-                    elif any(kw in clean_line for kw in ("Loading weights", "it/s", "%|")):
-                        print(f"{C.CYAN}[MODEL-LOAD] {clean_line}{C.RESET}")
-                else:
-                    if any(kw in clean_line for kw in ("POST /", "GET /", "OPTIONS /")):
-                        print(f"{C.CYAN}[API] {clean_line}{C.RESET}")
-                    elif "[INFERENCE]" in clean_line or "Executing task" in clean_line:
-                        print(f"{C.SUCCESS}[INFERENCE] {clean_line}{C.RESET}")
-                    elif "ready in" in clean_line or "Local:" in clean_line:
-                        print(f"{C.SUCCESS}[FRONTEND] {clean_line}{C.RESET}")
-                    elif any(kw in clean_line.lower() for kw in ("error", "failed", "crash")):
-                        print(f"{C.DANGER}[{prefix}] {clean_line}{C.RESET}")
+
+                # 1. Suppress intermediate tqdm progress bar spam (e.g. "Loading weights:  17%|..."):
+                if any(kw in clean_line for kw in ("it/s", "%|", "Loading weights:")):
+                    if "100%|" in clean_line or "Loaded 20 prompts" in clean_line:
+                        print_supervisor_event(f"{C.SUCCESS}✨ [MODEL-READY] Neural embedding weights initialized successfully.{C.RESET}")
+                    continue
+
+                # 2. Suppress high-frequency background polling endpoints & CORS preflights
+                is_noisy_poll = any(ep in clean_line for ep in (
+                    "OPTIONS /api/",
+                    "GET /api/health",
+                    "GET /api/system/hardware",
+                    "GET /api/commands",
+                    "GET /api/system/config",
+                    "GET /favicon.ico",
+                    "• Route      : GET /api/system/hardware",
+                    "• Route      : GET /api/commands",
+                    "• Route      : GET /api/health",
+                    "• Route      : GET /api/system/config",
+                    "• Route      : OPTIONS /api/",
+                    "NumExpr detected",
+                    "NumExpr defaulting",
+                    "Connected to Persistent Local SQLite Database",
+                    "Connected to Local Redis",
+                    "Registered slash command:",
+                    "Successfully mounted all core RAISE GraphRAG routes",
+                    "Mounted production frontend from",
+                ))
+                if is_noisy_poll:
+                    continue
+
+                # 3. Clean and unwrap Python logger timestamps
+                # e.g.: "2026-11-12 21:19:34,600 [INFO] raise.infrastructure.providers.router: [INFERENCE] ..."
+                log_match = re.match(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[([A-Z]+)\]\s+[^:]+:\s+(.*)$', clean_line)
+                log_level = log_match.group(1) if log_match else ("ERROR" if is_err else "INFO")
+                log_msg = log_match.group(2) if log_match else clean_line
+
+                # 4. Critical Warnings & Errors (Never Silenced, High Visibility)
+                is_error = (
+                    log_level in ("ERROR", "CRITICAL")
+                    or is_err
+                    or any(kw in log_msg.lower() for kw in ("traceback", "exception", "failed", "crash"))
+                ) and not any(kw in log_msg for kw in ("0 failed", "failed: 0", "HTTP 200", "SUCCESS", "Synthesis Success"))
+
+                is_warning = (
+                    log_level == "WARNING"
+                    or any(kw in log_msg.lower() for kw in ("warning", "warn", "401", "auth_failed", "cooldown", "disabled"))
+                ) and not is_error
+
+                if is_error:
+                    print_supervisor_event(f"{C.DANGER}❌ [ERROR] {log_msg}{C.RESET}")
+                    continue
+
+                if is_warning:
+                    print_supervisor_event(f"{C.WARN}⚠️  [WARNING] {log_msg}{C.RESET}")
+                    continue
+
+                # 5. GraphRAG Pipeline Lifecycle Events ("What and where things are moving")
+                if "[GRAPH-RAG]" in log_msg:
+                    clean_rag = log_msg.replace("[GRAPH-RAG]", "").strip()
+                    print_supervisor_event(f"{C.CYAN}{clean_rag}{C.RESET}")
+                elif "[INFERENCE]" in log_msg or "Executing task" in log_msg:
+                    clean_inf = log_msg.replace("[INFERENCE]", "").strip()
+                    print_supervisor_event(f"{C.ACCENT}⚡ [ROUTER] {clean_inf}{C.RESET}")
+                elif "Synthesis Success" in log_msg:
+                    print_supervisor_event(f"{C.SUCCESS}✍️  [SYNTHESIS] {log_msg}{C.RESET}")
+                elif "switched to" in log_msg and "Reason" in log_msg:
+                    print_supervisor_event(f"{C.WARN}🔄 [FAILOVER] {log_msg}{C.RESET}")
+                elif "POST /api/chat" in clean_line:
+                    print_supervisor_event(f"{C.CYAN}🌐 [UI QUERY] Web client initiated research chat query...{C.RESET}")
+                elif "POST /api/graphrag/subgraph-query" in clean_line:
+                    print_supervisor_event(f"{C.CYAN}🌐 [UI SUBGRAPH] Client requested interactive subgraph traversal...{C.RESET}")
+                elif "POST /api/documents/upload" in clean_line:
+                    print_supervisor_event(f"{C.SUCCESS}📄 [INGESTION] Document upload received from UI Library.{C.RESET}")
+                elif "GET /api/pdf/" in clean_line:
+                    pdf_match = re.search(r'GET /api/pdf/([^ ]+)', clean_line)
+                    pdf_name = urllib.parse.unquote(pdf_match.group(1)) if pdf_match else "PDF"
+                    print_supervisor_event(f"{C.MUTED}📖 [DOCUMENT VIEWER] Streaming PDF: {pdf_name}{C.RESET}")
+                elif "ready in" in clean_line or "Local:" in clean_line:
+                    print_supervisor_event(f"{C.SUCCESS}🚀 [FRONTEND] React / Vite workstation ready on http://localhost:5173{C.RESET}")
 
     def wait_for_backend(self, timeout_sec: int = 45) -> bool:
         """Polls /api/health until the backend gateway is alive."""
@@ -600,7 +707,13 @@ def main():
             scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
             prompt_str = f"RAISE [{C.ACCENT}{scope_badge}{C.RESET}] > "
             
-            user_input = input(prompt_str).strip()
+            global _active_repl_prompt
+            _active_repl_prompt = prompt_str
+            try:
+                user_input = input(prompt_str).strip()
+            finally:
+                _active_repl_prompt = None
+
             if not user_input:
                 continue
 

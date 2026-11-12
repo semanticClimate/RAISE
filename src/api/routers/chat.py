@@ -145,6 +145,8 @@ async def chat_endpoint(
     if req.active_docs is not None:
         req.active_docs = _parse_drawer_active_docs(req.active_docs)
 
+    logger.info(f"[GRAPH-RAG] 🔎 Query: \"{message}\" (Mode: {mode} | Active Docs: {req.active_docs or 'All Documents'})")
+
     # 0. Rate Limiting Check (Token Bucket with Authentic Proxy IP Resolution)
     is_allowed, rate_headers = chat_service.check_rate_limit(request, request_id)
     if not is_allowed:
@@ -441,6 +443,12 @@ async def chat_endpoint(
             "persistence_status": "saved" if session_id else "ephemeral",
             "persistence_error": None,
         }
+
+        top_chunks_count = len(response_payload.get("top_chunks", []))
+        subg = response_payload.get("subgraph") or {}
+        nodes_count = len(subg.get("nodes", [])) if isinstance(subg, dict) else 0
+        qg_dec = response_payload.get("quality_gate_decision", "accept").upper()
+        logger.info(f"[GRAPH-RAG] ✅ Answer synthesized in {elapsed:.2f}s | Chunks: {top_chunks_count} | Graph: {nodes_count} nodes | Gate: {qg_dec} | Citations: {len(citations)}")
 
         # Cache in Redis with semantic vector indexing (TTL: 86400s / 24h)
         if redis_cache:
