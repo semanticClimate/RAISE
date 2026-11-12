@@ -237,9 +237,9 @@ def _persist_key_to_env(key_name: str, key_val: str):
 # =====================================================================
 # ENDPOINT 1: REAL-TIME ZERO-TOKEN KEY VERIFIER (Cloud LLMs + HF)
 # =====================================================================
-@router.post("/api/v1/system/keys/verify")
-@router.post("/api/system/keys/verify")
-@router.post("/keys/verify")
+@router.post("/api/v1/system/keys/verify", operation_id="core_verify_api_keys_v1", include_in_schema=False)
+@router.post("/api/system/keys/verify", operation_id="core_verify_api_keys_system", include_in_schema=False)
+@router.post("/keys/verify", operation_id="core_verify_api_keys")
 async def verify_and_save_key(req: KeyVerificationRequest):
     provider = req.provider.lower().strip()
     clean_key = state.sanitize_key(req.api_key)
@@ -413,9 +413,9 @@ def resolve_local_model_path(repo_or_path: str) -> str:
 # =====================================================================
 # ENDPOINT 2: FAST DOWNLOAD + HOT-SWAP ANY ENCODER, RERANKER & NLI
 # =====================================================================
-@router.post("/api/v1/system/models/load")
-@router.post("/api/system/models/load")
-@router.post("/models/load")
+@router.post("/api/v1/system/models/load", operation_id="core_load_neural_model_v1", include_in_schema=False)
+@router.post("/api/system/models/load", operation_id="core_load_neural_model_system", include_in_schema=False)
+@router.post("/models/load", operation_id="core_load_neural_model")
 def load_and_prewarm_models(cfg: ModelConfigRequest):
     from sentence_transformers import CrossEncoder, SentenceTransformer
     from transformers import AutoModel
@@ -571,9 +571,9 @@ def load_and_prewarm_models(cfg: ModelConfigRequest):
 # =====================================================================
 # ENDPOINT 3: LIVE SYSTEM STATUS
 # =====================================================================
-@router.get("/api/v1/system/status")
-@router.get("/api/system/status")
-@router.get("/status")
+@router.get("/api/v1/system/status", operation_id="core_system_status_v1", include_in_schema=False)
+@router.get("/api/system/status", operation_id="core_system_status_api", include_in_schema=False)
+@router.get("/status", operation_id="core_system_status")
 def get_system_status():
     mem_info = state.get_memory_telemetry()
     return {

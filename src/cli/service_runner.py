@@ -138,7 +138,7 @@ def print_banner() -> None:
     print(C.BANNER + "╚" + "═" * 76 + "╝" + C.RESET + "\n")
 
 
-def print_live_status_dashboard(focused_doc: Optional[str] = None) -> None:
+def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     """Renders real-time diagnostic dashboard modeled from dev_main.py."""
     print(C.BANNER + "╔" + "═" * 76 + "╗" + C.RESET)
     print(f"{C.BANNER}║{C.RESET} {C.TITLE}🩺  RAISE WORKSTATION HEALTH & SUBSYSTEM DIAGNOSTICS{C.RESET}{' ' * 23}{C.BANNER}║{C.RESET}")
@@ -236,6 +236,12 @@ def print_live_status_dashboard(focused_doc: Optional[str] = None) -> None:
     print(f"{C.BANNER}║{C.RESET}   • Active Research Scope     : {C.ACCENT}{scope_name}{C.RESET}")
     print(f"{C.BANNER}║{C.RESET}   • Web UI Link               : {C.CYAN}http://localhost:5173{C.RESET}")
     print(C.BANNER + "╚" + "═" * 76 + "╝" + C.RESET + "\n")
+
+
+def print_live_status_dashboard(focused_doc: Optional[str] = None) -> None:
+    """Thread-safe entrypoint ensuring the ASCII dashboard is never mangled by background events."""
+    with _console_lock:
+        _render_status_dashboard(focused_doc)
 
 
 def run_system_doctor() -> None:
@@ -349,6 +355,7 @@ class DualProcessSupervisor:
         self.backend_recent_logs: List[str] = []
         self.frontend_recent_logs: List[str] = []
         self.log_lock = threading.Lock()
+        self._model_ready_announced = False
 
     def start_backend(self) -> bool:
         """Starts the FastAPI backend service."""
@@ -424,11 +431,53 @@ class DualProcessSupervisor:
 
                 # 1. Suppress intermediate tqdm progress bar spam (e.g. "Loading weights:  17%|..."):
                 if any(kw in clean_line for kw in ("it/s", "%|", "Loading weights:")):
-                    if "100%|" in clean_line or "Loaded 20 prompts" in clean_line:
+                    if ("100%|" in clean_line or "Loaded 20 prompts" in clean_line) and not self._model_ready_announced:
+                        self._model_ready_announced = True
                         print_supervisor_event(f"{C.SUCCESS}✨ [MODEL-READY] Neural embedding weights initialized successfully.{C.RESET}")
                     continue
 
-                # 2. Suppress high-frequency background polling endpoints & CORS preflights
+                # 2. Check for high-value lifecycle & routing events first
+                if "[GRAPH-RAG]" in clean_line:
+                    clean_rag = clean_line.split("[GRAPH-RAG]")[-1].strip()
+                    print_supervisor_event(f"{C.CYAN}{clean_rag}{C.RESET}")
+                    continue
+
+                if "switched to" in clean_line and "Reason" in clean_line:
+                    clean_fo = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
+                    print_supervisor_event(f"{C.WARN}🔄 [FAILOVER] {clean_fo}{C.RESET}")
+                    continue
+
+                if "Permanently disabled" in clean_line:
+                    clean_dis = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
+                    print_supervisor_event(f"{C.WARN}⚠️  [WARNING] {clean_dis}{C.RESET}")
+                    continue
+
+                if "[INFERENCE]" in clean_line or "Executing task" in clean_line:
+                    clean_inf = clean_line.split("[INFERENCE]")[-1].replace("raise.infrastructure.providers.router:", "").strip()
+                    clean_inf = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_inf)
+                    print_supervisor_event(f"{C.ACCENT}⚡ [ROUTER] {clean_inf}{C.RESET}")
+                    continue
+
+                if "Synthesis Success" in clean_line:
+                    clean_syn = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
+                    print_supervisor_event(f"{C.SUCCESS}✍️  [SYNTHESIS] {clean_syn}{C.RESET}")
+                    continue
+
+                if "POST /api/documents/upload" in clean_line:
+                    print_supervisor_event(f"{C.SUCCESS}📄 [INGESTION] Document upload received from UI Library.{C.RESET}")
+                    continue
+
+                if "GET /api/pdf/" in clean_line and "200 OK" not in clean_line:
+                    pdf_match = re.search(r'GET /api/pdf/([^ /]+)', clean_line)
+                    pdf_name = urllib.parse.unquote(pdf_match.group(1)) if pdf_match else "PDF"
+                    print_supervisor_event(f"{C.MUTED}📖 [DOCUMENT VIEWER] Streaming PDF: {pdf_name}{C.RESET}")
+                    continue
+
+                if "ready in" in clean_line or "Local:" in clean_line:
+                    print_supervisor_event(f"{C.SUCCESS}🚀 [FRONTEND] React / Vite workstation ready on http://localhost:5173{C.RESET}")
+                    continue
+
+                # 3. Suppress high-frequency background polling endpoints, raw HTTP access logs & internal noise
                 is_noisy_poll = any(ep in clean_line for ep in (
                     "OPTIONS /api/",
                     "GET /api/health",
@@ -436,11 +485,16 @@ class DualProcessSupervisor:
                     "GET /api/commands",
                     "GET /api/system/config",
                     "GET /favicon.ico",
-                    "• Route      : GET /api/system/hardware",
-                    "• Route      : GET /api/commands",
-                    "• Route      : GET /api/health",
-                    "• Route      : GET /api/system/config",
-                    "• Route      : OPTIONS /api/",
+                    "WebSocket /ws/traffic",
+                    "connection open",
+                    "connection closed",
+                    "Started server process",
+                    "Waiting for application startup",
+                    "Application startup complete",
+                    "Uvicorn running on",
+                    "HTTP/1.1\" 200 OK",
+                    "HEAD /api/pdf/",
+                    "• Route      :",
                     "NumExpr detected",
                     "NumExpr defaulting",
                     "Connected to Persistent Local SQLite Database",
@@ -448,26 +502,42 @@ class DualProcessSupervisor:
                     "Registered slash command:",
                     "Successfully mounted all core RAISE GraphRAG routes",
                     "Mounted production frontend from",
+                    "UserWarning: Duplicate Operation ID",
+                    "Tunnel Mode: DISABLED",
                 ))
                 if is_noisy_poll:
                     continue
 
-                # 3. Clean and unwrap Python logger timestamps
-                # e.g.: "2026-11-12 21:19:34,600 [INFO] raise.infrastructure.providers.router: [INFERENCE] ..."
-                log_match = re.match(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[([A-Z]+)\]\s+[^:]+:\s+(.*)$', clean_line)
-                log_level = log_match.group(1) if log_match else ("ERROR" if is_err else "INFO")
-                log_msg = log_match.group(2) if log_match else clean_line
+                # 4. Clean and classify Python / Uvicorn logger lines
+                log_match = re.match(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[([A-Z]+)\]\s+[^:]*:\s+(.*)$', clean_line)
+                if log_match:
+                    log_level = log_match.group(1)
+                    log_msg = log_match.group(2)
+                else:
+                    uvicorn_match = re.match(r'^(INFO|WARNING|WARN|ERROR|CRITICAL|DEBUG):\s+(.*)$', clean_line)
+                    if uvicorn_match:
+                        log_level = uvicorn_match.group(1).replace("WARN", "WARNING")
+                        log_msg = uvicorn_match.group(2)
+                    else:
+                        warn_match = re.search(r'([A-Za-z]+Warning):\s*(.*)$', clean_line)
+                        if warn_match:
+                            log_level = "WARNING"
+                            log_msg = f"{warn_match.group(1)}: {warn_match.group(2)}"
+                        else:
+                            is_real_err = is_err and any(w in clean_line.lower() for w in ("traceback", "exception", "critical", "syntaxerror", "importerror"))
+                            log_level = "ERROR" if is_real_err else "INFO"
+                            log_msg = clean_line
 
-                # 4. Critical Warnings & Errors (Never Silenced, High Visibility)
+                # 5. Critical Warnings & Errors (Never Silenced, High Visibility)
                 is_error = (
                     log_level in ("ERROR", "CRITICAL")
-                    or is_err
-                    or any(kw in log_msg.lower() for kw in ("traceback", "exception", "failed", "crash"))
-                ) and not any(kw in log_msg for kw in ("0 failed", "failed: 0", "HTTP 200", "SUCCESS", "Synthesis Success"))
+                    or any(kw in log_msg.lower() for kw in ("traceback", "exception", "crash"))
+                    or ("failed" in log_msg.lower() and not any(kw in log_msg for kw in ("0 failed", "failed: 0", "switched to")))
+                ) and not any(kw in log_msg for kw in ("HTTP 200", "SUCCESS", "Synthesis Success"))
 
                 is_warning = (
                     log_level == "WARNING"
-                    or any(kw in log_msg.lower() for kw in ("warning", "warn", "401", "auth_failed", "cooldown", "disabled"))
+                    or any(kw in log_msg.lower() for kw in ("warning", "warn", "auth_failed", "cooldown"))
                 ) and not is_error
 
                 if is_error:
@@ -477,30 +547,6 @@ class DualProcessSupervisor:
                 if is_warning:
                     print_supervisor_event(f"{C.WARN}⚠️  [WARNING] {log_msg}{C.RESET}")
                     continue
-
-                # 5. GraphRAG Pipeline Lifecycle Events ("What and where things are moving")
-                if "[GRAPH-RAG]" in log_msg:
-                    clean_rag = log_msg.replace("[GRAPH-RAG]", "").strip()
-                    print_supervisor_event(f"{C.CYAN}{clean_rag}{C.RESET}")
-                elif "[INFERENCE]" in log_msg or "Executing task" in log_msg:
-                    clean_inf = log_msg.replace("[INFERENCE]", "").strip()
-                    print_supervisor_event(f"{C.ACCENT}⚡ [ROUTER] {clean_inf}{C.RESET}")
-                elif "Synthesis Success" in log_msg:
-                    print_supervisor_event(f"{C.SUCCESS}✍️  [SYNTHESIS] {log_msg}{C.RESET}")
-                elif "switched to" in log_msg and "Reason" in log_msg:
-                    print_supervisor_event(f"{C.WARN}🔄 [FAILOVER] {log_msg}{C.RESET}")
-                elif "POST /api/chat" in clean_line:
-                    print_supervisor_event(f"{C.CYAN}🌐 [UI QUERY] Web client initiated research chat query...{C.RESET}")
-                elif "POST /api/graphrag/subgraph-query" in clean_line:
-                    print_supervisor_event(f"{C.CYAN}🌐 [UI SUBGRAPH] Client requested interactive subgraph traversal...{C.RESET}")
-                elif "POST /api/documents/upload" in clean_line:
-                    print_supervisor_event(f"{C.SUCCESS}📄 [INGESTION] Document upload received from UI Library.{C.RESET}")
-                elif "GET /api/pdf/" in clean_line:
-                    pdf_match = re.search(r'GET /api/pdf/([^ ]+)', clean_line)
-                    pdf_name = urllib.parse.unquote(pdf_match.group(1)) if pdf_match else "PDF"
-                    print_supervisor_event(f"{C.MUTED}📖 [DOCUMENT VIEWER] Streaming PDF: {pdf_name}{C.RESET}")
-                elif "ready in" in clean_line or "Local:" in clean_line:
-                    print_supervisor_event(f"{C.SUCCESS}🚀 [FRONTEND] React / Vite workstation ready on http://localhost:5173{C.RESET}")
 
     def wait_for_backend(self, timeout_sec: int = 45) -> bool:
         """Polls /api/health until the backend gateway is alive."""
