@@ -153,6 +153,11 @@ class ChatService:
         effective_hops = hops or (1 if mode == "fast" else 2)
         effective_top_k = top_k or (4 if mode == "fast" else 8)
 
+        # Dynamic retrieval depth expansion for roster, membership, and enumeration queries
+        is_roster_query = any(w in message.lower() for w in ["name", "names", "list", "member", "members", "invitee", "invitees", "who", "all", "governors", "board"])
+        if is_roster_query and effective_top_k < 15:
+            effective_top_k = 15
+
         result = self.rag_engine.query_subgraph_graphrag(
             query=message,
             hops=effective_hops,

@@ -308,12 +308,18 @@ def create_chat_sse_stream(
             logger.info(f"[GRAPH-RAG] 🔎 SSE Stream Query: \"{message[:120]}\" (Mode: {mode} | Active Docs: {req.active_docs or 'All Documents'})")
             yield f"event: stage\ndata: {json.dumps({'stage': 'QUERY_INTAKE', 'node': 'query_intake', 'status': 'active', 'detail': 'Analyzing research query intent & resolving entities'})}\n\n"
 
+            effective_hops = req.hops if req.hops is not None else rag_cfg.hops
+            effective_top_k = req.top_k if req.top_k is not None else rag_cfg.top_k
+            is_roster_query = any(w in message.lower() for w in ["name", "names", "list", "member", "members", "invitee", "invitees", "who", "all", "governors", "board"])
+            if is_roster_query and effective_top_k < 15:
+                effective_top_k = 15
+
             rag_task = asyncio.create_task(
                 asyncio.to_thread(
                     rag_engine.query_subgraph_graphrag,
                     query=message,
-                    hops=req.hops if req.hops is not None else rag_cfg.hops,
-                    top_k=req.top_k if req.top_k is not None else rag_cfg.top_k,
+                    hops=effective_hops,
+                    top_k=effective_top_k,
                     document_filter=req.document_filter,
                     active_docs=req.active_docs,
                     mode=mode,
