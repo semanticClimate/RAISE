@@ -80,7 +80,7 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
               </p>
               <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                 <span>
-                  {session.timestamp || formatSessionDate(session.updated_at || session.created_at)}
+                  {formatSessionDate(session.updated_at || session.created_at, session.timestamp)}
                 </span>
                 {session.forkedFromSessionId ? (
                   <span

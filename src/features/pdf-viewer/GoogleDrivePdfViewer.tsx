@@ -50,7 +50,8 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
     fetch(targetPdfUrl, { method: 'HEAD' })
       .then((res) => {
         if (cancelled) return;
-        if (!res.ok && res.status >= 400) {
+        // Proactively flag only if file is genuinely not found (404)
+        if (res.status === 404) {
           setLoadError(true);
         }
       })

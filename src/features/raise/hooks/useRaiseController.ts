@@ -222,7 +222,13 @@ export function useRaiseController() {
   }, [appMode, openControlCenter, setControlCenterTab]);
 
   const handleOpenPdfViewer = useCallback((fileName: string, pageNumber: number = 1) => {
+    setActivePdfCitation({ pdf_filename: fileName, primary_page: pageNumber });
     useDocumentViewerStore.getState().openDocument(fileName, pageNumber);
+  }, []);
+
+  const handleClosePdfViewer = useCallback(() => {
+    setActivePdfCitation(null);
+    useDocumentViewerStore.getState().closeDocument();
   }, []);
 
   const selectedDocs = useMemo(
@@ -238,7 +244,9 @@ export function useRaiseController() {
       const bPinned = pinnedSessionIds.includes(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-      return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime();
+      const bTime = new Date(b.updated_at || b.created_at || b.timestamp || 0).getTime();
+      const aTime = new Date(a.updated_at || a.created_at || a.timestamp || 0).getTime();
+      return bTime - aTime;
     });
   }, [chatSessions.sessions, pinnedSessionIds]);
 
@@ -317,6 +325,7 @@ export function useRaiseController() {
     handleTogglePinSession,
     handleOpenConfigureLlm,
     handleOpenPdfViewer,
+    handleClosePdfViewer,
     handleSaveRename,
     selectedDocs,
     activeSourcesCount,

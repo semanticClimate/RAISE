@@ -171,7 +171,7 @@ export const RaiseModals: React.FC<RaiseModalsProps> = ({
 
       <SectionErrorBoundary fallbackTitle="PDF Viewer encountered an error">
         <PdfViewerModal
-          isOpen={Boolean(activePdfCitation)}
+          isOpen={activePdfCitation ? true : undefined}
           citation={activePdfCitation}
           onClose={onClosePdfViewer}
         />

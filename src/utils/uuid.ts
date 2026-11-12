@@ -35,31 +35,54 @@ export function truncateSessionTitle(text: string, maxLength: number = 42): stri
 
 /**
  * Formats a session timestamp or date string into human-friendly representation for the sidebar.
- * e.g. "Today", "Yesterday", "Sep 5, 2026", or relative string like "Just now".
+ * e.g. "Just now", "5m ago", "Today, 11:45 AM", "Yesterday, 4:20 PM", "Nov 12", "Nov 12, 2025".
  */
-export function formatSessionDate(dateVal?: string | number | Date): string {
-  if (!dateVal) return 'Recent';
+export function formatSessionDate(
+  dateVal?: string | number | Date,
+  fallbackDate?: string | number | Date
+): string {
+  let target = dateVal;
+  if ((!target || target === 'Just now' || target === 'Recent') && fallbackDate) {
+    target = fallbackDate;
+  }
 
-  // If it's already a relative label like "Just now", "2m ago", "Today"
+  if (!target || target === 'Recent') return 'Recent';
+
+  // If already a relative formatted string with ago or Today
   if (
-    typeof dateVal === 'string' &&
-    (dateVal === 'Just now' || dateVal.includes('ago') || dateVal === 'Today')
+    typeof target === 'string' &&
+    (target.includes('ago') || target.startsWith('Today,'))
   ) {
-    return dateVal;
+    return target;
   }
 
-  const d = new Date(dateVal);
+  const d = new Date(target);
   if (Number.isNaN(d.getTime())) {
-    // If not a parseable date, return the string as-is
-    return typeof dateVal === 'string' ? dateVal : 'Recent';
+    if (fallbackDate && fallbackDate !== target) {
+      const fb = new Date(fallbackDate);
+      if (!Number.isNaN(fb.getTime())) {
+        return formatCalculatedDate(fb);
+      }
+    }
+    return typeof target === 'string' ? target : 'Recent';
   }
 
+  return formatCalculatedDate(d);
+}
+
+function formatCalculatedDate(d: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
 
-  // If created within the last few minutes
-  if (diffMs < 60 * 1000) {
+  // If created within the last 60 seconds
+  if (diffMs >= 0 && diffMs < 60 * 1000) {
     return 'Just now';
+  }
+
+  // If created within the last 60 minutes
+  if (diffMs >= 60 * 1000 && diffMs < 60 * 60 * 1000) {
+    const mins = Math.max(1, Math.floor(diffMs / (60 * 1000)));
+    return `${mins}m ago`;
   }
 
   // Same day
@@ -82,11 +105,11 @@ export function formatSessionDate(dateVal?: string | number | Date): string {
     return `Yesterday, ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
   }
 
-  // Within current year: "Sep 5"
+  // Within current year: "Nov 12"
   if (d.getFullYear() === now.getFullYear()) {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  // Older years: "Sep 5, 2025"
+  // Older years: "Nov 12, 2025"
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }

@@ -39,7 +39,23 @@ export function loadSessionsLocally(): ChatSession[] {
     if (cached) {
       const parsed = JSON.parse(cached) as ChatSession[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.filter((s) => !isLegacySession(s));
+        return parsed
+          .filter((s) => !isLegacySession(s))
+          .map((s) => {
+            const rawTime = s.updated_at || s.created_at;
+            const validIso =
+              rawTime && !Number.isNaN(new Date(rawTime).getTime())
+                ? new Date(rawTime).toISOString()
+                : s.timestamp && !Number.isNaN(new Date(s.timestamp).getTime())
+                  ? new Date(s.timestamp).toISOString()
+                  : new Date().toISOString();
+            return {
+              ...s,
+              timestamp: validIso,
+              updated_at: s.updated_at || validIso,
+              created_at: s.created_at || validIso,
+            };
+          });
       }
     }
     return [];

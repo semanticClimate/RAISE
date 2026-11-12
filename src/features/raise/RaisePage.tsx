@@ -319,7 +319,7 @@ export const RaisePage: React.FC = () => {
         onBrowseFileClick={() => c.fileInputRef.current?.click()}
         onOpenPdfViewer={c.handleOpenPdfViewer}
         activePdfCitation={c.activePdfCitation}
-        onClosePdfViewer={() => c.setActivePdfCitation(null)}
+        onClosePdfViewer={c.handleClosePdfViewer}
       />
     </div>
   );

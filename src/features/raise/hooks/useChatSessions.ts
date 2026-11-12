@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { getStoredUsername } from '../../../app/config';
 import { chatService } from '../../../services/ChatService';
 import type { PersistedChatSession } from '../../../types';
-import { formatSessionDate, generateUUID, truncateSessionTitle } from '../../../utils/uuid';
+import { generateUUID, truncateSessionTitle } from '../../../utils/uuid';
 import type { ChatMessage, ChatSession, SourceDocument } from '../types';
 import { deduplicateTurns, harvestSourcesFromMessagesAndDocs } from '../utils/messageNormalizer';
 import {
@@ -74,13 +74,15 @@ export function useChatSessions({
         const idx = prev.findIndex((s) => s.id === effectiveSessionId);
         if (idx >= 0) {
           const updated = [...prev];
+          const nowIso = new Date().toISOString();
           updated[idx] = {
             ...updated[idx],
             messages,
             selectedSourceIds: activeSourceIds,
             sources: sourceDocs,
             attached_docs: activeSourceNames,
-            updated_at: new Date().toISOString(),
+            updated_at: nowIso,
+            timestamp: nowIso,
           };
           saveSessionsLocally(updated);
           return updated;
@@ -88,19 +90,20 @@ export function useChatSessions({
 
         const firstUser = messages.find((m) => m.role === 'user');
         const rawTitle = firstUser?.text || (firstUser as any)?.content || 'Research Inquiry';
+        const nowIso = new Date().toISOString();
         const newSession: ChatSession = {
           id: effectiveSessionId,
           thread_id: effectiveSessionId,
           session_id: effectiveSessionId,
           username: getStoredUsername(),
           title: truncateSessionTitle(rawTitle),
-          timestamp: formatSessionDate(new Date()),
+          timestamp: nowIso,
           messages,
           selectedSourceIds: activeSourceIds,
           sources: sourceDocs,
           attached_docs: activeSourceNames,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: nowIso,
+          updated_at: nowIso,
         };
         const updated = [newSession, ...prev];
         saveSessionsLocally(updated);
@@ -301,22 +304,23 @@ export function useChatSessions({
         rawParentTitle.replace(/^\[(?:Fork|Branch)\]\s*/i, '').trim() || 'Previous chat';
 
       const forkedTitle = `[Branch] ${truncateSessionTitle(cleanParentTitle, 32)}`;
+      const nowIso = new Date().toISOString();
       const forkedSession: ChatSession = {
         id: newSessionId,
         thread_id: newSessionId,
         session_id: newSessionId,
         username: getStoredUsername(),
         title: forkedTitle,
-        timestamp: formatSessionDate(new Date()),
+        timestamp: nowIso,
         messages: clonedMessages,
         selectedSourceIds: sourceDocs.filter((d) => d.selected).map((d) => d.id),
         sources: [...sourceDocs],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: nowIso,
+        updated_at: nowIso,
         forkedFromSessionId: currentSessionId || undefined,
         forkedFromTitle: cleanParentTitle,
         forkedAtTurnIndex: turnIndex,
-        forkedAtTimestamp: new Date().toISOString(),
+        forkedAtTimestamp: nowIso,
       };
 
       setSessions((prev) => {

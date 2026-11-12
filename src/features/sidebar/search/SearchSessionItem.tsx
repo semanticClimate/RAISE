@@ -143,7 +143,7 @@ export const SearchSessionItem: React.FC<SearchSessionItemProps> = ({
         </div>
 
         <span className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap min-w-[65px] text-right">
-          {session.timestamp || formatSessionDate(session.updated_at || session.created_at)}
+          {formatSessionDate(session.updated_at || session.created_at, session.timestamp)}
         </span>
 
         {setActiveSessionMenuId && (

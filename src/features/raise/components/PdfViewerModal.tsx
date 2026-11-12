@@ -18,7 +18,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
 }) => {
   const store = useDocumentViewerStore();
 
-  const isModalOpen = propIsOpen !== undefined ? propIsOpen : store.isOpen;
+  const isModalOpen = Boolean(propIsOpen || store.isOpen);
   const storeTarget = store.target;
 
   useScrollLock(isModalOpen);

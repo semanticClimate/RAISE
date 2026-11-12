@@ -111,7 +111,14 @@ export function useSessionHydration({
           thread_id: item.thread_id || item.session_id || item.id,
           session_id: item.thread_id || item.session_id || item.id,
           title: item.title || 'Chat Session',
-          timestamp: item.timestamp || item.updated_at || item.created_at || 'Just now',
+          timestamp:
+            item.updated_at ||
+            item.created_at ||
+            (item.timestamp && item.timestamp !== 'Just now' && item.timestamp !== 'Recent'
+              ? item.timestamp
+              : new Date().toISOString()),
+          created_at: item.created_at || item.updated_at || new Date().toISOString(),
+          updated_at: item.updated_at || item.created_at || new Date().toISOString(),
           messages: Array.isArray(item.messages)
             ? item.messages.map((m: any) => ({
                 ...m,
@@ -125,8 +132,6 @@ export function useSessionHydration({
           sources: resolvedSources,
           attached_docs: attachedDocList,
           is_saved: Boolean(item.is_saved),
-          created_at: item.created_at,
-          updated_at: item.updated_at,
         };
       });
 
