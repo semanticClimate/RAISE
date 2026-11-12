@@ -185,6 +185,19 @@ export const QualityGateDecisionSchema = z
 
 export type QualityGateDecision = z.infer<typeof QualityGateDecisionSchema>;
 
+export const PipelineInfoSchema = z
+  .object({
+    storage_used: z.string().default(''),
+    llm_provider: z.string().default(''),
+    llm_model: z.string().default(''),
+    encoder_model: z.string().default(''),
+    reranker_model: z.string().default(''),
+    nli_verifier_model: z.string().default(''),
+  })
+  .passthrough();
+
+export type PipelineInfo = z.infer<typeof PipelineInfoSchema>;
+
 export const SubgraphQueryResponseSchema = z
   .object({
     query: z.string(),
@@ -209,6 +222,15 @@ export const SubgraphQueryResponseSchema = z
     message: z.string().nullish(),
     command: z.string().nullish(),
     meta: z.record(z.string(), z.any()).nullish(),
+
+    // Pipeline Substrates & Neural Model Provenance
+    pipeline_info: PipelineInfoSchema.nullish(),
+    storage_used: z.string().nullish(),
+    llm_provider: z.string().nullish(),
+    llm_model: z.string().nullish(),
+    encoder_model: z.string().nullish(),
+    reranker_model: z.string().nullish(),
+    nli_verifier_model: z.string().nullish(),
 
     // Dynamic Follow-Up Inquiries & Suggestions from Gateway / LLM Node
     follow_up_inquiries: z.array(z.string()).nullish(),
@@ -243,6 +265,13 @@ export const AgentQueryResponseSchema = z
     verified_claims: z.array(VerifiedClaimSchema).default([]),
     citations: z.array(CitationSchema).default([]),
     answer_contract: z.record(z.string(), z.any()).nullish(),
+    pipeline_info: PipelineInfoSchema.nullish(),
+    storage_used: z.string().nullish(),
+    llm_provider: z.string().nullish(),
+    llm_model: z.string().nullish(),
+    encoder_model: z.string().nullish(),
+    reranker_model: z.string().nullish(),
+    nli_verifier_model: z.string().nullish(),
   })
   .passthrough();
 

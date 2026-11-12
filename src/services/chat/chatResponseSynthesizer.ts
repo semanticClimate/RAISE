@@ -1,5 +1,6 @@
 import {
   type Citation,
+  type PipelineInfo,
   type SubgraphQueryRequest,
   type SubgraphQueryResponse,
   SubgraphQueryResponseSchema,
@@ -75,6 +76,63 @@ export function synthesizeSubgraphResponse(
         ? 'unable_to_verify'
         : ((meta.quality_gate_decision as SubgraphQueryResponse['quality_gate_decision']) || 'accept');
 
+  // Pipeline Substrates & Neural Model Provenance Extraction
+  const rawPipelineInfo =
+    meta.pipeline_info && typeof meta.pipeline_info === 'object'
+      ? (meta.pipeline_info as Record<string, unknown>)
+      : {};
+
+  const storageUsed =
+    typeof rawPipelineInfo.storage_used === 'string' && rawPipelineInfo.storage_used
+      ? rawPipelineInfo.storage_used
+      : typeof meta.storage_used === 'string' && meta.storage_used
+        ? meta.storage_used
+        : 'ChromaDB (Vector) + Neo4j (Graph)';
+
+  const llmProvider =
+    typeof rawPipelineInfo.llm_provider === 'string' && rawPipelineInfo.llm_provider
+      ? rawPipelineInfo.llm_provider
+      : typeof meta.llm_provider === 'string' && meta.llm_provider
+        ? meta.llm_provider
+        : 'gemini';
+
+  const llmModel =
+    typeof rawPipelineInfo.llm_model === 'string' && rawPipelineInfo.llm_model
+      ? rawPipelineInfo.llm_model
+      : typeof meta.llm_model === 'string' && meta.llm_model
+        ? meta.llm_model
+        : 'gemini-3.5-flash-lite';
+
+  const encoderModel =
+    typeof rawPipelineInfo.encoder_model === 'string' && rawPipelineInfo.encoder_model
+      ? rawPipelineInfo.encoder_model
+      : typeof meta.encoder_model === 'string' && meta.encoder_model
+        ? meta.encoder_model
+        : 'google/embeddinggemma-2';
+
+  const rerankerModel =
+    typeof rawPipelineInfo.reranker_model === 'string' && rawPipelineInfo.reranker_model
+      ? rawPipelineInfo.reranker_model
+      : typeof meta.reranker_model === 'string' && meta.reranker_model
+        ? meta.reranker_model
+        : 'jinaai/jina-reranker-v3.5';
+
+  const nliVerifierModel =
+    typeof rawPipelineInfo.nli_verifier_model === 'string' && rawPipelineInfo.nli_verifier_model
+      ? rawPipelineInfo.nli_verifier_model
+      : typeof meta.nli_verifier_model === 'string' && meta.nli_verifier_model
+        ? meta.nli_verifier_model
+        : 'dleemiller/finecat-nli-ultra-l';
+
+  const pipelineInfo: PipelineInfo = {
+    storage_used: storageUsed,
+    llm_provider: llmProvider,
+    llm_model: llmModel,
+    encoder_model: encoderModel,
+    reranker_model: rerankerModel,
+    nli_verifier_model: nliVerifierModel,
+  };
+
   const synthesizedResp: SubgraphQueryResponse = {
     query: req.query,
     grounded_answer: cleanAnswer,
@@ -83,6 +141,13 @@ export function synthesizeSubgraphResponse(
     response: cleanAnswer,
     content: cleanAnswer,
     text: cleanAnswer,
+    pipeline_info: pipelineInfo,
+    storage_used: storageUsed,
+    llm_provider: llmProvider,
+    llm_model: llmModel,
+    encoder_model: encoderModel,
+    reranker_model: rerankerModel,
+    nli_verifier_model: nliVerifierModel,
     latency_sec:
       typeof meta.latency_sec === 'number' && meta.latency_sec > 0
         ? meta.latency_sec

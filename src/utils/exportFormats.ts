@@ -174,7 +174,25 @@ export function formatMarkdownReport(
     });
   }
 
+  // Audited Pipeline Architecture & Provenance Section
+  const pInfo = response?.pipeline_info;
+  const storageUsed = pInfo?.storage_used || response?.storage_used || 'ChromaDB (Vector) + Neo4j (Graph)';
+  const llmModel = pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite';
+  const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
+  const encoderModel = pInfo?.encoder_model || response?.encoder_model || 'google/embeddinggemma-2';
+  const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'jinaai/jina-reranker-v3.5';
+  const nliVerifierModel = pInfo?.nli_verifier_model || response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l';
 
+  lines.push('---');
+  lines.push('');
+  lines.push('### 🔬 Audited Pipeline Architecture & Provenance');
+  lines.push(`* **Storage Substrates:** ${storageUsed}`);
+  lines.push(`* **Synthesis LLM:** ${llmModel} (${llmProvider})`);
+  lines.push(`* **Dense Embedding Encoder:** ${encoderModel}`);
+  lines.push(`* **Cross-Attention Reranker:** ${rerankerModel}`);
+  lines.push(`* **NLI Entailment Verifier:** ${nliVerifierModel}`);
+  lines.push('* **Generated via:** RAISE GraphRAG Academic Research Studio');
+  lines.push('');
 
   // Footer
   lines.push('---');
@@ -194,12 +212,21 @@ export function formatDeveloperJson(
   answerText: string,
   response?: Partial<SubgraphQueryResponse>
 ): Record<string, unknown> {
+  const pInfo = response?.pipeline_info;
   return {
     export_version: '1.0.0',
     platform: 'RAISE: Research Assessment Intelligence & Semantic Extraction',
     exported_at: new Date().toISOString(),
     query: query || response?.query || '',
     answer: answerText,
+    pipeline_info: {
+      storage_used: pInfo?.storage_used || response?.storage_used || 'ChromaDB (Vector) + Neo4j (Graph)',
+      llm_provider: pInfo?.llm_provider || response?.llm_provider || 'gemini',
+      llm_model: pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite',
+      encoder_model: pInfo?.encoder_model || response?.encoder_model || 'google/embeddinggemma-2',
+      reranker_model: pInfo?.reranker_model || response?.reranker_model || 'jinaai/jina-reranker-v3.5',
+      nli_verifier_model: pInfo?.nli_verifier_model || response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l',
+    },
     metadata: {
       traceability_score: response?.traceability_score ?? null,
       quality_gate_decision: response?.quality_gate_decision ?? 'accept',
@@ -1073,6 +1100,32 @@ export function generateReportHtml(
     </div>
 
     ${citationsHtml}
+
+    <section style="margin-top: 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; break-inside: avoid; page-break-inside: avoid;">
+      <h3 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 700; color: #0f172a; border-bottom: 1.5px solid #0284c7; padding-bottom: 4px; display: inline-block;">
+        🔬 Audited Pipeline Architecture &amp; Provenance
+      </h3>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; font-size: 12px; margin-top: 8px;">
+        <div><strong style="color: #475569;">Storage Substrates:</strong> <span style="color: #0f172a;">${escapeHtml(
+          response?.pipeline_info?.storage_used || response?.storage_used || 'ChromaDB (Vector) + Neo4j (Graph)'
+        )}</span></div>
+        <div><strong style="color: #475569;">Synthesis LLM:</strong> <span style="color: #0f172a;">${escapeHtml(
+          `${response?.pipeline_info?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite'} (${
+            response?.pipeline_info?.llm_provider || response?.llm_provider || 'gemini'
+          })`
+        )}</span></div>
+        <div><strong style="color: #475569;">Dense Embedding Encoder:</strong> <span style="color: #0f172a;">${escapeHtml(
+          response?.pipeline_info?.encoder_model || response?.encoder_model || 'google/embeddinggemma-2'
+        )}</span></div>
+        <div><strong style="color: #475569;">Cross-Attention Reranker:</strong> <span style="color: #0f172a;">${escapeHtml(
+          response?.pipeline_info?.reranker_model || response?.reranker_model || 'jinaai/jina-reranker-v3.5'
+        )}</span></div>
+        <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(
+          response?.pipeline_info?.nli_verifier_model || response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l'
+        )}</span></div>
+        <div><strong style="color: #475569;">Generated via:</strong> <span style="color: #0f172a;">RAISE GraphRAG Academic Research Studio</span></div>
+      </div>
+    </section>
   </main>
 
   <footer style="margin-top: 48px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
@@ -1760,6 +1813,54 @@ export function generatePdfBlob(
     });
   }
 
+  // --- AUDITED PIPELINE ARCHITECTURE & PROVENANCE SECTION ---
+  const pInfo = response?.pipeline_info;
+  const storageUsed = pInfo?.storage_used || response?.storage_used || 'ChromaDB (Vector) + Neo4j (Graph)';
+  const llmModel = pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite';
+  const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
+  const encoderModel = pInfo?.encoder_model || response?.encoder_model || 'google/embeddinggemma-2';
+  const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'jinaai/jina-reranker-v3.5';
+  const nliVerifierModel = pInfo?.nli_verifier_model || response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l';
+
+  curY -= 12;
+  ensureSpace(110);
+
+  currentOps.push(
+    `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Audited Pipeline Architecture & Provenance')}) Tj ET`
+  );
+  currentOps.push(
+    `0.08 0.4 0.65 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 95} ${curY - 16} l S`
+  );
+  curY -= 24;
+
+  const cardHeight = 78;
+  currentOps.push(`0.97 0.98 0.99 rg`);
+  currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re f`);
+  currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
+  currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re s`);
+
+  const specRows = [
+    { label: 'Storage Substrates:', val: storageUsed },
+    { label: 'Synthesis LLM:', val: `${llmModel} (${llmProvider})` },
+    { label: 'Dense Embedding Encoder:', val: encoderModel },
+    { label: 'Cross-Attention Reranker:', val: rerankerModel },
+    { label: 'NLI Entailment Verifier:', val: nliVerifierModel },
+    { label: 'Platform Attribution:', val: 'RAISE GraphRAG Academic Research Studio' },
+  ];
+
+  let specY = curY - 12;
+  specRows.forEach((row) => {
+    currentOps.push(
+      `BT /F2 7.5 Tf 0.25 0.32 0.45 rg ${marginX + 10} ${specY} Td (${escapePdfText(row.label)}) Tj ET`
+    );
+    currentOps.push(
+      `BT /F1 7.5 Tf 0.12 0.16 0.24 rg ${marginX + 130} ${specY} Td (${escapePdfText(row.val)}) Tj ET`
+    );
+    specY -= 11.5;
+  });
+
+  curY -= cardHeight + 10;
+
   // Push final page stream
   if (currentOps.length > 0) {
     pages.push(currentOps.join('\n'));
@@ -2343,6 +2444,57 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       curY -= 16;
     }
   }
+
+  // --- AUDITED PIPELINE ARCHITECTURE & PROVENANCE SECTION ---
+  const latestAssistantWithPipeline = [...messages]
+    .reverse()
+    .find((m) => m.role === 'assistant' && (m.response?.pipeline_info || m.pipeline_info));
+  const sPInfo = latestAssistantWithPipeline?.response?.pipeline_info || latestAssistantWithPipeline?.pipeline_info;
+  const sStorageUsed = sPInfo?.storage_used || latestAssistantWithPipeline?.response?.storage_used || 'ChromaDB (Vector) + Neo4j (Graph)';
+  const sLlmModel = sPInfo?.llm_model || latestAssistantWithPipeline?.response?.llm_model || 'gemini-3.5-flash-lite';
+  const sLlmProvider = sPInfo?.llm_provider || latestAssistantWithPipeline?.response?.llm_provider || 'gemini';
+  const sEncoderModel = sPInfo?.encoder_model || latestAssistantWithPipeline?.response?.encoder_model || 'google/embeddinggemma-2';
+  const sRerankerModel = sPInfo?.reranker_model || latestAssistantWithPipeline?.response?.reranker_model || 'jinaai/jina-reranker-v3.5';
+  const sNliVerifierModel = sPInfo?.nli_verifier_model || latestAssistantWithPipeline?.response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l';
+
+  curY -= 12;
+  ensureSpace(110);
+
+  currentOps.push(
+    `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Audited Pipeline Architecture & Provenance')}) Tj ET`
+  );
+  currentOps.push(
+    `0.08 0.4 0.65 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 95} ${curY - 16} l S`
+  );
+  curY -= 24;
+
+  const sessionCardHeight = 78;
+  currentOps.push(`0.97 0.98 0.99 rg`);
+  currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re f`);
+  currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
+  currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re s`);
+
+  const sessionSpecRows = [
+    { label: 'Storage Substrates:', val: sStorageUsed },
+    { label: 'Synthesis LLM:', val: `${sLlmModel} (${sLlmProvider})` },
+    { label: 'Dense Embedding Encoder:', val: sEncoderModel },
+    { label: 'Cross-Attention Reranker:', val: sRerankerModel },
+    { label: 'NLI Entailment Verifier:', val: sNliVerifierModel },
+    { label: 'Platform Attribution:', val: 'RAISE GraphRAG Academic Research Studio' },
+  ];
+
+  let sessionSpecY = curY - 12;
+  sessionSpecRows.forEach((row) => {
+    currentOps.push(
+      `BT /F2 7.5 Tf 0.25 0.32 0.45 rg ${marginX + 10} ${sessionSpecY} Td (${escapePdfText(row.label)}) Tj ET`
+    );
+    currentOps.push(
+      `BT /F1 7.5 Tf 0.12 0.16 0.24 rg ${marginX + 130} ${sessionSpecY} Td (${escapePdfText(row.val)}) Tj ET`
+    );
+    sessionSpecY -= 11.5;
+  });
+
+  curY -= sessionCardHeight + 10;
 
   // Push final page stream
   if (currentOps.length > 0) {

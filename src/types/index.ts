@@ -1,4 +1,4 @@
-import type { Citation } from '../schemas/chat';
+import type { Citation, PipelineInfo } from '../schemas/chat';
 
 export * from '../schemas/chat';
 export * from '../schemas/commands';
@@ -49,6 +49,7 @@ export interface ChatMessage {
   startedAtMs?: number;
   feedback?: 'thumbs_up' | 'thumbs_down' | null;
   id?: string;
+  pipeline_info?: PipelineInfo;
 }
 
 export interface ChatSession {
