@@ -1,4 +1,5 @@
 import type React from 'react';
+import { useEffect, useRef } from 'react';
 import { FastExpertToggle } from './FastExpertToggle';
 
 export interface AddSourceButtonProps {
@@ -26,6 +27,34 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
   conversationLength = 0,
   className = '',
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown, true);
+    document.addEventListener('touchstart', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown, true);
+      document.removeEventListener('touchstart', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   return (
     <>
       <input
@@ -39,6 +68,7 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
         className="hidden"
       />
       <div
+        ref={containerRef}
         className={`relative shrink-0 select-none z-30 ${className}`}
         data-add-source-container="input"
       >
@@ -94,10 +124,13 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
 
         {isOpen && (
           <>
-            {/* Mobile WhatsApp-style backdrop overlay */}
+            {/* Viewport backdrop overlay (handles mobile bottom sheet and desktop outside clicks) */}
             <div
-              className="fixed inset-0 bg-black/45 backdrop-blur-xs z-[65] sm:hidden animate-in fade-in duration-200"
-              onClick={onClose}
+              className="fixed inset-0 bg-black/40 backdrop-blur-2xs sm:bg-transparent sm:backdrop-blur-none z-[65] animate-in fade-in duration-150"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               aria-hidden="true"
             />
 
