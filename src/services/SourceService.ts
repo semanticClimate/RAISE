@@ -47,7 +47,7 @@ export class SourceService {
     }
 
     // Pass parser and mode parameters based on selected mode
-    const mode = options?.parseMode || 'expert';
+    const mode = options?.parseMode || 'fast';
     const isExpert = mode === 'expert' || options?.parser === 'docling';
     const parser = options?.parser || (isExpert ? 'docling' : 'fast');
     formData.append('parser', parser);

@@ -35,6 +35,11 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
     [sanitized, citations]
   );
 
+  const displayCitations = useMemo(
+    () => (enrichedCitations && enrichedCitations.length > 0 ? enrichedCitations : citations || []),
+    [enrichedCitations, citations]
+  );
+
   // 3. If showCitations is false, strip bracketed markers like [1], [2], [1, 2] from the content
   const cleanContent = useMemo(
     () =>
@@ -45,13 +50,13 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
   // 4. Citation lookup map by citation_index
   const citationMap = useMemo(() => {
     const map = new Map<number, Citation>();
-    if (showCitations && enrichedCitations) {
-      for (const c of enrichedCitations) {
+    if (showCitations && displayCitations) {
+      for (const c of displayCitations) {
         map.set(c.citation_index, c);
       }
     }
     return map;
-  }, [showCitations, enrichedCitations]);
+  }, [showCitations, displayCitations]);
 
   // 5. Extract and format reasoning tokens inside <think>...</think>
   const { thoughtText, parsedContent } = useMemo(() => {
@@ -73,10 +78,10 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
     () => ({
       showCitations,
       citationMap,
-      enrichedCitations,
+      enrichedCitations: displayCitations,
       onViewPdf,
     }),
-    [showCitations, citationMap, enrichedCitations, onViewPdf]
+    [showCitations, citationMap, displayCitations, onViewPdf]
   );
 
   return (
@@ -108,7 +113,7 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
       ))}
 
       {/* Vertical Sources list */}
-      {showCitations && enrichedCitations && enrichedCitations.length > 0 && (
+      {showCitations && displayCitations && displayCitations.length > 0 && (
         <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400 select-text">
           <div className="flex items-center gap-1.5 font-medium text-slate-400 dark:text-slate-500 text-[11px] tracking-wide uppercase shrink-0">
             <BookOpen className="w-3.5 h-3.5 text-blue-500" />
@@ -116,7 +121,7 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-2 pt-0.5 min-w-0">
-            {enrichedCitations.map((cit, citIdx) => {
+            {displayCitations.map((cit, citIdx) => {
               const detail = resolveCitationDetail(cit, citIdx + 1);
               const targetUrl = detail.isWeb
                 ? detail.webUrl || detail.primaryUrl

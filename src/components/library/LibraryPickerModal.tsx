@@ -129,7 +129,14 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
       }, 400);
 
       try {
-        await sourceService.uploadPdfs(files);
+        const uploadRes = await sourceService.uploadPdfs(files, undefined, {
+          parseMode: 'fast',
+          parser: 'fast',
+        });
+        if (uploadRes.error || !uploadRes.data) {
+          throw new Error(uploadRes.error?.message || 'Upload failed');
+        }
+
         clearInterval(interval);
         setOptimisticUploads((prev) =>
           prev.map((item) =>
@@ -138,6 +145,24 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
               : item
           )
         );
+
+        // Auto-attach each uploaded document to the drawer
+        for (const file of files) {
+          onSelectDocument({
+            id: `doc-${file.name}`,
+            name: file.name,
+            size: formatFileSize(file.size),
+            bytes: file.size,
+            uploadedAt: 'Just now',
+            timestamp: Date.now(),
+            type: (file.name.split('.').pop()?.toLowerCase() || 'pdf') as any,
+            pages: 1,
+            chunks: 1,
+            status: 'ready',
+            color: 'indigo',
+          });
+        }
+
         await queryClient.invalidateQueries({ queryKey: ['documents'] });
         setTimeout(() => {
           setOptimisticUploads((prev) =>
@@ -160,7 +185,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
         }, 5000);
       }
     },
-    [computePreviewHash, queryClient]
+    [computePreviewHash, queryClient, onSelectDocument]
   );
 
   const items = useMemo(() => {
