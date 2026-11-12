@@ -29,14 +29,39 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
   onClose,
   isStandalone = false,
 }) => {
-  const [loadError, setLoadError] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<boolean>(!filename);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const safePage = Math.max(1, initialPage);
   const targetPdfUrl = useMemo(
-    () => sourceService.getPdfUrl(filename, safePage),
+    () => (filename ? sourceService.getPdfUrl(filename, safePage) : ''),
     [filename, safePage]
   );
+
+  // Probe target URL to proactively catch 404 or backend unavailable
+  useEffect(() => {
+    if (!filename) {
+      setLoadError(true);
+      return;
+    }
+    setLoadError(false);
+    let cancelled = false;
+
+    fetch(targetPdfUrl, { method: 'HEAD' })
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.ok && res.status >= 400) {
+          setLoadError(true);
+        }
+      })
+      .catch(() => {
+        // Network or CORS probe error - allow iframe attempt
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetPdfUrl, filename]);
 
   // Keyboard shortcut listener: Esc closes modal
   useEffect(() => {
@@ -52,6 +77,7 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
   }, [onClose, isStandalone]);
 
   const handleOpenStandaloneTab = () => {
+    if (!targetPdfUrl) return;
     window.open(targetPdfUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -134,12 +160,16 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
           />
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center max-w-md animate-in fade-in duration-200">
-            <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center mb-4">
               <FileText className="w-6 h-6" />
             </div>
-            <h2 className="text-base font-semibold text-white mb-2">Unable to display PDF inline</h2>
+            <h2 className="text-base font-semibold text-white mb-2">
+              {filename ? 'Document Preview Unavailable' : 'No Document Selected'}
+            </h2>
             <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-              Your browser may restrict embedded PDF previews. You can open the raw document directly in a dedicated tab or download it.
+              {filename
+                ? `The document "${filename}" could not be previewed directly inline. You can retry or open the direct document.`
+                : 'Please select a document to preview.'}
             </p>
             <div className="flex items-center gap-3">
               <button

@@ -21,6 +21,26 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
     return null;
   }
 
+  const resolvedFilename =
+    citation.pdf_filename ||
+    (citation as any).fileName ||
+    (citation as any).filename ||
+    (citation as any).name ||
+    '';
+
+  const resolvedPage =
+    citation.primary_page ||
+    citation.page_number ||
+    (citation as any).page ||
+    1;
+
+  const resolvedExcerpt =
+    citation.plain_text ||
+    (citation as any).excerpt ||
+    (citation as any).snippet ||
+    (citation as any).text ||
+    '';
+
   return (
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
@@ -30,15 +50,15 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`PDF Verification: ${citation.pdf_filename}`}
+        aria-label={`PDF Verification: ${resolvedFilename || 'Document'}`}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-6xl h-[94vh] bg-[#1e1e1e] text-slate-100 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
       >
         <GoogleDrivePdfViewer
-          filename={citation.pdf_filename || 'Audited Document'}
-          initialPage={citation.primary_page || citation.page_number || 1}
-          excerpt={citation.plain_text || (citation as any).excerpt || (citation as any).text || ''}
-          fileSize="2.4 MB"
+          filename={resolvedFilename}
+          initialPage={resolvedPage}
+          excerpt={resolvedExcerpt}
+          fileSize={(citation as any).fileSize || '2.4 MB'}
           onClose={onClose}
         />
       </div>

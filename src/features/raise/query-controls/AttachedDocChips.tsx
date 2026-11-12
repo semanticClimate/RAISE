@@ -45,14 +45,20 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
             >
               <span
                 onClick={() => {
-                  if (onViewPdf && ready) {
-                    onViewPdf(file.name, 1);
+                  if (ready) {
+                    if (onViewPdf && file.name.toLowerCase().endsWith('.pdf')) {
+                      onViewPdf(file.name, 1);
+                    } else if (onOpenDrawer) {
+                      onOpenDrawer();
+                    } else if (onViewPdf) {
+                      onViewPdf(file.name, 1);
+                    }
                   }
                 }}
                 className={`truncate max-w-[100px] font-medium text-slate-700 dark:text-slate-200 ${
                   ready ? 'cursor-pointer hover:underline' : ''
                 }`}
-                title={ready ? 'Open document in new tab' : undefined}
+                title={ready ? `View ${file.name}` : undefined}
               >
                 {file.name}
               </span>
@@ -106,13 +112,20 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
-                if (onViewPdf && ready) {
-                  onViewPdf(file.name, 1);
+                if (ready) {
+                  if (onViewPdf && file.name.toLowerCase().endsWith('.pdf')) {
+                    onViewPdf(file.name, 1);
+                  } else if (onOpenDrawer) {
+                    onOpenDrawer();
+                  } else if (onViewPdf) {
+                    onViewPdf(file.name, 1);
+                  }
                 } else {
                   onOpenDrawer?.();
                 }
               }}
-              aria-label={`Open ${file.name} in new tab`}
+              aria-label={`View ${file.name}`}
+              title={`View ${file.name}`}
               className={`${
                 conversationLength === 0 ? 'w-7.5 h-7.5 sm:w-9 sm:h-9' : 'w-6 h-6 sm:w-7 sm:h-7'
               } rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300/80 dark:bg-white/[0.06] dark:hover:bg-white/10 dark:border-white/10 hover:border-indigo-400/40 flex items-center justify-center transition-all shadow-xs active:scale-95 cursor-pointer relative overflow-hidden select-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 ${

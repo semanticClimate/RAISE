@@ -221,7 +221,16 @@ export function useRaiseController() {
   }, [appMode, openControlCenter, setControlCenterTab]);
 
   const handleOpenPdfViewer = useCallback((fileName: string, pageNumber: number = 1) => {
-    setActivePdfCitation({ fileName, pageNumber, snippetText: '' });
+    setActivePdfCitation({
+      pdf_filename: fileName,
+      fileName,
+      filename: fileName,
+      primary_page: pageNumber,
+      page_number: pageNumber,
+      page: pageNumber,
+      snippetText: '',
+      plain_text: '',
+    });
   }, []);
 
   const selectedDocs = useMemo(
