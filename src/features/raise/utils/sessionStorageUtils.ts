@@ -25,6 +25,13 @@ export function pruneSessionForStorage(session: ChatSession): ChatSession {
           confidence_score: cleanMsg.response.confidence_score,
           quality_gate_decision: cleanMsg.response.quality_gate_decision,
           duration_seconds: cleanMsg.response.duration_seconds,
+          pipeline_info: cleanMsg.response.pipeline_info,
+          storage_used: cleanMsg.response.storage_used,
+          llm_model: cleanMsg.response.llm_model,
+          llm_provider: cleanMsg.response.llm_provider,
+          encoder_model: cleanMsg.response.encoder_model,
+          reranker_model: cleanMsg.response.reranker_model,
+          nli_verifier_model: cleanMsg.response.nli_verifier_model,
         };
       }
       return cleanMsg;
@@ -96,10 +103,14 @@ export function saveSessionsLocally(newSessions: ChatSession[], immediate: boole
 export function getInitialSessionId(): string | null {
   try {
     if (typeof window !== 'undefined') {
-      const shouldPersist = localStorage.getItem(PERSIST_ON_RELOAD_KEY) === 'true';
-      const stored = shouldPersist ? localStorage.getItem(CURRENT_SESSION_KEY)?.trim() : null;
+      const stored = localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
       if (stored) {
         return stored;
+      }
+      const cached = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as ChatSession[];
+        if (parsed.length > 0) return parsed[0].id;
       }
     }
   } catch {}
@@ -109,24 +120,19 @@ export function getInitialSessionId(): string | null {
 export function getInitialConversation(): ChatMessage[] {
   try {
     if (typeof window !== 'undefined') {
-      const shouldPersist = localStorage.getItem(PERSIST_ON_RELOAD_KEY) === 'true';
-      const targetId =
-        (shouldPersist ? localStorage.getItem(CURRENT_SESSION_KEY)?.trim() : null);
-
-      if (targetId) {
-        const cached = localStorage.getItem(SESSIONS_STORAGE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached) as ChatSession[];
-          const match = parsed.find((s) => s.id === targetId);
-          if (match && Array.isArray(match.messages) && match.messages.length > 0) {
-            return deduplicateTurns(
-              match.messages.map((m: any) => ({
-                ...m,
-                text: m?.text || m?.content || '',
-                content: m?.content || m?.text || '',
-              }))
-            );
-          }
+      const targetId = localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
+      const cached = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as ChatSession[];
+        const match = (targetId ? parsed.find((s) => s.id === targetId) : null) || parsed[0];
+        if (match && Array.isArray(match.messages) && match.messages.length > 0) {
+          return deduplicateTurns(
+            match.messages.map((m: any) => ({
+              ...m,
+              text: m?.text || m?.content || '',
+              content: m?.content || m?.text || '',
+            }))
+          );
         }
       }
     }

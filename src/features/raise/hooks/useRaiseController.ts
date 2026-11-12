@@ -33,6 +33,11 @@ export function useRaiseController() {
     }
   });
 
+  // Auto-probe backend gateway on initial load to resolve 'offline' state
+  useEffect(() => {
+    runCapabilityProbe();
+  }, [runCapabilityProbe]);
+
   useEffect(() => {
     try {
       localStorage.setItem('raise_theme', theme);

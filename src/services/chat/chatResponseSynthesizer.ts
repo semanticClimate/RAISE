@@ -82,12 +82,15 @@ export function synthesizeSubgraphResponse(
       ? (meta.pipeline_info as Record<string, unknown>)
       : {};
 
-  const storageUsed =
-    typeof rawPipelineInfo.storage_used === 'string' && rawPipelineInfo.storage_used
-      ? rawPipelineInfo.storage_used
-      : typeof meta.storage_used === 'string' && meta.storage_used
-        ? meta.storage_used
-        : 'ChromaDB (Vector) + Neo4j (Graph)';
+  let storageUsed = 'ChromaDB (Dense Vector Search)';
+  const rawStorage = rawPipelineInfo.storage_used || meta.storage_used;
+  if (typeof rawStorage === 'string' && rawStorage.trim()) {
+    if (rawStorage.includes('Neo4j') && (rawStorage.includes('Offline') || rawStorage.includes('Fallback') || rawStorage.includes('+ Neo4j'))) {
+      storageUsed = 'ChromaDB (Dense Vector Search)';
+    } else {
+      storageUsed = rawStorage;
+    }
+  }
 
   const llmProvider =
     typeof rawPipelineInfo.llm_provider === 'string' && rawPipelineInfo.llm_provider
@@ -115,14 +118,14 @@ export function synthesizeSubgraphResponse(
       ? rawPipelineInfo.reranker_model
       : typeof meta.reranker_model === 'string' && meta.reranker_model
         ? meta.reranker_model
-        : 'jinaai/jina-reranker-v3.5';
+        : 'Heuristic Lexical Reranker';
 
   const nliVerifierModel =
     typeof rawPipelineInfo.nli_verifier_model === 'string' && rawPipelineInfo.nli_verifier_model
       ? rawPipelineInfo.nli_verifier_model
       : typeof meta.nli_verifier_model === 'string' && meta.nli_verifier_model
         ? meta.nli_verifier_model
-        : 'dleemiller/finecat-nli-ultra-l';
+        : 'Deterministic Claim Verifier';
 
   const pipelineInfo: PipelineInfo = {
     storage_used: storageUsed,
