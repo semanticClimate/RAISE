@@ -103,14 +103,15 @@ export function saveSessionsLocally(newSessions: ChatSession[], immediate: boole
 export function getInitialSessionId(): string | null {
   try {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
-      if (stored) {
-        return stored;
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlSession = searchParams.get('session') || searchParams.get('session_id');
+      if (urlSession && urlSession.trim()) {
+        return urlSession.trim();
       }
-      const cached = localStorage.getItem(SESSIONS_STORAGE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached) as ChatSession[];
-        if (parsed.length > 0) return parsed[0].id;
+
+      const stored = localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
+      if (stored && stored !== 'new') {
+        return stored;
       }
     }
   } catch {}
@@ -120,11 +121,18 @@ export function getInitialSessionId(): string | null {
 export function getInitialConversation(): ChatMessage[] {
   try {
     if (typeof window !== 'undefined') {
-      const targetId = localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlSession = searchParams.get('session') || searchParams.get('session_id');
+      const targetId = (urlSession && urlSession.trim()) || localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
+
+      if (!targetId || targetId === 'new') {
+        return [];
+      }
+
       const cached = localStorage.getItem(SESSIONS_STORAGE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached) as ChatSession[];
-        const match = (targetId ? parsed.find((s) => s.id === targetId) : null) || parsed[0];
+        const match = parsed.find((s) => s.id === targetId);
         if (match && Array.isArray(match.messages) && match.messages.length > 0) {
           return deduplicateTurns(
             match.messages.map((m: any) => ({

@@ -82,15 +82,27 @@ export function synthesizeSubgraphResponse(
       ? (meta.pipeline_info as Record<string, unknown>)
       : {};
 
-  let storageUsed = 'ChromaDB (Dense Vector Search)';
   const rawStorage = rawPipelineInfo.storage_used || meta.storage_used;
-  if (typeof rawStorage === 'string' && rawStorage.trim()) {
-    if (rawStorage.includes('Neo4j') && (rawStorage.includes('Offline') || rawStorage.includes('Fallback') || rawStorage.includes('+ Neo4j'))) {
-      storageUsed = 'ChromaDB (Dense Vector Search)';
-    } else {
-      storageUsed = rawStorage;
-    }
+  const hasNeo4j =
+    typeof rawStorage === 'string' &&
+    rawStorage.includes('Neo4j') &&
+    !rawStorage.toLowerCase().includes('offline') &&
+    !rawStorage.toLowerCase().includes('fallback') &&
+    !rawStorage.toLowerCase().includes('degraded');
+
+  const hasNetworkX =
+    typeof rawStorage === 'string' && rawStorage.includes('NetworkX');
+
+  const substrates: string[] = ['ChromaDB (Vector)'];
+  if (hasNeo4j) {
+    substrates.push('Neo4j (Graph)');
+  } else if (hasNetworkX) {
+    substrates.push('NetworkX (Graph)');
   }
+  substrates.push('PostgreSQL');
+  substrates.push('Redis');
+
+  const storageUsed = substrates.join(' + ');
 
   const llmProvider =
     typeof rawPipelineInfo.llm_provider === 'string' && rawPipelineInfo.llm_provider

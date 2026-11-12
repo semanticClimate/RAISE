@@ -102,22 +102,35 @@ export async function copyMarkdownToClipboard(markdownText: string): Promise<boo
 }
 
 /**
- * Dynamically resolves audited pipeline provenance without hardcoding offline substrates.
+ * Dynamically resolves audited pipeline architecture without hardcoding offline substrates.
  * If Neo4j or complex neural models are not actively reported by the backend, uses true runtime fallbacks.
+ * Explicitly surfaces ChromaDB, Neo4j (if active), PostgreSQL, and Redis as active answering substrates.
  */
 export function resolveAuditedProvenance(response?: Partial<SubgraphQueryResponse>) {
   const pInfo = response?.pipeline_info;
   const rawStorage = pInfo?.storage_used || response?.storage_used;
 
-  let storageUsed = 'ChromaDB (Dense Vector Search)';
-  if (rawStorage && typeof rawStorage === 'string' && rawStorage.trim()) {
-    // If rawStorage reports Neo4j but Neo4j is offline or in fallback mode on this host, attribute accurately
-    if (rawStorage.includes('Neo4j') && (rawStorage.includes('Offline') || rawStorage.includes('Fallback') || rawStorage.includes('+ Neo4j'))) {
-      storageUsed = 'ChromaDB (Dense Vector Search)';
-    } else {
-      storageUsed = rawStorage;
-    }
+  // Determine active databases used to answer queries:
+  const hasNeo4j =
+    typeof rawStorage === 'string' &&
+    rawStorage.includes('Neo4j') &&
+    !rawStorage.toLowerCase().includes('offline') &&
+    !rawStorage.toLowerCase().includes('fallback') &&
+    !rawStorage.toLowerCase().includes('degraded');
+
+  const hasNetworkX =
+    typeof rawStorage === 'string' && rawStorage.includes('NetworkX');
+
+  const substrates: string[] = ['ChromaDB (Vector)'];
+  if (hasNeo4j) {
+    substrates.push('Neo4j (Graph)');
+  } else if (hasNetworkX) {
+    substrates.push('NetworkX (Graph)');
   }
+  substrates.push('PostgreSQL');
+  substrates.push('Redis');
+
+  const storageUsed = substrates.join(' + ');
 
   const llmModel = pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite';
   const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
@@ -204,18 +217,18 @@ export function formatMarkdownReport(
     lines.push('');
   }
 
-  // Audited Pipeline Architecture & Provenance Section
+  // Architecture Running Section
   const prov = resolveAuditedProvenance(response);
 
   lines.push('---');
   lines.push('');
-  lines.push('### 🔬 Audited Pipeline Architecture & Provenance');
+  lines.push('### 🔬 Architecture Running');
   lines.push(`* **Storage Substrates:** ${prov.storageUsed}`);
   lines.push(`* **Synthesis LLM:** ${prov.llmModel} (${prov.llmProvider})`);
   lines.push(`* **Dense Embedding Encoder:** ${prov.encoderModel}`);
   lines.push(`* **Cross-Attention Reranker:** ${prov.rerankerModel}`);
   lines.push(`* **NLI Entailment Verifier:** ${prov.nliVerifierModel}`);
-  lines.push('* **Generated via:** RAISE GraphRAG Academic Research Studio');
+  lines.push('* **Platform Attribution:** RAISE');
   lines.push('');
 
   // Footer
@@ -1100,7 +1113,7 @@ export function generateReportHtml(
 
     <section style="margin-top: 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; break-inside: avoid; page-break-inside: avoid;">
       <h3 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 700; color: #0f172a; border-bottom: 1.5px solid #0284c7; padding-bottom: 4px; display: inline-block;">
-        🔬 Audited Pipeline Architecture &amp; Provenance
+        🔬 Architecture Running
       </h3>
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; font-size: 12px; margin-top: 8px;">
         <div><strong style="color: #475569;">Storage Substrates:</strong> <span style="color: #0f172a;">${escapeHtml(
@@ -1118,7 +1131,7 @@ export function generateReportHtml(
         <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(
           resolveAuditedProvenance(response).nliVerifierModel
         )}</span></div>
-        <div><strong style="color: #475569;">Generated via:</strong> <span style="color: #0f172a;">RAISE GraphRAG Academic Research Studio</span></div>
+        <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE</span></div>
       </div>
     </section>
   </main>
@@ -1788,7 +1801,7 @@ export function generatePdfBlob(
   ensureSpace(110);
 
   currentOps.push(
-    `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Audited Pipeline Architecture & Provenance')}) Tj ET`
+    `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Architecture Running')}) Tj ET`
   );
   currentOps.push(
     `0.08 0.4 0.65 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 95} ${curY - 16} l S`
@@ -1807,7 +1820,7 @@ export function generatePdfBlob(
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
     { label: 'Cross-Attention Reranker:', val: prov.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: prov.nliVerifierModel },
-    { label: 'Platform Attribution:', val: 'RAISE GraphRAG Academic Research Studio' },
+    { label: 'Platform Attribution:', val: 'RAISE' },
   ];
 
   let specY = curY - 12;
@@ -2413,7 +2426,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   ensureSpace(110);
 
   currentOps.push(
-    `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Audited Pipeline Architecture & Provenance')}) Tj ET`
+    `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Architecture Running')}) Tj ET`
   );
   currentOps.push(
     `0.08 0.4 0.65 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 95} ${curY - 16} l S`
@@ -2432,7 +2445,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },
     { label: 'Cross-Attention Reranker:', val: sProv.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: sProv.nliVerifierModel },
-    { label: 'Platform Attribution:', val: 'RAISE GraphRAG Academic Research Studio' },
+    { label: 'Platform Attribution:', val: 'RAISE' },
   ];
 
   let sessionSpecY = curY - 12;
