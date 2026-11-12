@@ -20,13 +20,29 @@ class CypherNodesMixin:
     # =========================================================================
     def _text_to_cypher_generator_node(self, state: GraphRAGState) -> Dict[str, Any]:
         query = state.get("query", "")
-        stop_words = {"what", "show", "tell", "which", "with", "financial", "year", "these", "this", "that", "reports", "report", "identify", "does", "have", "from", "both", "under", "about", "2024", "2025", "202425", "2016", "2017"}
+        stop_words = {"what", "show", "tell", "which", "with", "financial", "year", "these", "this", "that", "reports", "report", "identify", "does", "have", "from", "both", "under", "about"}
         q_clean = re.sub(r"[^a-zA-Z0-9\s]", " ", query).lower()
         terms = [t for t in q_clean.split() if len(t) > 3 and t not in stop_words]
 
+        doc_filter = state.get("document_filter")
+        active_docs = state.get("active_docs")
+        active_docs_clean = [d for d in active_docs if d] if active_docs else ([doc_filter] if doc_filter else None)
+
+        doc_clauses = []
+        if active_docs_clean:
+            doc_terms = " OR ".join([f"toLower(coalesce(n.document_id, m.document_id, '')) CONTAINS '{str(d).lower()}'" for d in active_docs_clean])
+            doc_clauses.append(f"({doc_terms})")
+
+        where_parts = []
         if terms:
             terms_cond = " OR ".join([f"toLower(coalesce(n.name, n.label, '')) CONTAINS '{t}'" for t in terms[:4]])
-            cypher = f"MATCH (n)-[r]-(m) WHERE {terms_cond} RETURN coalesce(n.name, n.label) as n_name, type(r) as rel, coalesce(m.name, m.label) as m_name LIMIT 30"
+            where_parts.append(f"({terms_cond})")
+        if doc_clauses:
+            where_parts.extend(doc_clauses)
+
+        if where_parts:
+            where_str = " WHERE " + " AND ".join(where_parts)
+            cypher = f"MATCH (n)-[r]-(m){where_str} RETURN coalesce(n.name, n.label) as n_name, type(r) as rel, coalesce(m.name, m.label) as m_name LIMIT 30"
         else:
             cypher = "MATCH (n)-[r]-(m) RETURN coalesce(n.name, n.label) as n_name, type(r) as rel, coalesce(m.name, m.label) as m_name LIMIT 25"
 
@@ -93,7 +109,13 @@ class CypherNodesMixin:
 
         repaired_query = re.sub(r"\[\s*:\s*\w+\s*\*\s*\]", "-[r]->", failing_query)
         if "toLower" not in repaired_query:
-            repaired_query = "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 20"
+            # Do not emit unfiltered database dump; abort repair to trigger hybrid_retriever fallback
+            return {
+                "cypher_query": "",
+                "cypher_repair_count": 99,
+                "cypher_error": "No targeted entity filters present in Cypher query.",
+                "cypher_status": "FAILED",
+            }
 
         return {
             "cypher_query": repaired_query,

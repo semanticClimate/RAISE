@@ -11,25 +11,26 @@ from pydantic import BaseModel, Field
 
 
 # Base canonical paths inside RAG
-# Canonical repository root is the parent of backend/ or project root
+# Canonical backend directory
 _file_path = Path(__file__).resolve()
-REPO_ROOT = _file_path.parents[3] if len(_file_path.parents) > 3 and _file_path.parents[2].name == "backend" else _file_path.parents[2]
-PROJECT_ROOT = REPO_ROOT
+BACKEND_DIR = _file_path.parents[2] if len(_file_path.parents) > 2 and _file_path.parents[2].name == "backend" else _file_path.parents[1]
+PROJECT_ROOT = BACKEND_DIR
+REPO_ROOT = BACKEND_DIR
 
-# Canonical data directory at repository root
-DATA_DIR = REPO_ROOT / "data"
+# Canonical data directory inside backend
+DATA_DIR = PROJECT_ROOT / "data"
 DOCUMENTS_DIR = DATA_DIR / "documents"
 LIBRARY_DIR = DATA_DIR / "library"
 CATALOGS_DIR = DATA_DIR / "catalogs"
 PROCESSED_DIR = DATA_DIR / "processed"
 CHUNKS_DIR = PROCESSED_DIR / "chunks"
 GRAPH_DIR = PROCESSED_DIR / "graph_triples"
-RUNTIME_DIR = REPO_ROOT / ".runtime"
+RUNTIME_DIR = PROJECT_ROOT / ".runtime"
 VECTOR_DB_DIR = RUNTIME_DIR / ".chromadb"
 UPLOAD_DIR = DOCUMENTS_DIR
 AUDIO_DIR = RUNTIME_DIR / "audio"
-LOG_DIR = REPO_ROOT / "logs"
-TESTS_DIR = REPO_ROOT / "backend" / "tests" if (REPO_ROOT / "backend" / "tests").exists() else REPO_ROOT / "tests"
+LOG_DIR = PROJECT_ROOT / "logs"
+TESTS_DIR = PROJECT_ROOT / "tests"
 FIXTURES_DIR = TESTS_DIR / "fixtures"
 
 # Ensure canonical directories exist automatically upon import
@@ -126,9 +127,13 @@ class Neo4jConfig(BaseModel):
 class VectorConfig(BaseModel):
     persist_directory: Path = Field(
         default_factory=lambda: (
-            Path(os.getenv("CHROMA_PERSIST_DIRECTORY", str(PROJECT_ROOT / ".chromadb_embeddinggemma_2")))
-            if Path(os.getenv("CHROMA_PERSIST_DIRECTORY", "")).is_absolute()
-            else (PROJECT_ROOT / os.getenv("CHROMA_PERSIST_DIRECTORY", ".chromadb_embeddinggemma_2")).resolve()
+            Path(os.getenv("CHROMA_PERSIST_DIRECTORY"))
+            if os.getenv("CHROMA_PERSIST_DIRECTORY") and Path(os.getenv("CHROMA_PERSIST_DIRECTORY")).is_absolute()
+            else (
+                BACKEND_DIR / ".chromadb_embeddinggemma_2"
+                if not os.getenv("CHROMA_PERSIST_DIRECTORY") or os.getenv("CHROMA_PERSIST_DIRECTORY").endswith(".chromadb_embeddinggemma_2")
+                else (BACKEND_DIR / os.getenv("CHROMA_PERSIST_DIRECTORY")).resolve()
+            )
         )
     )
     collection_name: str = Field(default_factory=lambda: os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_embeddinggemma_2"))
@@ -187,7 +192,7 @@ class VectorConfig(BaseModel):
 
 class RerankerConfig(BaseModel):
     """Contextual Cross-Encoder Reranker Configuration."""
-    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5"))
+    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"))
     device: str = Field(default_factory=lambda: os.getenv("RERANKER_DEVICE", "cuda"))
     top_n: int = Field(default_factory=lambda: int(os.getenv("RERANKER_TOP_N", "8")))
 

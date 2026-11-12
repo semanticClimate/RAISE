@@ -283,27 +283,27 @@ class ChainCompletenessGate:
             if not has_attr_kw:
                 continue
 
-                # If attribute is quantitative (expenditure, revenue, enrollment), check for non-year numerical figures
-                if target_attr in ("expenditure", "revenue_profit", "enrollment_count"):
-                    # Find numbers that are NOT years 1990-2035
-                    num_matches = re.findall(r"\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\b", c_text)
-                    valid_nums = []
-                    for n in num_matches:
-                        clean_n = n.replace(",", "")
-                        try:
-                            f = float(clean_n)
-                            if 1990 <= f <= 2035 and "." not in clean_n:
-                                continue
-                            valid_nums.append(f)
-                        except ValueError:
-                            pass
-                    if not valid_nums:
-                        continue  # Only year was present, no actual quantitative figure!
+            # If attribute is quantitative (expenditure, revenue, enrollment), check for non-year numerical figures
+            if target_attr in ("expenditure", "revenue_profit", "enrollment_count"):
+                # Find numbers that are NOT years 1990-2035
+                num_matches = re.findall(r"\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\b", c_text)
+                valid_nums = []
+                for n in num_matches:
+                    clean_n = n.replace(",", "")
+                    try:
+                        f = float(clean_n)
+                        if 1990 <= f <= 2035 and "." not in clean_n:
+                            continue
+                        valid_nums.append(f)
+                    except ValueError:
+                        pass
+                if not valid_nums:
+                    continue  # Only year was present, no actual quantitative figure!
 
-                hop2_verified = True
-                hop2_supporting_chunks.append(cid)
-                hop2_conf = 0.88
-                break
+            hop2_verified = True
+            hop2_supporting_chunks.append(cid)
+            hop2_conf = 0.88
+            break
 
         if hop2_verified:
             hop2 = HopEvidenceItem(

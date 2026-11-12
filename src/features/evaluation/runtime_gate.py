@@ -91,13 +91,21 @@ class RuntimeFaithfulnessQualityGate:
                 "retry_count": retry_count,
             }
 
-        # Convert graph evidence to structured facts
+        # Convert graph evidence (edges + nodes + structured_triples) to structured facts
         graph_facts = []
         if graph_evidence:
             for trip in graph_evidence.get("structured_triples", []):
-                graph_facts.append({"fact": trip})
+                graph_facts.append({"fact": str(trip)})
+            for edge in graph_evidence.get("edges", []):
+                if isinstance(edge, dict) and edge.get("source") and edge.get("target"):
+                    rel = edge.get("type") or edge.get("relation") or "RELATED_TO"
+                    graph_facts.append({"fact": f"{edge['source']} --[{rel}]--> {edge['target']}"})
             for node in graph_evidence.get("nodes", []):
-                graph_facts.append({"fact": f"Node: {node.get('label')} ({node.get('type')})"})
+                if isinstance(node, dict):
+                    n_name = node.get("name") or node.get("label") or node.get("id")
+                    n_type = node.get("type") or node.get("label") or "Entity"
+                    if n_name:
+                        graph_facts.append({"fact": f"Entity: {n_name} ({n_type})"})
 
         report = LocalHeuristicEvaluator.evaluate(
             query=query,
@@ -110,10 +118,15 @@ class RuntimeFaithfulnessQualityGate:
             threshold=self.threshold,
         )
 
-        # Run RigorousQualityGate (from blueprint) for strict completeness and boundary verification
+        # Run RigorousQualityGate with full context (chunks + graph facts + verified math facts)
         from src.features.evaluation.quality_gate import RigorousQualityGate
         rigorous_validator = RigorousQualityGate(faithfulness_threshold=self.threshold)
         contexts = [str(c.get("plain_text") or c.get("text") or "") for c in retrieved_chunks]
+        if graph_facts:
+            contexts.append(" ".join(gf["fact"] for gf in graph_facts))
+        if math_facts:
+            contexts.append(" ".join(str(mf) for mf in math_facts))
+
         rigorous_check = rigorous_validator.verify_completeness_and_grounding(
             query=query,
             response=answer,

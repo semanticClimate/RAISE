@@ -16,7 +16,7 @@ from src.infrastructure.providers.http_client import safe_http_request, Provider
 logger = logging.getLogger("raise.infrastructure.providers.gemini")
 
 DEFAULT_GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai"
-DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 
 class GeminiProvider(LLMProvider):
@@ -52,30 +52,55 @@ class GeminiProvider(LLMProvider):
         if not key:
             raise ProviderHTTPError("Gemini API key is not configured.", classification="NOT_CONFIGURED")
 
-        # Try native GenerativeLanguage API first with multiple candidate model names
-        candidate_models = [self.model_name, "gemini-flash-latest", "gemini-2.5-flash", "gemini-pro-latest"]
+        # Try native GenerativeLanguage API first with prioritized models
+        raw_candidates = [
+            self.model_name,
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-flash-latest",
+        ]
+        # Deduplicate while preserving order
+        candidate_models = []
+        for m in raw_candidates:
+            if m and m not in candidate_models:
+                candidate_models.append(m)
+
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
         payload = {
             "contents": [{"parts": [{"text": full_prompt}]}],
             "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}
         }
 
+        last_error = None
         for cand_m in candidate_models:
             try:
                 native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_m}:generateContent"
-                resp, _ = safe_http_request(native_url, payload=payload, headers={"x-goog-api-key": key}, timeout=kwargs.get("timeout", 12.0), max_retries=1)
+                resp, _ = safe_http_request(
+                    native_url,
+                    payload=payload,
+                    headers={"x-goog-api-key": key},
+                    timeout=kwargs.get("timeout", 15.0),
+                    max_retries=1,
+                )
                 parts = resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                 text_parts = [p.get("text", "") for p in parts if "text" in p]
                 if text_parts:
                     self.model_name = cand_m
                     return "".join(text_parts).strip()
             except ProviderHTTPError as pe:
-                if pe.status_code in (429, 401, 403, 402):
+                last_error = pe
+                if pe.status_code in (401, 403):
+                    # Hard auth failure: don't loop on invalid credentials
                     raise pe
-                logger.debug(f"Gemini model {cand_m} failed: {pe}")
+                # For 404 (deprecated), 503 (high demand), 429 (rate limited on that model): try next model
+                logger.debug(f"Gemini model {cand_m} failed (HTTP {pe.status_code}): {pe}. Falling back to next candidate.")
                 continue
             except Exception as native_err:
-                logger.debug(f"Gemini model {cand_m} failed: {native_err}")
+                last_error = native_err
+                logger.debug(f"Gemini model {cand_m} error: {native_err}. Falling back to next candidate.")
                 continue
 
         messages = []

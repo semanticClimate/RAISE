@@ -61,8 +61,10 @@ class RetrievalNodesMixin:
         if not hasattr(self.rag_engine, "_cached_bm25") or self.rag_engine._cached_bm25 is None:
             try:
                 from src.retrieval.bm25 import SelfContainedBM25
-                base_rag_dir = Path(__file__).resolve().parents[4]
-                chunks_dir = base_rag_dir / "data" / "processed" / "chunks"
+                from src.core.config import settings
+                chunks_dir = settings.processed_dir / "chunks"
+                if not chunks_dir.exists():
+                    chunks_dir = Path(__file__).resolve().parents[4] / "data" / "processed" / "chunks"
                 corpus_chunks = []
                 if chunks_dir.exists():
                     for cf in chunks_dir.glob("*_chunks.json"):
@@ -323,6 +325,7 @@ class RetrievalNodesMixin:
             candidates=rerank_pool,
             text_key="text",
             top_n=rerank_top_n,
+            subqueries=decomp,
         )
 
         # GraphRAG Macro-Chunk Hydration: Expand small fragmented chunks into rich parent sections
@@ -416,8 +419,6 @@ class RetrievalNodesMixin:
 
         return {
             "reformulated_query": reformulated,
-            "standalone_query": reformulated,
-            "query": reformulated,
             "top_k": new_top_k,
             "hops": new_hops,
         }
@@ -437,7 +438,7 @@ class RetrievalNodesMixin:
         )
         bm25_idx = self._get_bm25_index()
         bm25_chunks = bm25_idx.search(search_query, top_k=state.get("top_k", 10), active_docs=state.get("active_docs")) if bm25_idx else []
-        fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True)
+        fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True, query=search_query)
 
         existing_chunks = state.get("relevant_chunks", [])
         combined_candidates = []
@@ -458,6 +459,7 @@ class RetrievalNodesMixin:
             candidates=combined_candidates,
             text_key="text",
             top_n=state.get("top_k", 8),
+            subqueries=[search_query],
         )
         hydrated_reranked = hydrate_macro_chunks(reranked)
         return {

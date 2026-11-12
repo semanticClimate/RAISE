@@ -118,18 +118,58 @@ class DeterministicSynthesizer:
         except Exception as e:
             logger.warning(f"beta.chat.completions.parse synthesis failed ({e}), falling back to json_object...")
 
-        # Secondary fallback: json_object
-        schema_str = json.dumps(FinalAnswerResponse.model_json_schema())
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "system", "content": f"{SYNTHESIS_SYSTEM_PROMPT}\nOutput JSON matching:\n{schema_str}"},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.0,
+        # Secondary fallback: local OpenAI json_object
+        try:
+            schema_str = json.dumps(FinalAnswerResponse.model_json_schema())
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": f"{SYNTHESIS_SYSTEM_PROMPT}\nOutput JSON matching:\n{schema_str}"},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            )
+            content = response.choices[0].message.content or "{}"
+            result = FinalAnswerResponse.model_validate_json(content)
+            logger.info(f"Synthesized Final Answer via local fallback -> '{result.final_answer}'")
+            return result
+        except Exception as e:
+            logger.warning(f"Local client chat.completions failed ({e}), falling back to ProviderRouter...")
+
+        # Tertiary fallback: Unified ProviderRouter for cloud/multi-provider environments when local vLLM is offline
+        try:
+            from src.infrastructure.providers.router import get_provider_router, InferenceTask
+            router = get_provider_router()
+            schema_str = json.dumps(FinalAnswerResponse.model_json_schema())
+            system_prompt = f"{SYNTHESIS_SYSTEM_PROMPT}\nYou MUST output valid JSON matching this schema:\n{schema_str}"
+            raw_router_resp = router.complete(
+                prompt=prompt,
+                task=InferenceTask.RAG_GENERATION,
+                system_prompt=system_prompt,
+                temperature=0.0,
+            )
+            if raw_router_resp:
+                cleaned_resp = raw_router_resp.strip()
+                if "```json" in cleaned_resp:
+                    cleaned_resp = cleaned_resp.split("```json", 1)[1].split("```", 1)[0].strip()
+                elif "```" in cleaned_resp:
+                    cleaned_resp = cleaned_resp.split("```", 1)[1].split("```", 1)[0].strip()
+
+                try:
+                    result = FinalAnswerResponse.model_validate_json(cleaned_resp)
+                    logger.info(f"Synthesized Final Answer via ProviderRouter -> '{result.final_answer}'")
+                    return result
+                except Exception:
+                    parsed_dict = json.loads(cleaned_resp)
+                    return FinalAnswerResponse(
+                        final_answer=str(parsed_dict.get("final_answer", cleaned_resp)),
+                        reasoning_trace=str(parsed_dict.get("reasoning_trace", "Synthesized via ProviderRouter fallback.")),
+                    )
+        except Exception as router_err:
+            logger.warning(f"ProviderRouter synthesis fallback failed: {router_err}")
+
+        return FinalAnswerResponse(
+            final_answer="INSUFFICIENT_EVIDENCE",
+            reasoning_trace="Unable to contact local vLLM or configured LLM providers for synthesis.",
         )
-        content = response.choices[0].message.content or "{}"
-        result = FinalAnswerResponse.model_validate_json(content)
-        logger.info(f"Synthesized Final Answer via fallback -> '{result.final_answer}'")
-        return result

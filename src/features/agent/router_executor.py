@@ -72,16 +72,6 @@ class PlanExecutorMixin:
                 tail.insert(0, item)
         return head + tail
 
-    @staticmethod
-    def _extract_relevant_chunk_text(text: str, query: str = "", max_chars: int = 3000) -> str:
-        """Extracts and truncates chunk text, preserving dense evidence context."""
-        if not text:
-            return ""
-        clean = text.strip()
-        if len(clean) <= max_chars:
-            return clean
-        return clean[:max_chars] + "..."
-
     def execute_plan(
         self,
         plan: AgentExecutionPlan,
@@ -146,16 +136,17 @@ class PlanExecutorMixin:
                 except Exception:
                     pass
 
-        # 2. Contextual Cross-Encoder Reranking
-        chunks = self.reranker.rerank(
-            query=plan.query,
-            candidates=raw_chunks,
-            text_key="text",
-            top_n=8,
-        )
-
-        # GraphRAG Macro-Chunk Hydration: expand child snippets into rich parent sections
-        chunks = hydrate_macro_chunks(chunks)
+        # 2. Contextual Cross-Encoder Reranking & Hydration
+        if pre_chunks and len(pre_chunks) > 0 and any("cross_encoder_score" in c for c in raw_chunks):
+            chunks = raw_chunks[:8]
+        else:
+            chunks = self.reranker.rerank(
+                query=plan.query,
+                candidates=raw_chunks,
+                text_key="text",
+                top_n=8,
+            )
+            chunks = hydrate_macro_chunks(chunks)
 
         # For contact/author queries, ensure chunk 1 is prioritized at top if present
         if any(w in q_lower for w in ["phone", "mobile", "contact", "email", "name", "who", "author", "candidate"]):
@@ -168,7 +159,7 @@ class PlanExecutorMixin:
         ordered_chunks = self._reorder_context_sandwich(chunks[:6]) + chunks[6:]
         plan.retrieved_evidence["chunks"] = ordered_chunks
 
-        citations = build_evidence_citations(ordered_chunks, active_doc_list)
+        citations = build_evidence_citations(ordered_chunks[:8], active_doc_list)
 
         # 2. Extract Structured Facts if available
         if "structured_fact_search" in plan.selected_tools:
@@ -209,37 +200,23 @@ class PlanExecutorMixin:
                 from src.infrastructure.providers.router import get_provider_router, InferenceTask
                 router = get_provider_router()
                 evidence_blocks = []
-                grouped_blocks: Dict[Tuple[str, int], Dict[str, Any]] = {}
-                for c in ordered_chunks[:6]:
-                    meta = c.get("metadata", {})
-                    pdf_name = meta.get("pdf_filename") or (active_doc_list[0] if active_doc_list else "Document")
-                    p_page = meta.get("primary_page") or meta.get("physical_page") or meta.get("page")
-                    if not p_page or int(p_page) < 1:
-                        match = re.search(r"_p0*(\d+)", str(meta.get("chunk_id") or c.get("id") or ""))
-                        p_page = int(match.group(1)) if match else 1
-                    p_page = int(p_page)
-                    d_page = meta.get("printed_page")
-                    heading = meta.get("heading") or f"Section (Page {p_page})"
-                    c_text = self._extract_relevant_chunk_text(c.get("text") or "", plan.query, max_chars=3000)
-
-                    page_key = (pdf_name, p_page)
-                    if page_key in grouped_blocks:
-                        existing = grouped_blocks[page_key]
-                        if c_text and c_text not in existing["text"]:
-                            existing["text"] += "\n\n" + c_text
-                    else:
-                        grouped_blocks[page_key] = {
-                            "pdf_name": pdf_name,
-                            "p_page": p_page,
-                            "d_page": d_page,
-                            "heading": heading,
-                            "text": c_text,
-                        }
-
-                for idx, g in enumerate(grouped_blocks.values()):
-                    doc_p_str = f", Doc Page {g['d_page']}" if (g['d_page'] and str(g['d_page']).strip() != "" and str(g['d_page']) != str(g['p_page'])) else ""
+                for cit in citations:
+                    cit_idx = cit["citation_index"]
+                    pdf_name = cit.get("pdf_filename") or (active_doc_list[0] if active_doc_list else "Document")
+                    p_page = cit.get("primary_page", 1)
+                    d_page = cit.get("printed_page")
+                    heading = cit.get("heading") or f"Section (Page {p_page})"
+                    c_text = self._extract_relevant_chunk_text(cit.get("plain_text") or "", plan.query, max_chars=3000)
+                    doc_p_str = f", Doc Page {d_page}" if (d_page and str(d_page).strip() != "" and str(d_page) != str(p_page)) else ""
                     evidence_blocks.append(
-                        f"[{idx+1}] [Doc: {g['pdf_name']}, PDF Page {g['p_page']}{doc_p_str}, Heading: {g['heading']}]:\n{g['text']}"
+                        f"[{cit_idx}] [Doc: {pdf_name}, PDF Page {p_page}{doc_p_str}, Heading: {heading}]:\n{c_text}"
+                    )
+
+                hop_obs = plan.retrieved_evidence.get("hop_observations")
+                if hop_obs:
+                    evidence_blocks.append(
+                        "[MULTI-HOP REASONING OBSERVATIONS (Synthesize alongside numbered excerpts [1], [2])]:\n"
+                        + "\n".join(f"• {obs}" for obs in hop_obs)
                     )
                 subgraph = plan.retrieved_evidence.get("subgraph")
                 if subgraph and (subgraph.get("edges") or subgraph.get("nodes")):
@@ -317,13 +294,23 @@ class PlanExecutorMixin:
                 raw_answer = llm_response
                 if math_result:
                     claims.append(f"Mathematically Verified ({math_result.operation}): {math_result.formula_expression} = {math_result.formatted_result}")
-                for c in ordered_chunks:
-                    meta = c.get("metadata", {})
-                    pno = meta.get("primary_page", 1)
-                    doc_p = meta.get("printed_page")
-                    page_str = f"PDF Page {pno}, Doc Page {doc_p}" if (doc_p and str(doc_p).strip() != "" and str(doc_p) != str(pno)) else f"Page {pno}"
-                    pdf_name = meta.get("pdf_filename", "Document.pdf")
-                    claims.append(f"{pdf_name} ({page_str}): Verified via LLM Grounding.")
+                # Extract factual sentences from raw_answer for VerifiedClaimsBadge
+                raw_sentences = re.split(r"(?<=[.!?])\s+", raw_answer)
+                extracted_claims = []
+                for s in raw_sentences:
+                    s_clean = s.strip()
+                    if len(s_clean) > 20 and (re.search(r"\[\d+\]", s_clean) or re.search(r"\b\d+(?:\.\d+)?%?\b", s_clean)):
+                        extracted_claims.append(s_clean)
+                if extracted_claims:
+                    claims.extend(extracted_claims[:6])
+                else:
+                    for c in ordered_chunks[:4]:
+                        meta = c.get("metadata", {})
+                        pno = meta.get("primary_page", 1)
+                        doc_p = meta.get("printed_page")
+                        page_str = f"PDF Page {pno}, Doc Page {doc_p}" if (doc_p and str(doc_p).strip() != "" and str(doc_p) != str(pno)) else f"Page {pno}"
+                        pdf_name = meta.get("pdf_filename", "Document.pdf")
+                        claims.append(f"{pdf_name} ({page_str}): Verified via LLM Grounding.")
             else:
                 findings = []
                 if math_result:
@@ -476,7 +463,14 @@ class PlanExecutorMixin:
                 if form_direct_answer:
                     raw_answer = form_direct_answer
                 else:
-                    seen_snippets = set()
+                    # High-precision semantic sentence extraction fallback
+                    stop_words = {"what", "is", "are", "was", "were", "the", "and", "for", "with", "show", "tell", "give", "please", "can", "you", "does", "did", "from", "that", "this", "about", "which", "where", "how", "many", "much"}
+                    q_words = set(w.lower() for w in re.findall(r"\b[a-zA-Z]{3,}\b", plan.query) if w.lower() not in stop_words)
+                    is_numeric_query = any(kw in q_lower for kw in ["how many", "how much", "count", "number", "cases", "amount", "fee", "total", "rate", "percentage", "year", "annual"])
+
+                    candidate_sentences = []
+                    seen_sentences = set()
+
                     for idx, c in enumerate(ordered_chunks):
                         meta = c.get("metadata", {})
                         cid = str(meta.get("chunk_id") or c.get("id") or "")
@@ -484,17 +478,7 @@ class PlanExecutorMixin:
                         pno = meta.get("primary_page", 1)
                         doc_p = meta.get("printed_page")
                         page_str = f"PDF Page {pno}, Doc Page {doc_p}" if (doc_p and str(doc_p).strip() != "" and str(doc_p) != str(pno)) else f"Page {pno}"
-                        pdf_name = meta.get("pdf_filename") or "Report.pdf"
-
-                        raw_h = meta.get("heading") or f"Section ({page_str})"
-                        if any(b in raw_h.lower() for b in ("confirm that i fulfil", "declaration", "agree to strictly comply", "disclaimer")):
-                            heading = "Applicant Information & Declaration"
-                        elif re.match(r"^\d+(?:\.\d+)?\s+application\s+fee", raw_h, re.IGNORECASE):
-                            heading = "Application Details & Fee Payment"
-                        elif len(raw_h) > 55:
-                            heading = raw_h[:52] + "..."
-                        else:
-                            heading = raw_h
+                        pdf_name = meta.get("pdf_filename") or "Document.pdf"
 
                         raw_text = c.get("text", "")
                         cleaned_body = re.sub(
@@ -503,59 +487,59 @@ class PlanExecutorMixin:
                             raw_text,
                         ).strip()
 
-                        stop_words = {"what", "is", "are", "was", "were", "the", "and", "for", "with", "show", "tell", "give", "please", "can", "you", "does", "did", "from", "that", "this", "about", "which", "where"}
-                        q_words = set(w.lower() for w in re.findall(r"\b[a-zA-Z]{3,}\b", plan.query) if w.lower() not in stop_words)
-                        body_lines = [l.strip() for l in cleaned_body.splitlines() if l.strip()]
+                        # Split text into candidate sentences
+                        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned_body) if len(s.strip()) > 15]
+                        for s in sentences:
+                            # Skip pure question prompts, TOC navigation, or table lines
+                            if s.endswith("?") or any(s.startswith(pfx) for pfx in ("|", "###", "Table ", "Chapter ")) or "..." in s:
+                                continue
+                            if re.match(r"^\d+\s+[A-Za-z\s]+basics\s+\d+", s):
+                                continue
 
-                        best_match_idx = -1
-                        best_overlap = 0
-                        for line_i, line in enumerate(body_lines):
-                            line_lower = line.lower()
-                            overlap = sum(1 for qw in q_words if qw in line_lower)
-                            if overlap > best_overlap:
-                                best_overlap = overlap
-                                best_match_idx = line_i
+                            s_lower = s.lower()
+                            overlap = sum(1 for qw in q_words if qw in s_lower)
+                            has_number = bool(re.search(r"(\b\d+(?:[\.,]\d+)?\b|\bmillion\b|\bbillion\b|\blakh\b|\bcrore\b|%)", s_lower))
 
-                        selected_content = ""
-                        if best_match_idx != -1 and best_overlap > 0:
-                            extracted_lines = []
-                            if best_match_idx > 0:
-                                prev_l = body_lines[best_match_idx - 1].strip()
-                                if not prev_l.startswith("(") and len(prev_l) < 80 and not any(kw in prev_l.lower() for kw in ("page", "chapter", "table")):
-                                    extracted_lines.append(prev_l)
-                            extracted_lines.append(body_lines[best_match_idx])
-                            for f_idx in range(best_match_idx + 1, min(best_match_idx + 4, len(body_lines))):
-                                nxt = body_lines[f_idx].strip()
-                                if any(nxt.startswith(pfx) for pfx in ("|", "-", ":", "•", "*")) or nxt in ("| | |", "| --- | --- | --- |", "| | | |"):
-                                    continue
-                                if any(nxt.startswith(pfx) for pfx in ["-", "*"]) or any(qw in nxt.lower() for qw in q_words) or (len(nxt) < 120 and not nxt.startswith("Chapter")):
-                                    extracted_lines.append(nxt)
-                                else:
-                                    break
-                            selected_content = "\n  ".join(extracted_lines)
+                            score = overlap
+                            if is_numeric_query and has_number:
+                                score += 3.0
+
+                            norm_s = re.sub(r"\s+", " ", s.lower())[:80]
+                            if norm_s not in seen_sentences and score > 0:
+                                seen_sentences.add(norm_s)
+                                candidate_sentences.append({
+                                    "text": s,
+                                    "score": score,
+                                    "cit_num": cit_num,
+                                    "pdf_name": pdf_name,
+                                    "page_str": page_str,
+                                    "has_number": has_number,
+                                    "chunk_idx": idx,
+                                })
+
+                    # Sort candidate sentences by relevance score descending
+                    candidate_sentences.sort(key=lambda x: (x["score"], -x["chunk_idx"]), reverse=True)
+
+                    if candidate_sentences:
+                        top = candidate_sentences[0]
+                        lead_text = top["text"].strip()
+                        lead_cit = top["cit_num"]
+
+                        # Formulate coherent natural answer
+                        formatted_lead = f"Based on the attached documentation, **{lead_text}** [{lead_cit}]."
+                        claims.append(f"{top['pdf_name']} ({top['page_str']}): {lead_text}")
+
+                        # Include 1-2 top supporting context sentences if available and distinct
+                        supporting = []
+                        for sec in candidate_sentences[1:3]:
+                            if sec["cit_num"] != lead_cit or sec["score"] >= 2:
+                                supporting.append(f"• {sec['text']} [{sec['cit_num']}]")
+                                claims.append(f"{sec['pdf_name']} ({sec['page_str']}): {sec['text'][:140]}")
+
+                        if supporting:
+                            raw_answer = f"{formatted_lead}\n\n**Additional Documented Context:**\n" + "\n".join(supporting)
                         else:
-                            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned_body) if len(s.strip()) > 15]
-                            matched_sentences = [
-                                s for s in sentences 
-                                if any(qw in s.lower() for qw in q_words) or re.search(r"(\bRs\.?|INR|\d+(?:\.\d+)?\s*(?:crore|lakh|%)|\b20\d\d\b)", s, re.IGNORECASE)
-                            ]
-                            if matched_sentences:
-                                selected_content = matched_sentences[0]
-                            elif sentences and idx == 0:
-                                selected_content = sentences[0]
-                            elif idx == 0:
-                                selected_content = cleaned_body[:200]
-
-                        if selected_content:
-                            norm_snippet = re.sub(r"\s+", " ", selected_content.strip().lower())[:100]
-                            if norm_snippet and norm_snippet not in seen_snippets:
-                                seen_snippets.add(norm_snippet)
-                                findings.append(f"• **{heading}** [{cit_num}]:\n  {selected_content}")
-                                claims.append(f"{pdf_name} ({page_str}): {selected_content.replace(chr(10), ' ')[:140]}")
-
-                    if findings:
-                        answer_parts.append("\n\n".join(findings))
-                        raw_answer = "\n".join(answer_parts)
+                            raw_answer = formatted_lead
                     else:
                         doc_ctx = f"in {', '.join(active_doc_list)}" if active_doc_list else "in the uploaded documents"
                         raw_answer = f"The uploaded document(s) ({doc_ctx}) do not contain verified statements or findings answering '{plan.query}'."

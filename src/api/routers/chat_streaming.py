@@ -43,6 +43,7 @@ except ImportError:
 
 from src.api.context import is_aborted, record_query_metric
 from src.api.schemas import ChatMessageRequest
+from src.core.dispatchers import RAGModeDispatcher
 
 logger = logging.getLogger("raise.router.chat.streaming")
 
@@ -390,6 +391,26 @@ def create_chat_sse_stream(
                 await asyncio.sleep(0.002)
 
             suggestions = result.get("suggestions") or result.get("follow_up_inquiries", []) or []
+
+            # Resolve pipeline provenance & model metadata
+            try:
+                from src.infrastructure.providers.router import get_provider_router
+                prov_router = get_provider_router()
+                compl_info = prov_router.get_last_completion_info()
+                actual_llm_prov = compl_info.get("provider") or os.getenv("LLM_BACKEND", "gemini")
+                actual_llm_model = compl_info.get("model") or os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
+            except Exception:
+                actual_llm_prov = os.getenv("LLM_BACKEND", "gemini")
+                actual_llm_model = os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
+
+            from src.infrastructure.provenance import build_pipeline_info
+            pipeline_info = build_pipeline_info(mode=mode)
+            if actual_llm_prov:
+                pipeline_info["llm_provider"] = actual_llm_prov
+            if actual_llm_model:
+                pipeline_info["llm_model"] = actual_llm_model
+            storage_desc = pipeline_info["storage_used"]
+
             # Final metadata event
             final_meta = {
                 "status": "SUCCESS",
@@ -411,6 +432,13 @@ def create_chat_sse_stream(
                 "execution_time": elapsed,
                 "latency_sec": elapsed,
                 "mode_used": mode,
+                "pipeline_info": pipeline_info,
+                "storage_used": storage_desc,
+                "llm_provider": actual_llm_prov,
+                "llm_model": actual_llm_model,
+                "encoder_model": pipeline_info["encoder_model"],
+                "reranker_model": pipeline_info["reranker_model"],
+                "nli_verifier_model": pipeline_info["nli_verifier_model"],
                 "persisted": bool(session_id is not None),
                 "saved": bool(session_id is not None),
                 "persistence_status": "saved" if session_id else "ephemeral",

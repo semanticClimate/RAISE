@@ -41,6 +41,7 @@ class QueryService:
         top_k: int = 4,
         document_filter: Optional[str] = None,
         chat_history: Optional[List[Dict[str, Any]]] = None,
+        mode: str = "expert",
     ) -> Dict[str, Any]:
         """
         Primary synchronous/headless query execution.
@@ -87,10 +88,10 @@ class QueryService:
 
         result["thread_id"] = thread_id
         result["session_id"] = thread_id
-        return self._format_frontend_payload(result, query, thread_id)
+        return self._format_frontend_payload(result, query, thread_id, mode=mode)
 
     def _format_frontend_payload(
-        self, raw_result: Dict[str, Any], query: str, thread_id: str
+        self, raw_result: Dict[str, Any], query: str, thread_id: str, mode: str = "expert"
     ) -> Dict[str, Any]:
         grounded_ans = raw_result.get("grounded_answer") or raw_result.get("answer", "")
         citations = raw_result.get("citations", [])
@@ -110,6 +111,10 @@ class QueryService:
             quality_decision = raw_decision
         else:
             quality_decision = "accept"
+
+        effective_mode = raw_result.get("mode_used") or raw_result.get("mode") or mode or "expert"
+        from src.infrastructure.provenance import build_pipeline_info
+        pipeline_info = build_pipeline_info(mode=effective_mode)
 
         return {
             "status": "SUCCESS",
@@ -138,6 +143,14 @@ class QueryService:
             "decomposed_queries": raw_result.get("decomposed_queries") or [query],
             "standalone_query": raw_result.get("standalone_query") or query,
             "quality_gate_report": raw_result.get("quality_gate_report"),
+            "mode_used": effective_mode,
+            "pipeline_info": pipeline_info,
+            "storage_used": pipeline_info["storage_used"],
+            "llm_provider": pipeline_info["llm_provider"],
+            "llm_model": pipeline_info["llm_model"],
+            "encoder_model": pipeline_info["encoder_model"],
+            "reranker_model": pipeline_info["reranker_model"],
+            "nli_verifier_model": pipeline_info["nli_verifier_model"],
             "persisted": bool(thread_id is not None),
             "saved": bool(thread_id is not None),
             "persistence_status": "saved" if thread_id else "ephemeral",
@@ -153,6 +166,7 @@ class QueryService:
         top_k: int = 4,
         document_filter: Optional[str] = None,
         chat_history: Optional[List[Dict[str, Any]]] = None,
+        mode: str = "expert",
     ) -> AsyncGenerator[str, None]:
         """
         Server-Sent Events generator yielding stage updates, answer chunks, and final payload.
@@ -174,6 +188,7 @@ class QueryService:
                 top_k=top_k,
                 document_filter=document_filter,
                 chat_history=chat_history,
+                mode=mode,
             )
 
             # Emit all intermediate pipeline stages
@@ -204,6 +219,7 @@ class QueryService:
         top_k: int = 4,
         doc_filter: Optional[str] = None,
         active_docs: Optional[List[str]] = None,
+        mode: str = "expert",
     ) -> Dict[str, Any]:
         """
         Execute LangGraph StateGraph Workflow with Coreference Resolution & Quality Gate.
@@ -227,6 +243,8 @@ class QueryService:
             active_filenames = active_docs
 
         if not active_filenames:
+            from src.infrastructure.provenance import build_pipeline_info
+            pipeline_info = build_pipeline_info(mode=mode)
             return {
                 "status": "SUCCESS",
                 "query": query,
@@ -243,6 +261,14 @@ class QueryService:
                 "verified_claims": [],
                 "top_chunks": [],
                 "quality_gate_decision": "empty_workspace",
+                "mode_used": mode,
+                "pipeline_info": pipeline_info,
+                "storage_used": pipeline_info["storage_used"],
+                "llm_provider": pipeline_info["llm_provider"],
+                "llm_model": pipeline_info["llm_model"],
+                "encoder_model": pipeline_info["encoder_model"],
+                "reranker_model": pipeline_info["reranker_model"],
+                "nli_verifier_model": pipeline_info["nli_verifier_model"],
             }
 
         # Run compiled LangGraph state machine
@@ -286,7 +312,7 @@ class QueryService:
             result["session_id"] = session_id
             result["resolved_query"] = resolved_query
 
-        return self._format_frontend_payload(result, query, session_id or "default")
+        return self._format_frontend_payload(result, query, session_id or "default", mode=mode)
 
     def get_dynamic_suggestions(
         self,

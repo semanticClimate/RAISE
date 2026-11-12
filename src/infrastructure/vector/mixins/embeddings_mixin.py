@@ -114,6 +114,16 @@ class VectorEmbeddingsMixin:
 
         "BAAI/bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
 
+        "bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+
+        "bge-base": "BAAI/bge-base-en-v1.5",
+
+        "BAAI/bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+
+        "all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
+
+        "sentence-transformers/all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
+
         "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
 
         "sentence-transformers/all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
@@ -178,7 +188,7 @@ class VectorEmbeddingsMixin:
 
             return 384
 
-        if "embeddinggemma" in model_name or "gemma" in model_name:
+        if "embeddinggemma" in model_name or "gemma" in model_name or "bge-base" in model_name or "mpnet" in model_name:
 
             return 768
 
@@ -316,11 +326,28 @@ class VectorEmbeddingsMixin:
 
             except Exception as e:
 
-                print(f"SentenceTransformer load error ({raw_id}): {e}. Attempting fallback to BAAI/bge-large-en-v1.5 or all-MiniLM-L6-v2.")
+                target_dim = self.dimension
+                if target_dim == 768 or "gemma" in str(raw_id).lower():
+                    fallback_candidates = [
+                        "BAAI/bge-base-en-v1.5",
+                        "sentence-transformers/all-mpnet-base-v2",
+                        "nomic-ai/nomic-embed-text-v1.5",
+                    ]
+                elif target_dim == 1024:
+                    fallback_candidates = [
+                        "BAAI/bge-large-en-v1.5",
+                        "BAAI/bge-m3",
+                    ]
+                else:
+                    fallback_candidates = [
+                        "BAAI/bge-base-en-v1.5",
+                    ]
+
+                print(f"SentenceTransformer load error ({raw_id}): {e}. Attempting dimension-compatible fallback ({target_dim}-dim) to {fallback_candidates[0]}.")
 
                 fallback_loaded = False
 
-                for fb_id in ["BAAI/bge-large-en-v1.5", "sentence-transformers/all-MiniLM-L6-v2"]:
+                for fb_id in fallback_candidates:
 
                     try:
 
@@ -332,7 +359,7 @@ class VectorEmbeddingsMixin:
 
                         fallback_loaded = True
 
-                        print(f"Embedding fallback ({fb_id}) loaded successfully.")
+                        print(f"Embedding fallback ({fb_id}) loaded successfully ({target_dim}-dim compatible with ChromaDB).")
 
                         break
 

@@ -38,6 +38,7 @@ async def query_pipeline(
         raise HTTPException(status_code=400, detail="Query exceeds maximum length of 2500 characters")
 
     thread_id = request_data.thread_id or request_data.session_id or "default"
+    mode = str(request_data.mode or "expert").lower()
     result = query_service.execute_query(
         query=query,
         thread_id=thread_id,
@@ -46,6 +47,7 @@ async def query_pipeline(
         top_k=request_data.top_k or 4,
         document_filter=request_data.document_filter,
         chat_history=request_data.chat_history,
+        mode=mode,
     )
     return JSONResponse(content=result)
 
@@ -64,6 +66,7 @@ async def query_pipeline_stream(
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     thread_id = request_data.thread_id or request_data.session_id or "default"
+    mode = str(request_data.mode or "expert").lower()
     return StreamingResponse(
         query_service.stream_query_events(
             query=query,
@@ -73,6 +76,7 @@ async def query_pipeline_stream(
             top_k=request_data.top_k or 4,
             document_filter=request_data.document_filter,
             chat_history=request_data.chat_history,
+            mode=mode,
         ),
         media_type="text/event-stream",
         headers={
@@ -102,6 +106,7 @@ async def graphrag_subgraph_query(
         thread_id = body.get("thread_id") or body.get("session_id") or "default"
         hops = int(body.get("hops", 2))
         top_k = int(body.get("top_k", 4))
+        mode = str(body.get("mode", "expert")).lower()
         doc_filter = body.get("document_filter")
         raw_active = body.get("active_docs") or body.get("selectedSourceIds")
         active_docs = _parse_drawer_active_docs(raw_active) if raw_active is not None else None
@@ -118,6 +123,7 @@ async def graphrag_subgraph_query(
             top_k=top_k,
             doc_filter=doc_filter,
             active_docs=active_docs,
+            mode=mode,
         )
     except HTTPException:
         raise

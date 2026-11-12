@@ -23,6 +23,7 @@ from .deepseek import DeepSeekProvider
 from .nvidia import NvidiaNIMProvider
 from .cohere import CohereProvider
 from .openrouter import OpenRouterProvider
+from .router import ProviderRouter, InferenceTask, ExecutionMode, ProviderExhaustedError
 from .http_client import safe_http_request, ProviderHTTPError, classify_http_status
 
 __all__ = [
@@ -43,6 +44,10 @@ __all__ = [
     "NvidiaNIMProvider",
     "CohereProvider",
     "OpenRouterProvider",
+    "ProviderRouter",
+    "InferenceTask",
+    "ExecutionMode",
+    "ProviderExhaustedError",
     "safe_http_request",
     "ProviderHTTPError",
     "classify_http_status",

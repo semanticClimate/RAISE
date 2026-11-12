@@ -122,22 +122,31 @@ def hydrate_macro_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if "printed_page" not in meta and p_obj.get("printed_page"):
                 meta["printed_page"] = p_obj["printed_page"]
 
-            # Also check for embedded folio headers (e.g. document title/folio pipes: "Title | 43" or "43 | Title")
-            folio_matches = re.findall(
-                r"(?:[A-Za-z0-9\s\-–]{2,40}\s*\|\s*(\d{1,4})|(\d{1,4})\s*\|\s*[A-Za-z0-9\s\-–]{2,40}|\|\s*(\d{1,4})\s*\|)",
-                parent_text,
-                re.IGNORECASE,
-            )
-            if folio_matches:
-                cur_pages = meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else [])
-                for fm in folio_matches:
-                    for g in fm:
-                        if g and g.isdigit():
-                            p_val = int(g)
-                            if 1 <= p_val <= 400:
-                                cur_pages.append(p_val)
-                meta["source_pages"] = sorted(list(set(cur_pages)))
+            # Ensure source_pages is preserved from the parent section
+            if p_obj.get("source_pages"):
+                meta["source_pages"] = list(p_obj["source_pages"])
                 c_copy["source_pages"] = meta["source_pages"]
+
+            # Also check for embedded folio headers on non-table header lines (skip TOC and markdown table grids)
+            is_toc = any(kw in str(meta.get("heading", "")).lower() for kw in ("contents", "index", "table of contents"))
+            if not is_toc and "### Table:" not in parent_text:
+                non_table_lines = [l for l in parent_text.splitlines() if not l.strip().startswith("|") and l.count("|") == 1]
+                if non_table_lines:
+                    folio_matches = re.findall(
+                        r"(?:^[A-Za-z0-9\s\-–]{2,40}\s*\|\s*(\d{1,4})$|^(\d{1,4})\s*\|\s*[A-Za-z0-9\s\-–]{2,40}$)",
+                        "\n".join(non_table_lines),
+                        re.IGNORECASE | re.MULTILINE,
+                    )
+                    if folio_matches:
+                        cur_pages = list(meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else []))
+                        for fm in folio_matches:
+                            for g in fm:
+                                if g and g.isdigit():
+                                    p_val = int(g)
+                                    if 1 <= p_val <= 400:
+                                        cur_pages.append(p_val)
+                        meta["source_pages"] = sorted(list(set(cur_pages)))
+                        c_copy["source_pages"] = meta["source_pages"]
 
             c_copy["metadata"] = meta
             hydrated.append(c_copy)

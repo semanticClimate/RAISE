@@ -20,8 +20,11 @@ Author: RAISE Core Architecture Team
 """
 
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("raise.parsers.document_parser")
 
 # Re-export text quality and normalization primitives
 from src.parsers.text_quality import (
@@ -95,13 +98,38 @@ class SmartDocumentParser:
         pdf_path = Path(pdf_path)
         eng_lower = str(engine or "auto").lower()
 
+        total_pages = 0
+        if HAS_PYMUPDF:
+            try:
+                with pymupdf.open(str(pdf_path)) as _pdoc:
+                    total_pages = len(_pdoc)
+            except Exception:
+                pass
+
         use_docling = False
         if eng_lower in ("deep", "docling") or full_potential:
-            use_docling = HAS_DOCLING
+            # If the PDF is large (> 40 pages) and full_potential is not explicitly set,
+            # route to high-speed PyMuPDF to avoid synchronous HTTP gateway timeouts (> 120s)
+            if total_pages > 40 and not full_potential:
+                logger.info(
+                    "Document '%s' has %d pages (> 40). Routing to high-speed PyMuPDF parser to prevent HTTP gateway timeout.",
+                    pdf_path.name,
+                    total_pages,
+                )
+                use_docling = False
+            else:
+                use_docling = HAS_DOCLING
         elif eng_lower == "fast":
             use_docling = False
         else:  # auto
-            use_docling = self.should_use_docling(pdf_path)
+            if total_pages > 40 and not full_potential:
+                use_docling = False
+            else:
+                use_docling = self.should_use_docling(pdf_path)
+
+        effective_extract_tables = extract_tables
+        if total_pages > 40 and eng_lower in ("fast", "auto") and not full_potential:
+            effective_extract_tables = False
 
         if use_docling:
             pages = self._docling_engine.parse(pdf_path=pdf_path, max_pages=max_pages)
@@ -109,7 +137,12 @@ class SmartDocumentParser:
                 return pages
 
         # Fallback to high-speed PyMuPDF parser
-        return self._pymupdf_engine.parse(pdf_path=pdf_path, max_pages=max_pages)
+        return self._pymupdf_engine.parse(
+            pdf_path=pdf_path,
+            max_pages=max_pages,
+            extract_tables=effective_extract_tables,
+            do_ocr=False,
+        )
 
     # Expose helper static methods for backward compatibility
     @staticmethod

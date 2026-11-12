@@ -25,10 +25,10 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Ensure canonical repository root is in sys.path
+# Ensure canonical backend root is in sys.path
 _resolved_path = Path(__file__).resolve().parent
-REPO_ROOT = _resolved_path.parent if _resolved_path.name == "backend" else _resolved_path
-BASE_DIR = REPO_ROOT
+REPO_ROOT = _resolved_path
+BASE_DIR = _resolved_path
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

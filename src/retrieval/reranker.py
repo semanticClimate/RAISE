@@ -55,7 +55,7 @@ def _get_global_flashranker() -> Optional[Any]:
 
 
 def is_table_candidate(candidate: Dict[str, Any] | Any) -> bool:
-    """Detects whether candidate contains tabular, markdown schedule, or financial grid structure."""
+    """Detects whether candidate contains tabular, markdown schedule, scientific data, or financial grid structure."""
     if hasattr(candidate, "page_content"):
         txt = str(candidate.page_content or "")
         meta = getattr(candidate, "metadata", {}) or {}
@@ -63,15 +63,27 @@ def is_table_candidate(candidate: Dict[str, Any] | Any) -> bool:
         txt = str(candidate.get("plain_text") or candidate.get("text") or "")
         meta = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else candidate
 
-    financial_keywords = (
-        "balance sheet" in txt.lower()
-        or "income & expenditure" in txt.lower()
-        or "income and expenditure" in txt.lower()
-        or "schedule forming part" in txt.lower()
-        or "receipts and payments" in txt.lower()
-        or "corpus/capital fund" in txt.lower()
-        or "earmarked / endowment" in txt.lower()
-        or "establishment expenses" in txt.lower()
+    txt_lower = txt.lower()
+    structural_keywords = (
+        "balance sheet" in txt_lower
+        or "income & expenditure" in txt_lower
+        or "income and expenditure" in txt_lower
+        or "schedule forming part" in txt_lower
+        or "receipts and payments" in txt_lower
+        or "corpus/capital fund" in txt_lower
+        or "earmarked / endowment" in txt_lower
+        or "establishment expenses" in txt_lower
+        or "figure " in txt_lower
+        or "fig. " in txt_lower
+        or "appendix" in txt_lower
+        or "exhibit" in txt_lower
+        or "supplementary" in txt_lower
+        or "dataset" in txt_lower
+        or "benchmark" in txt_lower
+        or "methodology" in txt_lower
+        or "equation" in txt_lower
+        or "theorem" in txt_lower
+        or "algorithm" in txt_lower
     )
 
     return (
@@ -79,7 +91,7 @@ def is_table_candidate(candidate: Dict[str, Any] | Any) -> bool:
         or "|:---" in txt
         or "| ---:" in txt
         or "### Extracted Table" in txt
-        or financial_keywords
+        or structural_keywords
         or bool(meta.get("has_table"))
         or bool(meta.get("is_table"))
         or int(meta.get("tables_count", 0) or 0) > 0
@@ -94,15 +106,16 @@ class CrossEncoderReranker:
     """
 
     AVAILABLE_RERANKERS = {
-        "jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
-        "jina-reranker": "jinaai/jina-reranker-v3.5",
         "bge-reranker-large": "BAAI/bge-reranker-large",
         "bge-reranker-base": "BAAI/bge-reranker-base",
         "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "jina-reranker-v3.5": "BAAI/bge-reranker-large",
+        "jina-reranker": "BAAI/bge-reranker-large",
+        "default": "BAAI/bge-reranker-large",
     }
 
     def __init__(self, model_name: Optional[str] = None, device: Optional[str] = None):
-        target_name = model_name or os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5")
+        target_name = model_name or os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
         self.model_name = self.AVAILABLE_RERANKERS.get(target_name, target_name)
         self.device = device or os.getenv("RERANKER_DEVICE")
         self.model = _CROSS_ENCODER_MODEL_CACHE.get(self.model_name)
@@ -255,8 +268,14 @@ class CrossEncoderReranker:
                     all_queries.append(sq_clean)
 
         stop_words = {"what", "which", "where", "when", "that", "this", "from", "with", "have", "does", "about", "into"}
+        structural_pattern = (
+            r"(?:table\s*\d+(?:\.\d+)?|figure\s*\d+|fig\.\s*\d+|appendix\s*[a-z0-9]+|exhibit\s*[a-z0-9]+|"
+            r"algorithm\s*\d+|schedule\s*\d+|section\s*\d+|equation\s*\d+|theorem\s*\d+|"
+            r"supplementary|dataset|benchmark|methodology|"
+            r"balance\s*sheet|income\s*(?:and|&)\s*expenditure|corpus|endowment|grants|signatories|establishment\s*expenses)"
+        )
         global_structural_terms = re.findall(
-            r"(?:table\s*\d+(?:\.\d+)?|schedule\s*\d+|section\s*\d+|balance\s*sheet|income\s*(?:and|&)\s*expenditure|corpus|endowment|grants|signatories|establishment\s*expenses)",
+            structural_pattern,
             query,
             re.IGNORECASE,
         )
@@ -264,7 +283,7 @@ class CrossEncoderReranker:
         all_pairs: List[Tuple[str, str]] = []
         for q in all_queries:
             q_structural = re.findall(
-                r"(?:table\s*\d+(?:\.\d+)?|schedule\s*\d+|section\s*\d+|balance\s*sheet|income\s*(?:and|&)\s*expenditure|corpus|endowment|grants|signatories|establishment\s*expenses)",
+                structural_pattern,
                 q,
                 re.IGNORECASE,
             )
@@ -352,12 +371,12 @@ class CrossEncoderReranker:
                 else best_q_score
             )
 
-            # Bounded multiplicative table boost (keeps score strictly in [0.0, 1.0] for crag_evaluator.py)
+            # Convex monotonic table boost (preserves strict ordering in [0.0, 1.0])
             has_table_match = (
                 any(re.search(re.escape(qt), cand_raw, re.IGNORECASE) for qt in global_structural_terms)
                 or (is_table_candidate(entry) and bool(global_structural_terms))
             )
-            calibrated_score = min(1.0, prob_score * 1.25 + (0.10 if has_table_match else 0.0))
+            calibrated_score = prob_score + (0.08 * (1.0 - prob_score) if has_table_match else 0.0)
 
             entry["cross_encoder_score"] = round(calibrated_score, 6)
             entry["raw_cross_encoder_score"] = round(prob_score, 6)

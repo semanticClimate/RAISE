@@ -64,7 +64,7 @@ class PyMuPDFParserEngine:
                 for idx in indices:
                     if len(doc[idx].get_text("text").strip()) < 20:
                         scanned_count += 1
-                return scanned_count > 0
+                return scanned_count > (len(indices) // 2)
         except Exception:
             return True
 
@@ -72,6 +72,8 @@ class PyMuPDFParserEngine:
         self,
         pdf_path: Path | str,
         max_pages: Optional[int] = None,
+        extract_tables: bool = True,
+        do_ocr: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Executes high-speed geometric parsing on the target PDF.
@@ -102,8 +104,8 @@ class PyMuPDFParserEngine:
                     block_texts.append(b[4].strip())
             raw_text = "\n\n".join(block_texts) if block_texts else page.get_text("text").strip()
             
-            # 1. OCR fallback for scanned report pages BEFORE length filtering
-            if len(raw_text.strip()) < 80 and len(page.get_images()) > 0:
+            # 1. OCR fallback for scanned report pages BEFORE length filtering (only when requested)
+            if do_ocr and len(raw_text.strip()) < 80 and len(page.get_images()) > 0:
                 ocr_reader = self._get_ocr_reader()
                 if ocr_reader is not None:
                     try:
@@ -142,21 +144,22 @@ class PyMuPDFParserEngine:
 
             # Extract embedded tables
             table_count = 0
-            try:
-                tables = page.find_tables()
-                if tables and len(tables.tables) > 0:
-                    table_count = len(tables.tables)
-                    for t in tables:
-                        df = t.extract()
-                        if df and len(df) > 1:
-                            header = df[0]
-                            t_md = "\n| " + " | ".join(str(c or "") for c in header) + " |\n"
-                            t_md += "| " + " | ".join(["---"] * len(header)) + " |\n"
-                            for row in df[1:]:
-                                t_md += "| " + " | ".join(str(c or "") for c in row) + " |\n"
-                            raw_text += f"\n\n### Extracted Table Data:\n{t_md}"
-            except Exception:
-                pass
+            if extract_tables:
+                try:
+                    tables = page.find_tables()
+                    if tables and len(tables.tables) > 0:
+                        table_count = len(tables.tables)
+                        for t in tables:
+                            df = t.extract()
+                            if df and len(df) > 1:
+                                header = df[0]
+                                t_md = "\n| " + " | ".join(str(c or "") for c in header) + " |\n"
+                                t_md += "| " + " | ".join(["---"] * len(header)) + " |\n"
+                                for row in df[1:]:
+                                    t_md += "| " + " | ".join(str(c or "") for c in row) + " |\n"
+                                raw_text += f"\n\n### Extracted Table Data:\n{t_md}"
+                except Exception:
+                    pass
 
             has_table = table_count > 0 or ("| --- |" in raw_text)
             lines = [l.strip() for l in raw_text.split("\n") if l.strip()]

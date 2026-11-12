@@ -1,8 +1,6 @@
 # ==============================================================================
 # RAISE Core Fast API Runtime Dependencies (Lightweight ~3s install)
 # ==============================================================================
---extra-index-url https://download.pytorch.org/whl/cu124
-
 # Core Web & API Framework
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0

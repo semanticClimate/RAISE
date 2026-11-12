@@ -287,18 +287,33 @@ class LocalTransformersProvider(BaseLLMProvider):
             dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
             logger.info(f"Loading in-process local LLM '{self.model_name}' on {device} ({dtype})...")
-            tok = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
-            mod = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                dtype=dtype,
-                device_map=device,
-                trust_remote_code=True,
-            )
+            tok = None
+            mod = None
+            for local_only in [True, False]:
+                try:
+                    tok = AutoTokenizer.from_pretrained(
+                        self.model_name,
+                        trust_remote_code=True,
+                        local_files_only=local_only,
+                    )
+                    mod = AutoModelForCausalLM.from_pretrained(
+                        self.model_name,
+                        dtype=dtype,
+                        device_map=device,
+                        trust_remote_code=True,
+                        local_files_only=local_only,
+                    )
+                    break
+                except Exception:
+                    if not local_only:
+                        raise
+            if tok is None or mod is None:
+                raise RuntimeError(f"Could not load local LLM {self.model_name}")
             mod.eval()
             LocalTransformersProvider._shared_tokenizer = tok
             LocalTransformersProvider._shared_model = mod
             LocalTransformersProvider._loaded_model_name = self.model_name
-            logger.info(f"In-process local LLM '{self.model_name}' successfully loaded into VRAM.")
+            logger.info(f"In-process local LLM '{self.model_name}' successfully loaded into VRAM/RAM.")
 
     def complete(
         self,

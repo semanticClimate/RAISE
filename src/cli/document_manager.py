@@ -35,7 +35,7 @@ def _resolve_base_dir(base_dir: Optional[Path] = None) -> Path:
             root = resolved.parents[3] if len(resolved.parents) > 3 and resolved.parents[2].name == "backend" else resolved.parents[2]
 
     # Automatically create the canonical data folder and its subdirectories when user clones the repo
-    data_dir = root / "data"
+    data_dir = (root / "backend" / "data") if (root / "backend" / "data").exists() or (root / "backend").exists() else (root / "data")
     for sub in ["documents", "library", "catalogs", "processed", "processed/chunks", "processed/graph_triples"]:
         (data_dir / sub).mkdir(parents=True, exist_ok=True)
     manifest_file = data_dir / "processed" / "ingested_manifest.json"
@@ -50,7 +50,9 @@ def _resolve_base_dir(base_dir: Optional[Path] = None) -> Path:
 def get_active_documents_list(base_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Returns list of active documents from the ingested manifest."""
     root = _resolve_base_dir(base_dir)
-    manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+    manifest_file = root / "backend" / "data" / "processed" / "ingested_manifest.json"
+    if not manifest_file.exists():
+        manifest_file = root / "data" / "processed" / "ingested_manifest.json"
     if not manifest_file.exists():
         return []
     try:

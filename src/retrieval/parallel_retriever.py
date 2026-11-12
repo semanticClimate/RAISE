@@ -10,6 +10,7 @@ Merges candidates using Reciprocal Rank Fusion (RRF, k=60) and applies BGE-Reran
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import re
 import sys
@@ -33,8 +34,12 @@ _bin_dir = BASE_DIR / "bin"
 if _bin_dir.exists() and str(_bin_dir) not in sys.path:
     sys.path.insert(0, str(_bin_dir))
 
-# Native Rust engine check skipped; using in-memory vectorized retrieval
-HAS_RUST_ENGINE = False
+# Check for compiled Rust acceleration engine
+try:
+    import raise_engine  # type: ignore
+    HAS_RUST_ENGINE = True
+except ImportError:
+    HAS_RUST_ENGINE = False
 
 
 class AsyncParallelRetriever:
@@ -45,9 +50,16 @@ class AsyncParallelRetriever:
     # Retain static method alias for backward compatibility
     classify_retrieval_intent = staticmethod(classify_retrieval_intent)
 
-    def __init__(self, rag_pipeline: Any, reranker_model: Optional[str] = None):
+    def __init__(
+        self,
+        rag_pipeline: Any,
+        reranker_model: Optional[str] = None,
+        reranker: Optional[CrossEncoderReranker] = None,
+    ):
         self.pipeline = rag_pipeline
-        self.reranker = CrossEncoderReranker(model_name=reranker_model)
+        self.reranker = reranker or getattr(rag_pipeline, "reranker", None) or CrossEncoderReranker(model_name=reranker_model)
+        from src.reasoning.query_planner import QueryPlanner
+        self.query_planner = QueryPlanner()
 
     async def _search_dense_vector(
         self,
@@ -165,6 +177,7 @@ class AsyncParallelRetriever:
         doc_filter: Optional[str] = None,
         active_docs: Optional[List[str]] = None,
         rerank_top_n: int = 10,
+        subqueries: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Triggers Dense, Sparse, and Graph retrievers in parallel with asyncio.gather,
@@ -177,12 +190,19 @@ class AsyncParallelRetriever:
         # 1. Execute Dense, Sparse, and Graph retrieval concurrently
         dense_res, sparse_res, graph_res = await asyncio.gather(dense_task, sparse_task, graph_task)
 
-        # 2. If graph results are sparse, expand with candidate chunk IDs from dense/sparse hits
+        # 2. If graph results are sparse, expand with candidate chunk IDs from interleaved dense/sparse hits
         if len(graph_res) < 5:
             candidate_chunk_ids: List[str] = []
-            for item in (dense_res or []) + (sparse_res or []):
+            interleaved_candidates = []
+            for d_item, s_item in itertools.zip_longest(dense_res or [], sparse_res or []):
+                if d_item is not None:
+                    interleaved_candidates.append(d_item)
+                if s_item is not None:
+                    interleaved_candidates.append(s_item)
+
+            for item in interleaved_candidates:
                 cid = item.get("chunk_id") or item.get("id") or (item.get("metadata") or {}).get("chunk_id")
-                if cid and cid not in candidate_chunk_ids:
+                if cid and str(cid) not in candidate_chunk_ids:
                     candidate_chunk_ids.append(str(cid))
 
             if candidate_chunk_ids:
@@ -204,7 +224,7 @@ class AsyncParallelRetriever:
             graph_res=graph_res or [],
         )
 
-        # 4. Reciprocal Rank Fusion with Adaptive Intent Weights
+        # 4. Reciprocal Rank Fusion with Adaptive Intent Weights & Intent-gated Table Boost
         ranked_candidates_list = [dense_res or [], sparse_res or [], graph_res or []]
         active_lists = []
         active_weights = []
@@ -219,14 +239,20 @@ class AsyncParallelRetriever:
             weights=active_weights if active_weights else None,
             id_key="chunk_id",
             table_boost=True,
+            intent=intent_type,
+            query=query,
         )
 
-        # 5. Contextual Reranking with BGE-Reranker-Large (or cached fallback)
+        # 5. Contextual Reranking with BGE-Reranker-Large and Decomposed Subqueries Max-Pooling
+        if subqueries is None and hasattr(self, "query_planner") and self.query_planner:
+            subqueries = self.query_planner.decompose_to_subqueries(query)
+
         reranked_chunks = await self.reranker.arerank(
             query=query,
             candidates=fused_candidates,
             text_key="plain_text",
             top_n=rerank_top_n,
+            subqueries=subqueries,
         )
 
         return {
@@ -247,6 +273,7 @@ class AsyncParallelRetriever:
         doc_filter: Optional[str] = None,
         active_docs: Optional[List[str]] = None,
         rerank_top_n: int = 10,
+        subqueries: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Synchronous wrapper for integration into standard pipeline interfaces."""
         try:
@@ -268,6 +295,7 @@ class AsyncParallelRetriever:
                             doc_filter=doc_filter,
                             active_docs=active_docs,
                             rerank_top_n=rerank_top_n,
+                            subqueries=subqueries,
                         )
                     ).result()
             else:
@@ -279,6 +307,7 @@ class AsyncParallelRetriever:
                         doc_filter=doc_filter,
                         active_docs=active_docs,
                         rerank_top_n=rerank_top_n,
+                        subqueries=subqueries,
                     )
                 )
         except Exception:
@@ -290,6 +319,7 @@ class AsyncParallelRetriever:
                     doc_filter=doc_filter,
                     active_docs=active_docs,
                     rerank_top_n=rerank_top_n,
+                    subqueries=subqueries,
                 )
             )
 

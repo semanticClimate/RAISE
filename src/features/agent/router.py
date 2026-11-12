@@ -56,6 +56,7 @@ class AgentRouter(QueryAnalyzerMixin, PlanExecutorMixin):
         neo4j_db: Optional[Neo4jDatabase] = None,
         table_engine: Optional[TableEngine] = None,
         reasoning_memory: Optional[ReasoningMemory] = None,
+        reranker: Optional[CrossEncoderReranker] = None,
     ):
         self.fact_engine = fact_engine
         self.vector_engine = vector_engine
@@ -64,4 +65,4 @@ class AgentRouter(QueryAnalyzerMixin, PlanExecutorMixin):
         self.table_engine = table_engine or TableEngine()
         self.reasoning_memory = reasoning_memory or ReasoningMemory()
         self.verifier = ClaimVerifier()
-        self.reranker = CrossEncoderReranker()
+        self.reranker = reranker or CrossEncoderReranker()

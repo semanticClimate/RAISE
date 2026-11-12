@@ -71,7 +71,8 @@ def test_chain_gate_hop2_fallback_without_hardcoded_category():
         },
     ]
 
-    decision = gate.evaluate_chain(query, retrieved_chunks)
+    with patch("src.infrastructure.providers.router.ProviderRouter.complete", return_value="Deterministic offline gate check"):
+        decision = gate.evaluate_chain(query, retrieved_chunks)
     assert decision.is_complete is True
     assert decision.status in ["PASSED", "VERIFIED", "PARTIALLY_GROUNDED", "TRIGGER_RECOVERY"]
 

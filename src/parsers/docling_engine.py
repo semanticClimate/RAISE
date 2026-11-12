@@ -162,19 +162,25 @@ class DoclingParserEngine:
                         table_count += 1
                     if hasattr(item, "export_to_markdown"):
                         try:
-                            txt = item.export_to_markdown(doc=doc.document)
+                            txt = item.export_to_markdown(doc=doc.document) or ""
                         except Exception:
-                            txt = getattr(item, "text", "") or ""
-                    elif hasattr(item, "text"):
-                        txt = item.text or ""
+                            pass
+                    if not txt and hasattr(item, "text"):
+                        txt = getattr(item, "text", "") or ""
+                    if item_type == "SectionHeaderItem" and txt and not txt.startswith("#"):
+                        txt = f"### {txt}"
                     txt = txt.strip()
                     if not txt:
                         continue
                     if p_no not in page_items_map:
                         page_items_map[p_no] = []
                     page_items_map[p_no].append(txt)
-                    if item_type == "SectionHeaderItem" and p_no not in page_headings_map:
-                        page_headings_map[p_no] = txt.replace("#", "").strip()[:70]
+                    if item_type == "SectionHeaderItem":
+                        clean_h = txt.replace("#", "").strip()[:70]
+                        if p_no not in page_headings_map:
+                            page_headings_map[p_no] = clean_h
+                        elif clean_h and clean_h not in page_headings_map[p_no]:
+                            page_headings_map[p_no] = f"{page_headings_map[p_no]} & {clean_h}"[:70]
             except Exception as iter_err:
                 print(f" [DoclingEngine] Notice during Docling iteration: {iter_err}")
 

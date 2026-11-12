@@ -64,7 +64,7 @@ class AcademicGraphRAGWorkflow(
     Composed of specialized Mixin classes for intake, routing, cypher, retrieval, and synthesis.
     """
 
-    def __init__(self, rag_engine: Any, faithfulness_threshold: float = 0.80, max_retries: int = 2):
+    def __init__(self, rag_engine: Any, faithfulness_threshold: float = 0.70, max_retries: int = 2):
         self.rag_engine = rag_engine
         self.quality_gate = RuntimeFaithfulnessQualityGate(
             threshold=faithfulness_threshold,
@@ -210,8 +210,8 @@ class AcademicGraphRAGWorkflow(
             effective_hops = max(hops, 3)
             effective_top_k = max(top_k, 8)
         else:
-            effective_hops = min(hops, 1)
-            effective_top_k = min(top_k, 4)
+            effective_hops = max(1, min(hops, 2))
+            effective_top_k = max(top_k, 6)
 
         # Initialize LangChain Core message history
         messages_list = []

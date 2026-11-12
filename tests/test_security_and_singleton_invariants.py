@@ -52,7 +52,9 @@ def test_sys_wide_warmup_lock_and_singleton():
     mock_reranker.model_name = "test-reranker"
     mock_rag_engine.reranker = mock_reranker
 
-    with patch("src.features.evaluation.nli_verifier.FineCatNLIVerifier._ensure_loaded", return_value=False):
+    with patch("src.features.evaluation.nli_verifier.FineCatNLIVerifier._ensure_loaded", return_value=False), \
+         patch("src.retrieval.reranker._get_global_flashranker", return_value=None), \
+         patch("src.retrieval.reranker.CrossEncoderReranker._ensure_model_loaded", return_value=None):
         latencies = warmup_all_neural_models(force=True, rag_engine=mock_rag_engine)
         assert isinstance(latencies, dict)
         assert is_neural_stack_ready() is True

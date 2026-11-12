@@ -56,14 +56,18 @@ def build_evidence_citations(
     ordered_chunks: List[Dict[str, Any]],
     active_doc_list: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """Builds clean citation dictionaries from ordered evidence chunks, grouped by unique document page."""
+    """Builds clean citation dictionaries from ordered evidence chunks, 1-to-1 with evidence excerpts."""
     citations: List[Dict[str, Any]] = []
-    seen_pages: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    seen_cids = set()
 
     for idx, c in enumerate(ordered_chunks):
         meta = c.get("metadata", {})
         cid = str(meta.get("chunk_id") or c.get("id") or f"chk_{idx+1}")
-        raw_t = c.get("text", "")
+        if cid in seen_cids:
+            continue
+        seen_cids.add(cid)
+
+        raw_t = c.get("text", "") or c.get("plain_text", "")
         cleaned_excerpt = re.sub(r"\[Section Context:[^\]]*\]", "", raw_t, flags=re.IGNORECASE)
         cleaned_excerpt = re.sub(
             r"Institution:.*?\n|Document:.*?\n|Period:.*?\n|Page:.*?\n|Heading:.*?\n|Content:\s*",
@@ -86,15 +90,6 @@ def build_evidence_citations(
         )
         pdf_name = Path(raw_pdf_name).name
         d_page = meta.get("printed_page")
-        page_key = (pdf_name, p_page)
-
-        if page_key in seen_pages:
-            existing = seen_pages[page_key]
-            if cid not in existing.get("chunk_ids", []):
-                existing.setdefault("chunk_ids", []).append(cid)
-            if cleaned_excerpt and cleaned_excerpt not in existing.get("plain_text", ""):
-                existing["plain_text"] = (existing.get("plain_text", "") + " " + cleaned_excerpt)[:1000]
-            continue
 
         import urllib.parse
         encoded_name = urllib.parse.quote(pdf_name)
@@ -117,14 +112,13 @@ def build_evidence_citations(
             "source_pages": [int(sp) for sp in source_pages if str(sp).isdigit()],
             "printed_page": d_page if (d_page and str(d_page).strip() != "") else None,
             "heading": meta.get("heading") or f"Section (Page {p_page})",
-            "plain_text": cleaned_excerpt[:500],
+            "plain_text": cleaned_excerpt[:1000],
             "university": meta.get("university", "Academic Institution"),
             "similarity": round(float(c.get("similarity", 0.88)), 3),
             "page_url": page_url,
             "page_image_url": page_image_url,
             "page_view_url": page_view_url,
         }
-        seen_pages[page_key] = cit
         citations.append(cit)
 
     return citations
@@ -203,12 +197,14 @@ def renumber_and_sanitize_citations(
                 seen_new.add(new_idx)
                 cit_copy = dict(matching[0])
                 cit_copy["citation_index"] = new_idx
+                import urllib.parse
+                pdf_fn = cit_copy.get("pdf_filename") or cit_copy.get("filename") or "Document.pdf"
+                encoded_name = urllib.parse.quote(pdf_fn)
+                p_page = cit_copy.get("primary_page", 1)
+                cit_copy["page_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/pdf"
+                cit_copy["page_image_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/image"
+                cit_copy["page_view_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/view"
                 filtered_cits.append(cit_copy)
-                for sp in cit_copy.get("source_pages", []):
-                    if sp != cit_copy.get("primary_page"):
-                        sp_copy = dict(cit_copy)
-                        sp_copy["primary_page"] = sp
-                        filtered_cits.append(sp_copy)
         final_cits = filtered_cits if filtered_cits else scoped_citations[:2]
     else:
         # Grounding fallback: Score citations by token and number match against cleaned_answer
@@ -228,12 +224,15 @@ def renumber_and_sanitize_citations(
         top_cits = [c for _, c in scored_cits[:max_budget]] if scored_cits else scoped_citations[:1]
         final_cits = []
         for c in top_cits:
-            final_cits.append(c)
-            for sp in c.get("source_pages", []):
-                if sp != c.get("primary_page"):
-                    sp_copy = dict(c)
-                    sp_copy["primary_page"] = sp
-                    final_cits.append(sp_copy)
+            cit_copy = dict(c)
+            import urllib.parse
+            pdf_fn = cit_copy.get("pdf_filename") or cit_copy.get("filename") or "Document.pdf"
+            encoded_name = urllib.parse.quote(pdf_fn)
+            p_page = cit_copy.get("primary_page", 1)
+            cit_copy["page_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/pdf"
+            cit_copy["page_image_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/image"
+            cit_copy["page_view_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/view"
+            final_cits.append(cit_copy)
 
 # Re-index final citations to 1..N
     for i, c in enumerate(final_cits, 1):

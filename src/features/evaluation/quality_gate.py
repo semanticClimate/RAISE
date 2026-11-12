@@ -34,20 +34,30 @@ class RigorousQualityGate:
         requires_any_entity = not is_count_or_math and any(term in query.lower() for term in ["startup", "company", "who", "institution", "organization", "university", "faculty", "director"])
         extracted_entities = re.findall(r"\b[A-Z][a-zA-Z0-9]{2,}\b", response)  # Capture Capitalized Entity Names
 
-        # Strip out system/formatting artifacts to verify concrete domain entity recovery
+        # Strip out formatting artifacts to verify concrete domain entity recovery (preserve valid institutional entities)
         system_nodes = {
-            "IITM", "IITMRP", "IITMIC", "Research", "Park", "Annual", "Report", "The", "This", "That",
+            "Annual", "Report", "The", "This", "That",
             "These", "Those", "There", "Here", "Based", "Section", "References", "Doc", "Page", "Table",
             "Figure", "Appendix", "According", "Document", "Source", "However", "Therefore", "Moreover",
             "Furthermore", "Please", "Note", "Total", "Number", "Name", "Date", "Details"
         }
         leaf_entities = [entity for entity in extracted_entities if entity not in system_nodes]
 
+        # Check what candidate domain entities were actually present in the retrieved context
+        context_blob = " ".join(retrieved_contexts) if retrieved_contexts else ""
+        context_entities = {
+            e for e in re.findall(r"\b[A-Z][a-zA-Z0-9]{2,}\b", context_blob)
+            if e not in system_nodes and len(e) > 2
+        }
+        answer_entities_set = set(leaf_entities)
+        omitted_context_entities = context_entities - answer_entities_set
+
         min_required = 2 if requires_multiple_entities else (1 if requires_any_entity else 0)
-        if min_required > 0 and len(leaf_entities) < min_required and len(response.split()) > 35:
+        # Only trigger completeness rejection if the retrieved contexts themselves actually contain >= 2 named entities that the answer omitted
+        if min_required > 0 and len(leaf_entities) < min_required and len(omitted_context_entities) >= 2 and len(response.split()) > 35:
             return {
                 "decision": "REJECT",
-                "reason": f"Completeness Failure: The query requested entities/organizations, but fewer than {min_required} concrete leaf-node entities were identified in the response.",
+                "reason": f"Completeness Failure: The query requested entities/organizations, but fewer than {min_required} concrete leaf-node entities were identified in the response despite being present in evidence.",
                 "retry_action": "BM25_ENTITY_FALLBACK",
             }
 

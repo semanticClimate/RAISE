@@ -232,25 +232,48 @@ class MultiHopAdaptiveRetriever:
 
         fused_scores: Dict[str, float] = defaultdict(float)
         doc_map: Dict[str, Dict[str, Any]] = {}
+        hop1_ids: Set[str] = set()
+        hop2_ids: Set[str] = set()
 
         for rank, (doc, _) in enumerate(hop1, start=1):
             did = str(doc.get("id", ""))
+            hop1_ids.add(did)
             doc_map[did] = doc
-            fused_scores[did] += 3.0 / (60 + rank)
+            fused_scores[did] += 1.5 / (60 + rank)
 
         for rank, (doc, _) in enumerate(hop2, start=1):
             did = str(doc.get("id", ""))
+            hop2_ids.add(did)
             doc_map[did] = doc
             boost = 0.0
             doc_title = str(doc.get("title", "")).lower()
+            doc_text = str(doc.get("text", "")).lower()
             for b in bridges:
                 b_norm = b.lower()
                 if doc_title and (b_norm == doc_title or b_norm in doc_title or doc_title in b_norm):
-                    boost += 0.10
+                    boost += 0.06
                     break
-            fused_scores[did] += (0.8 / (60 + rank)) + boost
+                elif b_norm and b_norm in doc_text:
+                    boost += 0.04
+                    break
+            fused_scores[did] += (1.2 / (60 + rank)) + boost
 
         ranked_docs = sorted(fused_scores.keys(), key=lambda x: fused_scores[x], reverse=True)
+        # Ensure at least 2 slots are reserved for top Hop 2 bridge passages when available
+        if len(ranked_docs) > top_k and hop2_ids:
+            top_set = ranked_docs[:top_k]
+            hop2_in_top = [d for d in top_set if d in hop2_ids]
+            if len(hop2_in_top) < 2:
+                hop2_outside = [d for d in ranked_docs[top_k:] if d in hop2_ids]
+                slots_needed = min(2 - len(hop2_in_top), len(hop2_outside))
+                if slots_needed > 0:
+                    hop1_in_top = [d for d in top_set if d not in hop2_ids]
+                    hop1_in_top.sort(key=lambda x: fused_scores[x])
+                    to_remove = set(hop1_in_top[:slots_needed])
+                    final_ranked = [d for d in top_set if d not in to_remove] + hop2_outside[:slots_needed]
+                    final_ranked.sort(key=lambda x: fused_scores[x], reverse=True)
+                    return [(doc_map[did], fused_scores[did]) for did in final_ranked]
+
         return [(doc_map[did], fused_scores[did]) for did in ranked_docs[:top_k]]
 
     def resolve_boolean(self, query: str, context: str) -> str:
@@ -279,7 +302,31 @@ class MultiHopAdaptiveRetriever:
                 if cat in q and ctx.count(cat) >= 2:
                     return "yes"
 
-        return "yes"
+        # Delegate inconclusive boolean logic to ProviderRouter if available
+        try:
+            from src.infrastructure.providers.router import get_provider_router, InferenceTask
+            router = get_provider_router()
+            prompt = (
+                f"Question: {query}\n\nContext Evidence:\n{context[:3000]}\n\n"
+                f"Task: Based strictly on the evidence above, answer 'yes', 'no', or 'insufficient_evidence'.\n"
+                f"Answer:"
+            )
+            resp = router.complete(
+                prompt=prompt,
+                task=InferenceTask.REASONING,
+                temperature=0.0,
+                max_tokens=20,
+            ).strip().lower()
+            if "yes" in resp and "no" not in resp:
+                return "yes"
+            elif "no" in resp and "yes" not in resp:
+                return "no"
+            elif "insufficient" in resp:
+                return "insufficient_evidence"
+        except Exception:
+            pass
+
+        return "insufficient_evidence"
 
     def resolve_choice(self, query: str, context: str) -> Optional[str]:
         m = re.search(r"which\s+(.+?)(?:,\s*|\s+was\s+|\s+is\s+)(.+?)\s+or\s+([^?]+)", query, re.IGNORECASE)
@@ -331,15 +378,44 @@ class MultiHopAdaptiveRetriever:
     ) -> Tuple[Any, ...]:
         """
         Synthesizes grounded answer strictly from retrieved context and query intent.
-        Operates without gold answer leakage or synthetic shortcuts.
+        Routes synthesis through ProviderRouter with strict context grounding,
+        using regex extractors only as a fast-path or offline fallback.
         """
         if not retrieved_texts:
             msg = "I am unable to answer based on the provided context."
             return (msg, msg, False) if return_span else (msg, False)
 
         context_str = " ".join(retrieved_texts)
-        q_lower = query.lower()
         q_topic = query.strip().rstrip("?.")
+
+        # ProviderRouter LLM Synthesis Path
+        try:
+            from src.infrastructure.providers.router import get_provider_router, InferenceTask
+            router = get_provider_router()
+            prompt = (
+                f"You are a factual multi-hop question answering system.\n"
+                f"Answer the query directly and concisely based strictly and exclusively on the provided context.\n"
+                f"If the context does not contain sufficient facts to answer conclusively, respond with 'INSUFFICIENT_EVIDENCE'.\n\n"
+                f"Question: {query}\n\n"
+                f"Context Evidence:\n{context_str[:6000]}\n\n"
+                f"Concise Grounded Answer:"
+            )
+            llm_ans = router.complete(
+                prompt=prompt,
+                task=InferenceTask.RAG_GENERATION,
+                temperature=0.0,
+                max_tokens=150,
+            )
+            if llm_ans:
+                ans_clean = llm_ans.strip()
+                if not any(ans_clean.startswith(pfx) for pfx in ("Inference execution error", "Error executing", "Cloud LLM", "Ollama error")):
+                    if "INSUFFICIENT_EVIDENCE" not in ans_clean:
+                        sentence = f"Regarding {q_topic}, {ans_clean}"
+                        return (ans_clean, sentence, True) if return_span else (sentence, True)
+        except Exception:
+            pass
+
+        q_lower = query.lower()
 
         is_bool = (
             q_lower.startswith(("were ", "are ", "is ", "did ", "does ", "was ", "do ", "can ", "could ", "would "))

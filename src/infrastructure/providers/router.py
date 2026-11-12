@@ -6,12 +6,14 @@ non-secret fallback logging, and execution modes (LOCAL, CLOUD, AUTOMATIC).
 
 from __future__ import annotations
 
-import os
+import asyncio
 import json
 import logging
+import os
 import socket
 import threading
 import time
+import urllib.parse
 import urllib.request
 from enum import Enum
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
@@ -19,7 +21,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
 from src.infrastructure.providers.base import (
     LLMProvider,
 )
-from src.infrastructure.providers.llm import LocalVLLMProvider, LocalTransformersProvider
+from src.infrastructure.providers.llm import LocalVLLMProvider, LocalTransformersProvider, LocalOllamaProvider
 from src.infrastructure.providers.gemini import GeminiProvider
 from src.infrastructure.providers.groq import GroqProvider
 from src.infrastructure.providers.mistral import MistralProvider
@@ -29,8 +31,16 @@ from src.infrastructure.providers.nvidia import NvidiaNIMProvider
 from src.infrastructure.providers.cohere import CohereProvider
 from src.infrastructure.providers.openrouter import OpenRouterProvider
 from src.infrastructure.providers.token_tracker import get_token_tracker
+from src.infrastructure.credentials.manager import get_credential_manager
 
 logger = logging.getLogger("raise.infrastructure.providers.router")
+
+
+class ProviderExhaustedError(RuntimeError):
+    """Raised when all inference providers in the active fallback chain fail."""
+    def __init__(self, message: str, errors: Optional[List[str]] = None):
+        super().__init__(message)
+        self.errors = errors or []
 
 
 class InferenceTask(str, Enum):
@@ -92,10 +102,11 @@ class ProviderRouter:
         self.cloud_allowed = cloud_allowed if cloud_allowed is not None else (self.mode != ExecutionMode.LOCAL)
         self.fallback_history: List[FallbackEvent] = []
 
-        # Instantiate provider registry
+        # Instantiate provider registry (Requirement 3: LocalOllamaProvider registered)
         self.providers: Dict[str, LLMProvider] = {
             "vllm": LocalVLLMProvider(),
             "local": LocalTransformersProvider(),
+            "ollama": LocalOllamaProvider(),
             "gemini": GeminiProvider(),
             "groq": GroqProvider(),
             "mistral": MistralProvider(),
@@ -106,32 +117,46 @@ class ProviderRouter:
             "universal": UniversalCloudProvider(),
         }
 
-        # Active primary provider selection (ignoring billing-restricted providers)
-        primary_cloud = env_backend if (env_backend in self.providers and env_backend not in ("deepseek", "openrouter")) else "groq"
-
-        # Task routing policy mapping (Production Defaults for 8 Pipeline Phases)
-        # DeepSeek is NOT used as default because it has NO permanent free tier (returns HTTP 402 once trial expires).
-        # Cloud defaults route to high-throughput free/developer tiers: Groq, Mistral, NVIDIA NIM, Cohere, Gemini.
-        from src.infrastructure.credentials.manager import get_credential_manager
+        # Active primary provider selection (Requirement 1: No hardcoded blacklists)
         _cm = get_credential_manager()
+        configured_clouds = [cand for cand in ["groq", "gemini", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if _cm.get_credential_status(cand) == "configured"]
+
+        if env_backend in self.providers and (_cm.get_credential_status(env_backend) == "configured" or not configured_clouds):
+            primary_cloud = env_backend
+        elif configured_clouds:
+            primary_cloud = configured_clouds[0]
+        else:
+            primary_cloud = "groq"
+
+        # Task routing policy mapping (Requirement 2: Externalized task policies & model defaults)
+        local_target = "vllm" if "vllm" in self.providers else "local"
+        default_cloud_target = primary_cloud if self.cloud_allowed else local_target
 
         self.task_policy: Dict[InferenceTask, str] = {
-            InferenceTask.CHAT: primary_cloud if self.cloud_allowed else "vllm",  # Phase 1: Low-latency chat
-            InferenceTask.RAG_GENERATION: primary_cloud if self.cloud_allowed else "vllm",  # Phase 2: RAG Answer Synthesis
-            InferenceTask.DOCUMENT_EXTRACTION: "gemini",  # Phase 3: Doc Layout & Vision
-            InferenceTask.QUERY_REWRITE: primary_cloud if self.cloud_allowed else "vllm",  # Phase 4: Query Intake & Reformulation
-            InferenceTask.REASONING: primary_cloud if self.cloud_allowed else "vllm",  # Phase 5: Multi-Hop Relational Reasoning
-            InferenceTask.CODE: "mistral" if _cm.get_credential_status("mistral") == "configured" and self.cloud_allowed else (primary_cloud if self.cloud_allowed else "vllm"),  # Phase 6: Code & Formal Cypher
-            InferenceTask.SUMMARIZATION: primary_cloud if self.cloud_allowed else "vllm",  # Phase 7: Community / Executive Summaries
-            InferenceTask.RERANKING: "cohere",  # Phase 8: Neural Cross-Attention Reranking
-            InferenceTask.STRUCTURED_EXTRACTION: primary_cloud if self.cloud_allowed else "vllm",
-            InferenceTask.EMBEDDING: "vllm",  # Local BGE-Large
+            InferenceTask.CHAT: os.getenv("TASK_POLICY_CHAT", default_cloud_target),
+            InferenceTask.RAG_GENERATION: os.getenv("TASK_POLICY_RAG_GENERATION", default_cloud_target),
+            InferenceTask.DOCUMENT_EXTRACTION: os.getenv(
+                "TASK_POLICY_DOCUMENT_EXTRACTION",
+                "gemini" if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else local_target
+            ),
+            InferenceTask.QUERY_REWRITE: os.getenv("TASK_POLICY_QUERY_REWRITE", default_cloud_target),
+            InferenceTask.REASONING: os.getenv("TASK_POLICY_REASONING", default_cloud_target),
+            InferenceTask.CODE: os.getenv(
+                "TASK_POLICY_CODE",
+                "mistral" if (_cm.get_credential_status("mistral") == "configured" and self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else default_cloud_target
+            ),
+            InferenceTask.SUMMARIZATION: os.getenv("TASK_POLICY_SUMMARIZATION", default_cloud_target),
+            InferenceTask.RERANKING: os.getenv(
+                "TASK_POLICY_RERANKING",
+                "cohere" if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else local_target
+            ),
+            InferenceTask.STRUCTURED_EXTRACTION: os.getenv("TASK_POLICY_STRUCTURED_EXTRACTION", default_cloud_target),
+            InferenceTask.EMBEDDING: os.getenv("TASK_POLICY_EMBEDDING", local_target),
         }
 
-        # Provider health, cooldown & disabled tracking
+        # Provider health, cooldown & disabled tracking (Requirement 1: clean empty set at init)
         self.provider_cooldowns: Dict[str, float] = {}
-        # Disable DeepSeek & OpenRouter permanently if billing restricted (HTTP 402 / $0 balance)
-        self.disabled_providers: Set[str] = {"deepseek", "openrouter"}
+        self.disabled_providers: Set[str] = set()
         self.last_used_provider: str = ""
         self.last_used_model: str = ""
 
@@ -149,7 +174,6 @@ class ProviderRouter:
         Dynamically constructs the fallback chain based on user-provided API keys.
         Orders all configured providers so every model gets called sequentially in a line.
         """
-        from src.infrastructure.credentials.manager import get_credential_manager
         cm = get_credential_manager()
         prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else "groq")
 
@@ -196,26 +220,41 @@ class ProviderRouter:
         self.fallback_chain = active
         logger.info(f"Dynamic fallback chain updated: {self.fallback_chain}")
 
+    def _get_cloud_meta(self) -> Dict[str, Dict[str, str]]:
+        """
+        Externalized cloud provider metadata and dynamically resolved default models.
+        (Requirement 2: Model defaults read from env vars or instantiated provider objects)
+        """
+        groq_model = os.getenv("GROQ_MODEL_NAME") or getattr(self.providers.get("groq"), "model_name", "llama-3.3-70b-versatile")
+        gemini_model = os.getenv("GEMINI_MODEL_NAME") or getattr(self.providers.get("gemini"), "model_name", "gemini-3.5-flash-lite")
+        mistral_model = os.getenv("MISTRAL_MODEL_NAME") or getattr(self.providers.get("mistral"), "model_name", "open-mistral-nemo")
+        nvidia_model = os.getenv("NVIDIA_MODEL_NAME") or getattr(self.providers.get("nvidia"), "model_name", "meta/llama-3.2-11b-vision-instruct")
+        cohere_model = os.getenv("COHERE_MODEL_NAME") or getattr(self.providers.get("cohere"), "model_name", "command-r-plus-08-2024")
+        deepseek_model = os.getenv("DEEPSEEK_MODEL_NAME") or getattr(self.providers.get("deepseek"), "model_name", "deepseek-chat")
+        openrouter_model = os.getenv("OPENROUTER_MODEL_NAME") or getattr(self.providers.get("openrouter"), "model_name", "anthropic/claude-3-haiku")
+        universal_model = os.getenv("UNIVERSAL_MODEL_NAME") or getattr(self.providers.get("universal"), "model_name", "gpt-4o-mini")
+
+        return {
+            "groq": {"name": "Groq LPU (High-Throughput)", "tier": "Free Tier", "default_model": groq_model},
+            "gemini": {"name": "Google Gemini", "tier": "Free Tier (Rate-Limited Quota)", "default_model": gemini_model},
+            "mistral": {"name": "Mistral AI", "tier": "Free / Developer Tier", "default_model": mistral_model},
+            "nvidia": {"name": "NVIDIA NIM", "tier": "Developer Free Tier (1,000 Credits)", "default_model": nvidia_model},
+            "cohere": {"name": "Cohere Command", "tier": "Evaluation Free Tier", "default_model": cohere_model},
+            "deepseek": {"name": "DeepSeek API", "tier": "Pay-As-You-Go / API Credits", "default_model": deepseek_model},
+            "openrouter": {"name": "OpenRouter Gateway", "tier": "Universal Gateway / Credits", "default_model": openrouter_model},
+            "universal": {"name": "Universal Custom Cloud API", "tier": "Custom OpenAI-Compatible", "default_model": universal_model},
+        }
+
     def get_dynamic_available_providers(self) -> List[Dict[str, Any]]:
         """
         Dynamically returns ONLY the LLMs that are actively usable by the user.
         If a user writes their key, the LLM dynamically appears here.
         Restricted/disabled providers are excluded.
         """
-        from src.infrastructure.credentials.manager import get_credential_manager
         cm = get_credential_manager()
         available = []
 
-        cloud_meta = {
-            "groq": {"name": "Groq LPU (High-Throughput)", "tier": "Free Tier", "default_model": "qwen/qwen3.8-27b"},
-            "mistral": {"name": "Mistral AI", "tier": "Free / Developer Tier", "default_model": "open-mistral-nemo"},
-            "nvidia": {"name": "NVIDIA NIM", "tier": "Developer Free Tier (1,000 Credits)", "default_model": "meta/llama-3.2-11b-vision-instruct"},
-            "cohere": {"name": "Cohere Command", "tier": "Evaluation Free Tier", "default_model": "command-r-plus-08-2024"},
-            "gemini": {"name": "Google Gemini", "tier": "Free Tier (Rate-Limited Quota)", "default_model": "gemini-2.0-flash"},
-            "deepseek": {"name": "DeepSeek API", "tier": "Prepaid Only (No Permanent Free Tier)", "default_model": "deepseek-chat"},
-            "openrouter": {"name": "OpenRouter Gateway", "tier": "Prepaid Only (Account Credits)", "default_model": "anthropic/claude-3-haiku"},
-            "universal": {"name": "Universal Custom Cloud API", "tier": "Custom OpenAI-Compatible", "default_model": "gpt-4o-mini"},
-        }
+        cloud_meta = self._get_cloud_meta()
 
         # Check local GPU / accelerator / container providers
         from src.infrastructure.hardware import get_gpu_info
@@ -244,9 +283,10 @@ class ProviderRouter:
                 "tier": tier_label,
             })
 
-        # 2. Probe Ollama dynamically (Port 11434)
+        # 2. Probe Ollama dynamically from OLLAMA_BASE_URL (Requirement 3: Config-driven)
+        ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
         try:
-            req = urllib.request.Request("http://127.0.0.1:11434/api/tags", headers={"User-Agent": "RAISE"})
+            req = urllib.request.Request(f"{ollama_base}/api/tags", headers={"User-Agent": "RAISE"})
             with urllib.request.urlopen(req, timeout=0.8) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode())
@@ -258,21 +298,32 @@ class ProviderRouter:
                             "display_name": f"Ollama ({device_label})",
                             "model": m_name,
                             "status": "READY",
-                            "is_active": True,
+                            "is_active": self.mode == ExecutionMode.LOCAL or self.task_policy.get(InferenceTask.RAG_GENERATION) == "ollama",
                             "tier": "Ollama Local Engine",
                         })
         except Exception:
             pass
 
-        # 3. Probe vLLM Container (Port 8002 - avoid port 8000 which is FastAPI itself)
+        # 3. Probe vLLM Container dynamically from VLLM_BASE_URL (Requirement 3: Dynamic host/port parsing)
+        vllm_base = os.getenv("VLLM_BASE_URL", "http://127.0.0.1:8002").rstrip("/")
+        vllm_parsed = urllib.parse.urlparse(vllm_base)
+        vllm_host = vllm_parsed.hostname or "127.0.0.1"
+        vllm_port = vllm_parsed.port or (443 if vllm_parsed.scheme == "https" else 8002)
+
         vllm_alive = False
-        try:
-            req = urllib.request.Request("http://127.0.0.1:8002/v1/models", headers={"User-Agent": "RAISE"})
-            with urllib.request.urlopen(req, timeout=0.3) as resp:
-                if resp.status == 200:
-                    vllm_alive = True
-        except Exception:
-            pass
+        # Prevent self-loop if vllm_port is 8000 (FastAPI server port)
+        if vllm_port != 8000:
+            try:
+                req = urllib.request.Request(f"{vllm_base}/v1/models", headers={"User-Agent": "RAISE"})
+                with urllib.request.urlopen(req, timeout=0.5) as resp:
+                    if resp.status == 200:
+                        vllm_alive = True
+            except Exception:
+                try:
+                    with socket.create_connection((vllm_host, vllm_port), timeout=0.3):
+                        vllm_alive = True
+                except Exception:
+                    pass
 
         if vllm_alive or ("vllm" in self.providers and "vllm" not in self.disabled_providers and self.providers["vllm"].is_available()):
             available.append({
@@ -354,7 +405,6 @@ class ProviderRouter:
             return self.providers["vllm"]
 
         now = time.time()
-        from src.infrastructure.credentials.manager import get_credential_manager
         cm = get_credential_manager()
 
         # Multi-model Round-Robin rotation across every configured model in a line
@@ -459,7 +509,10 @@ class ProviderRouter:
 
             # Apply rate-limit cooldown if 429 encountered
             if "429" in err_msg or "RATE_LIMITED" in err_msg or "quota" in err_msg.lower():
-                cooldown_secs = 15.0 if primary_provider.name == "groq" else 60.0
+                _cm_cd = get_credential_manager()
+                num_configured_clouds = sum(1 for c in ["groq", "gemini", "mistral", "nvidia", "cohere", "openrouter"] if _cm_cd.get_credential_status(c) == "configured")
+                # If only 1 provider is configured, use a short backoff (3s) rather than locking out the entire pipeline
+                cooldown_secs = 3.0 if num_configured_clouds <= 1 else (15.0 if primary_provider.name == "groq" else 60.0)
                 self.provider_cooldowns[primary_provider.name] = time.time() + cooldown_secs
                 logger.info(f"Activated {int(cooldown_secs)}s cooldown for provider '{primary_provider.name}'.")
             elif "401" in err_msg or "AUTH_FAILED" in err_msg or "invalid_api_key" in err_msg.lower() or "402" in err_msg or "BILLING_RESTRICTED" in err_msg or "credit card" in err_msg.lower() or "403" in err_msg:
@@ -469,7 +522,6 @@ class ProviderRouter:
             # Try each provider in the fallback chain
             errors = [f"{primary_provider.name}: {err_msg}"]
             now = time.time()
-            from src.infrastructure.credentials.manager import get_credential_manager
             cm = get_credential_manager()
             for candidate_name in self.fallback_chain:
                 if candidate_name == primary_provider.name or candidate_name in self.disabled_providers:
@@ -536,11 +588,11 @@ class ProviderRouter:
 
             all_errs = "; ".join(errors)
             if "not configured" in all_errs and ("offline" in all_errs or "refused" in all_errs or "10061" in all_errs or "CUDA is unavailable" in all_errs):
-                return (
-                    "Inference execution error: No functional LLM provider available. "
-                    "Please configure an API key (Groq, Gemini, NVIDIA, Mistral) in Settings or start a local Ollama/vLLM instance."
+                raise ProviderExhaustedError(
+                    "No functional LLM provider available. Please configure an API key (Groq, Gemini, NVIDIA, Mistral) in Settings or start a local Ollama/vLLM instance.",
+                    errors=errors,
                 )
-            return f"Inference execution error: All providers in fallback chain failed: {all_errs}"
+            raise ProviderExhaustedError(f"All inference providers in fallback chain failed: {all_errs}", errors=errors)
 
     async def complete_stream(
         self,
@@ -551,7 +603,7 @@ class ProviderRouter:
         temperature: float = 0.1,
         **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
-        """Execute streaming completion."""
+        """Execute streaming completion with non-blocking async fallback."""
         t = InferenceTask(task) if isinstance(task, str) else task
         primary_provider = self.get_provider_for_task(t)
 
@@ -565,8 +617,16 @@ class ProviderRouter:
             ):
                 yield chunk
         except Exception as e:
-            logger.warning(f"Streaming error on provider '{primary_provider.name}': {e}. Falling back to sync completion.")
-            fallback_text = self.complete(prompt, task=t, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature, **kwargs)
+            logger.warning(f"Streaming error on provider '{primary_provider.name}': {e}. Falling back to sync completion via thread pool.")
+            fallback_text = await asyncio.to_thread(
+                self.complete,
+                prompt=prompt,
+                task=t,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                **kwargs,
+            )
             yield fallback_text
 
 

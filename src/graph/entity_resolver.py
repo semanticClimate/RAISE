@@ -44,6 +44,19 @@ class EntityResolver:
         self.redirects: Dict[str, str] = {self.normalize_entity(k): v for k, v in (redirects or {}).items()}
 
     @staticmethod
+    def normalize_entity_exact(text: str) -> str:
+        """
+        Normalizes diacritics, lowercase, and punctuation while strictly preserving parenthetical qualifiers.
+        """
+        if not text:
+            return ""
+        nfkd = unicodedata.normalize("NFKD", text)
+        no_diacritics = "".join(c for c in nfkd if not unicodedata.combining(c))
+        cleaned = no_diacritics.replace("\ufffd", "").strip()
+        cleaned = re.sub(r"[^\w\s\(\)-]", "", cleaned).lower()
+        return re.sub(r"\s+", " ", cleaned).strip()
+
+    @staticmethod
     def normalize_entity(text: str) -> str:
         """
         Applies NFKD diacritic folding, lowercase conversion, and punctuation normalization.
@@ -138,13 +151,22 @@ class EntityResolver:
         if not candidate:
             return None
 
+        cand_exact = self.normalize_entity_exact(candidate)
         cand_norm = self.normalize_entity(candidate)
         if not cand_norm:
             return None
 
         # 1. Check alias / redirect map
+        if cand_exact in self.aliases:
+            target = self.aliases[cand_exact]
+            if target in known_entities:
+                return target, 1.0
         if cand_norm in self.aliases:
             target = self.aliases[cand_norm]
+            if target in known_entities:
+                return target, 1.0
+        if cand_exact in self.redirects:
+            target = self.redirects[cand_exact]
             if target in known_entities:
                 return target, 1.0
         if cand_norm in self.redirects:
@@ -152,12 +174,17 @@ class EntityResolver:
             if target in known_entities:
                 return target, 1.0
 
-        # 2. Exact match on normalized text
+        # 2. Exact match preserving parenthetical qualifiers (e.g. "Mercury (element)" vs "Mercury (planet)")
+        exact_map = {self.normalize_entity_exact(k): k for k in known_entities}
+        if cand_exact in exact_map:
+            return exact_map[cand_exact], 1.0
+
+        # 3. Base match on normalized text with parenthetical stripping
         norm_map = {self.normalize_entity(k): k for k in known_entities}
         if cand_norm in norm_map:
             return norm_map[cand_norm], 1.0
 
-        # 3. Base name match without parenthetical qualifier
+        # 4. Base name match without parenthetical qualifier
         base_cand, _ = self.strip_parenthetical(candidate)
         base_cand_norm = self.normalize_entity(base_cand)
         if base_cand_norm and base_cand_norm in norm_map:

@@ -130,12 +130,20 @@ class LocalHeuristicEvaluator:
         completeness_msg = ""
         if is_startup_query:
             named_ventures = re.findall(r"\b([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)\b", answer)
-            stop_entities = {"IITM", "IIT", "Madras", "Research", "Park", "Incubation", "Cell", "IITMIC", "Based", "Section", "References", "Doc", "Page"}
+            stop_entities = {"Annual", "Report", "Based", "Section", "References", "Doc", "Page"}
             ventures_found = {v for v in named_ventures if v not in stop_entities and len(v) > 3}
             has_confession_or_excuse = any(w in answer.lower() for w in ["does not provide specific details on the names", "no specific startup", "does not name"])
-            if has_confession_or_excuse or len(ventures_found) < 2:
+
+            # Verify how many candidate ventures were actually present in retrieved evidence
+            context_ventures = {
+                v for v in re.findall(r"\b([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)\b", joined_evidence)
+                if v not in stop_entities and len(v) > 3
+            }
+            omitted_ventures = [v for v in context_ventures if v.lower() not in answer.lower()]
+
+            if (has_confession_or_excuse or len(ventures_found) < 2) and len(omitted_ventures) >= 2:
                 completeness_failed = True
-                completeness_msg = "Recall/Completeness check failed: Query requested deep-tech startups but answer contained fewer than 2 specific named startup profiles."
+                completeness_msg = "Recall/Completeness check failed: Query requested deep-tech startups but answer contained fewer than 2 specific named startup profiles despite evidence containing them."
 
         # Anti-Fabrication Boundary Guardrail
         # Check if model fabricated fictional document sections or boundaries (e.g. "Section 14 and Section 21 records")

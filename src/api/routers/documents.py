@@ -56,13 +56,13 @@ async def upload_document_spec(
       uploading (15%) -> parsing (40%) -> chunking (65%) -> embedding (85%) -> ready (100%)
     """
     q_params = request.query_params
-    effective_parser = parser or q_params.get("parser") or engine or q_params.get("engine") or "docling"
+    effective_parser = parser or q_params.get("parser") or engine or q_params.get("engine") or "auto"
     effective_mode = mode or q_params.get("mode") or parse_mode or q_params.get("parse_mode") or "fast"
     effective_library = library or q_params.get("library") or "default"
     effective_full_potential = str(full_potential or q_params.get("full_potential") or "false").lower() in ("true", "1", "yes")
     effective_extract_tables = str(extract_tables or q_params.get("extract_tables") or "true").lower() in ("true", "1", "yes")
 
-    use_engine = "docling" if (effective_parser.lower() in ("docling", "deep") or effective_mode.lower() == "expert" or effective_full_potential) else "auto"
+    use_engine = "docling" if (effective_parser.lower() in ("docling", "deep") or effective_full_potential) else ("auto" if effective_mode.lower() == "expert" else "fast")
 
     upload_list: List[UploadFile] = []
     seen_filenames = set()
@@ -164,10 +164,10 @@ async def upload_academic_pdfs(
         with open(dest_path, "wb") as buffer:
             shutil.copyfileobj(upload_file.file, buffer)
 
-        # Process the newly uploaded PDF
+        # Process the newly uploaded PDF without arbitrary page truncations
         res = academic_pipeline.process_pdf(
             dest_path,
-            max_pages=30,
+            max_pages=None,
             engine=use_engine,
             full_potential=effective_full_potential,
             extract_tables=effective_extract_tables,
@@ -244,7 +244,9 @@ def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
 
 
 @router.get("/api/pdf/{filename}")
+@router.head("/api/pdf/{filename}")
 @router.get("/api/documents/{filename}/file")
+@router.head("/api/documents/{filename}/file")
 async def get_pdf_file(filename: str):
     """
     Serves physical PDF for deep-linked in-browser viewing with #page=N.
