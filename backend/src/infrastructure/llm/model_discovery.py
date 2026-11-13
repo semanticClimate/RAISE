@@ -27,13 +27,13 @@ import json
 
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.http_client import safe_http_request
-from src.core.config import models
+from src.core.config import settings, models
 
 logger = logging.getLogger("raise.infrastructure.llm.model_discovery")
 
-# In-memory discovery cache with 10-minute TTL
+# In-memory discovery cache with configurable TTL
 _DISCOVERY_CACHE: Dict[str, Dict[str, Any]] = {}
-_DISCOVERY_CACHE_TTL = 600.0  # seconds
+_DISCOVERY_CACHE_TTL = getattr(settings.llm, "discovery_cache_ttl", 600.0)  # seconds
 
 
 class ModelDiscoveryEngine:
@@ -130,16 +130,47 @@ class ModelDiscoveryEngine:
         return results
 
     def _discover_vllm(self) -> List[str]:
-        url = os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1").rstrip("/") + "/models"
-        resp, _ = safe_http_request(url, timeout=1.0, max_retries=0)
-        data = resp.get("data", [])
-        return [m.get("id") for m in data if m.get("id")]
+        candidates: List[str] = []
+        env_url = os.getenv("VLLM_BASE_URL")
+        if env_url:
+            candidates.append(env_url)
+        for u in getattr(settings.llm, "vllm_candidate_urls", ()):
+            if u and u not in candidates:
+                candidates.append(u)
+        for fb in ("http://localhost:8002/v1", "http://raise-vllm-prod:8000/v1", "http://host.docker.internal:8002/v1", "http://127.0.0.1:8002/v1"):
+            if fb not in candidates:
+                candidates.append(fb)
+
+        timeout = getattr(settings.llm, "probe_timeout", 1.0)
+        for base in candidates:
+            url = base.rstrip("/") + "/models"
+            resp, _ = safe_http_request(url, timeout=timeout, max_retries=0)
+            if resp and isinstance(resp, dict) and "data" in resp:
+                data = resp.get("data", [])
+                model_ids = [m.get("id") for m in data if m.get("id")]
+                if model_ids:
+                    os.environ["VLLM_BASE_URL"] = base.rstrip("/")
+                    return model_ids
+        return []
 
     def _discover_ollama(self) -> List[str]:
-        url = "http://127.0.0.1:11434/api/tags"
-        resp, _ = safe_http_request(url, timeout=1.0, max_retries=0)
-        models = resp.get("models", [])
-        return [m.get("name") for m in models if m.get("name")]
+        base_url = (os.getenv("OLLAMA_BASE_URL") or getattr(settings.llm, "ollama_base_url", "http://localhost:11434")).rstrip("/")
+        timeout = getattr(settings.llm, "probe_timeout", 1.0)
+        # 1. Probe native Ollama /api/tags
+        resp, _ = safe_http_request(f"{base_url}/api/tags", timeout=timeout, max_retries=0)
+        if resp and isinstance(resp, dict) and "models" in resp:
+            models_list = [m.get("name") for m in resp.get("models", []) if m.get("name")]
+            if models_list:
+                os.environ["OLLAMA_BASE_URL"] = base_url
+                return models_list
+        # 2. Probe OpenAI-compatible /v1/models
+        resp, _ = safe_http_request(f"{base_url}/v1/models", timeout=timeout, max_retries=0)
+        if resp and isinstance(resp, dict) and "data" in resp:
+            models_list = [m.get("id") for m in resp.get("data", []) if m.get("id")]
+            if models_list:
+                os.environ["OLLAMA_BASE_URL"] = base_url
+                return models_list
+        return []
 
     def _discover_groq(self) -> List[str]:
         key = self._cm.get_credential("groq")
@@ -248,11 +279,12 @@ class ModelDiscoveryEngine:
 
     def build_dynamic_fallback_order(self) -> List[Dict[str, str]]:
         """
-        Dynamically constructs the LiteLLM fallback order based ONLY on
-        providers that actually have valid credentials configured.
-        Zero hardcoded static lists.
+        Dynamically constructs the LiteLLM fallback order based on
+        configured cloud providers and active local engines.
+        Supports both CLOUD_FIRST and LOCAL_FIRST routing modes.
         """
-        order: List[Dict[str, str]] = []
+        cloud_order: List[Dict[str, str]] = []
+        local_order: List[Dict[str, str]] = []
 
         provider_env_keys = {
             "groq": ("GROQ_API_KEY", models.GROQ_MODEL_NAME),
@@ -263,7 +295,7 @@ class ModelDiscoveryEngine:
             "openai": ("OPENAI_API_KEY", models.OPENAI_MODEL_NAME),
         }
 
-        # Concurrently probe all configured providers up-front
+        # Concurrently probe all configured cloud providers
         configured_provs = [
             prov for prov in provider_env_keys.keys()
             if self._cm.get_credential_status(prov) == "configured"
@@ -274,19 +306,40 @@ class ModelDiscoveryEngine:
         for prov in configured_provs:
             api_key_env, default_fb = provider_env_keys[prov]
             active_model = self.get_preferred_model(prov, default_fb)
-            # Formulate LiteLLM model identifier e.g. "groq/llama-3.3-70b-versatile"
             litellm_model = f"{prov}/{active_model}" if not active_model.startswith(f"{prov}/") else active_model
-            order.append({"model": litellm_model, "api_key": api_key_env})
+            cloud_order.append({"model": litellm_model, "api_key": api_key_env})
 
-        # Add local vLLM if reachable
+        # Discover local vLLM if reachable
         try:
             vllm_models = self._discover_vllm()
             if vllm_models:
-                order.append({"model": f"openai/{vllm_models[0]}", "api_key": "NONE"})
+                vllm_base = os.getenv("VLLM_BASE_URL", getattr(settings.llm, "base_url", "http://localhost:8002/v1"))
+                local_order.append({
+                    "model": f"openai/{vllm_models[0]}",
+                    "api_key": "NONE",
+                    "api_base": vllm_base,
+                })
         except Exception:
             pass
 
-        return order
+        # Discover local Ollama if reachable
+        try:
+            ollama_models = self._discover_ollama()
+            if ollama_models:
+                ollama_base = (os.getenv("OLLAMA_BASE_URL") or getattr(settings.llm, "ollama_base_url", "http://localhost:11434")).rstrip("/")
+                local_order.append({
+                    "model": f"ollama/{ollama_models[0]}",
+                    "api_key": "NONE",
+                    "api_base": f"{ollama_base}/v1",
+                })
+        except Exception:
+            pass
+
+        routing_mode = os.getenv("LLM_ROUTING_MODE", getattr(settings.llm, "routing_mode", "CLOUD_FIRST")).upper().strip()
+        if routing_mode == "LOCAL_FIRST":
+            return local_order + cloud_order
+        else:
+            return cloud_order + local_order
 
 
 _engine: Optional[ModelDiscoveryEngine] = None
