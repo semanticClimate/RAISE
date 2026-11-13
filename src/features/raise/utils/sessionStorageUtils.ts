@@ -16,6 +16,15 @@ export function pruneSessionForStorage(session: ChatSession): ChatSession {
     ...session,
     messages: (session.messages || []).map((m) => {
       const { ...cleanMsg } = m;
+      const resolvedDurationSec =
+        (typeof m.durationSec === 'number' && m.durationSec > 0 ? m.durationSec : undefined) ??
+        (typeof m.response?.latency_sec === 'number' && m.response.latency_sec > 0 ? m.response.latency_sec : undefined) ??
+        (typeof m.response?.execution_time === 'number' && m.response.execution_time > 0 ? m.response.execution_time : undefined) ??
+        (typeof m.response?.duration_seconds === 'number' && m.response.duration_seconds > 0 ? m.response.duration_seconds : undefined) ??
+        (typeof (m.response as any)?.duration_sec === 'number' && (m.response as any).duration_sec > 0 ? (m.response as any).duration_sec : undefined);
+
+      cleanMsg.durationSec = resolvedDurationSec;
+
       if (cleanMsg.response) {
         cleanMsg.response = {
           grounded_answer: cleanMsg.response.grounded_answer,
@@ -24,7 +33,10 @@ export function pruneSessionForStorage(session: ChatSession): ChatSession {
           verified_claims: cleanMsg.response.verified_claims,
           confidence_score: cleanMsg.response.confidence_score,
           quality_gate_decision: cleanMsg.response.quality_gate_decision,
-          duration_seconds: cleanMsg.response.duration_seconds,
+          duration_seconds: resolvedDurationSec ?? cleanMsg.response.duration_seconds,
+          latency_sec: resolvedDurationSec ?? cleanMsg.response.latency_sec,
+          execution_time: resolvedDurationSec ?? cleanMsg.response.execution_time,
+          duration_sec: resolvedDurationSec,
           pipeline_info: cleanMsg.response.pipeline_info,
           storage_used: cleanMsg.response.storage_used,
           llm_model: cleanMsg.response.llm_model,
@@ -135,11 +147,20 @@ export function getInitialConversation(): ChatMessage[] {
         const match = parsed.find((s) => s.id === targetId);
         if (match && Array.isArray(match.messages) && match.messages.length > 0) {
           return deduplicateTurns(
-            match.messages.map((m: any) => ({
-              ...m,
-              text: m?.text || m?.content || '',
-              content: m?.content || m?.text || '',
-            }))
+            match.messages.map((m: any) => {
+              const resolvedDuration =
+                (typeof m.durationSec === 'number' && m.durationSec > 0 ? m.durationSec : undefined) ??
+                (typeof m.latency_sec === 'number' && m.latency_sec > 0 ? m.latency_sec : undefined) ??
+                (typeof m.response?.latency_sec === 'number' && m.response.latency_sec > 0 ? m.response.latency_sec : undefined) ??
+                (typeof m.response?.execution_time === 'number' && m.response.execution_time > 0 ? m.response.execution_time : undefined) ??
+                (typeof m.response?.duration_seconds === 'number' && m.response.duration_seconds > 0 ? m.response.duration_seconds : undefined);
+              return {
+                ...m,
+                text: m?.text || m?.content || '',
+                content: m?.content || m?.text || '',
+                durationSec: resolvedDuration,
+              };
+            })
           );
         }
       }

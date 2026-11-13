@@ -58,7 +58,11 @@ export function useSessionHydration({
             text: m?.text || m?.content || '',
             content: m?.content || m?.text || '',
             durationSec:
-              m.durationSec ?? m.response?.latency_sec ?? m.response?.execution_time,
+              (typeof m.durationSec === 'number' && m.durationSec > 0 ? m.durationSec : undefined) ??
+              (typeof m.latency_sec === 'number' && m.latency_sec > 0 ? m.latency_sec : undefined) ??
+              (typeof m.response?.latency_sec === 'number' && m.response.latency_sec > 0 ? m.response.latency_sec : undefined) ??
+              (typeof m.response?.execution_time === 'number' && m.response.execution_time > 0 ? m.response.execution_time : undefined) ??
+              (typeof m.response?.duration_seconds === 'number' && m.response.duration_seconds > 0 ? m.response.duration_seconds : undefined),
           })
         );
 

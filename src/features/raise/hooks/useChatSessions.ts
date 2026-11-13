@@ -174,14 +174,42 @@ export function useChatSessions({
           if (currentSessionIdRef.current !== session.id) return;
           if (res?.data?.messages && Array.isArray(res.data.messages)) {
             const remoteMsgs = deduplicateTurns(
-              res.data.messages.map((m: any) => ({
-                ...m,
-                text: m?.text || m?.content || '',
-                content: m?.content || m?.text || '',
-              }))
+              res.data.messages.map((m: any) => {
+                const resolvedDuration =
+                  (typeof m.durationSec === 'number' && m.durationSec > 0 ? m.durationSec : undefined) ??
+                  (typeof m.latency_sec === 'number' && m.latency_sec > 0 ? m.latency_sec : undefined) ??
+                  (typeof m.response?.latency_sec === 'number' && m.response.latency_sec > 0 ? m.response.latency_sec : undefined) ??
+                  (typeof m.response?.execution_time === 'number' && m.response.execution_time > 0 ? m.response.execution_time : undefined) ??
+                  (typeof m.response?.duration_seconds === 'number' && m.response.duration_seconds > 0 ? m.response.duration_seconds : undefined);
+                return {
+                  ...m,
+                  text: m?.text || m?.content || '',
+                  content: m?.content || m?.text || '',
+                  durationSec: resolvedDuration,
+                };
+              })
             );
             if (remoteMsgs.length > 0) {
-              setConversation(remoteMsgs);
+              setConversation((prev) => {
+                if (prev.length === 0) return remoteMsgs;
+                return remoteMsgs.map((rm, idx) => {
+                  const existing = prev[idx];
+                  if (
+                    existing &&
+                    existing.role === rm.role &&
+                    existing.durationSec &&
+                    existing.durationSec > 0 &&
+                    (!rm.durationSec || rm.durationSec <= 0)
+                  ) {
+                    return {
+                      ...rm,
+                      durationSec: existing.durationSec,
+                      questionVersions: existing.questionVersions || rm.questionVersions,
+                    };
+                  }
+                  return rm;
+                });
+              });
             }
           }
         })

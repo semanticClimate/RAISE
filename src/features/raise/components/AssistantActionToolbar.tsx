@@ -8,6 +8,7 @@ export interface AssistantActionToolbarProps {
   turnIndex: number;
   msg: ChatMessage;
   resolvedContent: string;
+  userQuery?: string;
   isSpeaking: boolean;
   isRegenerating: boolean;
   isLoading: boolean;
@@ -30,6 +31,7 @@ export const AssistantActionToolbar: React.FC<AssistantActionToolbarProps> = ({
   turnIndex,
   msg,
   resolvedContent,
+  userQuery,
   isSpeaking,
   isRegenerating,
   isLoading,
@@ -185,7 +187,7 @@ export const AssistantActionToolbar: React.FC<AssistantActionToolbarProps> = ({
 
       {/* Export Dropdown - positioned on the left side with toolbar actions */}
       <ExportResponseDropdown
-        query="Academic Research Response"
+        query={userQuery || 'Research Inquiry'}
         answerText={resolvedContent}
         response={msg.response}
       />

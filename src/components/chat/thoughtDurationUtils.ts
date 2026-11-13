@@ -80,9 +80,15 @@ export function resolveTurnExecutionTime({
     return Number(activeRespDuration.toFixed(1));
   }
 
-  // 2. Explicitly committed duration on chat message
+  // 2. Explicitly committed duration on chat message or latency telemetry on message
   if (typeof msgDuration === 'number' && msgDuration > 0) {
     return Number(msgDuration.toFixed(1));
+  }
+  if (typeof (msg as any)?.latency_sec === 'number' && (msg as any).latency_sec > 0) {
+    return Number((msg as any).latency_sec.toFixed(1));
+  }
+  if (typeof (activeResp as any)?.latency_sec === 'number' && (activeResp as any).latency_sec > 0) {
+    return Number((activeResp as any).latency_sec.toFixed(1));
   }
 
   // 3. Backend response latency telemetry
@@ -92,6 +98,15 @@ export function resolveTurnExecutionTime({
   }
   if (typeof (resp as any)?.execution_time === 'number' && (resp as any).execution_time > 0) {
     return Number((resp as any).execution_time.toFixed(1));
+  }
+  if (typeof (resp as any)?.duration_seconds === 'number' && (resp as any).duration_seconds > 0) {
+    return Number((resp as any).duration_seconds.toFixed(1));
+  }
+  if (typeof (resp as any)?.duration_sec === 'number' && (resp as any).duration_sec > 0) {
+    return Number((resp as any).duration_sec.toFixed(1));
+  }
+  if (typeof (resp as any)?.durationSec === 'number' && (resp as any).durationSec > 0) {
+    return Number((resp as any).durationSec.toFixed(1));
   }
   if (typeof (resp as any)?.elapsed_ms === 'number' && (resp as any).elapsed_ms > 0) {
     return Number(((resp as any).elapsed_ms / 1000).toFixed(1));
@@ -129,7 +144,9 @@ export function computeHistoricalDuration(
   try {
     const diff =
       (new Date(assistantCreatedAt).getTime() - new Date(userCreatedAt).getTime()) / 1000;
-    if (diff > 0 && diff < 120) {
+    // Require at least 0.4s delta: batch database inserts insert user and assistant messages
+    // at the identical timestamp (delta < 0.3s), which would falsely yield 0.0s.
+    if (diff >= 0.4 && diff < 120) {
       return Number(diff.toFixed(1));
     }
   } catch {
