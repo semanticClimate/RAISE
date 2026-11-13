@@ -35,3 +35,6 @@ env/
 .idea/
 *.swp
 *.swo
+
+# Developer tools (Local only)
+scan_hardcoded_models.py
