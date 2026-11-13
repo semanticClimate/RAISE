@@ -68,17 +68,29 @@ class LocalVLLMProvider(BaseLLMProvider):
         self.model_name = model_name or os.getenv("VLLM_MODEL_NAME", models.VLLM_MODEL_NAME)
 
     def is_available(self) -> bool:
-        """Fast non-blocking check to determine if the local vLLM server is alive across common ports."""
+        """Fast non-blocking check to determine if the local vLLM server is alive across common ports and Docker networks."""
         candidate_urls = [self.base_url]
-        for fallback in ["http://localhost:8002/v1", "http://127.0.0.1:8002/v1", "http://localhost:8080/v1", "http://localhost:1234/v1"]:
+        for candidate in getattr(settings.llm, "vllm_candidate_urls", ()):
+            if candidate and candidate not in candidate_urls:
+                candidate_urls.append(candidate)
+        for fallback in [
+            "http://localhost:8002/v1",
+            "http://raise-vllm-prod:8000/v1",
+            "http://host.docker.internal:8002/v1",
+            "http://127.0.0.1:8002/v1",
+            "http://localhost:8080/v1",
+            "http://localhost:1234/v1",
+        ]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
+        probe_timeout = getattr(settings.llm, "probe_timeout", 0.35)
         for u in candidate_urls:
             try:
-                req = urllib.request.Request(f"{u}/models", headers={"User-Agent": "RAISE-Provider"})
-                with urllib.request.urlopen(req, timeout=0.35) as resp:
+                req = urllib.request.Request(f"{u.rstrip('/')}/models", headers={"User-Agent": "RAISE-Provider"})
+                with urllib.request.urlopen(req, timeout=probe_timeout) as resp:
                     if resp.status == 200:
-                        self.base_url = u
+                        self.base_url = u.rstrip("/")
+                        os.environ["VLLM_BASE_URL"] = self.base_url
                         try:
                             models_data = json.loads(resp.read().decode("utf-8"))
                             if "data" in models_data and len(models_data["data"]) > 0:
@@ -485,16 +497,21 @@ class LocalOllamaProvider(BaseLLMProvider):
     def is_available(self) -> bool:
         """Fast non-blocking check to determine if local Ollama server is alive and has models."""
         candidate_urls = [self.base_url]
-        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434"]:
+        ollama_cfg_url = getattr(settings.llm, "ollama_base_url", "http://localhost:11434")
+        if ollama_cfg_url not in candidate_urls:
+            candidate_urls.append(ollama_cfg_url)
+        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434", "http://host.docker.internal:11434"]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
+        probe_timeout = getattr(settings.llm, "probe_timeout", 0.35)
         for u in candidate_urls:
             try:
                 # 1. Probe Ollama native tags endpoint
-                req = urllib.request.Request(f"{u}/api/tags", headers={"User-Agent": "RAISE-Provider"})
-                with urllib.request.urlopen(req, timeout=0.35) as resp:
+                req = urllib.request.Request(f"{u.rstrip('/')}/api/tags", headers={"User-Agent": "RAISE-Provider"})
+                with urllib.request.urlopen(req, timeout=probe_timeout) as resp:
                     if resp.status == 200:
-                        self.base_url = u
+                        self.base_url = u.rstrip("/")
+                        os.environ["OLLAMA_BASE_URL"] = self.base_url
                         data = json.loads(resp.read().decode("utf-8"))
                         model_list = [m.get("name") for m in data.get("models", []) if m.get("name")]
                         if model_list and (not self.model_name or self.model_name == models.OLLAMA_MODEL_NAME):
@@ -504,10 +521,11 @@ class LocalOllamaProvider(BaseLLMProvider):
                 pass
             try:
                 # 2. Probe Ollama OpenAI-compatible models endpoint
-                req = urllib.request.Request(f"{u}/v1/models", headers={"User-Agent": "RAISE-Provider"})
-                with urllib.request.urlopen(req, timeout=0.35) as resp:
+                req = urllib.request.Request(f"{u.rstrip('/')}/v1/models", headers={"User-Agent": "RAISE-Provider"})
+                with urllib.request.urlopen(req, timeout=probe_timeout) as resp:
                     if resp.status == 200:
-                        self.base_url = u
+                        self.base_url = u.rstrip("/")
+                        os.environ["OLLAMA_BASE_URL"] = self.base_url
                         data = json.loads(resp.read().decode("utf-8"))
                         model_list = [m.get("id") for m in data.get("data", []) if m.get("id")]
                         if model_list and (not self.model_name or self.model_name == models.OLLAMA_MODEL_NAME):
@@ -571,62 +589,266 @@ class LocalOllamaProvider(BaseLLMProvider):
         yield text
 
 
+class FailoverLLMProvider(BaseLLMProvider):
+    """
+    Circuit-breaking resilient LLM Provider wrapper.
+    Chains a primary provider with fallbacks (e.g. Cloud -> Local vLLM/Ollama,
+    or Local-First -> Cloud).
+    Tracks rate limits (HTTP 429), timeouts, and auth errors with thread-safe
+    cooldown to prevent wasting time on dead providers across multi-file runs.
+    """
+
+    _cooldowns: Dict[str, float] = {}
+    _lock: threading.Lock = threading.Lock()
+
+    def __init__(
+        self,
+        primary: LLMProvider,
+        fallbacks: Optional[List[LLMProvider]] = None,
+        cooldown_seconds: Optional[float] = None,
+    ):
+        self.primary = primary
+        self.fallbacks = fallbacks or []
+        self.cooldown_seconds = (
+            cooldown_seconds
+            if cooldown_seconds is not None
+            else getattr(settings.llm, "cooldown_seconds", 60.0)
+        )
+        self.name = getattr(primary, "name", "failover_llm")
+        self.cost_mode = getattr(primary, "cost_mode", "HYBRID FAILOVER")
+
+    def _is_cooling_down(self, provider_name: str) -> bool:
+        with self._lock:
+            until = self._cooldowns.get(provider_name, 0.0)
+            return time.time() < until
+
+    def _mark_cooldown(self, provider_name: str, duration: Optional[float] = None) -> None:
+        secs = duration if duration is not None else self.cooldown_seconds
+        with self._lock:
+            self._cooldowns[provider_name] = time.time() + secs
+        logger.warning(f"Provider '{provider_name}' entered failover cooldown for {secs:.0f}s.")
+
+    def _is_failover_worthy(self, exc: Exception) -> bool:
+        err_msg = str(exc).lower()
+        failover_indicators = (
+            "429",
+            "rate limit",
+            "quota",
+            "resource exhausted",
+            "auth_failed",
+            "401",
+            "connection refused",
+            "actively refused",
+            "10061",
+            "timed out",
+            "timeout",
+            "service unavailable",
+            "503",
+            "502",
+        )
+        return any(ind in err_msg for ind in failover_indicators)
+
+    def complete(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.1,
+        **kwargs: Any,
+    ) -> str:
+        chain = [self.primary] + self.fallbacks
+        last_exc: Optional[Exception] = None
+
+        for idx, provider in enumerate(chain):
+            pname = getattr(provider, "name", f"provider_{idx}")
+            if self._is_cooling_down(pname):
+                logger.info(f"Skipping cooling provider '{pname}' ({idx + 1}/{len(chain)}), cascading to fallback...")
+                continue
+
+            try:
+                result = provider.complete(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    **kwargs,
+                )
+                if result:
+                    return result
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(f"Provider '{pname}' completion failed: {exc}")
+                if self._is_failover_worthy(exc):
+                    self._mark_cooldown(pname)
+
+        if last_exc:
+            raise RuntimeError(f"All LLM providers in failover chain exhausted: {last_exc}") from last_exc
+        raise RuntimeError("All LLM providers in failover chain are currently in cooldown.")
+
+    async def complete_stream(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.1,
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        chain = [self.primary] + self.fallbacks
+        last_exc: Optional[Exception] = None
+
+        for idx, provider in enumerate(chain):
+            pname = getattr(provider, "name", f"provider_{idx}")
+            if self._is_cooling_down(pname):
+                continue
+
+            yielded_any = False
+            try:
+                async for chunk in provider.complete_stream(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    **kwargs,
+                ):
+                    yielded_any = True
+                    yield chunk
+                return
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(f"Provider '{pname}' stream failed: {exc}")
+                if self._is_failover_worthy(exc):
+                    self._mark_cooldown(pname)
+                if yielded_any:
+                    raise
+
+        if last_exc:
+            raise RuntimeError(f"All LLM stream providers exhausted: {last_exc}") from last_exc
+        raise RuntimeError("All LLM stream providers currently in cooldown.")
+
+    def health_check(self, timeout: float = 5.0) -> ProviderHealth:
+        primary_health = self.primary.health_check(timeout=timeout)
+        if primary_health.status == "READY":
+            return primary_health
+        for fb in self.fallbacks:
+            fb_health = fb.health_check(timeout=timeout)
+            if fb_health.status == "READY":
+                return ProviderHealth(
+                    provider=f"{self.primary.name}->{fb.name}",
+                    configured=True,
+                    credential_valid=True,
+                    endpoint_reachable=True,
+                    model_available=True,
+                    functional_test=True,
+                    status="READY",
+                    cost_mode=fb.cost_mode,
+                )
+        return primary_health
+
+
 def get_llm_provider(config: Optional[LLMConfig] = None, provider_name: Optional[str] = None) -> LLMProvider:
     """
     Factory creating configured LLM provider according to environment settings or explicit name.
-    Preserves existing signature and semantics while supporting all new providers.
+    Wraps provider in a circuit-breaking FailoverLLMProvider with local/cloud fallback anchors.
     """
     cfg = config or settings.llm
-    # Always check live os.environ["LLM_BACKEND"] first so UI hot-swaps take effect without restarting
     backend = (provider_name or os.getenv("LLM_BACKEND") or cfg.backend).lower().strip()
+    routing_mode = os.getenv("LLM_ROUTING_MODE", getattr(cfg, "routing_mode", "CLOUD_FIRST")).upper().strip()
 
-    # Auto-detect Groq or Gemini if backend defaults to 'vllm' but local vLLM is offline and cloud keys exist
-    if backend == "vllm" and not provider_name:
-        vllm_prov = LocalVLLMProvider(base_url=cfg.base_url, model_name=cfg.model_name)
-        if not vllm_prov.is_available():
-            if os.getenv("GROQ_API_KEY", "").strip():
-                backend = "groq"
-            elif (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip():
-                backend = "gemini"
-        else:
-            return vllm_prov
-
+    # Determine base primary provider
+    primary: LLMProvider
     if backend in ("cloud", "openai", "openai-compatible"):
-        return CloudOpenAICompatibleProvider(
+        primary = CloudOpenAICompatibleProvider(
             api_key=cfg.api_key,
             base_url=cfg.base_url,
             model_name=cfg.model_name,
         )
     elif backend == "gemini":
         from src.infrastructure.providers.gemini import GeminiProvider
-        return GeminiProvider()
+        primary = GeminiProvider()
     elif backend == "groq":
         from src.infrastructure.providers.groq import GroqProvider
-        return GroqProvider()
+        primary = GroqProvider()
     elif backend in ("nvidia", "nvidia-nim", "nim"):
         from src.infrastructure.providers.nvidia import NvidiaNIMProvider
-        return NvidiaNIMProvider()
+        primary = NvidiaNIMProvider()
     elif backend == "cohere":
         from src.infrastructure.providers.cohere import CohereProvider
-        return CohereProvider()
+        primary = CohereProvider()
     elif backend == "mistral":
         from src.infrastructure.providers.mistral import MistralProvider
-        return MistralProvider()
+        primary = MistralProvider()
     elif backend in ("deepseek", "openrouter", "vercel", "typesafe", "jev"):
-        # Deprecated / billing restricted -> fall back to primary fast cloud provider
         from src.infrastructure.providers.groq import GroqProvider
-        return GroqProvider()
+        primary = GroqProvider()
     elif backend in ("local", "transformers", "gpu", "hf"):
-        return LocalTransformersProvider(model_name=cfg.model_name)
+        primary = LocalTransformersProvider(model_name=cfg.model_name)
     elif backend in ("universal", "custom", "together", "fireworks", "perplexity"):
         try:
             from src.infrastructure.providers.universal import UniversalCloudProvider
-            return UniversalCloudProvider(custom_name=backend)
+            primary = UniversalCloudProvider(custom_name=backend)
         except Exception:
             from src.infrastructure.providers.groq import GroqProvider
-            return GroqProvider()
+            primary = GroqProvider()
     elif backend == "ollama":
-        return LocalOllamaProvider(base_url=cfg.base_url, model_name=cfg.model_name)
+        primary = LocalOllamaProvider(base_url=cfg.base_url, model_name=cfg.model_name)
     else:
-        # Default local vLLM (falls back to in-process LocalTransformers on GPU or Cloud if vLLM offline)
-        return LocalVLLMProvider(base_url=cfg.base_url, model_name=cfg.model_name)
+        primary = LocalVLLMProvider(base_url=cfg.base_url, model_name=cfg.model_name)
+
+    if os.getenv("DISABLE_LLM_FAILOVER", "").lower() in ("true", "1", "yes"):
+        return primary
+
+    fallbacks: List[LLMProvider] = []
+    vllm_fb = LocalVLLMProvider(base_url=cfg.base_url, model_name=cfg.model_name)
+    ollama_fb = LocalOllamaProvider(base_url=cfg.base_url, model_name=cfg.model_name)
+
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    gemini_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+
+    if routing_mode == "LOCAL_FIRST":
+        if backend not in ("vllm", "ollama", "local"):
+            if vllm_fb.is_available():
+                fallbacks.append(primary)
+                primary = vllm_fb
+            elif ollama_fb.is_available():
+                fallbacks.append(primary)
+                primary = ollama_fb
+            else:
+                fallbacks.extend([vllm_fb, ollama_fb])
+        else:
+            if backend == "vllm":
+                fallbacks.append(ollama_fb)
+            elif backend == "ollama":
+                fallbacks.append(vllm_fb)
+            if gemini_key:
+                from src.infrastructure.providers.gemini import GeminiProvider
+                fallbacks.append(GeminiProvider())
+            if groq_key:
+                from src.infrastructure.providers.groq import GroqProvider
+                fallbacks.append(GroqProvider())
+    else:
+        if backend in ("gemini", "groq", "cohere", "mistral", "nvidia", "cloud", "openai"):
+            if backend != "groq" and groq_key:
+                from src.infrastructure.providers.groq import GroqProvider
+                fallbacks.append(GroqProvider())
+            if backend != "gemini" and gemini_key:
+                from src.infrastructure.providers.gemini import GeminiProvider
+                fallbacks.append(GeminiProvider())
+            fallbacks.append(vllm_fb)
+            fallbacks.append(ollama_fb)
+        else:
+            if backend == "vllm":
+                fallbacks.append(ollama_fb)
+            elif backend == "ollama":
+                fallbacks.append(vllm_fb)
+            if gemini_key:
+                from src.infrastructure.providers.gemini import GeminiProvider
+                fallbacks.append(GeminiProvider())
+            if groq_key:
+                from src.infrastructure.providers.groq import GroqProvider
+                fallbacks.append(GroqProvider())
+
+    return FailoverLLMProvider(
+        primary=primary,
+        fallbacks=fallbacks,
+        cooldown_seconds=cfg.cooldown_seconds,
+    )
