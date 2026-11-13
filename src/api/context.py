@@ -99,6 +99,8 @@ def auto_scan_and_reconcile_documents():
 
 # Active Abort & Cancellation Token Registry (bounded in-memory)
 ACTIVE_ABORTS: Set[str] = set()
+ACTIVE_REQUEST_ABORTS: Set[str] = set()
+SESSION_ABORT_TIMESTAMPS: Dict[str, float] = {}
 
 # System Telemetry & Operational Metrics Tracker
 SYSTEM_START_TIME = time.time()
@@ -119,45 +121,118 @@ def record_query_metric(latency: float, success: bool = True):
     SYSTEM_METRICS["latencies"].append(round(latency, 3))
 
 
-def is_aborted(session_id: Optional[str], request_id: Optional[str] = None, redis_client: Any = None) -> bool:
-    if session_id and session_id in ACTIVE_ABORTS:
+def is_aborted(
+    session_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    started_at: Optional[float] = None,
+    redis_client: Any = None,
+) -> bool:
+    """
+    Checks if an in-flight query has been cancelled.
+    Supports request-level specificity and timestamp-aware session aborts.
+    A new query with started_at > abort_timestamp is NEVER treated as aborted.
+    """
+    # 1. Direct request ID abort check (request-level specificity)
+    if request_id and (request_id in ACTIVE_REQUEST_ABORTS or request_id in ACTIVE_ABORTS):
         return True
-    if request_id and request_id in ACTIVE_ABORTS:
-        return True
+
+    # 2. Session-level abort check with timestamp awareness
+    if session_id:
+        abort_ts = SESSION_ABORT_TIMESTAMPS.get(session_id)
+        if abort_ts is not None:
+            if started_at is not None:
+                # Query was only aborted if it started BEFORE or AT the abort timestamp
+                if started_at <= abort_ts:
+                    return True
+            else:
+                return True
+
+    # 3. Redis cross-process checks
     if redis_client:
         try:
-            if session_id and redis_client.get(f"abort:{session_id}"):
-                return True
-            if request_id and redis_client.get(f"abort:{request_id}"):
-                return True
+            if request_id:
+                if redis_client.get(f"abort:req:{request_id}") or redis_client.get(f"abort:{request_id}"):
+                    return True
+            if session_id:
+                raw_session = redis_client.get(f"abort:session:{session_id}") or redis_client.get(f"abort:{session_id}")
+                if raw_session:
+                    if started_at is not None:
+                        try:
+                            s_ts = float(raw_session.decode("utf-8") if isinstance(raw_session, bytes) else raw_session)
+                            if started_at <= s_ts:
+                                return True
+                        except ValueError:
+                            return True
+                    else:
+                        return True
         except Exception:
             pass
+
     return False
 
 
-def record_abort(session_id: Optional[str], request_id: Optional[str] = None, redis_mgr: Any = None):
-    # Bound memory set size
+def record_abort(session_id: Optional[str] = None, request_id: Optional[str] = None, redis_mgr: Any = None):
+    """
+    Records an abort signal for a specific in-flight query or current session.
+    """
+    # Bound memory set sizes to prevent unbounded memory growth
     if len(ACTIVE_ABORTS) > 1000:
         ACTIVE_ABORTS.clear()
-    if session_id:
-        ACTIVE_ABORTS.add(session_id)
-        if redis_mgr and redis_mgr.is_connected and redis_mgr._client:
-            try:
-                redis_mgr._client.setex(f"abort:{session_id}", 60, "1")
-            except Exception:
-                pass
+    if len(ACTIVE_REQUEST_ABORTS) > 1000:
+        ACTIVE_REQUEST_ABORTS.clear()
+    if len(SESSION_ABORT_TIMESTAMPS) > 1000:
+        SESSION_ABORT_TIMESTAMPS.clear()
+
+    now = time.time()
     if request_id:
         ACTIVE_ABORTS.add(request_id)
-        if redis_mgr and redis_mgr.is_connected and redis_mgr._client:
+        ACTIVE_REQUEST_ABORTS.add(request_id)
+        if redis_mgr and getattr(redis_mgr, "is_connected", False) and getattr(redis_mgr, "_client", None):
             try:
-                redis_mgr._client.setex(f"abort:{request_id}", 60, "1")
+                redis_mgr._client.setex(f"abort:req:{request_id}", 60, "1")
             except Exception:
                 pass
+
+    if session_id:
+        ACTIVE_ABORTS.add(session_id)
+        SESSION_ABORT_TIMESTAMPS[session_id] = now
+        if redis_mgr and getattr(redis_mgr, "is_connected", False) and getattr(redis_mgr, "_client", None):
+            try:
+                redis_mgr._client.setex(f"abort:session:{session_id}", 60, str(now))
+            except Exception:
+                pass
+
     if redis_mgr:
         try:
             redis_mgr.publish_abort(session_id, request_id)
         except Exception:
             pass
+
+
+def clear_abort(session_id: Optional[str] = None, request_id: Optional[str] = None, redis_mgr: Any = None):
+    """
+    Clears active abort flags for a session or request when a new query begins.
+    Ensures that new incoming queries are never aborted by stale cancellation tokens.
+    """
+    if session_id:
+        ACTIVE_ABORTS.discard(session_id)
+        SESSION_ABORT_TIMESTAMPS.pop(session_id, None)
+        if redis_mgr and getattr(redis_mgr, "is_connected", False) and getattr(redis_mgr, "_client", None):
+            try:
+                redis_mgr._client.delete(f"abort:session:{session_id}")
+                redis_mgr._client.delete(f"abort:{session_id}")
+            except Exception:
+                pass
+
+    if request_id:
+        ACTIVE_ABORTS.discard(request_id)
+        ACTIVE_REQUEST_ABORTS.discard(request_id)
+        if redis_mgr and getattr(redis_mgr, "is_connected", False) and getattr(redis_mgr, "_client", None):
+            try:
+                redis_mgr._client.delete(f"abort:req:{request_id}")
+                redis_mgr._client.delete(f"abort:{request_id}")
+            except Exception:
+                pass
 
 
 def get_lan_ip() -> str:

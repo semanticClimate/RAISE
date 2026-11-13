@@ -208,6 +208,7 @@ def create_chat_raw_stream(
     rag_cfg = RAGModeDispatcher.dispatch(mode)
     async def chat_raw_generator():
         t_start = time.perf_counter()
+        t_wall_start = time.time()
         try:
             rag_task = asyncio.create_task(
                 asyncio.to_thread(
@@ -227,7 +228,7 @@ def create_chat_raw_stream(
                 done, _ = await asyncio.wait([rag_task], timeout=0.25)
                 if rag_task in done:
                     break
-                if await request.is_disconnected() or is_aborted(session_id, request_id):
+                if await request.is_disconnected() or is_aborted(session_id, request_id, started_at=t_wall_start):
                     logger.info("Client disconnected or aborted while waiting for GraphRAG query: session=%s, req=%s", session_id, request_id)
                     yield " [Request Cancelled]"
                     return
@@ -254,7 +255,7 @@ def create_chat_raw_stream(
             words = re.findall(r"\S+|\s+", answer)
             chunk_size = 6
             for i in range(0, len(words), chunk_size):
-                if await request.is_disconnected() or is_aborted(session_id, request_id):
+                if await request.is_disconnected() or is_aborted(session_id, request_id, started_at=t_wall_start):
                     logger.info("Client disconnected or aborted: session=%s, req=%s", session_id, request_id)
                     yield " [Request Cancelled]"
                     return
@@ -298,8 +299,10 @@ def create_chat_sse_stream(
     rag_cfg = RAGModeDispatcher.dispatch(mode)
     async def chat_sse_generator():
         t_start = time.perf_counter()
+        t_wall_start = time.time()
+        redis_client = getattr(redis_cache, "_client", None) if redis_cache else None
         yield ": keepalive\n\n"
-        if await request.is_disconnected() or is_aborted(session_id, request_id):
+        if await request.is_disconnected() or is_aborted(session_id, request_id, started_at=t_wall_start, redis_client=redis_client):
             yield f"event: error\ndata: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user', 'request_id': request_id}})}\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -345,7 +348,7 @@ def create_chat_sse_stream(
                 done, _ = await asyncio.wait([rag_task], timeout=0.08)
                 if rag_task in done:
                     break
-                if await request.is_disconnected() or is_aborted(session_id, request_id):
+                if await request.is_disconnected() or is_aborted(session_id, request_id, started_at=t_wall_start, redis_client=redis_client):
                     logger.info("Client disconnected or aborted while waiting for GraphRAG query: session=%s, req=%s", session_id, request_id)
                     yield f"event: error\ndata: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user', 'request_id': request_id}})}\n\n"
                     yield "data: [DONE]\n\n"
@@ -395,9 +398,9 @@ def create_chat_sse_stream(
             words = re.findall(r"\S+|\s+", answer)
             chunk_size = 6
             for i in range(0, len(words), chunk_size):
-                if await request.is_disconnected() or is_aborted(session_id, request_id):
+                if await request.is_disconnected() or is_aborted(session_id, request_id, started_at=t_wall_start, redis_client=redis_client):
                     logger.info("Client disconnected or aborted: session=%s, req=%s", session_id, request_id)
-                    yield f"data: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user'}})}\n\n"
+                    yield f"event: error\ndata: {json.dumps({'error': {'code': 'CANCELLED', 'message': 'Request cancelled by user'}})}\n\n"
                     yield "data: [DONE]\n\n"
                     return
                 token_chunk = "".join(words[i:i + chunk_size])

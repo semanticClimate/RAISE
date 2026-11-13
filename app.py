@@ -71,10 +71,12 @@ from src.features.chat import ChatService
 from src.api.context import (
     ACTIVE_ABORTS,
     DOCUMENTS_DIR,
-    get_lan_ip,
-    record_ready_document,
-    get_ready_documents_list,
+    clear_abort,
     clear_ready_documents,
+    get_lan_ip,
+    get_ready_documents_list,
+    record_abort,
+    record_ready_document,
 )
 from src.api.dependencies import set_dependencies
 
@@ -177,10 +179,8 @@ async def _abort_pubsub_listener():
                     data = json.loads(raw_d)
                     sid = data.get("session_id")
                     rid = data.get("request_id")
-                    if sid:
-                        ACTIVE_ABORTS.add(sid)
-                    if rid:
-                        ACTIVE_ABORTS.add(rid)
+                    if sid or rid:
+                        record_abort(session_id=sid, request_id=rid)
                 except Exception:
                     pass
             await asyncio.sleep(0.5)

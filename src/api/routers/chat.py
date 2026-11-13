@@ -38,6 +38,7 @@ except ImportError:
 
 from src.api.context import (
     _parse_drawer_active_docs,
+    clear_abort,
     get_authentic_client_ip,
     get_ready_documents_list,
     is_conversational_or_memory_query,
@@ -145,6 +146,9 @@ async def chat_endpoint(
     session_id = req.session_id or req.thread_id or "default"
     request_id = req.request_id or f"req-{int(time.time() * 1000)}"
     library = req.library
+
+    # 0. Purge any stale cancellation tokens for this session / request so new query executes cleanly
+    clear_abort(session_id=session_id, request_id=request_id, redis_mgr=redis_cache)
 
     # Normalize, unquote, and handle URL encoded spaces in active_docs
     if req.active_docs is not None:

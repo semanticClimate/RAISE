@@ -613,9 +613,11 @@ def execute_terminal_query(query: str, focused_doc: Optional[str] = None) -> Non
 
     payload = {
         "query": q_clean,
-        "mode": "deep",
+        "mode": "expert",
         "stream": False,
         "active_docs": active_docs,
+        "session_id": f"terminal-{int(time.time())}",
+        "request_id": f"req-term-{int(time.time() * 1000)}",
     }
 
     try:
@@ -626,7 +628,7 @@ def execute_terminal_query(query: str, focused_doc: Optional[str] = None) -> Non
             headers={"Content-Type": "application/json", "User-Agent": "RAISE-Terminal"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=60.0) as resp:
+        with urllib.request.urlopen(req, timeout=120.0) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             latency = round((time.perf_counter() - t0), 2)
             ans = res.get("grounded_answer") or res.get("answer") or res.get("reply") or "No answer returned."
