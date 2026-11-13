@@ -114,34 +114,35 @@ def resolve_local_model_path(repo_or_path: str) -> str:
     return repo_or_path
 
 
+def _env_tuple(env_key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Parse comma-separated environment variable into a clean tuple of strings."""
+    raw = os.getenv(env_key, "").strip()
+    if not raw:
+        return default
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     # LLM Synthesis
     LLM_PROVIDER: str = os.getenv("RAISE_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini"))
     LLM_MODEL_NAME: str = os.getenv("RAISE_LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash"))
     GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
-    GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = (
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-flash-latest",
+    GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "GEMINI_FALLBACK_CANDIDATES",
+        ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"),
     )
     OPENAI_MODEL_NAME: str = os.getenv("OPENAI_MODEL_NAME", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
-    VLLM_MODEL_NAME: str = os.getenv("VLLM_MODEL_NAME", os.getenv("LOCAL_LLM_MODEL", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"))
+    VLLM_MODEL_NAME: str = os.getenv("VLLM_MODEL_NAME", os.getenv("LOCAL_LLM_MODEL", "auto"))
     OLLAMA_MODEL_NAME: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-    OLLAMA_FALLBACK_CANDIDATES: tuple[str, ...] = (
-        "qwen2.5:14b",
-        "qwen2.5:7b",
-        "llama3.1:8b",
-        "mistral:7b",
+    OLLAMA_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "OLLAMA_FALLBACK_CANDIDATES",
+        ("qwen2.5:14b", "qwen2.5:7b", "llama3.1:8b", "mistral:7b"),
     )
     GROQ_MODEL_NAME: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
-    GROQ_FALLBACK_CANDIDATES: tuple[str, ...] = (
-        "openai/gpt-oss-120b",
-        "qwen/qwen3.8-27b",
-        "openai/gpt-oss-20b",
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
+    GROQ_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "GROQ_FALLBACK_CANDIDATES",
+        ("openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
     )
     DEEPSEEK_MODEL_NAME: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     NVIDIA_MODEL_NAME: str = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
@@ -149,10 +150,9 @@ class ModelConfig:
     ANTHROPIC_MODEL_NAME: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet")
     COHERE_MODEL_NAME: str = os.getenv("COHERE_MODEL", "command-r-plus-08-2024")
     MISTRAL_MODEL_NAME: str = os.getenv("MISTRAL_MODEL", "open-mistral-nemo")
-    MISTRAL_FALLBACK_CANDIDATES: tuple[str, ...] = (
-        "open-mistral-7b",
-        "codestral-latest",
-        "mistral-small-latest",
+    MISTRAL_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "MISTRAL_FALLBACK_CANDIDATES",
+        ("open-mistral-7b", "codestral-latest", "mistral-small-latest"),
     )
 
     # Retrieval & Reranking
@@ -328,11 +328,29 @@ class NLIConfig(BaseModel):
 
 class LLMConfig(BaseModel):
     """Local & Remote Large Language Model Configuration."""
-    backend: Literal["ollama", "huggingface", "openai-compatible", "vllm", "cloud"] = Field(
-        default_factory=lambda: os.getenv("LLM_BACKEND", "vllm")  # type: ignore
-    )
+    backend: str = Field(default_factory=lambda: os.getenv("LLM_BACKEND", os.getenv("LLM_PROVIDER", "groq")))
     model_name: str = Field(default_factory=lambda: os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME))
     base_url: str = Field(default_factory=lambda: os.getenv("LLM_BASE_URL", os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")))
+    vllm_candidate_urls: tuple[str, ...] = Field(
+        default_factory=lambda: _env_tuple(
+            "VLLM_CANDIDATE_URLS",
+            (
+                os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1"),
+                "http://raise-vllm-prod:8000/v1",
+                "http://host.docker.internal:8002/v1",
+                "http://127.0.0.1:8002/v1",
+            ),
+        )
+    )
+    ollama_base_url: str = Field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+    fallback_order: tuple[str, ...] = Field(
+        default_factory=lambda: _env_tuple("LLM_FALLBACK_ORDER", ("groq", "gemini", "cohere", "vllm"))
+    )
+    cooldown_seconds: float = Field(default_factory=lambda: float(os.getenv("LLM_COOLDOWN_SECONDS", "60.0")))
+    probe_timeout: float = Field(default_factory=lambda: float(os.getenv("LLM_PROBE_TIMEOUT", "0.5")))
+    discovery_cache_ttl: float = Field(default_factory=lambda: float(os.getenv("LLM_DISCOVERY_CACHE_TTL", "600.0")))
+    max_concurrent_workers: int = Field(default_factory=lambda: int(os.getenv("LLM_MAX_WORKERS", "6")))
+    routing_mode: str = Field(default_factory=lambda: os.getenv("LLM_ROUTING_MODE", "CLOUD_FIRST"))
     api_key: Optional[str] = Field(default_factory=lambda: os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY")))
     temperature: float = Field(default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.1")))
     max_tokens: int = Field(default_factory=lambda: int(os.getenv("LLM_MAX_TOKENS", "1024")))

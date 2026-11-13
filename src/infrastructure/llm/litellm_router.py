@@ -27,6 +27,9 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
+from src.core.config import settings, models
+from src.infrastructure.llm.model_discovery import get_model_discovery_engine
+
 logger = logging.getLogger("raise.infrastructure.llm.litellm")
 
 try:
@@ -45,16 +48,9 @@ class LiteLLMRouter:
     Handles dynamic provider failover, retry budgets, and token usage accounting.
     """
 
-    DEFAULT_FALLBACK_ORDER = [
-        {"model": "groq/qwen/qwen3.8-27b", "api_key": "GROQ_API_KEY"},
-        {"model": "cohere/command-r-plus-08-2024", "api_key": "COHERE_API_KEY"},
-        {"model": "gemini/gemini-2.5-flash", "api_key": "GEMINI_API_KEY"},
-        {"model": "nvidia/meta/llama-3.2-11b-vision-instruct", "api_key": "NVIDIA_API_KEY"},
-    ]
-
     def __init__(self, default_model: Optional[str] = None):
         self.has_litellm = HAS_LITELLM
-        self.default_model = default_model or os.getenv("DEFAULT_LLM_MODEL", "groq/qwen/qwen3.8-27b")
+        self.default_model = default_model or os.getenv("DEFAULT_LLM_MODEL") or models.LLM_MODEL_NAME
         if HAS_LITELLM:
             logger.info(f"LiteLLM router initialized with default target: {self.default_model}")
         else:
@@ -68,6 +64,7 @@ class LiteLLMRouter:
         max_tokens: int = 1024,
         timeout: float = 30.0,
         fallbacks: Optional[List[str]] = None,
+        api_base: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Executes unified LLM completion with automatic retries and fallback failover.
@@ -84,20 +81,44 @@ class LiteLLMRouter:
         target_model = model or self.default_model
         t0 = time.time()
 
-        # Build fallback list if not supplied
-        active_fallbacks = fallbacks or [
-            f["model"] for f in self.DEFAULT_FALLBACK_ORDER if f["model"] != target_model
-        ]
+        # Build dynamic fallback list if not supplied
+        if fallbacks is None:
+            try:
+                discovery_engine = get_model_discovery_engine()
+                dynamic_order = discovery_engine.build_dynamic_fallback_order()
+                active_fallbacks = [
+                    item["model"] for item in dynamic_order if item.get("model") != target_model
+                ]
+            except Exception as e:
+                logger.debug(f"Dynamic fallback discovery error: {e}")
+                active_fallbacks = []
+        else:
+            active_fallbacks = fallbacks
+
+        completion_kwargs: Dict[str, Any] = {
+            "model": target_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "timeout": timeout,
+        }
+        if active_fallbacks:
+            completion_kwargs["fallbacks"] = active_fallbacks
+
+        # Route local endpoints properly if targeting local vLLM or Ollama
+        resolved_api_base = api_base
+        if not resolved_api_base:
+            if target_model.startswith("openai/") and (not os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") == "NONE"):
+                resolved_api_base = os.getenv("VLLM_BASE_URL", getattr(settings.llm, "base_url", "http://localhost:8002/v1"))
+                os.environ.setdefault("OPENAI_API_KEY", "EMPTY")
+            elif target_model.startswith("ollama/"):
+                ollama_base = (os.getenv("OLLAMA_BASE_URL") or getattr(settings.llm, "ollama_base_url", "http://localhost:11434")).rstrip("/")
+                resolved_api_base = f"{ollama_base}/v1"
+        if resolved_api_base:
+            completion_kwargs["api_base"] = resolved_api_base
 
         try:
-            resp = litellm.completion(
-                model=target_model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout,
-                fallbacks=active_fallbacks,
-            )
+            resp = litellm.completion(**completion_kwargs)
 
             latency_ms = round((time.time() - t0) * 1000.0, 2)
             content = resp.choices[0].message.content or ""
