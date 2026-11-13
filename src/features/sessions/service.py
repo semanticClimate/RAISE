@@ -40,6 +40,10 @@ class SessionService:
                         txt = m.get("text") or m.get("content", "")
                         m["text"] = txt
                         m["content"] = txt
+                        lat = float(m.get("latency_sec") or m.get("durationSec") or m.get("execution_time") or m.get("duration_sec") or 0.0)
+                        m["latency_sec"] = lat
+                        m["durationSec"] = lat
+                        m["execution_time"] = lat
                     return {
                         "id": target_id,
                         "session_id": target_id,
@@ -57,6 +61,10 @@ class SessionService:
             txt = m.get("text") or m.get("content", "")
             m["text"] = txt
             m["content"] = txt
+            lat = float(m.get("latency_sec") or m.get("durationSec") or m.get("execution_time") or m.get("duration_sec") or 0.0)
+            m["latency_sec"] = lat
+            m["durationSec"] = lat
+            m["execution_time"] = lat
 
         # 3. Backfill Redis Cache
         if messages and self.redis_cache:
@@ -68,6 +76,7 @@ class SessionService:
                         t.get("content", ""),
                         mode=t.get("mode", "fast"),
                         sources=t.get("sources", []),
+                        latency_sec=float(t.get("latency_sec") or 0.0),
                     )
             except Exception as _re:
                 pass

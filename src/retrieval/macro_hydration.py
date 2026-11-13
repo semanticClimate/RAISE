@@ -39,12 +39,11 @@ def get_parent_chunks_cache() -> Dict[str, Dict[str, Any]]:
     if _PARENT_CHUNKS_CACHE is not None:
         return _PARENT_CHUNKS_CACHE
 
+    from src.core.config import CHUNKS_DIR
     cache: Dict[str, Dict[str, Any]] = {}
     base_dirs = [
+        CHUNKS_DIR,
         Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "chunks",
-        Path(__file__).resolve().parent.parent / "data" / "processed" / "chunks",
-        Path("backend/data/processed/chunks"),
-        Path("data/processed/chunks"),
     ]
     for bdir in base_dirs:
         if bdir.exists():

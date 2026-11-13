@@ -17,9 +17,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from src.core.config import CATALOGS_DIR
+
 logger = logging.getLogger("raise.features.catalog")
 
-DEFAULT_CATALOG_DIR = Path(__file__).resolve().parents[3] / "data" / "catalogs"
+DEFAULT_CATALOG_DIR = CATALOGS_DIR
 
 
 @dataclass

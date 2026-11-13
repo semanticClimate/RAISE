@@ -140,9 +140,8 @@ def run_interactive_studio(
                     f"{C.WARN}⚠️  Clear custom workspace? This removes your custom uploads and resets chat memory while preserving institutional reports. (y/n): {C.RESET}"
                 ).strip().lower()
                 if confirm in ["y", "yes"]:
-                    from src.cli.document_manager import _resolve_base_dir
-                    root = _resolve_base_dir()
-                    manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+                    from src.core.config import MANIFEST_FILE
+                    manifest_file = MANIFEST_FILE
                     user_docs_to_remove = []
                     if manifest_file.exists():
                         try:

@@ -127,6 +127,7 @@ class ChatStoreMixin(SessionLifecycleMixin):
         def _normalize_msg(m: Dict[str, Any]) -> Dict[str, Any]:
             txt = m.get("text") or m.get("content", "")
             srcs = m.get("sources") or m.get("citations", [])
+            lat_val = float(m.get("latency_sec") or m.get("durationSec") or m.get("execution_time") or m.get("duration_sec") or 0.0)
             return {
                 **m,
                 "role": m.get("role", "user"),
@@ -135,6 +136,9 @@ class ChatStoreMixin(SessionLifecycleMixin):
                 "mode": m.get("mode", "fast"),
                 "sources": srcs,
                 "citations": srcs,
+                "latency_sec": lat_val,
+                "durationSec": lat_val,
+                "execution_time": lat_val,
                 "response": m.get("response") or ({"sources": srcs} if srcs else None),
                 "created_at": m.get("created_at", datetime.now(timezone.utc).isoformat()),
             }
@@ -179,7 +183,8 @@ class ChatStoreMixin(SessionLifecycleMixin):
                     "response": {"sources": raw_sources} if raw_sources else None,
                     "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
                     "latency_sec": lat_val,
-                    "durationSec": lat_val
+                    "durationSec": lat_val,
+                    "execution_time": lat_val
                 })
             return result
         except Exception as e:

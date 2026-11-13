@@ -50,12 +50,11 @@ class QueryAnalyzerMixin:
     def _get_active_documents(self) -> List[str]:
         """Dynamically fetch list of confirmed active PDF filenames from manifest."""
         try:
+            from src.core.config import MANIFEST_FILE
+            manifest_file = MANIFEST_FILE
+        except Exception:
             from src.core.config import settings
             manifest_file = settings.processed_dir / "ingested_manifest.json"
-        except Exception:
-            manifest_file = Path(__file__).resolve().parents[3] / "data" / "processed" / "ingested_manifest.json"
-        if not manifest_file.exists():
-            manifest_file = Path(__file__).resolve().parents[3] / "data" / "processed" / "ingested_manifest.json"
         if manifest_file.exists():
             try:
                 data = json.loads(manifest_file.read_text(encoding="utf-8"))
@@ -160,12 +159,11 @@ class QueryAnalyzerMixin:
             from src.retrieval.bm25 import SelfContainedBM25
             if not hasattr(self, "_cached_bm25") or self._cached_bm25 is None:
                 try:
+                    from src.core.config import CHUNKS_DIR
+                    chunks_dir = CHUNKS_DIR
+                except Exception:
                     from src.core.config import settings
                     chunks_dir = settings.processed_dir / "chunks"
-                except Exception:
-                    chunks_dir = Path(__file__).resolve().parents[3] / "data" / "processed" / "chunks"
-                if not chunks_dir.exists():
-                    chunks_dir = Path(__file__).resolve().parents[3] / "data" / "processed" / "chunks"
                 corpus_chunks = []
                 if chunks_dir.exists():
                     for cf in chunks_dir.glob("*_chunks.json"):
