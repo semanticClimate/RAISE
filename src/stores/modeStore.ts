@@ -236,6 +236,32 @@ export const useModeStore = create<ModeState>((set, get) => ({
         setStoredLastConnectedAt();
         get().checkReadiness();
       } else {
+        // Fast fallback probe to local gateway if a remote/tunnel URL failed
+        const currentTarget = get().apiBaseUrl || config.apiBaseUrl;
+        if (
+          currentTarget &&
+          !currentTarget.includes('127.0.0.1:8000') &&
+          !currentTarget.includes('localhost:8000')
+        ) {
+          try {
+            const fallbackRes = await systemService.testConnection('http://127.0.0.1:8000');
+            if (fallbackRes.success) {
+              get().clearTunnelUrl();
+              const localCaps = await systemService.probeCapabilities();
+              if (localCaps.apiReachable) {
+                set({
+                  capabilities: localCaps,
+                  appMode: 'connected',
+                  latencyMs: localCaps.latencyMs,
+                  isProbing: false,
+                  lastConnectedAt: Date.now(),
+                });
+                get().checkReadiness();
+                return;
+              }
+            }
+          } catch {}
+        }
         computedMode = 'offline';
       }
 
@@ -247,6 +273,33 @@ export const useModeStore = create<ModeState>((set, get) => ({
         lastConnectedAt: caps.apiReachable ? Date.now() : get().lastConnectedAt,
       });
     } catch (err: unknown) {
+      // Fast fallback probe to local gateway on network error / timeout
+      const currentTarget = get().apiBaseUrl || config.apiBaseUrl;
+      if (
+        currentTarget &&
+        !currentTarget.includes('127.0.0.1:8000') &&
+        !currentTarget.includes('localhost:8000')
+      ) {
+        try {
+          const fallbackRes = await systemService.testConnection('http://127.0.0.1:8000');
+          if (fallbackRes.success) {
+            get().clearTunnelUrl();
+            const localCaps = await systemService.probeCapabilities();
+            if (localCaps.apiReachable) {
+              set({
+                capabilities: localCaps,
+                appMode: 'connected',
+                latencyMs: localCaps.latencyMs,
+                isProbing: false,
+                lastConnectedAt: Date.now(),
+              });
+              get().checkReadiness();
+              return;
+            }
+          }
+        } catch {}
+      }
+
       set({
         capabilities: null,
         appMode: 'offline',

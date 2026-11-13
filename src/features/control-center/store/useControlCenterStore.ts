@@ -75,7 +75,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
         targetPlatform: defaultPlatform,
         llmDeployment: 'cloud',
         embeddingModel: 'google/embeddinggemma-2',
-        rerankerModel: 'jinaai/jina-reranker-v3.5',
+        rerankerModel: 'BAAI/bge-reranker-v2-m3',
         nliVerifierModel: 'dleemiller/finecat-nli-ultra-l',
         neuralDevice: 'auto',
         huggingfaceToken: '',
@@ -428,7 +428,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
                 embeddingModel:
                   (cfg.embedding_model as string) || s.config.embeddingModel || 'google/embeddinggemma-2',
                 rerankerModel:
-                  (cfg.reranker_model as string) || s.config.rerankerModel || 'jinaai/jina-reranker-v3.5',
+                  (cfg.reranker_model as string) || s.config.rerankerModel || 'BAAI/bge-reranker-v2-m3',
                 nliVerifierModel:
                   (cfg.nli_verifier_model as string) ||
                   (cfg.nli_model as string) ||
@@ -553,8 +553,8 @@ export const useControlCenterStore = create<ControlCenterState>()(
         if (!mergedConfig.embeddingModel || mergedConfig.embeddingModel === 'BAAI/bge-large-en-v1.5') {
           mergedConfig.embeddingModel = 'google/embeddinggemma-2';
         }
-        if (!mergedConfig.rerankerModel || mergedConfig.rerankerModel === 'BAAI/bge-reranker-large') {
-          mergedConfig.rerankerModel = 'jinaai/jina-reranker-v3.5';
+        if (!mergedConfig.rerankerModel || mergedConfig.rerankerModel === 'BAAI/bge-reranker-large' || mergedConfig.rerankerModel === 'jinaai/jina-reranker-v3.5') {
+          mergedConfig.rerankerModel = 'BAAI/bge-reranker-v2-m3';
         }
         if (
           !mergedConfig.nliVerifierModel ||

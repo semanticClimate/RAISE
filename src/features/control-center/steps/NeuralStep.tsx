@@ -61,13 +61,21 @@ const EMBEDDING_PRESETS: ModelOption[] = [
 
 const RERANKER_PRESETS: ModelOption[] = [
   {
+    id: 'BAAI/bge-reranker-v2-m3',
+    name: 'BGE Reranker v2 M3',
+    dimOrType: 'Multilingual Cross-Attention',
+    tokens: '8,192 tokens max',
+    chunkSize: 'Reranks candidate top-20 chunks down to top-4',
+    desc: 'Production 8,192-token context cross-encoder matching Gemma 2',
+    recommended: true,
+  },
+  {
     id: 'jinaai/jina-reranker-v3.5',
     name: 'Jina Reranker v3.5',
     dimOrType: 'Listwise Cross-Attention',
     tokens: '8,192 tokens max',
     chunkSize: 'Reranks candidate top-20 chunks down to top-4',
     desc: 'State-of-the-art listwise neural reranker with Flash Attention',
-    recommended: true,
   },
   {
     id: 'BAAI/bge-reranker-large',

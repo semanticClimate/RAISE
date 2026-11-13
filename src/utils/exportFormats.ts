@@ -110,33 +110,17 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
   const pInfo = response?.pipeline_info;
   const rawStorage = pInfo?.storage_used || response?.storage_used;
 
-  // Determine active databases used to answer queries:
-  const hasNeo4j =
-    typeof rawStorage === 'string' &&
-    rawStorage.includes('Neo4j') &&
-    !rawStorage.toLowerCase().includes('offline') &&
-    !rawStorage.toLowerCase().includes('fallback') &&
-    !rawStorage.toLowerCase().includes('degraded');
-
-  const hasNetworkX =
-    typeof rawStorage === 'string' && rawStorage.includes('NetworkX');
-
-  const substrates: string[] = ['ChromaDB (Vector)'];
-  if (hasNeo4j) {
-    substrates.push('Neo4j (Graph)');
-  } else if (hasNetworkX) {
-    substrates.push('NetworkX (Graph)');
-  }
-  substrates.push('PostgreSQL');
-  substrates.push('Redis');
-
-  const storageUsed = substrates.join(' + ');
+  // Use complete backend multi-substrate descriptor directly without stripping markers
+  const storageUsed =
+    typeof rawStorage === 'string' && rawStorage.trim().length > 0
+      ? rawStorage.trim()
+      : 'ChromaDB (Vector) + NetworkX (Graph) + Redis (Cache) + SQLite (Relational)';
 
   const llmModel = pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite';
   const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
   const encoderModel = pInfo?.encoder_model || response?.encoder_model || 'google/embeddinggemma-2';
-  const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'Heuristic Lexical Reranker';
-  const nliVerifierModel = pInfo?.nli_verifier_model || response?.nli_verifier_model || 'Deterministic Claim Verifier';
+  const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'BAAI/bge-reranker-v2-m3';
+  const nliVerifierModel = pInfo?.nli_verifier_model || response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l';
 
   return {
     storageUsed,
