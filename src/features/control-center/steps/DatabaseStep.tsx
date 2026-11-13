@@ -1,6 +1,6 @@
 import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, X, Zap } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
 import { platformAdapter, type ConnectionTestResult } from '../services/platformAdapter';
 import { detectEnvCredentials } from '../services/envDetector';
@@ -38,6 +38,10 @@ export const DatabaseStep: React.FC = () => {
       setTimeout(() => setTestNotice(null), 3500);
     }
   };
+
+  useEffect(() => {
+    handleTestAllSubstrates();
+  }, []);
 
   // Cloud credentials modal state
   const [activeCloudSubstrate, setActiveCloudSubstrate] = useState<

@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { detectProviderFromKey } from '../services/keyDetector';
+import { detectProviderFromKey, type DetectedProvider } from '../services/keyDetector';
 import { detectEnvCredentials } from '../services/envDetector';
-import { detectHostOS } from '../services/platformAdapter';
+import { detectHostOS, platformAdapter } from '../services/platformAdapter';
 import type {
   CloudApiKeyEntry,
   ControlCenterConfig,
   SubstrateConfig,
+  SubstrateMode,
   SystemHardwareInfo,
 } from '../types';
 
@@ -45,6 +46,7 @@ interface ControlCenterState {
     patch: Partial<SubstrateConfig>
   ) => void;
   syncEnvCredentials: () => void;
+  syncBackendConfig: () => Promise<void>;
   setAllSubstratesMode: (mode: 'in_memory_fallback' | 'cloud' | 'local') => void;
 }
 
@@ -345,6 +347,125 @@ export const useControlCenterStore = create<ControlCenterState>()(
             },
           };
         });
+      },
+
+      syncBackendConfig: async () => {
+        try {
+          const cfg = await platformAdapter.getConfig();
+          if (!cfg) return;
+
+          const llmMode = String(cfg.llm_mode || '');
+          const llmBackend = String(cfg.llm_backend || '');
+          const isLocal =
+            llmMode.startsWith('local_') ||
+            llmBackend === 'ollama' ||
+            llmBackend === 'vllm' ||
+            llmBackend === 'local';
+
+          // Discover configured API keys from live backend system status
+          const providerDefs: { keyPrefix: string; provider: DetectedProvider; name: string }[] = [
+            { keyPrefix: 'custom', provider: 'custom', name: 'Universal / Custom API' },
+            { keyPrefix: 'groq', provider: 'groq', name: 'Groq' },
+            { keyPrefix: 'gemini', provider: 'gemini', name: 'Google Gemini' },
+            { keyPrefix: 'openai', provider: 'openai', name: 'OpenAI' },
+            { keyPrefix: 'anthropic', provider: 'anthropic', name: 'Anthropic' },
+            { keyPrefix: 'nvidia', provider: 'nvidia', name: 'NVIDIA' },
+            { keyPrefix: 'cohere', provider: 'cohere', name: 'Cohere' },
+            { keyPrefix: 'mistral', provider: 'mistral', name: 'Mistral' },
+            { keyPrefix: 'deepseek', provider: 'deepseek', name: 'DeepSeek' },
+            { keyPrefix: 'openrouter', provider: 'openrouter', name: 'OpenRouter' },
+          ];
+
+          const backendApiKeys: CloudApiKeyEntry[] = [];
+          for (const p of providerDefs) {
+            if (cfg[`${p.keyPrefix}_configured`]) {
+              const rawMasked = String(cfg[`${p.keyPrefix}_masked`] || '');
+              backendApiKeys.push({
+                id: `key-backend-${p.provider}`,
+                key: rawMasked || '••••••••••••••••',
+                provider: p.provider,
+                providerName: p.name,
+                verified: true,
+                fromEnv: true,
+                envVarName: `${p.keyPrefix.toUpperCase()}_API_KEY`,
+              });
+            }
+          }
+
+          const kgMode = (cfg.neo4j_mode as SubstrateMode) || 'in_memory_fallback';
+          const memMode = (cfg.postgres_mode as SubstrateMode) || 'in_memory_fallback';
+          const cacheMode = (cfg.redis_mode as SubstrateMode) || 'in_memory_fallback';
+
+          set((s) => {
+            // Merge: preserve any user-entered manual keys that are not from backend
+            const mergedKeys = [...backendApiKeys];
+            for (const existingKey of s.config.apiKeys || []) {
+              if (
+                existingKey.key &&
+                !existingKey.fromEnv &&
+                !mergedKeys.some((k) => k.provider === existingKey.provider)
+              ) {
+                mergedKeys.push(existingKey);
+              }
+            }
+
+            if (mergedKeys.length === 0) {
+              mergedKeys.push({
+                id: `key-${Date.now()}`,
+                key: '',
+                provider: 'unknown',
+                providerName: 'Unconfigured Key',
+                verified: null,
+              });
+            }
+
+            return {
+              config: {
+                ...s.config,
+                firstRunCompleted: Boolean(cfg.first_run_completed ?? s.config.firstRunCompleted),
+                llmDeployment: isLocal ? 'local' : 'cloud',
+                llmMode: (llmMode || s.config.llmMode) as any,
+                embeddingModel:
+                  (cfg.embedding_model as string) || s.config.embeddingModel || 'google/embeddinggemma-2',
+                rerankerModel:
+                  (cfg.reranker_model as string) || s.config.rerankerModel || 'jinaai/jina-reranker-v3.5',
+                nliVerifierModel:
+                  (cfg.nli_verifier_model as string) ||
+                  (cfg.nli_model as string) ||
+                  s.config.nliVerifierModel ||
+                  'dleemiller/finecat-nli-ultra-l',
+                neuralDevice:
+                  (cfg.neural_device as any) ||
+                  (cfg.embedding_device as any) ||
+                  s.config.neuralDevice ||
+                  'auto',
+                apiKeys: mergedKeys,
+                knowledgeGraph: {
+                  ...s.config.knowledgeGraph,
+                  mode: kgMode,
+                  uri: (cfg.neo4j_uri as string) || s.config.knowledgeGraph?.uri || '',
+                  database: (cfg.neo4j_database as string) || 'neo4j',
+                  online: true,
+                },
+                sessionMemory: {
+                  ...s.config.sessionMemory,
+                  mode: memMode,
+                  online: true,
+                },
+                cacheAndSignals: {
+                  ...s.config.cacheAndSignals,
+                  mode: cacheMode,
+                  online: true,
+                },
+                neo4jMode: kgMode,
+                postgresMode: memMode,
+                redisMode: cacheMode,
+              },
+            };
+          });
+        } catch (err) {
+          console.warn('Failed to sync backend configuration into Control Center:', err);
+        }
       },
 
       setAllSubstratesMode: (mode) => {

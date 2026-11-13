@@ -11,7 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useModeStore } from '../../../stores/modeStore';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 import { platformAdapter, type ConnectionTestResult } from '../services/platformAdapter';
@@ -66,6 +66,10 @@ export const LaunchStep: React.FC = () => {
       setIsTestingSubstrates(false);
     }
   };
+
+  useEffect(() => {
+    handleTestAllSubstrates();
+  }, []);
 
   const handleRefreshHardware = async () => {
     try {

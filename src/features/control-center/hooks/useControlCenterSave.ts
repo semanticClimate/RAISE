@@ -48,6 +48,7 @@ export function useControlCenterSave(
         mistral_api_key: sanitizeSecret(keyMap['mistral']),
         cohere_api_key: sanitizeSecret(keyMap['cohere']),
         openrouter_api_key: sanitizeSecret(keyMap['openrouter']),
+        custom_api_key: sanitizeSecret(keyMap['custom']),
         selected_local_model: config.selectedLocalModel,
         ollama_model: config.selectedLocalModel,
         tunnel_url: config.tunnelUrl,

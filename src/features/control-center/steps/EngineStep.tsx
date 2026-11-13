@@ -9,7 +9,7 @@ import { CloudKeysSection } from './CloudKeysSection';
 import { LocalModelSection } from './LocalModelSection';
 
 export const EngineStep: React.FC = () => {
-  const { config, updateConfig, syncEnvCredentials } = useControlCenterStore();
+  const { config, updateConfig, syncEnvCredentials, syncBackendConfig } = useControlCenterStore();
 
   const {
     models: liveDiscoveredLLMs,
@@ -85,6 +85,7 @@ export const EngineStep: React.FC = () => {
   };
 
   useEffect(() => {
+    syncBackendConfig();
     syncEnvCredentials();
     fetchModels();
   }, []);

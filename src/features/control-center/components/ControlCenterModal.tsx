@@ -70,6 +70,7 @@ export const ControlCenterModal: React.FC = () => {
         updateConfig({ targetPlatform: 'macos' });
       }
 
+      useControlCenterStore.getState().syncBackendConfig();
       useControlCenterStore.getState().syncEnvCredentials();
       platformAdapter.getHardware().then((hw) => {
         const detected = detectHostOS();
@@ -78,6 +79,8 @@ export const ControlCenterModal: React.FC = () => {
           osName: detected === 'macos' ? 'macOS (Apple Silicon)' : hw.os_name || detected,
           totalRamGb: hw.total_ram_gb || 16.0,
           cpuCores: hw.cpu_cores || 8,
+          freeRamGb: hw.free_ram_gb,
+          gpuName: hw.gpu?.details || (hw as any).gpu_name || 'Apple MPS',
           hasMetalOrCuda: true,
         });
         updateConfig({ targetPlatform: detected });
