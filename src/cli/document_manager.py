@@ -66,7 +66,7 @@ def get_active_documents_list(base_dir: Optional[Path] = None) -> List[Dict[str,
     if not manifest_file.exists():
         return []
     try:
-        data = json.loads(manifest_file.read_text(encoding="utf-8"))
+        data = json.loads(manifest_file.read_text(encoding="utf-8-sig"))
         ready = data.get("ready_documents", [])
         return [d for d in ready if not d.get("filename", "").lower().startswith("test_")]
     except Exception:

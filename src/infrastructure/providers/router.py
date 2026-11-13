@@ -127,31 +127,50 @@ class ProviderRouter:
         elif configured_clouds:
             primary_cloud = configured_clouds[0]
         else:
-            primary_cloud = "groq"
+            primary_cloud = "gemini" if "gemini" in self.providers else "groq"
 
-        # Task routing policy mapping (Requirement 2: Externalized task policies & model defaults)
-        local_target = "vllm" if "vllm" in self.providers else "local"
-        default_cloud_target = primary_cloud if self.cloud_allowed else local_target
+        # Probe local engines (vLLM and Ollama)
+        vllm_alive = False
+        try:
+            vllm_alive = self.providers["vllm"].is_available()
+        except Exception:
+            pass
+
+        ollama_alive = False
+        try:
+            ollama_alive = self.providers["ollama"].is_available()
+        except Exception:
+            pass
+
+        local_target = "vllm" if vllm_alive else ("ollama" if ollama_alive else ("vllm" if "vllm" in self.providers else "local"))
+
+        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", "")).upper().strip()
+        local_first = (routing_policy == "LOCAL_FIRST") or (self.mode == ExecutionMode.LOCAL) or (env_backend in ("vllm", "ollama", "local"))
+
+        if local_first and (vllm_alive or ollama_alive):
+            default_target = local_target
+        else:
+            default_target = primary_cloud if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else local_target
 
         self.task_policy: Dict[InferenceTask, str] = {
-            InferenceTask.CHAT: os.getenv("TASK_POLICY_CHAT", default_cloud_target),
-            InferenceTask.RAG_GENERATION: os.getenv("TASK_POLICY_RAG_GENERATION", default_cloud_target),
+            InferenceTask.CHAT: os.getenv("TASK_POLICY_CHAT", default_target),
+            InferenceTask.RAG_GENERATION: os.getenv("TASK_POLICY_RAG_GENERATION", default_target),
             InferenceTask.DOCUMENT_EXTRACTION: os.getenv(
                 "TASK_POLICY_DOCUMENT_EXTRACTION",
-                "gemini" if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else local_target
+                "gemini" if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL and not local_first) else local_target
             ),
-            InferenceTask.QUERY_REWRITE: os.getenv("TASK_POLICY_QUERY_REWRITE", default_cloud_target),
-            InferenceTask.REASONING: os.getenv("TASK_POLICY_REASONING", default_cloud_target),
+            InferenceTask.QUERY_REWRITE: os.getenv("TASK_POLICY_QUERY_REWRITE", default_target),
+            InferenceTask.REASONING: os.getenv("TASK_POLICY_REASONING", default_target),
             InferenceTask.CODE: os.getenv(
                 "TASK_POLICY_CODE",
-                "mistral" if (_cm.get_credential_status("mistral") == "configured" and self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else default_cloud_target
+                "mistral" if (_cm.get_credential_status("mistral") == "configured" and self.cloud_allowed and self.mode != ExecutionMode.LOCAL and not local_first) else default_target
             ),
-            InferenceTask.SUMMARIZATION: os.getenv("TASK_POLICY_SUMMARIZATION", default_cloud_target),
+            InferenceTask.SUMMARIZATION: os.getenv("TASK_POLICY_SUMMARIZATION", default_target),
             InferenceTask.RERANKING: os.getenv(
                 "TASK_POLICY_RERANKING",
-                "cohere" if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else local_target
+                "cohere" if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL and not local_first) else local_target
             ),
-            InferenceTask.STRUCTURED_EXTRACTION: os.getenv("TASK_POLICY_STRUCTURED_EXTRACTION", default_cloud_target),
+            InferenceTask.STRUCTURED_EXTRACTION: os.getenv("TASK_POLICY_STRUCTURED_EXTRACTION", default_target),
             InferenceTask.EMBEDDING: os.getenv("TASK_POLICY_EMBEDDING", local_target),
         }
 
@@ -181,8 +200,8 @@ class ProviderRouter:
         # Multi-model sequence line: prioritize tested & verified active providers (Groq, Gemini)
         ordered_candidates = ["groq", "gemini", "nvidia", "mistral", "cohere"]
         active = []
-        if prim in ("vllm", "local") or self.mode == ExecutionMode.LOCAL:
-            active.append("vllm")
+        if prim in ("vllm", "ollama", "local") or self.mode == ExecutionMode.LOCAL:
+            active.append(prim if prim in self.providers else "vllm")
 
         if prim in ordered_candidates and prim not in self.disabled_providers and cm.get_credential_status(prim) == "configured":
             if prim not in active:
@@ -200,20 +219,30 @@ class ProviderRouter:
                 if paid not in active:
                     active.append(paid)
 
+        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", "")).upper().strip()
+        local_first = (routing_policy == "LOCAL_FIRST") or (self.mode == ExecutionMode.LOCAL)
+
         vllm_alive = False
         try:
             vllm_alive = self.providers["vllm"].is_available()
         except Exception:
             pass
 
-        if "vllm" not in active:
-            if (vllm_alive and not any(cm.get_credential_status(k) == "configured" for k in ordered_candidates)) or self.mode in (ExecutionMode.LOCAL, ExecutionMode.AUTOMATIC):
-                if vllm_alive:
-                    active.insert(0, "vllm")
+        ollama_alive = False
+        try:
+            ollama_alive = self.providers["ollama"].is_available()
+        except Exception:
+            pass
+
+        for eng in ["vllm", "ollama"]:
+            if eng not in active:
+                is_alive = vllm_alive if eng == "vllm" else ollama_alive
+                if is_alive and local_first:
+                    active.insert(0, eng)
+                elif is_alive and not any(cm.get_credential_status(k) == "configured" for k in ordered_candidates):
+                    active.insert(0, eng)
                 else:
-                    active.append("vllm")
-            else:
-                active.append("vllm")
+                    active.append(eng)
 
         if "local" not in active:
             active.append("local")
@@ -413,7 +442,7 @@ class ProviderRouter:
         for cand in self.fallback_chain:
             if cand in self.disabled_providers or self.provider_cooldowns.get(cand, 0) > now or cand not in self.providers:
                 continue
-            is_local = cand in ("vllm", "local")
+            is_local = cand in ("vllm", "ollama", "local")
             if is_local:
                 if self.mode == ExecutionMode.CLOUD:
                     continue
@@ -435,10 +464,10 @@ class ProviderRouter:
                 return self.providers[target_name]
 
         # If target cloud provider has no credentials configured, route to first configured cloud provider or vLLM
-        if target_name not in ("vllm", "local") and cm.get_credential_status(target_name) != "configured":
+        if target_name not in ("vllm", "ollama", "local") and cm.get_credential_status(target_name) != "configured":
             for cand in self.fallback_chain:
                 if cand not in self.disabled_providers and self.provider_cooldowns.get(cand, 0) <= now:
-                    if cand in ("vllm", "local"):
+                    if cand in ("vllm", "ollama", "local"):
                         if self.mode != ExecutionMode.CLOUD and cand in self.providers and getattr(self.providers[cand], "is_available", lambda: True)():
                             target_name = cand
                             break
@@ -453,7 +482,7 @@ class ProviderRouter:
         if target_name in self.disabled_providers or self.provider_cooldowns.get(target_name, 0) > now:
             for cand in self.fallback_chain:
                 if cand != target_name and cand not in self.disabled_providers and self.provider_cooldowns.get(cand, 0) <= now and cand in self.providers:
-                    if cand in ("vllm", "local"):
+                    if cand in ("vllm", "ollama", "local"):
                         if self.mode == ExecutionMode.CLOUD or not getattr(self.providers[cand], "is_available", lambda: True)():
                             continue
                     else:
@@ -527,7 +556,7 @@ class ProviderRouter:
             for candidate_name in self.fallback_chain:
                 if candidate_name == primary_provider.name or candidate_name in self.disabled_providers:
                     continue
-                if candidate_name in ("vllm", "local"):
+                if candidate_name in ("vllm", "ollama", "local"):
                     if self.mode == ExecutionMode.CLOUD:
                         continue
                     if not getattr(self.providers[candidate_name], "is_available", lambda: True)():

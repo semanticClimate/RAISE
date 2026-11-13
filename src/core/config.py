@@ -119,15 +119,22 @@ class ModelConfig:
     # LLM Synthesis
     LLM_PROVIDER: str = os.getenv("RAISE_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini"))
     LLM_MODEL_NAME: str = os.getenv("RAISE_LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash"))
-    GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
+    GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
     GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = (
-        "gemini-3.8-flash",
         "gemini-2.5-flash",
         "gemini-2.0-flash",
         "gemini-1.5-flash",
         "gemini-flash-latest",
     )
     OPENAI_MODEL_NAME: str = os.getenv("OPENAI_MODEL_NAME", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+    VLLM_MODEL_NAME: str = os.getenv("VLLM_MODEL_NAME", os.getenv("LOCAL_LLM_MODEL", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"))
+    OLLAMA_MODEL_NAME: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    OLLAMA_FALLBACK_CANDIDATES: tuple[str, ...] = (
+        "qwen2.5:14b",
+        "qwen2.5:7b",
+        "llama3.1:8b",
+        "mistral:7b",
+    )
     GROQ_MODEL_NAME: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     GROQ_FALLBACK_CANDIDATES: tuple[str, ...] = (
         "openai/gpt-oss-120b",
