@@ -159,3 +159,32 @@ def test_get_llm_provider_wraps_in_failover_chain():
         provider = get_llm_provider()
         assert isinstance(provider, FailoverLLMProvider)
         assert len(provider.fallbacks) >= 2
+
+
+def test_router_cascades_cloud_failure_to_local_vllm():
+    """Verify ProviderRouter cascades to local vLLM when all cloud providers fail with 404/429/401."""
+    from src.infrastructure.providers.router import ProviderRouter, InferenceTask, ExecutionMode
+
+    router = ProviderRouter(mode=ExecutionMode.AUTOMATIC)
+    router.fallback_chain = ["gemini", "groq", "vllm"]
+
+    mock_gemini = MagicMock()
+    mock_gemini.name = "gemini"
+    mock_gemini.complete.side_effect = RuntimeError("HTTP 404 (MODEL_UNAVAILABLE)")
+
+    mock_groq = MagicMock()
+    mock_groq.name = "groq"
+    mock_groq.complete.side_effect = RuntimeError("HTTP 401 (AUTH_FAILED)")
+
+    mock_vllm = MagicMock()
+    mock_vllm.name = "vllm"
+    mock_vllm.is_available.return_value = True
+    mock_vllm.complete.return_value = "Verified local GPU synthesis from Qwen 2.5 14B."
+
+    router.providers["gemini"] = mock_gemini
+    router.providers["groq"] = mock_groq
+    router.providers["vllm"] = mock_vllm
+
+    result = router.complete("Query test", task=InferenceTask.RAG_GENERATION)
+    assert result == "Verified local GPU synthesis from Qwen 2.5 14B."
+    assert router.last_used_provider == "vllm"
