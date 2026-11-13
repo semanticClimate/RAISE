@@ -25,6 +25,7 @@ from src.api.context import (
     record_ready_document,
     remove_ready_document,
 )
+from src.core.config import models
 from src.features.ingestion.pipeline import AcademicPipelineIngestor
 
 logger = logging.getLogger("raise.services.document")
@@ -193,6 +194,7 @@ class DocumentService:
         pages_count = 1
         facts_cnt = 0
         triples_cnt = 0
+        ingest_error: Optional[str] = None
         try:
             # Phase 4: Embedding (85%)
             if self.postgres_manager:
@@ -202,7 +204,7 @@ class DocumentService:
                     phase="embedding",
                     percent=85,
                     status="processing",
-                    detail="BAAI/bge-large-en-v1.5 dense vector indexing and Neo4j graph synchronization",
+                    detail=f"{models.EMBEDDING_MODEL_NAME} dense vector indexing and Neo4j graph synchronization",
                     file_size_bytes=file_size,
                     library=library or "default",
                 )

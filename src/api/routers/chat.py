@@ -310,7 +310,7 @@ async def chat_endpoint(
     query_embedding = None
     try:
         if rag_engine and hasattr(rag_engine, "vector_engine") and rag_engine.vector_engine:
-            emb_res = rag_engine.vector_engine.compute_embeddings([message])
+            emb_res = await asyncio.to_thread(rag_engine.vector_engine.compute_embeddings, [message])
             if emb_res and len(emb_res) > 0:
                 query_embedding = emb_res[0]
     except Exception:
@@ -368,7 +368,8 @@ async def chat_endpoint(
     # 2. Non-Streaming Execution
     if not req.stream:
         try:
-            result, elapsed = chat_service.execute_rag_query(
+            result, elapsed = await asyncio.to_thread(
+                chat_service.execute_rag_query,
                 message=message,
                 mode=mode,
                 session_id=session_id,
