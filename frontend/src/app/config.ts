@@ -1,0 +1,173 @@
+import type { ConfigMode } from '../types';
+import { getDetectedSystemName } from '../utils/formatters';
+
+export interface AppConfig {
+  apiBaseUrl: string;
+  apiMode: ConfigMode;
+  defaultTimeoutMs: number;
+  uploadTimeoutMs: number;
+  maxGraphHops: number;
+  defaultTopK: number;
+}
+
+const envBaseUrl =
+  (import.meta.env.VITE_API_URL as string | undefined) ||
+  (import.meta.env.VITE_API_BASE_URL as string | undefined);
+const envMode = import.meta.env.VITE_API_MODE as ConfigMode | undefined;
+
+export const EXPECTED_BACKEND_VERSION =
+  (import.meta.env.VITE_BACKEND_VERSION as string | undefined) || '1.0.0';
+
+/**
+ * Resolves the default backend API base URL:
+ * 1. Explicit environment variable (VITE_API_URL / VITE_API_BASE_URL)
+ * 2. If running in a browser and served via the unified FastAPI production SPA mount
+ *    (e.g. port 8000, 443, Docker container, or reverse proxy), dynamically uses window.location.origin
+ *    for zero-CORS latency and zero preflight overhead.
+ * 3. Fallback to standard local gateway URL (http://127.0.0.1:8000) for Vite dev server (port 5173).
+ */
+export const resolveDefaultBaseUrl = (): string => {
+  if (envBaseUrl && envBaseUrl.trim() !== '') {
+    return envBaseUrl.trim();
+  }
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    const port = window.location.port;
+    if (port === '5173' || port === '3000') {
+      return 'http://127.0.0.1:8000';
+    }
+    const origin = window.location.origin;
+    if (origin && origin !== 'null' && !origin.startsWith('file:')) {
+      return origin;
+    }
+  }
+  return 'http://127.0.0.1:8000';
+};
+
+export const config: AppConfig = {
+  apiBaseUrl: resolveDefaultBaseUrl(),
+  apiMode: envMode === 'mock' || envMode === 'remote' || envMode === 'auto' ? envMode : 'remote',
+  defaultTimeoutMs: 30000,
+  uploadTimeoutMs: 120000, // Large PDFs require 120s for synchronous IBM Docling parsing
+  maxGraphHops: 3,
+  defaultTopK: 4,
+};
+
+// Helper to read stored Cloudflare Tunnel URL from localStorage
+export const getStoredTunnelUrl = (): string => {
+  if (typeof window === 'undefined') return '';
+  try {
+    const isAllowed = (url: string): boolean => {
+      const trimmed = url.trim();
+      return Boolean(trimmed);
+    };
+
+    const tunnel = localStorage.getItem('raise_tunnel_url');
+    if (tunnel && isAllowed(tunnel)) {
+      return tunnel.trim();
+    }
+    const gateway = localStorage.getItem('raise_gateway_url');
+    if (gateway && isAllowed(gateway)) {
+      return gateway.trim();
+    }
+    return '';
+  } catch {
+    return '';
+  }
+};
+
+export const setStoredTunnelUrl = (url: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const cleaned = url.trim().replace(/\/+$/, '');
+    if (cleaned) {
+      localStorage.setItem('raise_tunnel_url', cleaned);
+      localStorage.setItem('raise_gateway_url', cleaned);
+    } else {
+      localStorage.removeItem('raise_tunnel_url');
+      localStorage.removeItem('raise_gateway_url');
+    }
+  } catch {}
+};
+
+export const getStoredLastConnectedAt = (): number | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const val = localStorage.getItem('raise_last_connected_at');
+    return val ? parseInt(val, 10) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setStoredLastConnectedAt = (timestamp: number = Date.now()) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('raise_last_connected_at', String(timestamp));
+  } catch {}
+};
+
+export const getStoredUsername = (): string => {
+  if (typeof window === 'undefined') return 'System';
+  try {
+    const stored = localStorage.getItem('raise_gateway_username');
+    if (stored && stored.trim() !== '' && stored !== 'Operator') {
+      return stored.trim();
+    }
+    return getDetectedSystemName();
+  } catch {
+    return getDetectedSystemName();
+  }
+};
+
+export const setStoredUsername = (name: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const trimmed = name.trim();
+    if (trimmed) {
+      localStorage.setItem('raise_gateway_username', trimmed);
+    } else {
+      localStorage.removeItem('raise_gateway_username');
+    }
+  } catch {}
+};
+
+export const getStoredApiKey = (): string => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return localStorage.getItem('raise_api_key') || '';
+  } catch {
+    return '';
+  }
+};
+
+export const setStoredApiKey = (key: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const trimmed = key.trim();
+    if (trimmed) {
+      localStorage.setItem('raise_api_key', trimmed);
+    } else {
+      localStorage.removeItem('raise_api_key');
+    }
+  } catch {}
+};
+
+// Allow runtime overrides for testing or user settings
+const initialStoredUrl = getStoredTunnelUrl();
+let runtimeBaseUrl =
+  initialStoredUrl && initialStoredUrl.trim() !== '' ? initialStoredUrl.trim() : config.apiBaseUrl;
+let runtimeMode = config.apiMode;
+
+export const getApiBaseUrl = (): string => runtimeBaseUrl;
+export const setApiBaseUrl = (url: string, persistTunnel: boolean = true) => {
+  const cleaned = url.trim().replace(/\/+$/, '');
+  runtimeBaseUrl = cleaned;
+  if (persistTunnel) {
+    setStoredTunnelUrl(cleaned);
+  }
+};
+
+export const getApiMode = (): ConfigMode => runtimeMode;
+export const setApiMode = (mode: ConfigMode) => {
+  runtimeMode = mode;
+};

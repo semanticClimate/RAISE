@@ -1,0 +1,93 @@
+{
+  "timestamp": "2026-11-11 20:33:24",
+  "overall_ragas_score": 0.9764,
+  "metrics": {
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.9056,
+    "context_precision": 1.0,
+    "context_recall": 1.0,
+    "noise_resilience": 1.0,
+    "accuracy_pct": 83.3,
+    "average_latency_ms": 12918.4
+  },
+  "queries": [
+    {
+      "id": "RAGAS-01",
+      "query": "Who is the applicant and what is their full name?",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7167,
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "noise_sensitivity": 1.0,
+      "factual_accuracy": 1.0,
+      "latency_ms": 9919.3,
+      "citations": 1,
+      "generated_preview": "The applicant is **Siddharth Tripathi** [1].  \u2022 **Full Name**: Siddharth Tripathi [1]  \u2022 **Enro..."
+    },
+    {
+      "id": "RAGAS-02",
+      "query": "What is the enrollment ID of the candidate?",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0,
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "noise_sensitivity": 1.0,
+      "factual_accuracy": 1.0,
+      "latency_ms": 3827.2,
+      "citations": 1,
+      "generated_preview": "The enrollment ID of the candidate is M356S48 [1]...."
+    },
+    {
+      "id": "RAGAS-03",
+      "query": "What is the date of birth and gender of the applicant?",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7167,
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "noise_sensitivity": 1.0,
+      "factual_accuracy": 0.5,
+      "latency_ms": 50380.8,
+      "citations": 1,
+      "generated_preview": "The date of birth (D.O.B) of the applicant is **09/02/2004** [1]...."
+    },
+    {
+      "id": "RAGAS-04",
+      "query": "Which qualifying degree, academic course, and university is recorded?",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0,
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "noise_sensitivity": 1.0,
+      "factual_accuracy": 0.5,
+      "latency_ms": 3976.7,
+      "citations": 1,
+      "generated_preview": "The recorded qualifying degree is M. Sc., the academic course is Biotechnology, and the univers..."
+    },
+    {
+      "id": "RAGAS-05",
+      "query": "What is the GATE Paper Code and examination fee paid?",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0,
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "noise_sensitivity": 1.0,
+      "factual_accuracy": 1.0,
+      "latency_ms": 5718.9,
+      "citations": 1,
+      "generated_preview": "The GATE Paper Code is Biotechnology, and the examination fee paid was 2000.0 [1].  \u2022 **GATE Pa..."
+    },
+    {
+      "id": "RAGAS-06",
+      "query": "What is the communication address and postal pin code of the applicant?",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0,
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "noise_sensitivity": 1.0,
+      "factual_accuracy": 1.0,
+      "latency_ms": 3687.4,
+      "citations": 1,
+      "generated_preview": "The applicant's communication address is 00 Devlakh, Po Chopra, Chopra, Rudraprayag, Rudrapraya..."
+    }
+  ]
+}

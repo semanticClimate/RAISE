@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production build artifacts
+dist/
+dist-ssr/
+*.tsbuildinfo
+
+# Environment & local files
+.env
+.env*.local
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Vite Cache
+.vite/
+
+# Temporary / Scratch & Notes
+scratch/
+tmp/
+*.tmp
+*.temp
+*.txt
+*.log
+*demoSession*
+BACKEND_IMPROVEMENTS_AND_SPEC.md
+
+# Tests, Mocks & Test Fixtures (never pushed to deployment)
+__tests__/
+**/__tests__/
+*.test.*
+*.spec.*
+test_*.ts
+tests/
+mocks/
+fixtures/
+
+# Local development tooling & reference (ignored from git repository - never commit/push)
+.node/
+biome.json
+biome.jsonc
+.biome/
+.biome
+biome-logs/
+*.biome
+sheriff.config.ts
+.eslintcache
+

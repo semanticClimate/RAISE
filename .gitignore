@@ -1,0 +1,63 @@
+# Environment files
+.env
+.env.*
+backend/.env
+backend/.env.*
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Local runtime, vector databases and storage
+.runtime/
+backend/.runtime/
+.chromadb*
+backend/.chromadb*
+.pytest_cache/
+backend/.pytest_cache/
+data/**
+!data/
+!data/**/
+!data/**/.gitkeep
+backend/data/
+logs/
+backend/logs/
+models/
+backend/models/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.vite/
+**/vite/
+RAG/
+
+# Rust build artifacts
+target/
+backend/rust/raise_engine/target/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Agent and AI Instructions (Local rules only, not published to git)
+AGENTS.md
+GEMINI.md
+scan_hardcoded_models.py
+backend/scan_hardcoded_models.py
+**/scan_hardcoded_models.py
+
+

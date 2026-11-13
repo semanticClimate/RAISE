@@ -1,0 +1,80 @@
+name: Backend CI & Architecture Verification
+
+on:
+  push:
+    branches:
+      - main
+      - backend
+      - re-testing
+    paths:
+      - 'backend/**'
+      - 'src/**'
+      - 'prompts/**'
+      - 'requirements*.txt'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches:
+      - main
+      - backend
+    paths:
+      - 'backend/**'
+      - 'src/**'
+      - 'prompts/**'
+      - 'requirements*.txt'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Backend Test Suite & Health Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Ubuntu Runner)
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force 2>/dev/null || true
+          df -h
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Core Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pytest-mock httpx orjson fastapi uvicorn pydantic python-dotenv sqlalchemy sqlmodel
+          if [ -f backend/requirements-core.txt ]; then
+            pip install -r backend/requirements-core.txt || true
+          elif [ -f requirements-core.txt ]; then
+            pip install -r requirements-core.txt || true
+          fi
+
+      - name: Validate Python Syntax (py_compile)
+        run: |
+          python -m py_compile $(find backend/src src prompts -name "*.py")
+
+      - name: Run Pytest Test Suite
+        env:
+          ENABLE_REDIS: "false"
+          LOG_LEVEL: "INFO"
+        run: |
+          cd backend && python -m pytest tests -v --durations=10
+
+      - name: Clean intermediate test artifacts
+        if: always()
+        run: |
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
