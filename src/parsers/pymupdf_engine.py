@@ -1,4 +1,4 @@
-"""
+﻿"""
 RAISE PyMuPDF High-Speed Document Parser Engine
 ================================================
 Purpose:
@@ -216,9 +216,17 @@ class PyMuPDFParserEngine:
                 heading = re.sub(r"\s+", " ", sec_num_match.group(1)).strip()[:70]
             elif not is_toc:
                 ocr_sec_match = re.search(r"\b1([1-9])\s+((?:Board of Governors|Finance Committee|The Senate|Administration|Historical Purview|List of the Departments)[A-Za-z\s&–—,()]*)\b", raw_text, re.IGNORECASE)
+                gov_match = re.search(r"\b((?:Board of Governors|Finance Committee|The Senate|Council Nominees|Senate Nominees|Administration|Historical Purview))\b", raw_text, re.IGNORECASE)
                 if ocr_sec_match:
                     clean_sec_name = re.sub(r"\s+", " ", ocr_sec_match.group(2)).strip()[:60]
                     heading = f"1.{ocr_sec_match.group(1)} {clean_sec_name}"
+                elif gov_match and any(lead in raw_text.lower() for lead in ("the visitor", "board of governors", "council nominees")):
+                    clean_gov = gov_match.group(1).strip()
+                    first_l = lines[0].strip()[:30] if lines else ""
+                    if first_l.lower() != clean_gov.lower() and len(first_l) > 3:
+                        heading = f"{first_l} & {clean_gov}"[:70]
+                    else:
+                        heading = clean_gov
                 elif lines:
                     if lines[0].startswith("#"):
                         heading = lines[0].lstrip("#").strip()[:70]
