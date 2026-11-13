@@ -130,7 +130,7 @@ class ModelConfig:
     GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
     GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
         "GEMINI_FALLBACK_CANDIDATES",
-        ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"),
+        ("gemini-2.5-flash", "gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"),
     )
     OPENAI_MODEL_NAME: str = os.getenv("OPENAI_MODEL_NAME", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
     VLLM_MODEL_NAME: str = os.getenv("VLLM_MODEL_NAME", os.getenv("LOCAL_LLM_MODEL", "auto"))

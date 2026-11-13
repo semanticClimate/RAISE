@@ -126,19 +126,32 @@ def _apply_provider_choice(provider_name: str, router: Any) -> None:
     prov = provider_name.lower().strip()
     os.environ["LLM_BACKEND"] = prov
 
-    if prov == "vllm":
-        router.set_execution_mode(ExecutionMode.LOCAL)
-        router.set_task_provider(InferenceTask.RAG_GENERATION, "vllm")
-        router.set_task_provider(InferenceTask.CHAT, "vllm")
-    else:
-        router.set_execution_mode(ExecutionMode.CLOUD)
-        router.set_cloud_allowed(True)
-        router.set_task_provider(InferenceTask.RAG_GENERATION, prov)
-        router.set_task_provider(InferenceTask.CHAT, prov)
-        all_cloud = [prov, "groq", "gemini", "nvidia", "openrouter", "cohere", "deepseek", "vllm"]
+    all_generation_tasks = (
+        InferenceTask.RAG_GENERATION,
+        InferenceTask.CHAT,
+        InferenceTask.QUERY_REWRITE,
+        InferenceTask.REASONING,
+        InferenceTask.DOCUMENT_EXTRACTION,
+        InferenceTask.SUMMARIZATION,
+        InferenceTask.STRUCTURED_EXTRACTION,
+    )
+
+    if prov in ("vllm", "ollama", "local"):
+        mode = ExecutionMode.LOCAL if os.getenv("EXECUTION_MODE", "").upper() == "LOCAL" else ExecutionMode.AUTOMATIC
+        router.set_execution_mode(mode)
+        for task in all_generation_tasks:
+            router.set_task_provider(task, prov)
+        chain = [prov, "vllm", "ollama", "gemini", "groq", "nvidia", "mistral", "cohere", "local"]
         seen = set()
-        deduped = [x for x in all_cloud if not (x in seen or seen.add(x))]
-        router.fallback_chain = deduped
+        router.fallback_chain = [x for x in chain if not (x in seen or seen.add(x))]
+    else:
+        router.set_execution_mode(ExecutionMode.AUTOMATIC)
+        router.set_cloud_allowed(True)
+        for task in all_generation_tasks:
+            router.set_task_provider(task, prov)
+        chain = [prov, "gemini", "groq", "nvidia", "mistral", "cohere", "vllm", "ollama", "local"]
+        seen = set()
+        router.fallback_chain = [x for x in chain if not (x in seen or seen.add(x))]
 
 
 def show_simple_gui_prompt() -> Optional[str]:
