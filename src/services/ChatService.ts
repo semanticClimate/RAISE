@@ -132,9 +132,8 @@ export class ChatService implements ChatServiceInterface {
       onStreamChunk,
       onStageUpdate,
       () => {
-        if (req.thread_id) {
+        if (req.request_id) {
           this.abortChat({
-            session_id: req.thread_id,
             request_id: req.request_id,
           }).catch(() => {});
         }

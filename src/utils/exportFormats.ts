@@ -228,7 +228,7 @@ export function formatMarkdownReport(
   lines.push(`* **Dense Embedding Encoder:** ${prov.encoderModel}`);
   lines.push(`* **Cross-Attention Reranker:** ${prov.rerankerModel}`);
   lines.push(`* **NLI Entailment Verifier:** ${prov.nliVerifierModel}`);
-  lines.push('* **Platform Attribution:** RAISE');
+  lines.push('* **Platform Attribution:** RAISE (Research Assessment Intelligence & Semantic Extraction)');
   lines.push('');
 
   // Footer
@@ -1131,7 +1131,7 @@ export function generateReportHtml(
         <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(
           resolveAuditedProvenance(response).nliVerifierModel
         )}</span></div>
-        <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE</span></div>
+        <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE (Research Assessment Intelligence &amp; Semantic Extraction)</span></div>
       </div>
     </section>
   </main>
@@ -1820,7 +1820,7 @@ export function generatePdfBlob(
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
     { label: 'Cross-Attention Reranker:', val: prov.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: prov.nliVerifierModel },
-    { label: 'Platform Attribution:', val: 'RAISE' },
+    { label: 'Platform Attribution:', val: 'RAISE (Research Assessment Intelligence & Semantic Extraction)' },
   ];
 
   let specY = curY - 12;
@@ -2445,7 +2445,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },
     { label: 'Cross-Attention Reranker:', val: sProv.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: sProv.nliVerifierModel },
-    { label: 'Platform Attribution:', val: 'RAISE' },
+    { label: 'Platform Attribution:', val: 'RAISE (Research Assessment Intelligence & Semantic Extraction)' },
   ];
 
   let sessionSpecY = curY - 12;
