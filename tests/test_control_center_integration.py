@@ -32,8 +32,18 @@ def client():
     return TestClient(app)
 
 
-def test_control_center_config_persistence_and_neural_models():
-    """Verify that saving configuration from Control Center updates .env and os.environ."""
+def test_control_center_config_persistence_and_neural_models(tmp_path, monkeypatch):
+    """Verify that saving configuration from Control Center updates .env and os.environ without polluting host files."""
+    import src.features.system.config_service as cs
+    test_env = tmp_path / ".env"
+    test_root_env = tmp_path / "root.env"
+    test_env.write_text("# Test env\n", encoding="utf-8")
+    test_root_env.write_text("# Test root env\n", encoding="utf-8")
+
+    monkeypatch.setattr(cs, "ENV_FILE_PATH", test_env)
+    monkeypatch.setattr(cs, "ROOT_ENV_FILE_PATH", test_root_env)
+    monkeypatch.setattr("src.infrastructure.credentials.manager.CredentialManager.set_credential", lambda self, p, s: True)
+
     req = SystemConfigRequest(
         llm_backend="groq",
         llm_mode="cloud_groq",
@@ -57,6 +67,10 @@ def test_control_center_config_persistence_and_neural_models():
     assert os.environ.get("NLI_VERIFIER_MODEL") == "dleemiller/finecat-nli-ultra-l"
     assert os.environ.get("NEURAL_DEVICE") == "auto"
     assert os.environ.get("GROQ_API_KEY") == "gsk_testdummyapikey1234567890"
+
+    # Verify that test_env was written to
+    assert test_env.exists()
+    assert "GROQ_API_KEY=gsk_testdummyapikey1234567890" in test_env.read_text(encoding="utf-8")
 
     # Verify masked output in get_current_configuration
     curr = get_current_configuration()
