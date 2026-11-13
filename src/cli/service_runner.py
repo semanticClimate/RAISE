@@ -147,9 +147,16 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     # 1. Hardware Summary (with instantaneous local fallback)
     hw = fetch_json_endpoint("http://127.0.0.1:8000/api/system/hardware", timeout=1.5)
     if hw:
-        gpu_str = f"{hw.get('gpu_name', 'None')} ({hw.get('vram_gb', 0)}GB VRAM)" if hw.get("cuda_available") else "CPU Only (CUDA Inactive)"
-        ram_str = f"{hw.get('available_ram_gb', 0):.1f} GB avail / {hw.get('total_ram_gb', 0):.1f} GB total"
-        hw_line = f"GPU: {gpu_str} | RAM: {ram_str} ({hw.get('cpu_count', 0)} Cores)"
+        cuda_active = bool(hw.get("has_metal_or_cuda") or hw.get("cuda_available") or hw.get("gpu_detected"))
+        vram = hw.get("vram_gb") or hw.get("gpu_vram_gb", 0)
+        raw_gpu = hw.get("gpu")
+        gpu_name = hw.get("gpu_name") or (raw_gpu.get("details") if isinstance(raw_gpu, dict) else "None")
+        gpu_str = f"{gpu_name} ({float(vram):.1f}GB VRAM)" if (cuda_active and gpu_name and gpu_name != "None") else "CPU Only (CUDA Inactive)"
+        avail_ram = hw.get("free_ram_gb") or hw.get("ram_available_gb") or hw.get("available_ram_gb", 0)
+        tot_ram = hw.get("total_ram_gb") or hw.get("ram_total_gb", 0)
+        ram_str = f"{float(avail_ram):.1f} GB avail / {float(tot_ram):.1f} GB total"
+        cpu_cnt = hw.get("cpu_cores") or hw.get("cpu_count", 0)
+        hw_line = f"GPU: {gpu_str} | RAM: {ram_str} ({cpu_cnt} Cores)"
     else:
         try:
             import psutil
@@ -381,6 +388,7 @@ class DualProcessSupervisor:
         self.frontend_recent_logs: List[str] = []
         self.log_lock = threading.Lock()
         self._model_ready_announced = False
+        self._last_progress_print = 0.0
 
     def start_backend(self) -> bool:
         """Starts the FastAPI backend service."""
@@ -454,14 +462,39 @@ class DualProcessSupervisor:
 
                 clean_line = sanitize_text(line)
 
-                # 1. Suppress intermediate tqdm progress bar spam (e.g. "Loading weights:  17%|..."):
-                if any(kw in clean_line for kw in ("it/s", "%|", "Loading weights:")):
+                # 1. Capture model loading / weights progress (throttled):
+                if any(kw in clean_line for kw in ("it/s", "%|", "Loading weights:", "Downloading")):
                     if ("100%|" in clean_line or "Loaded 20 prompts" in clean_line) and not self._model_ready_announced:
                         self._model_ready_announced = True
                         print_supervisor_event(f"{C.SUCCESS}✨ [MODEL-READY] Neural embedding weights initialized successfully.{C.RESET}")
+                    else:
+                        now_ts = time.time()
+                        if now_ts - self._last_progress_print >= 4.0:
+                            self._last_progress_print = now_ts
+                            short_prog = clean_line.strip()
+                            if len(short_prog) > 85:
+                                short_prog = short_prog[:82] + "..."
+                            print_supervisor_event(f"{C.MUTED}⏳ [NEURAL] {short_prog}{C.RESET}")
                     continue
 
                 # 2. Check for high-value lifecycle & routing events first
+                if "Loading SentenceTransformer model" in clean_line:
+                    model_id = clean_line.split("from")[-1].strip().rstrip(".")
+                    print_supervisor_event(f"{C.CYAN}🧠 [NEURAL] Initializing SentenceTransformer ({model_id})...{C.RESET}")
+                    continue
+
+                if "Starting neural models pre-warming" in clean_line:
+                    print_supervisor_event(f"{C.CYAN}⚡ [WARMUP] Pre-warming neural inference stack (reranker, NLI)...{C.RESET}")
+                    continue
+
+                if "Neural models pre-warming completed successfully" in clean_line:
+                    print_supervisor_event(f"{C.SUCCESS}✨ [NEURAL] All neural models warmed up and ready.{C.RESET}")
+                    continue
+
+                if "Successfully mounted all core RAISE GraphRAG routes" in clean_line:
+                    print_supervisor_event(f"{C.SUCCESS}📦 [CORE] All GraphRAG routers mounted successfully.{C.RESET}")
+                    continue
+
                 if "[GRAPH-RAG]" in clean_line:
                     clean_rag = clean_line.split("[GRAPH-RAG]")[-1].strip()
                     print_supervisor_event(f"{C.CYAN}{clean_rag}{C.RESET}")
@@ -525,7 +558,6 @@ class DualProcessSupervisor:
                     "Connected to Persistent Local SQLite Database",
                     "Connected to Local Redis",
                     "Registered slash command:",
-                    "Successfully mounted all core RAISE GraphRAG routes",
                     "Mounted production frontend from",
                     "UserWarning: Duplicate Operation ID",
                     "Tunnel Mode: DISABLED",
@@ -573,11 +605,19 @@ class DualProcessSupervisor:
                     print_supervisor_event(f"{C.WARN}⚠️  [WARNING] {log_msg}{C.RESET}")
                     continue
 
-    def wait_for_backend(self, timeout_sec: int = 45) -> bool:
-        """Polls /api/health until the backend gateway is alive."""
+    def wait_for_backend(self, timeout_sec: int = 180) -> bool:
+        """Polls /api/health until the backend gateway is alive, surfacing real-time telemetry."""
         t0 = time.time()
+        last_heartbeat = t0
         while time.time() - t0 < timeout_sec:
             if self.backend_proc and self.backend_proc.poll() is not None:
+                exit_code = self.backend_proc.poll()
+                print(f"\n{C.DANGER}[FATAL] Backend process exited unexpectedly with code {exit_code}.{C.RESET}")
+                with self.log_lock:
+                    if self.backend_recent_logs:
+                        print(f"{C.WARN}--- Recent backend log output ---{C.RESET}")
+                        for l in self.backend_recent_logs[-12:]:
+                            print(f"{C.MUTED}{l}{C.RESET}")
                 return False
             try:
                 req = urllib.request.Request("http://127.0.0.1:8000/api/health", headers={"User-Agent": "RAISE-Supervisor"})
@@ -586,7 +626,21 @@ class DualProcessSupervisor:
                         return True
             except Exception:
                 pass
+
+            now = time.time()
+            if now - last_heartbeat >= 10.0:
+                elapsed = int(now - t0)
+                print(f"{C.MUTED}[RAISE] Backend initializing neural models & services... ({elapsed}s elapsed / {timeout_sec}s timeout){C.RESET}")
+                last_heartbeat = now
+
             time.sleep(0.8)
+
+        print(f"\n{C.DANGER}[FATAL] Backend startup timed out after {timeout_sec}s without reporting health.{C.RESET}")
+        with self.log_lock:
+            if self.backend_recent_logs:
+                print(f"{C.WARN}--- Recent backend log output ---{C.RESET}")
+                for l in self.backend_recent_logs[-12:]:
+                    print(f"{C.MUTED}{l}{C.RESET}")
         return False
 
     def wait_for_frontend(self, timeout_sec: int = 30) -> bool:
@@ -736,7 +790,8 @@ def main():
         print(f"{C.DANGER}[FATAL] Could not launch backend server.{C.RESET}")
         return
 
-    if not supervisor.wait_for_backend(timeout_sec=45):
+    backend_timeout = int(os.getenv("RAISE_BACKEND_TIMEOUT", "180"))
+    if not supervisor.wait_for_backend(timeout_sec=backend_timeout):
         print(f"{C.DANGER}[FATAL] Backend failed to become healthy. Check backend.log for tracebacks.{C.RESET}")
         supervisor.shutdown()
         return

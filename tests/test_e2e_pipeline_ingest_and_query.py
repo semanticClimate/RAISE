@@ -1,4 +1,4 @@
-﻿"""
+"""
 End-to-End Pipeline Verification Test (Ingestion + Reranking + Grounded Answering)
 ==================================================================================
 Verifies:
@@ -28,6 +28,22 @@ from src.retrieval.pipeline import StandaloneRAGPipeline
 def test_e2e_document_ingestion_and_grounded_answer():
     """Verify document ingestion into ChromaDB and retrieval of grounded answer."""
     pdf_path = BASE_DIR / "data" / "documents" / "test_sample.pdf"
+    if not pdf_path.exists():
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        import fitz
+        doc = fitz.open()
+        page = doc.new_page()
+        text = (
+            "Renewable Energy Global Trends Report 2025\n\n"
+            "Executive Summary:\n"
+            "In 2025, global renewable energy capacity underwent unprecedented expansion. "
+            "Solar and wind energy installations grew by 25% year-over-year, outpacing all traditional energy sectors. "
+            "Grid modernization projects accounted for $45 billion in total capital investments across North America and Europe."
+        )
+        page.insert_text((50, 72), text, fontsize=12)
+        doc.save(str(pdf_path))
+        doc.close()
+
     assert pdf_path.exists(), f"Sample test PDF not found at {pdf_path}"
 
     # 1. Ingest document
