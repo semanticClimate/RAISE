@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from src.cli.commands import sanitize_path
 from src.cli.renderer import C
+from src.core.config import models
 
 logger = logging.getLogger("RAISE_DocManager")
 
@@ -183,7 +184,7 @@ def ingest_pdf_from_path(
 
     # Benchmark test isolation guardrail
     path_str = str(src_path).lower().replace("\\", "/")
-    excluded_patterns = ["evaluation", "benchmark", "question_suite", "question suite", "raise-bench", "gemini-notebook"]
+    excluded_patterns = ["evaluation", "benchmark", "question_suite", "question suite", "raise-bench", f"{models.LLM_PROVIDER}-notebook"]
     if any(pattern in path_str for pattern in excluded_patterns):
         print(f"\n{C.DANGER}⛔ [Database Isolation Guard] Ingestion Blocked:{C.RESET}")
         print(f"   '{src_path.name}' matches excluded benchmark patterns.")

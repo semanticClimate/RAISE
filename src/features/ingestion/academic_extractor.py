@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .academic_models import AcademicEntity, AcademicRelation
 from .academic_personnel_facts import extract_personnel_and_metrics
+from src.core.config import models
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
@@ -34,7 +35,7 @@ class AcademicDomainExtractor:
     """
 
     _gliner_model: Optional[Any] = None
-    GLINER_MODEL_NAME = "urchade/gliner_base"
+    GLINER_MODEL_NAME = models.GLINER_MODEL_NAME
     GLINER_LABELS = [
         "University",
         "Department",

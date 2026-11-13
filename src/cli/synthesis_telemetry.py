@@ -18,6 +18,7 @@ from src.cli.models import (
     PromptContextTelemetry,
     SynthesisMetrics,
 )
+from src.core.config import models
 
 
 def build_context_assembly_metrics(
@@ -80,7 +81,7 @@ def build_synthesis_metrics(
     t_synth: float,
 ) -> SynthesisMetrics:
     """Builds SynthesisMetrics for local vLLM generation."""
-    model_name = synth_meta.get("model") or "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"
+    model_name = synth_meta.get("model") or models.LLM_MODEL_NAME
     c_tokens_raw = synth_meta.get("completion_tokens")
 
     if c_tokens_raw is not None:

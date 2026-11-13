@@ -23,6 +23,7 @@ import os
 import socket
 from pathlib import Path
 from typing import Any, Dict, Optional
+from src.core.config import models
 
 
 def _is_port_online(host: str, port: int, timeout: float = 0.3) -> bool:
@@ -45,16 +46,16 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
         from src.infrastructure.providers.router import get_provider_router
         prov_router = get_provider_router()
         compl_info = prov_router.get_last_completion_info()
-        actual_llm_prov = compl_info.get("provider") or os.getenv("LLM_PROVIDER") or os.getenv("LLM_BACKEND") or "gemini"
-        actual_llm_model = compl_info.get("model") or os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
+        actual_llm_prov = compl_info.get("provider") or os.getenv("LLM_PROVIDER") or os.getenv("LLM_BACKEND") or models.LLM_PROVIDER
+        actual_llm_model = compl_info.get("model") or models.LLM_MODEL_NAME
     except Exception:
-        actual_llm_prov = os.getenv("LLM_PROVIDER") or os.getenv("LLM_BACKEND") or "gemini"
-        actual_llm_model = os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
+        actual_llm_prov = os.getenv("LLM_PROVIDER") or os.getenv("LLM_BACKEND") or models.LLM_PROVIDER
+        actual_llm_model = models.LLM_MODEL_NAME
 
     # 2. Storage Substrates Resolution
     # A. ChromaDB Vector Store
     chroma_count = 0
-    chroma_model = "google/embeddinggemma-2"
+    chroma_model = models.EMBEDDING_MODEL_NAME
     try:
         import chromadb
         base_dir = Path(__file__).resolve().parent.parent.parent
@@ -70,7 +71,7 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
             client = chromadb.PersistentClient(path=str(target_chroma))
             cols = client.list_collections()
             chroma_count = sum(c.count() for c in cols)
-            chroma_model = "google/embeddinggemma-2" if "embeddinggemma" in target_chroma.name else "BAAI/bge-large-en-v1.5"
+            chroma_model = models.EMBEDDING_MODEL_NAME if models.EMBEDDING_MODEL_KEYWORD in target_chroma.name else models.EMBEDDING_FALLBACK_MODEL_NAME
     except Exception:
         pass
 
@@ -111,20 +112,20 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
         os.getenv("EMBEDDING_MODEL")
         or os.getenv("EMBEDDER_MODEL_NAME")
         or chroma_model
-        or "google/embeddinggemma-2"
+        or models.EMBEDDING_MODEL_NAME
     )
 
     # 4. Mode-Aware Reranker & NLI Models (Never emit null)
-    raw_rerank = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+    raw_rerank = os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME)
     try:
         from src.retrieval.reranker import CrossEncoderReranker
         reranker_model = CrossEncoderReranker.AVAILABLE_RERANKERS.get(raw_rerank, raw_rerank)
     except Exception:
-        reranker_model = "BAAI/bge-reranker-large"
+        reranker_model = models.RERANKER_MODEL_NAME
     nli_verifier_model = (
         os.getenv("NLI_VERIFIER_MODEL")
         or os.getenv("NLI_MODEL")
-        or "dleemiller/finecat-nli-ultra-l"
+        or models.NLI_MODEL_NAME
     )
 
     return {

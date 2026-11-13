@@ -12,11 +12,12 @@ from typing import Any, AsyncGenerator, Dict, Optional
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 from src.infrastructure.providers.http_client import safe_http_request, ProviderHTTPError
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.openrouter")
 
 DEFAULT_OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1"
-DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o"
+DEFAULT_OPENROUTER_MODEL = models.OPENROUTER_MODEL_NAME
 
 
 class OpenRouterProvider(LLMProvider):

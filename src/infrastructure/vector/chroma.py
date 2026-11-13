@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.storage.interfaces import IVectorStore
+from src.core.config import settings, models
 
 from .mixins import (
     VectorEmbeddingsMixin,
@@ -140,7 +141,7 @@ class LocalVectorEngine(
     def format_collection_name(
         dataset: str,
         parser: str = "docling",
-        embedding_model: str = "bge_large",
+        embedding_model: Optional[str] = None,
     ) -> str:
         """
         Enforces Standardized Tripartite ChromaDB Collection Naming:
@@ -160,7 +161,7 @@ class LocalVectorEngine(
         dataset_slug = _slugify(dataset) or "default"
         parser_slug = _slugify(parser) or "docling"
 
-        raw_model = _slugify(embedding_model) or "bge_large"
+        raw_model = _slugify(embedding_model or models.EMBEDDING_MODEL_NAME)
         if "bge_large" in raw_model:
             model_slug = "bge_large"
         elif "bge_m3" in raw_model:
@@ -213,7 +214,7 @@ class LocalVectorEngine(
         else:
             default_dir = os.getenv("CHROMA_PERSIST_DIRECTORY", str(Path(__file__).resolve().parents[3] / ".chromadb_bge_large"))
             default_coll = os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_bge_large")
-            default_model = os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
+            default_model = os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME)
 
         self.persist_dir = Path(persist_directory or default_dir).resolve()
         self.persist_dir.mkdir(parents=True, exist_ok=True)

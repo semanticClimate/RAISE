@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 from pydantic import BaseModel, Field
+from src.core.config import models
 
 
 class SystemConfigRequest(BaseModel):
@@ -34,11 +35,11 @@ class SystemConfigRequest(BaseModel):
     ollama_model: Optional[str] = None
 
     # Neural Retrieval Pipeline Substrates
-    embedding_model: Optional[str] = Field(default="google/embeddinggemma-2")
+    embedding_model: Optional[str] = Field(default_factory=lambda: models.EMBEDDING_MODEL_NAME)
     embedding_device: Optional[str] = None
-    reranker_model: Optional[str] = Field(default="jinaai/jina-reranker-v3.5")
+    reranker_model: Optional[str] = Field(default_factory=lambda: models.RERANKER_MODEL_NAME)
     reranker_device: Optional[str] = None
-    nli_verifier_model: Optional[str] = Field(default="dleemiller/finecat-nli-ultra-l")
+    nli_verifier_model: Optional[str] = Field(default_factory=lambda: models.NLI_MODEL_NAME)
     nli_model: Optional[str] = None
     nli_device: Optional[str] = None
     neural_device: Optional[str] = Field(default="auto")
@@ -63,7 +64,7 @@ class ModelPullRequest(BaseModel):
     """Payload schema for streaming model ingestion requests."""
     model_config = {"extra": "ignore"}
 
-    model_name: str = Field(default="google/embeddinggemma-2")
+    model_name: str = Field(default_factory=lambda: models.EMBEDDING_MODEL_NAME)
     provider: Optional[str] = Field(default="huggingface")
     model_type: Optional[str] = Field(default="embedding")
     huggingface_token: Optional[str] = None

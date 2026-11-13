@@ -13,12 +13,16 @@ from typing import Any, AsyncGenerator, Optional
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 from src.infrastructure.providers.http_client import safe_http_request, ProviderHTTPError
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.mistral")
 
 DEFAULT_MISTRAL_ENDPOINT = "https://api.mistral.ai/v1"
-DEFAULT_MISTRAL_MODEL = "open-mistral-nemo"
-FALLBACK_MISTRAL_MODELS = ["open-mistral-7b", "codestral-latest", "mistral-small-latest"]
+DEFAULT_MISTRAL_MODEL = models.MISTRAL_MODEL_NAME
+FALLBACK_MISTRAL_MODELS = [
+    models.MISTRAL_MODEL_NAME,
+    *models.MISTRAL_FALLBACK_CANDIDATES,
+]
 
 
 class MistralProvider(LLMProvider):

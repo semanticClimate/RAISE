@@ -19,7 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from src.core.config import Settings, VectorConfig, RerankerConfig, NLIConfig
+from src.core.config import Settings, VectorConfig, RerankerConfig, NLIConfig, models
 from src.retrieval.reranker import CrossEncoderReranker
 from src.features.evaluation.nli_verifier import FineCatNLIVerifier
 from src.infrastructure.model_warmup import warmup_all_neural_models
@@ -32,11 +32,11 @@ def test_typed_configuration_defaults_and_env():
     assert hasattr(cfg, "reranker")
     assert hasattr(cfg, "nli")
 
-    assert cfg.vector.embedding_model == os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
+    assert cfg.vector.embedding_model == os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME)
     assert cfg.vector.embedding_device == os.getenv("EMBEDDING_DEVICE", "cuda")
-    assert cfg.reranker.model_name == os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+    assert cfg.reranker.model_name == os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME)
     assert cfg.reranker.device == os.getenv("RERANKER_DEVICE", "cuda")
-    assert cfg.nli.model_name == os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l")
+    assert cfg.nli.model_name == os.getenv("NLI_MODEL", models.NLI_MODEL_NAME)
     assert cfg.nli.device == os.getenv("NLI_DEVICE", "cuda")
 
 

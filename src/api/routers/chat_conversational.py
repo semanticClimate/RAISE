@@ -42,6 +42,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.api.schemas import ChatMessageRequest
 from src.cli.persona_classifier import extract_conversational_persona
+from src.core.config import models
 
 logger = logging.getLogger("raise.router.chat.conversational")
 
@@ -130,7 +131,7 @@ async def handle_conversational_chat(
         "http://127.0.0.1:8002/v1",
         "http://raise-vllm-prod:8000/v1",
     ]
-    model_name = os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
+    model_name = os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME)
 
     # Conversational intent classifier matching main.py
     greeting_typo_regex = re.compile(

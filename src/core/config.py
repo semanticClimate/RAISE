@@ -5,6 +5,7 @@ RAISE Centralized Typed Configuration System — Core Module
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Literal, Optional
 from pydantic import BaseModel, Field
@@ -113,6 +114,119 @@ def resolve_local_model_path(repo_or_path: str) -> str:
     return repo_or_path
 
 
+@dataclass(frozen=True)
+class ModelConfig:
+    # LLM Synthesis
+    LLM_PROVIDER: str = os.getenv("RAISE_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini"))
+    LLM_MODEL_NAME: str = os.getenv("RAISE_LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash"))
+    GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+    GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = (
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-flash-latest",
+    )
+    OPENAI_MODEL_NAME: str = os.getenv("OPENAI_MODEL_NAME", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+    GROQ_MODEL_NAME: str = os.getenv("GROQ_MODEL", "qwen/qwen-2.5-32b-instruct")
+    GROQ_FALLBACK_CANDIDATES: tuple[str, ...] = (
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
+    )
+    DEEPSEEK_MODEL_NAME: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    NVIDIA_MODEL_NAME: str = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
+    OPENROUTER_MODEL_NAME: str = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-haiku")
+    ANTHROPIC_MODEL_NAME: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet")
+    COHERE_MODEL_NAME: str = os.getenv("COHERE_MODEL", "command-r-plus-08-2024")
+    MISTRAL_MODEL_NAME: str = os.getenv("MISTRAL_MODEL", "open-mistral-nemo")
+    MISTRAL_FALLBACK_CANDIDATES: tuple[str, ...] = (
+        "open-mistral-7b",
+        "codestral-latest",
+        "mistral-small-latest",
+    )
+
+    # Retrieval & Reranking
+    EMBEDDING_MODEL_NAME: str = os.getenv("RAISE_EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"))
+    EMBEDDING_MODEL_KEYWORD: str = "embeddinggemma"
+    GEMMA_KEYWORD: str = "gemma"
+    EMBEDDING_FALLBACK_MODEL_NAME: str = os.getenv("EMBEDDING_FALLBACK_MODEL", "BAAI/bge-large-en-v1.5")
+    EMBEDDING_BASE_MODEL_NAME: str = os.getenv("EMBEDDING_BASE_MODEL", "BAAI/bge-base-en-v1.5")
+    EMBEDDING_M3_MODEL_NAME: str = os.getenv("EMBEDDING_M3_MODEL", "BAAI/bge-m3")
+    RERANKER_MODEL_NAME: str = os.getenv("RAISE_RERANKER_MODEL", os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"))
+    RERANKER_FALLBACK_MODEL_NAME: str = os.getenv("RERANKER_FALLBACK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+    # Ingestion / Entity Extraction
+    GLINER_MODEL_NAME: str = os.getenv("RAISE_GLINER_MODEL", os.getenv("GLINER_MODEL", "urchade/gliner_medium-v2.1"))
+
+    # NLI Entailment
+    NLI_MODEL_NAME: str = os.getenv("RAISE_NLI_MODEL", os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"))
+
+
+models = ModelConfig()
+
+AVAILABLE_EMBEDDING_MODELS: Dict[str, str] = {
+    "embeddinggemma-2": "google/embeddinggemma-2",
+    "embeddinggemma": "google/embeddinggemma-2",
+    "google/embeddinggemma-2": "google/embeddinggemma-2",
+    "bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
+    "bge-large": "BAAI/bge-large-en-v1.5",
+    "BAAI/bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
+    "bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+    "bge-base": "BAAI/bge-base-en-v1.5",
+    "BAAI/bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+    "all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
+    "sentence-transformers/all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
+    "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
+    "sentence-transformers/all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
+    "nomic-ai/nomic-embed-text-v1.5": "nomic-ai/nomic-embed-text-v1.5",
+    "nomic-embed-text-v1.5": "nomic-ai/nomic-embed-text-v1.5",
+    "bge-m3": "BAAI/bge-m3",
+    "BAAI/bge-m3": "BAAI/bge-m3",
+    "nomic-ai/nomic-embed-vision-v1.5": "nomic-ai/nomic-embed-vision-v1.5",
+    "nomic-embed-vision": "nomic-ai/nomic-embed-vision-v1.5",
+    "openai/clip-vit-base-patch32": "openai/clip-vit-base-patch32",
+    "clip-vit-base": "openai/clip-vit-base-patch32",
+    "meta/llama-3.2-11b-vision-instruct": "meta/llama-3.2-11b-vision-instruct",
+    "qwen-embedding-4b": "Qwen/Qwen3-Embedding-4B",
+}
+
+EMBEDDING_FALLBACKS_768: list[str] = [
+    "BAAI/bge-base-en-v1.5",
+    "sentence-transformers/all-mpnet-base-v2",
+    "nomic-ai/nomic-embed-text-v1.5",
+]
+
+EMBEDDING_FALLBACKS_1024: list[str] = [
+    "BAAI/bge-large-en-v1.5",
+    "BAAI/bge-m3",
+]
+
+AVAILABLE_RERANKER_MODELS: Dict[str, str] = {
+    "bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
+    "BAAI/bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
+    "bge-reranker-large": "BAAI/bge-reranker-v2-m3",
+    "BAAI/bge-reranker-large": "BAAI/bge-reranker-v2-m3",
+    "bge-reranker-base": "BAAI/bge-reranker-base",
+    "BAAI/bge-reranker-base": "BAAI/bge-reranker-base",
+    "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "jina-reranker-v3.5": "BAAI/bge-reranker-v2-m3",
+    "jinaai/jina-reranker-v3.5": "BAAI/bge-reranker-v2-m3",
+    "jina-reranker": "BAAI/bge-reranker-v2-m3",
+    "default": "BAAI/bge-reranker-v2-m3",
+}
+
+SUPPORTED_FAMILY_KEYWORDS: tuple[str, ...] = ("llama", "qwen", "mistral", "phi", "gemma", "deepseek")
+OPENROUTER_FAMILY_KEYWORDS: tuple[str, ...] = ("llama-3", "qwen-2.5", "mistral-7b", "phi-3", "gemma-2")
+
+OFFLINE_CATALOG_FALLBACK: list[dict[str, Any]] = [
+    {"id": "meta-llama/Llama-3.2-3B-Instruct", "name": "Llama 3.2 3B Instruct", "download_size_gb": 2.0, "min_ram_gb": 8, "tier": "Fast & Light", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
+    {"id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen 2.5 7B Instruct", "download_size_gb": 4.7, "min_ram_gb": 16, "tier": "Balanced Reasoning", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
+    {"id": "meta-llama/Meta-Llama-3.1-8B-Instruct", "name": "Llama 3.1 8B Instruct", "download_size_gb": 4.9, "min_ram_gb": 16, "tier": "High Fidelity", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
+]
+
+
 class Neo4jConfig(BaseModel):
     """Neo4j Graph Database Configuration."""
     uri: str = Field(default_factory=lambda: os.getenv("NEO4J_URI", "bolt://localhost:7687"))
@@ -137,7 +251,7 @@ class VectorConfig(BaseModel):
         )
     )
     collection_name: str = Field(default_factory=lambda: os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_embeddinggemma_2"))
-    embedding_model: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"))
+    embedding_model: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME))
     embedding_device: str = Field(default_factory=lambda: os.getenv("EMBEDDING_DEVICE", "cuda"))
     embedding_dimension: int = Field(default_factory=lambda: int(os.getenv("EMBEDDING_DIMENSION", "768")))
     hnsw_space: str = Field(default_factory=lambda: os.getenv("CHROMA_HNSW_SPACE", "cosine"))
@@ -192,14 +306,14 @@ class VectorConfig(BaseModel):
 
 class RerankerConfig(BaseModel):
     """Contextual Cross-Encoder Reranker Configuration."""
-    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"))
+    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME))
     device: str = Field(default_factory=lambda: os.getenv("RERANKER_DEVICE", "cuda"))
     top_n: int = Field(default_factory=lambda: int(os.getenv("RERANKER_TOP_N", "8")))
 
 
 class NLIConfig(BaseModel):
     """Natural Language Inference Verification Configuration."""
-    model_name: str = Field(default_factory=lambda: os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"))
+    model_name: str = Field(default_factory=lambda: os.getenv("NLI_MODEL", models.NLI_MODEL_NAME))
     device: str = Field(default_factory=lambda: os.getenv("NLI_DEVICE", "cuda"))
     max_length: int = Field(default_factory=lambda: int(os.getenv("NLI_MAX_LENGTH", "4096")))
 
@@ -208,7 +322,7 @@ class LLMConfig(BaseModel):
     backend: Literal["ollama", "huggingface", "openai-compatible", "vllm", "cloud"] = Field(
         default_factory=lambda: os.getenv("LLM_BACKEND", "vllm")  # type: ignore
     )
-    model_name: str = Field(default_factory=lambda: os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"))
+    model_name: str = Field(default_factory=lambda: os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME))
     base_url: str = Field(default_factory=lambda: os.getenv("LLM_BASE_URL", os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")))
     api_key: Optional[str] = Field(default_factory=lambda: os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY")))
     temperature: float = Field(default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.1")))

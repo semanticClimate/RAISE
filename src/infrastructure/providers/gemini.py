@@ -12,11 +12,12 @@ from typing import Any, AsyncGenerator, Optional
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 from src.infrastructure.providers.http_client import safe_http_request, ProviderHTTPError
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.gemini")
 
 DEFAULT_GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai"
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_GEMINI_MODEL = models.GEMINI_MODEL_NAME
 
 
 class GeminiProvider(LLMProvider):
@@ -55,12 +56,8 @@ class GeminiProvider(LLMProvider):
         # Try native GenerativeLanguage API first with prioritized models
         raw_candidates = [
             self.model_name,
-            "gemini-3.5-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.6-flash",
-            "gemini-3.7-flash",
-            "gemini-3.8-flash",
-            "gemini-flash-latest",
+            models.GEMINI_MODEL_NAME,
+            *models.GEMINI_FALLBACK_CANDIDATES,
         ]
         # Deduplicate while preserving order
         candidate_models = []

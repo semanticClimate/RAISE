@@ -48,6 +48,7 @@ except Exception:
 from src.cli.renderer import C
 from src.cli.document_manager import get_active_documents_list
 from src.cli.system_launcher import get_synthesizer_status
+from src.core.config import models
 
 logger = logging.getLogger("RAISE_ServiceRunner")
 
@@ -178,7 +179,7 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
 
     # ChromaDB Count (Lightweight PersistentClient check without loading PyTorch weights in supervisor)
     chroma_count = 0
-    chroma_model = "google/embeddinggemma-2"
+    chroma_model = models.EMBEDDING_MODEL_NAME
     chroma_online = False
     try:
         import chromadb
@@ -194,7 +195,7 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
             client = chromadb.PersistentClient(path=str(target_chroma))
             cols = client.list_collections()
             chroma_count = sum(c.count() for c in cols)
-            chroma_model = "google/embeddinggemma-2" if "embeddinggemma" in target_chroma.name else "BAAI/bge-large-en-v1.5"
+            chroma_model = models.EMBEDDING_MODEL_NAME if models.EMBEDDING_MODEL_KEYWORD in target_chroma.name else models.EMBEDDING_FALLBACK_MODEL_NAME
             chroma_online = True
     except Exception:
         pass
@@ -213,8 +214,8 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     synth_str = synth.get("display_string", f"{C.SUCCESS}ACTIVE{C.RESET}")
 
     encoder_name = prov.get("encoder_model") or cfg.get("embedding_model") or chroma_model
-    reranker_name = prov.get("reranker_model") or cfg.get("reranker_model") or "BAAI/bge-reranker-large"
-    nli_name = prov.get("nli_verifier_model") or cfg.get("nli_verifier_model") or "dleemiller/finecat-nli-ultra-l"
+    reranker_name = prov.get("reranker_model") or cfg.get("reranker_model") or models.RERANKER_MODEL_NAME
+    nli_name = prov.get("nli_verifier_model") or cfg.get("nli_verifier_model") or models.NLI_MODEL_NAME
 
     print(f"{C.BANNER}║{C.RESET} {C.SECTION}CONNECTION & NETWORK TOPOLOGY:{C.RESET}")
     print(f"{C.BANNER}║{C.RESET}   • Backend API Gateway       : {C.WHITE}http://localhost:8000{C.RESET} | Swagger: {C.CYAN}/docs{C.RESET}")

@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 from typing import Any, AsyncGenerator, Optional
 
-from src.core.config import settings, LLMConfig
+from src.core.config import settings, LLMConfig, models
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 
 logger = logging.getLogger("raise.infrastructure.providers.llm")
@@ -65,7 +65,7 @@ class LocalVLLMProvider(BaseLLMProvider):
 
     def __init__(self, base_url: Optional[str] = None, model_name: Optional[str] = None):
         self.base_url = (base_url or os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")).rstrip("/")
-        self.model_name = model_name or os.getenv("VLLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
+        self.model_name = model_name or os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME)
 
     def is_available(self) -> bool:
         """Fast non-blocking check to determine if the local vLLM server is alive across common ports."""
@@ -83,7 +83,7 @@ class LocalVLLMProvider(BaseLLMProvider):
                             models_data = json.loads(resp.read().decode("utf-8"))
                             if "data" in models_data and len(models_data["data"]) > 0:
                                 discovered_id = models_data["data"][0].get("id")
-                                if discovered_id and self.model_name == "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4":
+                                if discovered_id and (self.model_name == models.LLM_MODEL_NAME or self.model_name == "default"):
                                     self.model_name = discovered_id
                         except Exception:
                             pass
@@ -185,7 +185,7 @@ class LocalVLLMProvider(BaseLLMProvider):
                 cloud_fb = CloudOpenAICompatibleProvider(
                     api_key=groq_key,
                     base_url="https://api.groq.com/openai/v1",
-                    model_name=os.getenv("GROQ_MODEL_NAME", "llama-3.3-70b-versatile"),
+                    model_name=os.getenv("GROQ_MODEL_NAME", models.GROQ_MODEL_NAME),
                 )
                 return cloud_fb.complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
             elif gemini_key:
@@ -265,7 +265,7 @@ class LocalTransformersProvider(BaseLLMProvider):
     _lock = threading.Lock()
 
     def __init__(self, model_name: Optional[str] = None):
-        self.model_name = model_name or os.getenv("LOCAL_LLM_MODEL", "Qwen/Qwen2.5-1.5B-Instruct")
+        self.model_name = model_name or os.getenv("LOCAL_LLM_MODEL", models.LLM_MODEL_NAME)
 
     def is_available(self) -> bool:
         """Check if local environment supports torch inference."""
@@ -407,7 +407,7 @@ class CloudOpenAICompatibleProvider(BaseLLMProvider):
     ):
         self.api_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY", "")
         self.base_url = (base_url or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
-        self.model_name = model_name or os.getenv("LLM_MODEL_NAME", "gpt-4o-mini")
+        self.model_name = model_name or os.getenv("LLM_MODEL_NAME", models.OPENAI_MODEL_NAME)
 
     def complete(
         self,

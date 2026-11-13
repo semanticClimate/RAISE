@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .schemas import SystemConfigRequest
+from src.core.config import models
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -53,7 +54,7 @@ def get_current_configuration() -> Dict[str, Any]:
     postgres_url = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL", "")
     privacy_mode = os.getenv("PRIVACY_MODE", "false").lower() in ("true", "1", "yes")
 
-    raw_model = os.getenv("LLM_MODEL_NAME", "llama-3.3-70b-versatile")
+    raw_model = os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME)
     last_model = p_router.last_used_model
     last_provider = p_router.last_used_provider
     available_provs = p_router.get_dynamic_available_providers()
@@ -98,12 +99,12 @@ def get_current_configuration() -> Dict[str, Any]:
         "neo4j_database": os.getenv("NEO4J_DATABASE", "neo4j"),
         "neo4j_is_cloud": "databases.neo4j.io" in neo4j_uri,
         "redis_is_cloud": "upstash.io" in redis_url,
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"),
+        "embedding_model": os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME),
         "embedding_device": os.getenv("EMBEDDING_DEVICE", "auto"),
-        "reranker_model": os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5"),
+        "reranker_model": os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME),
         "reranker_device": os.getenv("RERANKER_DEVICE", "auto"),
-        "nli_model": os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"),
-        "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL") or os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"),
+        "nli_model": os.getenv("NLI_MODEL", models.NLI_MODEL_NAME),
+        "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL", os.getenv("NLI_MODEL", models.NLI_MODEL_NAME)),
         "nli_device": os.getenv("NLI_DEVICE", "auto"),
         "neural_device": os.getenv("NEURAL_DEVICE") or os.getenv("EMBEDDING_DEVICE", "auto"),
         "neo4j_mode": os.getenv("NEO4J_MODE", "in_memory_fallback" if not neo4j_uri else "cloud"),
@@ -179,49 +180,49 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         if selected_local and selected_local != "llama3.2:3b":
             env_map["LLM_MODEL_NAME"] = selected_local
         else:
-            env_map["LLM_MODEL_NAME"] = os.getenv("VLLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
+            env_map["LLM_MODEL_NAME"] = os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME)
         env_map["VLLM_BASE_URL"] = os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")
     elif target_backend == "gemini" or raw_mode == "cloud_gemini":
         env_map["LLM_BACKEND"] = "gemini"
         env_map["LLM_PROVIDER"] = "gemini"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "gemini-2.0-flash"
+        env_map["LLM_MODEL_NAME"] = models.GEMINI_MODEL_NAME
         if cfg.gemini_api_key and not is_masked_secret(cfg.gemini_api_key):
             env_map["GEMINI_API_KEY"] = cfg.gemini_api_key.strip()
     elif target_backend == "nvidia" or raw_mode == "cloud_nvidia":
         env_map["LLM_BACKEND"] = "nvidia"
         env_map["LLM_PROVIDER"] = "nvidia"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "meta/llama-3.2-11b-vision-instruct"
+        env_map["LLM_MODEL_NAME"] = models.NVIDIA_MODEL_NAME
     elif target_backend == "cohere" or raw_mode == "cloud_cohere":
         env_map["LLM_BACKEND"] = "cohere"
         env_map["LLM_PROVIDER"] = "cohere"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "command-r-plus-08-2024"
+        env_map["LLM_MODEL_NAME"] = models.COHERE_MODEL_NAME
     elif target_backend == "mistral" or raw_mode == "cloud_mistral":
         env_map["LLM_BACKEND"] = "mistral"
         env_map["LLM_PROVIDER"] = "mistral"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "open-mistral-nemo"
+        env_map["LLM_MODEL_NAME"] = models.MISTRAL_MODEL_NAME
     elif target_backend == "deepseek" or raw_mode == "cloud_deepseek":
         env_map["LLM_BACKEND"] = "deepseek"
         env_map["LLM_PROVIDER"] = "deepseek"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "deepseek-chat"
+        env_map["LLM_MODEL_NAME"] = models.DEEPSEEK_MODEL_NAME
         if cfg.deepseek_api_key and not is_masked_secret(cfg.deepseek_api_key):
             env_map["DEEPSEEK_API_KEY"] = cfg.deepseek_api_key.strip()
     elif target_backend == "openrouter" or raw_mode == "cloud_openrouter":
         env_map["LLM_BACKEND"] = "openrouter"
         env_map["LLM_PROVIDER"] = "openrouter"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "anthropic/claude-3.5-sonnet"
+        env_map["LLM_MODEL_NAME"] = models.OPENROUTER_MODEL_NAME
         if cfg.openrouter_api_key and not is_masked_secret(cfg.openrouter_api_key):
             env_map["OPENROUTER_API_KEY"] = cfg.openrouter_api_key.strip()
     elif target_backend in ("openai", "gpt") or raw_mode == "cloud_openai":
         env_map["LLM_BACKEND"] = "universal"
         env_map["LLM_PROVIDER"] = "openai"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "gpt-4o-mini"
+        env_map["LLM_MODEL_NAME"] = models.OPENAI_MODEL_NAME
         env_map["CUSTOM_LLM_BASE_URL"] = "https://api.openai.com/v1"
         if cfg.openai_api_key and not is_masked_secret(cfg.openai_api_key):
             env_map["OPENAI_API_KEY"] = cfg.openai_api_key.strip()
@@ -229,7 +230,7 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         env_map["LLM_BACKEND"] = "universal"
         env_map["LLM_PROVIDER"] = "anthropic"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "claude-3-5-sonnet"
+        env_map["LLM_MODEL_NAME"] = models.ANTHROPIC_MODEL_NAME
         if cfg.anthropic_api_key and not is_masked_secret(cfg.anthropic_api_key):
             env_map["ANTHROPIC_API_KEY"] = cfg.anthropic_api_key.strip()
     elif target_backend == "vercel" or raw_mode == "cloud_vercel":
@@ -241,7 +242,7 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         env_map["LLM_BACKEND"] = "universal"
         env_map["LLM_PROVIDER"] = "custom"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = cfg.custom_model_name or "gpt-4o-mini"
+        env_map["LLM_MODEL_NAME"] = cfg.custom_model_name or models.OPENAI_MODEL_NAME
         if cfg.custom_base_url:
             env_map["CUSTOM_LLM_BASE_URL"] = cfg.custom_base_url
             os.environ["CUSTOM_LLM_BASE_URL"] = cfg.custom_base_url
@@ -249,12 +250,12 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         env_map["EXECUTION_MODE"] = "AUTOMATIC"
         env_map["LLM_BACKEND"] = "groq"
         env_map["LLM_PROVIDER"] = "groq"
-        env_map["LLM_MODEL_NAME"] = "llama-3.3-70b-versatile"
+        env_map["LLM_MODEL_NAME"] = models.GROQ_MODEL_NAME
     else:  # cloud_groq default
         env_map["LLM_BACKEND"] = "groq"
         env_map["LLM_PROVIDER"] = "groq"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "llama-3.3-70b-versatile"
+        env_map["LLM_MODEL_NAME"] = models.GROQ_MODEL_NAME
         if cfg.groq_api_key and not is_masked_secret(cfg.groq_api_key):
             env_map["GROQ_API_KEY"] = cfg.groq_api_key.strip()
 

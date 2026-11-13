@@ -32,6 +32,7 @@ from src.infrastructure.providers.cohere import CohereProvider
 from src.infrastructure.providers.openrouter import OpenRouterProvider
 from src.infrastructure.providers.token_tracker import get_token_tracker
 from src.infrastructure.credentials.manager import get_credential_manager
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.router")
 
@@ -225,14 +226,14 @@ class ProviderRouter:
         Externalized cloud provider metadata and dynamically resolved default models.
         (Requirement 2: Model defaults read from env vars or instantiated provider objects)
         """
-        groq_model = os.getenv("GROQ_MODEL_NAME") or getattr(self.providers.get("groq"), "model_name", "llama-3.3-70b-versatile")
-        gemini_model = os.getenv("GEMINI_MODEL_NAME") or getattr(self.providers.get("gemini"), "model_name", "gemini-3.5-flash-lite")
-        mistral_model = os.getenv("MISTRAL_MODEL_NAME") or getattr(self.providers.get("mistral"), "model_name", "open-mistral-nemo")
-        nvidia_model = os.getenv("NVIDIA_MODEL_NAME") or getattr(self.providers.get("nvidia"), "model_name", "meta/llama-3.2-11b-vision-instruct")
-        cohere_model = os.getenv("COHERE_MODEL_NAME") or getattr(self.providers.get("cohere"), "model_name", "command-r-plus-08-2024")
-        deepseek_model = os.getenv("DEEPSEEK_MODEL_NAME") or getattr(self.providers.get("deepseek"), "model_name", "deepseek-chat")
-        openrouter_model = os.getenv("OPENROUTER_MODEL_NAME") or getattr(self.providers.get("openrouter"), "model_name", "anthropic/claude-3-haiku")
-        universal_model = os.getenv("UNIVERSAL_MODEL_NAME") or getattr(self.providers.get("universal"), "model_name", "gpt-4o-mini")
+        groq_model = os.getenv("GROQ_MODEL_NAME") or getattr(self.providers.get("groq"), "model_name", None) or models.GROQ_MODEL_NAME
+        gemini_model = os.getenv("GEMINI_MODEL_NAME") or getattr(self.providers.get("gemini"), "model_name", None) or models.GEMINI_MODEL_NAME
+        mistral_model = os.getenv("MISTRAL_MODEL_NAME") or getattr(self.providers.get("mistral"), "model_name", None) or models.MISTRAL_MODEL_NAME
+        nvidia_model = os.getenv("NVIDIA_MODEL_NAME") or getattr(self.providers.get("nvidia"), "model_name", None) or models.NVIDIA_MODEL_NAME
+        cohere_model = os.getenv("COHERE_MODEL_NAME") or getattr(self.providers.get("cohere"), "model_name", None) or models.COHERE_MODEL_NAME
+        deepseek_model = os.getenv("DEEPSEEK_MODEL_NAME") or getattr(self.providers.get("deepseek"), "model_name", None) or models.DEEPSEEK_MODEL_NAME
+        openrouter_model = os.getenv("OPENROUTER_MODEL_NAME") or getattr(self.providers.get("openrouter"), "model_name", None) or models.OPENROUTER_MODEL_NAME
+        universal_model = os.getenv("UNIVERSAL_MODEL_NAME") or getattr(self.providers.get("universal"), "model_name", None) or models.OPENAI_MODEL_NAME
 
         return {
             "groq": {"name": "Groq LPU (High-Throughput)", "tier": "Free Tier", "default_model": groq_model},
@@ -272,7 +273,7 @@ class ProviderRouter:
 
         # 1. In-process PyTorch Local Model
         if "local" in self.providers and "local" not in self.disabled_providers:
-            model_name = getattr(self.providers["local"], "model_name", None) or os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-1.5B-Instruct")
+            model_name = getattr(self.providers["local"], "model_name", None) or os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME)
             is_ready = bool(getattr(self.providers["local"], "pipeline", None) is not None)
             available.append({
                 "provider": "local",
@@ -329,7 +330,7 @@ class ProviderRouter:
             available.append({
                 "provider": "vllm",
                 "display_name": f"Local vLLM Container ({device_label})",
-                "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", "Qwen2.5-14B"),
+                "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME),
                 "status": "READY",
                 "is_active": self.mode == ExecutionMode.LOCAL or vllm_alive,
                 "tier": "Docker Local Inference",
@@ -338,7 +339,7 @@ class ProviderRouter:
             available.append({
                 "provider": "vllm",
                 "display_name": f"Local vLLM Container ({device_label})",
-                "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", "Qwen2.5-14B"),
+                "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME),
                 "status": "LOCAL_OFFLINE",
                 "is_active": False,
                 "tier": "Docker Local Inference",

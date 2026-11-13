@@ -22,6 +22,7 @@ import socket
 import logging
 from pathlib import Path
 from typing import Dict
+from src.core.config import models
 
 logger = logging.getLogger("raise.gui.probes")
 
@@ -86,9 +87,9 @@ def get_pipeline_models_health() -> Dict[str, Dict[str, str]]:
     try:
         from src.core.config import settings
         from src.infrastructure.vector.chroma import LocalVectorEngine
-        emb_model = settings.vector.embedding_model if settings else "BAAI/bge-large-en-v1.5"
-        emb_dim = settings.vector.embedding_dimension if settings else 1024
-        emb_dir = str(settings.vector.persist_directory.name) if settings else ".chromadb_bge_large"
+        emb_model = settings.vector.embedding_model if settings else models.EMBEDDING_MODEL_NAME
+        emb_dim = settings.vector.embedding_dimension if settings else 768
+        emb_dir = str(settings.vector.persist_directory.name) if settings else ".chromadb_embeddinggemma_2"
         
         v_engine = LocalVectorEngine()
         chunk_count = v_engine.count() if hasattr(v_engine, "count") else 0
@@ -100,7 +101,7 @@ def get_pipeline_models_health() -> Dict[str, Dict[str, str]]:
     except Exception as e:
         results["Dense Vector (ChromaDB)"] = {
             "status": "WARNING",
-            "model": "BAAI/bge-large-en-v1.5",
+            "model": models.EMBEDDING_MODEL_NAME,
             "details": f"Offline / Error: {e}",
         }
 
@@ -110,7 +111,7 @@ def get_pipeline_models_health() -> Dict[str, Dict[str, str]]:
         dev = "cuda:0" if torch.cuda.is_available() else "cpu"
         results["Cross-Encoder Reranker"] = {
             "status": "READY",
-            "model": "BAAI/bge-reranker-large",
+            "model": models.RERANKER_MODEL_NAME,
             "details": f"Device: {dev} | Cutoff: Logits -7.5 / Prob 0.15 | Multi-Hop Max-Pool Active",
         }
     except Exception as e:

@@ -19,6 +19,7 @@ from src.api.dependencies import (
     get_rag_engine,
 )
 from src.api.context import SYSTEM_START_TIME, SYSTEM_METRICS
+from src.core.config import models
 
 router = APIRouter(tags=["Developer & Telemetry"])
 
@@ -106,9 +107,9 @@ async def get_hardware_telemetry():
         "ram_percent": ram.get("percent_used") or 0.0,
         "cpu_cores": cpu.get("logical_cores") or 4,
         "has_metal_or_cuda": bool(gpu.get("cuda_available") or gpu.get("mps_available")),
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"),
-        "reranker_model": os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5"),
-        "nli_model": os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"),
-        "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL") or os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"),
+        "embedding_model": models.EMBEDDING_MODEL_NAME,
+        "reranker_model": models.RERANKER_MODEL_NAME,
+        "nli_model": models.NLI_MODEL_NAME,
+        "nli_verifier_model": models.NLI_MODEL_NAME,
         "neo4j_endpoint": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     }

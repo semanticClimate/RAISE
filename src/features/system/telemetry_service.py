@@ -12,6 +12,7 @@ import socket
 import shutil
 from pathlib import Path
 from typing import Any, Dict
+from src.core.config import models
 
 
 def get_hardware_telemetry() -> Dict[str, Any]:
@@ -100,8 +101,8 @@ def get_hardware_telemetry() -> Dict[str, Any]:
         "recommended_mode": recommended_mode,
         "recommendation_note": recommendation_note,
         "local_model_catalog": local_model_catalog,
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"),
-        "reranker_model": os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5"),
-        "nli_model": os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"),
-        "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL") or os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"),
+        "embedding_model": models.EMBEDDING_MODEL_NAME,
+        "reranker_model": models.RERANKER_MODEL_NAME,
+        "nli_model": models.NLI_MODEL_NAME,
+        "nli_verifier_model": models.NLI_MODEL_NAME,
     }

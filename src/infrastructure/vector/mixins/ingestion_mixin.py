@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List
+from src.core.config import models
 
 
 def should_ingest(file_path: str | Path) -> bool:
@@ -45,7 +46,7 @@ def should_ingest(file_path: str | Path) -> bool:
         "question_suite",
         "question suite",
         "raise-bench",
-        "gemini-notebook",
+        f"{models.LLM_PROVIDER}-notebook",
         "benchmark_qa",
     ]
     return not any(pattern in path_str for pattern in excluded_patterns)

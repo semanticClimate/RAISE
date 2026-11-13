@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 from typing import Dict, Optional, Any
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.model_warmup")
 
@@ -85,9 +86,9 @@ def warmup_all_neural_models(
 
         _safe_print("\033[1;94m" + "=" * 78 + "\033[0m")
         _safe_print(" \033[1;94m[RAISE] PRE-WARMING NEURAL INFERENCE STACK (BACKGROUND GPU/CPU INIT)\033[0m")
-        _safe_print(f"  * Embedding Model : \033[93m{os.getenv('EMBEDDING_MODEL', 'google/embeddinggemma-2')}\033[0m (Device: \033[96m{os.getenv('EMBEDDING_DEVICE', 'cuda')}\033[0m)")
-        _safe_print(f"  * Context Reranker: \033[93m{os.getenv('RERANKER_MODEL', 'BAAI/bge-reranker-large')}\033[0m (Device: \033[96m{os.getenv('RERANKER_DEVICE', 'cuda')}\033[0m)")
-        _safe_print(f"  * NLI Verifier    : \033[93m{os.getenv('NLI_MODEL', 'dleemiller/finecat-nli-ultra-l')}\033[0m (Device: \033[96m{os.getenv('NLI_DEVICE', 'cuda')}\033[0m)")
+        _safe_print(f"  * Embedding Model : \033[93m{models.EMBEDDING_MODEL_NAME}\033[0m (Device: \033[96m{os.getenv('EMBEDDING_DEVICE', 'cuda')}\033[0m)")
+        _safe_print(f"  * Context Reranker: \033[93m{models.RERANKER_MODEL_NAME}\033[0m (Device: \033[96m{os.getenv('RERANKER_DEVICE', 'cuda')}\033[0m)")
+        _safe_print(f"  * NLI Verifier    : \033[93m{models.NLI_MODEL_NAME}\033[0m (Device: \033[96m{os.getenv('NLI_DEVICE', 'cuda')}\033[0m)")
         _safe_print("\033[1;94m" + "-" * 78 + "\033[0m")
 
         with inference_ctx:

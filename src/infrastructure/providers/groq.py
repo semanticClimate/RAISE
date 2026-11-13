@@ -12,16 +12,15 @@ from typing import Any, AsyncGenerator, Optional
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 from src.infrastructure.providers.http_client import safe_http_request, ProviderHTTPError
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.groq")
 
 DEFAULT_GROQ_ENDPOINT = "https://api.groq.com/openai/v1"
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_GROQ_MODEL = models.GROQ_MODEL_NAME
 CANDIDATE_GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "openai/gpt-oss-120b",
-    "qwen/qwen3.8-27b",
+    models.GROQ_MODEL_NAME,
+    *models.GROQ_FALLBACK_CANDIDATES,
 ]
 
 

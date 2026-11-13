@@ -18,6 +18,7 @@ import os
 import re
 import urllib.request
 from typing import Any, List, Optional
+from src.core.config import models
 
 try:
     from llama_index.core.question_gen.types import SubQuestion
@@ -102,7 +103,7 @@ class QueryDecomposerNode:
                 "[\"sub query 1\", \"sub query 2\"]. If not compound, return [\"original query\"]."
             )
             payload = json.dumps({
-                "model": os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"),
+                "model": os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME),
                 "messages": [
                     {"role": "system", "content": sys_msg},
                     {"role": "user", "content": query}

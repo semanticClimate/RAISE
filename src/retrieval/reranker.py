@@ -35,6 +35,7 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.retrieval.entity_filtering import filter_entity_mismatches
+from src.core.config import models, AVAILABLE_RERANKER_MODELS
 
 logger = logging.getLogger("raise.retrieval.reranker")
 
@@ -105,20 +106,10 @@ class CrossEncoderReranker:
     Loads weights lazily on first rerank() call and caches as singleton in memory for instant reuse.
     """
 
-    AVAILABLE_RERANKERS = {
-        "bge-reranker-large": "BAAI/bge-reranker-large",
-        "BAAI/bge-reranker-large": "BAAI/bge-reranker-large",
-        "bge-reranker-base": "BAAI/bge-reranker-base",
-        "BAAI/bge-reranker-base": "BAAI/bge-reranker-base",
-        "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-        "jina-reranker-v3.5": "BAAI/bge-reranker-large",
-        "jinaai/jina-reranker-v3.5": "BAAI/bge-reranker-large",
-        "jina-reranker": "BAAI/bge-reranker-large",
-        "default": "BAAI/bge-reranker-large",
-    }
+    AVAILABLE_RERANKERS = AVAILABLE_RERANKER_MODELS
 
     def __init__(self, model_name: Optional[str] = None, device: Optional[str] = None):
-        target_name = model_name or os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+        target_name = model_name or os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME)
         self.model_name = self.AVAILABLE_RERANKERS.get(target_name, target_name)
         self.device = device or os.getenv("RERANKER_DEVICE")
         self.model = _CROSS_ENCODER_MODEL_CACHE.get(self.model_name)
@@ -159,7 +150,7 @@ class CrossEncoderReranker:
             try:
                 from src.core.config import resolve_local_model_path
                 resolved_name = resolve_local_model_path(self.model_name)
-                target_model = "BAAI/bge-reranker-large" if ("bge-reranker" in resolved_name.lower() or "jina" in resolved_name.lower()) else resolved_name
+                target_model = models.RERANKER_MODEL_NAME if ("bge-reranker" in resolved_name.lower() or "jina" in resolved_name.lower()) else resolved_name
 
                 target_dtype = (
                     torch.bfloat16
@@ -185,13 +176,13 @@ class CrossEncoderReranker:
                 self.model_name = target_model
                 _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
                 _CROSS_ENCODER_MODEL_CACHE[orig_requested_model] = loaded_model
-                _CROSS_ENCODER_MODEL_CACHE["BAAI/bge-reranker-large"] = loaded_model
+                _CROSS_ENCODER_MODEL_CACHE[models.RERANKER_MODEL_NAME] = loaded_model
                 _CROSS_ENCODER_MODEL_CACHE["default"] = loaded_model
                 logger.info("Cross-Attention Reranker (%s) initialized successfully on %s.", target_model, dev)
             except Exception as e:
                 logger.warning("Could not load primary reranker (%s): %s. Attempting fallback.", self.model_name, e)
                 try:
-                    fallback_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+                    fallback_name = models.RERANKER_FALLBACK_MODEL_NAME
                     if fallback_name in _CROSS_ENCODER_MODEL_CACHE:
                         self.model = _CROSS_ENCODER_MODEL_CACHE[fallback_name]
                         self.model_name = fallback_name

@@ -12,6 +12,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 from openai import OpenAI
 from pydantic import BaseModel, Field
+from src.core.config import models
 
 logger = logging.getLogger("raise.query_engine")
 
@@ -135,7 +136,7 @@ class MultiHopQueryAgent:
     def __init__(
         self,
         search_func: Callable[[str], List[Dict[str, Any]]],
-        model_name: str = "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4",
+        model_name: str = models.LLM_MODEL_NAME,
         vllm_url: Optional[str] = None,
         openai_client: Optional[OpenAI] = None,
     ):

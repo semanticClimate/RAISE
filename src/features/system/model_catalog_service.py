@@ -14,6 +14,11 @@ import time
 import logging
 from typing import Any, Dict, List, Optional
 import requests
+from src.core.config import (
+    SUPPORTED_FAMILY_KEYWORDS,
+    OPENROUTER_FAMILY_KEYWORDS,
+    OFFLINE_CATALOG_FALLBACK,
+)
 
 logger = logging.getLogger("raise.features.system.model_catalog")
 
@@ -76,7 +81,7 @@ def _fetch_from_huggingface(limit: int = 15) -> List[Dict[str, Any]]:
                 m_lower = m_id.lower()
 
                 # Filter for recognized open-weight instruct architectures
-                if not any(k in m_lower for k in ["llama", "qwen", "mistral", "phi", "gemma", "deepseek"]):
+                if not any(k in m_lower for k in SUPPORTED_FAMILY_KEYWORDS):
                     continue
 
                 # Parse parameter count (e.g. 1B, 3B, 7B, 8B, 14B)
@@ -136,7 +141,7 @@ def _fetch_from_openrouter(limit: int = 10) -> List[Dict[str, Any]]:
             for item in data:
                 m_id = item.get("id", "")
                 m_lower = m_id.lower()
-                if not any(k in m_lower for k in ["llama-3", "qwen-2.5", "mistral-7b", "phi-3", "gemma-2"]):
+                if not any(k in m_lower for k in OPENROUTER_FAMILY_KEYWORDS):
                     continue
 
                 param_match = re.search(r"(\d+(?:\.\d+)?)[bB]", m_id)
@@ -219,11 +224,7 @@ def get_dynamic_model_catalog(total_ram_gb: float = 16.0) -> List[Dict[str, Any]
 
     # 4. Safe offline fallback if machine is completely air-gapped with zero internet
     if not aggregated:
-        aggregated = [
-            {"id": "meta-llama/Llama-3.2-3B-Instruct", "name": "Llama 3.2 3B Instruct", "download_size_gb": 2.0, "min_ram_gb": 8, "tier": "Fast & Light", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
-            {"id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen 2.5 7B Instruct", "download_size_gb": 4.7, "min_ram_gb": 16, "tier": "Balanced Reasoning", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
-            {"id": "meta-llama/Meta-Llama-3.1-8B-Instruct", "name": "Llama 3.1 8B Instruct", "download_size_gb": 4.9, "min_ram_gb": 16, "tier": "High Fidelity", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
-        ]
+        aggregated = [dict(item) for item in OFFLINE_CATALOG_FALLBACK]
 
     _CATALOG_CACHE = aggregated
     _CATALOG_CACHE_TIME = now

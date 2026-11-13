@@ -27,6 +27,7 @@ import json
 
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.http_client import safe_http_request
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.llm.model_discovery")
 
@@ -254,12 +255,12 @@ class ModelDiscoveryEngine:
         order: List[Dict[str, str]] = []
 
         provider_env_keys = {
-            "groq": ("GROQ_API_KEY", "llama-3.3-70b-versatile"),
-            "gemini": ("GEMINI_API_KEY", "gemini-2.0-flash"),
-            "mistral": ("MISTRAL_API_KEY", "mistral-small-latest"),
-            "nvidia": ("NVIDIA_API_KEY", "meta/llama-3.3-70b-instruct"),
-            "cohere": ("COHERE_API_KEY", "command-r-plus-08-2024"),
-            "openai": ("OPENAI_API_KEY", "gpt-4o"),
+            "groq": ("GROQ_API_KEY", models.GROQ_MODEL_NAME),
+            "gemini": ("GEMINI_API_KEY", models.GEMINI_MODEL_NAME),
+            "mistral": ("MISTRAL_API_KEY", models.MISTRAL_MODEL_NAME),
+            "nvidia": ("NVIDIA_API_KEY", models.NVIDIA_MODEL_NAME),
+            "cohere": ("COHERE_API_KEY", models.COHERE_MODEL_NAME),
+            "openai": ("OPENAI_API_KEY", models.OPENAI_MODEL_NAME),
         }
 
         # Concurrently probe all configured providers up-front

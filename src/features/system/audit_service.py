@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-from src.core.config import settings
+from src.core.config import settings, models
 
 logger = logging.getLogger("raise.system.audit_service")
 
@@ -302,7 +302,7 @@ class SystemAuditMixin:
                 "total_chunks": cnt,
                 "dimension": self.vector_engine.dimension,
                 "collection_name": getattr(self.vector_engine.collection, "name", "default"),
-                "embedding_model": "BAAI/bge-large-en-v1.5",
+                "embedding_model": models.EMBEDDING_MODEL_NAME,
                 "trust_remote_code": False,
             }
         except Exception as e:
@@ -346,7 +346,7 @@ class SystemAuditMixin:
         lines.append(f" {'ChromaDB':<18} | {'Local Disk':<14} | {ch.get('status', 'N/A'):<8} | {ch_det:<32}")
 
         vl = inf.get("vllm", {})
-        vl_det = f"{vl.get('model_loaded', 'Qwen2.5-14B')} ({vl.get('latency_ms', 0)}ms)"
+        vl_det = f"{vl.get('model_loaded', models.LLM_MODEL_NAME)} ({vl.get('latency_ms', 0)}ms)"
         lines.append(f" {'vLLM Engine':<18} | {'Port: 8002':<14} | {vl.get('status', 'N/A'):<8} | {vl_det:<32}")
 
         cf = net.get("cloudflare_tunnel", {})

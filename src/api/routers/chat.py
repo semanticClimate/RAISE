@@ -30,6 +30,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from src.core.config import models
 
 try:
     from prompts.system_synthesis import sanitize_rag_text
@@ -404,11 +405,11 @@ async def chat_endpoint(
             from src.infrastructure.providers.router import get_provider_router
             prov_router = get_provider_router()
             compl_info = prov_router.get_last_completion_info()
-            actual_llm_prov = compl_info.get("provider") or os.getenv("LLM_BACKEND", "gemini")
-            actual_llm_model = compl_info.get("model") or os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
+            actual_llm_prov = compl_info.get("provider") or models.LLM_PROVIDER
+            actual_llm_model = compl_info.get("model") or models.LLM_MODEL_NAME
         except Exception:
-            actual_llm_prov = os.getenv("LLM_BACKEND", "gemini")
-            actual_llm_model = os.getenv("GEMINI_MODEL_NAME", "gemini-3.5-flash-lite")
+            actual_llm_prov = models.LLM_PROVIDER
+            actual_llm_model = models.LLM_MODEL_NAME
 
         from src.infrastructure.provenance import build_pipeline_info
         pipeline_info = build_pipeline_info(mode=mode)

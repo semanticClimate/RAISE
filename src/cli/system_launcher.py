@@ -18,6 +18,7 @@ import urllib.request
 from typing import Any, Dict
 
 from src.cli.renderer import C
+from src.core.config import models
 
 logger = logging.getLogger("RAISE_Launcher")
 
@@ -151,37 +152,37 @@ def get_synthesizer_status() -> Dict[str, Any]:
         "groq": {
             "key_vars": ["GROQ_API_KEY"],
             "name": "Groq",
-            "model": os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
+            "model": models.GROQ_MODEL_NAME,
         },
         "gemini": {
             "key_vars": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
             "name": "Gemini",
-            "model": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+            "model": models.GEMINI_MODEL_NAME,
         },
         "deepseek": {
             "key_vars": ["DEEPSEEK_API_KEY"],
             "name": "DeepSeek",
-            "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+            "model": models.DEEPSEEK_MODEL_NAME,
         },
         "nvidia": {
             "key_vars": ["NVIDIA_API_KEY"],
             "name": "NVIDIA NIM",
-            "model": os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
+            "model": models.NVIDIA_MODEL_NAME,
         },
         "openrouter": {
             "key_vars": ["OPENROUTER_API_KEY"],
             "name": "OpenRouter",
-            "model": os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-haiku"),
+            "model": models.OPENROUTER_MODEL_NAME,
         },
         "cohere": {
             "key_vars": ["COHERE_API_KEY"],
             "name": "Cohere",
-            "model": os.getenv("COHERE_MODEL", "command-r-plus-08-2024"),
+            "model": models.COHERE_MODEL_NAME,
         },
         "mistral": {
             "key_vars": ["MISTRAL_API_KEY"],
             "name": "Mistral",
-            "model": os.getenv("MISTRAL_MODEL", "open-mistral-nemo"),
+            "model": models.MISTRAL_MODEL_NAME,
         },
     }
 

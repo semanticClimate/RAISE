@@ -80,73 +80,23 @@ from pathlib import Path
 
 from typing import List, Optional, Dict, Tuple, Any
 
-
-
 import threading
 
-
+from src.core.config import (
+    models,
+    AVAILABLE_EMBEDDING_MODELS,
+    EMBEDDING_FALLBACKS_768,
+    EMBEDDING_FALLBACKS_1024,
+)
 
 _EMBEDDING_MODEL_CACHE: Dict[Tuple[str, str], Any] = {}
-
 _EMBEDDING_LOCK = threading.Lock()
 
 
-
-
-
 class VectorEmbeddingsMixin:
-
     """Provides dense embedding computation, model loading, and vector validation."""
 
-
-
-    AVAILABLE_MODELS = {
-
-        "embeddinggemma-2": "google/embeddinggemma-2",
-
-        "embeddinggemma": "google/embeddinggemma-2",
-
-        "google/embeddinggemma-2": "google/embeddinggemma-2",
-
-        "bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
-
-        "bge-large": "BAAI/bge-large-en-v1.5",
-
-        "BAAI/bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
-
-        "bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
-
-        "bge-base": "BAAI/bge-base-en-v1.5",
-
-        "BAAI/bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
-
-        "all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
-
-        "sentence-transformers/all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
-
-        "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
-
-        "sentence-transformers/all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
-
-        "nomic-ai/nomic-embed-text-v1.5": "nomic-ai/nomic-embed-text-v1.5",
-
-        "nomic-embed-text-v1.5": "nomic-ai/nomic-embed-text-v1.5",
-
-        "bge-m3": "BAAI/bge-m3",
-
-        "nomic-ai/nomic-embed-vision-v1.5": "nomic-ai/nomic-embed-vision-v1.5",
-
-        "nomic-embed-vision": "nomic-ai/nomic-embed-vision-v1.5",
-
-        "openai/clip-vit-base-patch32": "openai/clip-vit-base-patch32",
-
-        "clip-vit-base": "openai/clip-vit-base-patch32",
-
-        "meta/llama-3.2-11b-vision-instruct": "meta/llama-3.2-11b-vision-instruct",
-
-        "qwen-embedding-4b": "Qwen/Qwen3-Embedding-4B",
-
-    }
+    AVAILABLE_MODELS = AVAILABLE_EMBEDDING_MODELS
 
 
 
@@ -188,7 +138,7 @@ class VectorEmbeddingsMixin:
 
             return 384
 
-        if "embeddinggemma" in model_name or "gemma" in model_name or "bge-base" in model_name or "mpnet" in model_name:
+        if models.EMBEDDING_MODEL_KEYWORD in model_name or models.GEMMA_KEYWORD in model_name or "bge-base" in model_name or "mpnet" in model_name:
 
             return 768
 
@@ -252,7 +202,7 @@ class VectorEmbeddingsMixin:
 
 
 
-                model_id = getattr(self, "model_path", None) or os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
+                model_id = getattr(self, "model_path", None) or os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME)
 
                 raw_id = self.AVAILABLE_MODELS.get(model_id, model_id)
 
@@ -272,7 +222,7 @@ class VectorEmbeddingsMixin:
 
                 token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
 
-                embed_cfg = {"audio_config": None, "vision_config": None} if "embeddinggemma" in str(raw_id).lower() else None
+                embed_cfg = {"audio_config": None, "vision_config": None} if models.EMBEDDING_MODEL_KEYWORD in str(raw_id).lower() else None
 
                 dtype_val = (
 
@@ -327,21 +277,12 @@ class VectorEmbeddingsMixin:
             except Exception as e:
 
                 target_dim = self.dimension
-                if target_dim == 768 or "gemma" in str(raw_id).lower():
-                    fallback_candidates = [
-                        "BAAI/bge-base-en-v1.5",
-                        "sentence-transformers/all-mpnet-base-v2",
-                        "nomic-ai/nomic-embed-text-v1.5",
-                    ]
+                if target_dim == 768 or models.GEMMA_KEYWORD in str(raw_id).lower():
+                    fallback_candidates = list(EMBEDDING_FALLBACKS_768)
                 elif target_dim == 1024:
-                    fallback_candidates = [
-                        "BAAI/bge-large-en-v1.5",
-                        "BAAI/bge-m3",
-                    ]
+                    fallback_candidates = list(EMBEDDING_FALLBACKS_1024)
                 else:
-                    fallback_candidates = [
-                        "BAAI/bge-base-en-v1.5",
-                    ]
+                    fallback_candidates = list(EMBEDDING_FALLBACKS_768)
 
                 print(f"SentenceTransformer load error ({raw_id}): {e}. Attempting dimension-compatible fallback ({target_dim}-dim) to {fallback_candidates[0]}.")
 

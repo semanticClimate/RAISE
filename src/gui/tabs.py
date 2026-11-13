@@ -37,6 +37,7 @@ from src.gui.telemetry_probes import (
     get_hardware_telemetry,
     get_pipeline_models_health,
 )
+from src.core.config import models
 
 
 def build_phase_matrix_tab(notebook: ttk.Notebook, router: Any) -> None:
@@ -89,13 +90,13 @@ def build_phase_matrix_tab(notebook: ttk.Notebook, router: Any) -> None:
     provider_options = ["groq", "gemini", "openrouter", "nvidia", "deepseek", "cohere", "vllm"]
 
     pipeline_phases_matrix = [
-        (InferenceTask.CHAT, "Phase 1: Interactive User Chat (Low-latency conversation)", "groq", "llama-3.3-70b-versatile"),
-        (InferenceTask.RAG_GENERATION, "Phase 2: RAG Answer Synthesis (Full grounded response generation)", "openrouter", "openai/gpt-4o"),
-        (InferenceTask.DOCUMENT_EXTRACTION, "Phase 3: Document Layout & Vision (Tables, PDF coordinate spans)", "gemini", "gemini-2.5-flash"),
-        (InferenceTask.QUERY_REWRITE, "Phase 4: Query Intake & Reformulation (Coreference & decomposition)", "groq", "llama-3.3-70b-versatile"),
-        (InferenceTask.REASONING, "Phase 5: Multi-Hop Relational Reasoning (Logic & Cypher Path Critic)", "deepseek", "deepseek-reasoner"),
-        (InferenceTask.CODE, "Phase 6: Code & Formal Cypher Generation (AST & Graph queries)", "deepseek", "deepseek-chat"),
-        (InferenceTask.SUMMARIZATION, "Phase 7: Community / Executive Summaries (High-level abstractive)", "openrouter", "meta-llama/llama-3.3-70b"),
+        (InferenceTask.CHAT, "Phase 1: Interactive User Chat (Low-latency conversation)", "groq", models.GROQ_MODEL_NAME),
+        (InferenceTask.RAG_GENERATION, "Phase 2: RAG Answer Synthesis (Full grounded response generation)", "openrouter", models.OPENAI_MODEL_NAME),
+        (InferenceTask.DOCUMENT_EXTRACTION, "Phase 3: Document Layout & Vision (Tables, PDF coordinate spans)", "gemini", models.GEMINI_MODEL_NAME),
+        (InferenceTask.QUERY_REWRITE, "Phase 4: Query Intake & Reformulation (Coreference & decomposition)", "groq", models.GROQ_MODEL_NAME),
+        (InferenceTask.REASONING, "Phase 5: Multi-Hop Relational Reasoning (Logic & Cypher Path Critic)", "deepseek", models.DEEPSEEK_MODEL_NAME),
+        (InferenceTask.CODE, "Phase 6: Code & Formal Cypher Generation (AST & Graph queries)", "deepseek", models.DEEPSEEK_MODEL_NAME),
+        (InferenceTask.SUMMARIZATION, "Phase 7: Community / Executive Summaries (High-level abstractive)", "openrouter", models.OPENROUTER_MODEL_NAME),
         (InferenceTask.RERANKING, "Phase 8: Passage Relevance Scoring (Cross-attention neural reranking)", "cohere", "rerank-v3.5"),
     ]
 

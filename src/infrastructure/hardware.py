@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import platform
 from typing import Any, Dict, List
+from src.core.config import models
 
 
 def get_ram_info() -> Dict[str, Any]:
@@ -146,27 +147,27 @@ def get_llm_telemetry() -> Dict[str, Any]:
         "vllm": {
             "configured": True,
             "url": os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1"),
-            "model": os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"),
+            "model": os.getenv("VLLM_MODEL", models.LLM_MODEL_NAME),
         },
         "groq": {
             "configured": bool(os.getenv("GROQ_API_KEY")),
-            "model": os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
+            "model": models.GROQ_MODEL_NAME,
         },
         "cohere": {
             "configured": bool(os.getenv("COHERE_API_KEY")),
-            "model": os.getenv("COHERE_CHAT_MODEL", "command-r-plus-08-2024"),
+            "model": models.COHERE_MODEL_NAME,
         },
         "gemini": {
             "configured": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
-            "model": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+            "model": models.GEMINI_MODEL_NAME,
         },
         "deepseek": {
             "configured": bool(os.getenv("DEEPSEEK_API_KEY")),
-            "model": os.getenv("DEEPSEEK_MODEL", "deepseek-reasoner"),
+            "model": models.DEEPSEEK_MODEL_NAME,
         },
         "nvidia": {
             "configured": bool(os.getenv("NVIDIA_API_KEY")),
-            "model": os.getenv("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct"),
+            "model": models.NVIDIA_MODEL_NAME,
         },
     }
 

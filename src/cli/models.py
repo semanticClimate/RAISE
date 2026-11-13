@@ -25,6 +25,7 @@ from src.cli.metric_types import (
     MetricValue,
     FailureClassification,
 )
+from src.core.config import models
 
 # Re-export audit and provenance records
 from src.cli.audit_models import (
@@ -101,7 +102,7 @@ class IntentMetrics:
 
 @dataclass
 class VectorRetrievalMetrics:
-    model: str = "BAAI/bge-large-en-v1.5"
+    model: str = models.EMBEDDING_MODEL_NAME
     collection: str = "raise_graphrag_chunks"
     candidates: MetricValue[int] = field(default_factory=MetricValue.unavailable)
     top_k: MetricValue[int] = field(default_factory=MetricValue.unavailable)
@@ -226,7 +227,7 @@ class ContextAssemblyMetrics:
 @dataclass
 class SynthesisMetrics:
     provider: str = "vLLM (Local TensorRT/PagedAttention)"
-    model: str = "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"
+    model: str = models.LLM_MODEL_NAME
     context_chunks: MetricValue[int] = field(default_factory=MetricValue.unavailable)
     context_tokens: MetricValue[int] = field(default_factory=MetricValue.unavailable)
     output_tokens: MetricValue[int] = field(default_factory=MetricValue.unavailable)

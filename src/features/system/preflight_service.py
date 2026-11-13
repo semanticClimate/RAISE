@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from .schemas import PreflightDownloadRequest
+from src.core.config import models
 
 logger = logging.getLogger("raise.features.system.preflight")
 
@@ -105,9 +106,9 @@ def get_preflight_assets() -> Dict[str, Any]:
     """
     docling_ok = check_docling_pymupdf()
     ggahc_ok = True  # In-process token-budgeted python engine
-    emb_model = os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
-    rerank_model = os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5")
-    nli_model = os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l")
+    emb_model = models.EMBEDDING_MODEL_NAME
+    rerank_model = models.RERANKER_MODEL_NAME
+    nli_model = models.NLI_MODEL_NAME
 
     bge_large_ok = check_hf_model_cached(emb_model)
     bge_reranker_ok = check_hf_model_cached(rerank_model)
@@ -221,9 +222,9 @@ def trigger_asset_download(req: Optional[PreflightDownloadRequest] = None) -> Di
     """Triggers background parallel download of any missing neural model weights."""
     global _IS_DOWNLOADING_ASSETS
     missing: List[str] = []
-    emb_model = os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
-    rerank_model = os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5")
-    nli_model = os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l")
+    emb_model = models.EMBEDDING_MODEL_NAME
+    rerank_model = models.RERANKER_MODEL_NAME
+    nli_model = models.NLI_MODEL_NAME
     models_to_check = [
         (emb_model, check_hf_model_cached(emb_model)),
         (rerank_model, check_hf_model_cached(rerank_model)),
