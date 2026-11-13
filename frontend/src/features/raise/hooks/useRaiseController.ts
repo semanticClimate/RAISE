@@ -5,6 +5,7 @@ import { detectEnvCredentials } from '../../control-center/services/envDetector'
 import { useControlCenterStore } from '../../control-center/store/useControlCenterStore';
 import { settingsJunction, useSettingsJunction } from '../../settings/junction';
 import type { ChatSession, SourceDocument } from '../types';
+import { getInitialSessionId } from '../utils/sessionStorageUtils';
 import { useChatEditing } from './useChatEditing';
 import { useChatSessions } from './useChatSessions';
 import { useChatStream } from './useChatStream';
@@ -113,7 +114,7 @@ export function useRaiseController() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const activeSessionIdRef = useRef<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(getInitialSessionId());
   const setSessionsProxyRef = useRef<React.Dispatch<React.SetStateAction<ChatSession[]>>>(() => {});
   const abortActiveStreamRef = useRef<() => void>(() => {});
 
@@ -122,6 +123,7 @@ export function useRaiseController() {
 
   const sessionSources = useSessionSources({
     currentSessionId: activeSessionIdRef.current,
+    activeSessionIdRef,
     setSessions: (action) => setSessionsProxyRef.current(action),
   });
 

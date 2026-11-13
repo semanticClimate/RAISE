@@ -17,11 +17,7 @@ backend/.runtime/
 backend/.chromadb*
 .pytest_cache/
 backend/.pytest_cache/
-data/**
-!data/
-!data/**/
-!data/**/.gitkeep
-backend/data/
+backend/data/**/*.tmp
 logs/
 backend/logs/
 models/

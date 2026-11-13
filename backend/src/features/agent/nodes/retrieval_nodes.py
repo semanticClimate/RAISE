@@ -61,10 +61,8 @@ class RetrievalNodesMixin:
         if not hasattr(self.rag_engine, "_cached_bm25") or self.rag_engine._cached_bm25 is None:
             try:
                 from src.retrieval.bm25 import SelfContainedBM25
-                from src.core.config import settings
-                chunks_dir = settings.processed_dir / "chunks"
-                if not chunks_dir.exists():
-                    chunks_dir = Path(__file__).resolve().parents[4] / "data" / "processed" / "chunks"
+                from src.core.config import CHUNKS_DIR
+                chunks_dir = CHUNKS_DIR
                 corpus_chunks = []
                 if chunks_dir.exists():
                     for cf in chunks_dir.glob("*_chunks.json"):

@@ -156,8 +156,8 @@ export function formatMarkdownReport(
   lines.push('---');
   lines.push('');
 
-  // Research Inquiry
-  lines.push('## Research Inquiry');
+  // Question
+  lines.push('## Question');
   lines.push('');
   lines.push(`> ${query || 'General Academic & Institutional Query'}`);
   lines.push('');
@@ -174,8 +174,8 @@ export function formatMarkdownReport(
       ? enrichedCitations
       : response?.citations || [];
 
-  // RAISE Synthesis Section
-  lines.push('## RAISE : Research Synthesis');
+  // Answer Section
+  lines.push('## Answer');
   lines.push('');
   lines.push(cleanText.trim());
   lines.push('');
@@ -212,7 +212,7 @@ export function formatMarkdownReport(
   lines.push(`* **Dense Embedding Encoder:** ${prov.encoderModel}`);
   lines.push(`* **Cross-Attention Reranker:** ${prov.rerankerModel}`);
   lines.push(`* **NLI Entailment Verifier:** ${prov.nliVerifierModel}`);
-  lines.push('* **Platform Attribution:** RAISE (Research Assessment Intelligence & Semantic Extraction)');
+  lines.push('* **Platform Attribution:** RAISE');
   lines.push('');
 
   // Footer
@@ -984,8 +984,9 @@ export function generateReportHtml(
       page-break-inside: avoid;
     }
     .print-banner {
-      background: #0f172a;
-      color: #ffffff;
+      background: #f1f5f9;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
       padding: 16px 20px;
       border-radius: 8px;
       margin-bottom: 16px;
@@ -1079,7 +1080,7 @@ export function generateReportHtml(
   </div>
 
   <div class="query-box">
-    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Research Inquiry</div>
+    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Question</div>
     <div style="font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.4;">${escapeHtml(
       query || 'General Inquiry'
     )}</div>
@@ -1087,7 +1088,7 @@ export function generateReportHtml(
 
   <main>
     <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; border-bottom: 2px solid #0f172a; padding-bottom: 6px; margin-bottom: 16px;">
-      RAISE : Research Synthesis
+      Answer
     </h2>
     <div style="font-size: 14.5px;">
       ${formattedAnswerHtml}
@@ -1115,7 +1116,7 @@ export function generateReportHtml(
         <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(
           resolveAuditedProvenance(response).nliVerifierModel
         )}</span></div>
-        <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE (Research Assessment Intelligence &amp; Semantic Extraction)</span></div>
+        <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE</span></div>
       </div>
     </section>
   </main>
@@ -1498,16 +1499,13 @@ export function generatePdfBlob(
   };
 
   // --- PAGE 1 HEADER BANNER ---
-  currentOps.push(`0.06 0.09 0.16 rg`); // Dark Navy
-  currentOps.push(`${marginX} ${curY - 36} ${contentWidth} 36 re f`);
+  currentOps.push(`0.95 0.97 1.0 rg 0.82 0.86 0.94 RG 0.75 w`); // Light elegant box
+  currentOps.push(`${marginX} ${curY - 36} ${contentWidth} 36 re b`);
   currentOps.push(
-    `BT /F2 11 Tf 1 1 1 rg ${marginX + 12} ${curY - 18} Td (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')}) Tj ET`
+    `BT /F2 11 Tf 0.08 0.14 0.28 rg ${marginX + 12} ${curY - 22} Td (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')}) Tj ET`
   );
   currentOps.push(
-    `BT /F1 7.5 Tf 0.7 0.78 0.9 rg ${marginX + 12} ${curY - 29} Td (${escapePdfText('Research Assessment & Intelligence Synthesis')}) Tj ET`
-  );
-  currentOps.push(
-    `BT /F1 8 Tf 1 1 1 rg ${marginX + contentWidth - 85} ${curY - 22} Td (${escapePdfText(`${dateStr} ${timeStr}`)}) Tj ET`
+    `BT /F1 8 Tf 0.35 0.45 0.55 rg ${marginX + contentWidth - 85} ${curY - 22} Td (${escapePdfText(`${dateStr} ${timeStr}`)}) Tj ET`
   );
   curY -= 48;
 
@@ -1518,7 +1516,7 @@ export function generatePdfBlob(
   currentOps.push(`0.96 0.97 0.99 rg 0.85 0.88 0.92 RG 0.5 w`);
   currentOps.push(`${marginX} ${curY - queryBoxHeight} ${contentWidth} ${queryBoxHeight} re b`);
   currentOps.push(
-    `BT /F2 8 Tf 0.35 0.45 0.55 rg ${marginX + 10} ${curY - 14} Td (${escapePdfText('RESEARCH INQUIRY')}) Tj ET`
+    `BT /F2 8 Tf 0.35 0.45 0.55 rg ${marginX + 10} ${curY - 14} Td (${escapePdfText('QUESTION')}) Tj ET`
   );
   let qTextY = curY - 26;
   for (const ql of queryLines) {
@@ -1529,13 +1527,13 @@ export function generatePdfBlob(
   }
   curY -= queryBoxHeight + 14;
 
-  // --- SECTION HEADER: RAISE SYNTHESIS ---
+  // --- SECTION HEADER: ANSWER ---
   ensureSpace(25);
   currentOps.push(
-    `BT /F2 11 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('RAISE : Research Synthesis')}) Tj ET`
+    `BT /F2 11 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('ANSWER')}) Tj ET`
   );
   currentOps.push(
-    `0.08 0.12 0.22 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 170} ${curY - 16} l S`
+    `0.08 0.12 0.22 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 55} ${curY - 16} l S`
   );
   curY -= 28;
 
@@ -1804,7 +1802,7 @@ export function generatePdfBlob(
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
     { label: 'Cross-Attention Reranker:', val: prov.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: prov.nliVerifierModel },
-    { label: 'Platform Attribution:', val: 'RAISE (Research Assessment Intelligence & Semantic Extraction)' },
+    { label: 'Platform Attribution:', val: 'RAISE' },
   ];
 
   let specY = curY - 12;
@@ -2058,16 +2056,13 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   };
 
   // --- PAGE 1: TRANSCRIPT HEADER BANNER ---
-  currentOps.push(`0.06 0.09 0.16 rg`); // Dark Navy
-  currentOps.push(`${marginX} ${curY - 40} ${contentWidth} 40 re f`);
+  currentOps.push(`0.95 0.97 1.0 rg 0.82 0.86 0.94 RG 0.75 w`); // Light elegant box
+  currentOps.push(`${marginX} ${curY - 36} ${contentWidth} 36 re b`);
   currentOps.push(
-    `BT /F2 11.5 Tf 1 1 1 rg ${marginX + 12} ${curY - 18} Td (${escapePdfText('RAISE: Complete Conversation Transcript')}) Tj ET`
+    `BT /F2 11 Tf 0.08 0.14 0.28 rg ${marginX + 12} ${curY - 22} Td (${escapePdfText('RAISE: Research Assessment Intelligence & Semantic Extraction')}) Tj ET`
   );
   currentOps.push(
-    `BT /F1 7.5 Tf 0.7 0.78 0.9 rg ${marginX + 12} ${curY - 30} Td (${escapePdfText('Verified Multi-Turn Conversation Record')}) Tj ET`
-  );
-  currentOps.push(
-    `BT /F1 8 Tf 1 1 1 rg ${marginX + contentWidth - 95} ${curY - 24} Td (${escapePdfText(`${dateStr} ${timeStr}`)}) Tj ET`
+    `BT /F1 8 Tf 0.35 0.45 0.55 rg ${marginX + contentWidth - 85} ${curY - 22} Td (${escapePdfText(`${dateStr} ${timeStr}`)}) Tj ET`
   );
   curY -= 48;
 
@@ -2298,7 +2293,14 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
     turnCounter++;
 
     if (msg.role === 'user') {
-      const userText = (msg.text || (msg as any).content || '').trim() || '(Empty inquiry)';
+      const userText = (
+        (msg.questionVersions &&
+          msg.questionVersions[msg.currentQuestionVersionIndex ?? 0]?.question) ||
+        msg.text ||
+        (msg as any).content ||
+        (msg as any).query ||
+        ''
+      ).trim() || '(Empty inquiry)';
       const queryLines = wordWrap(userText, 85);
       const boxHeight = Math.max(32, queryLines.length * 13 + 18);
 
@@ -2308,7 +2310,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
 
       const timeLabel = msg.timestamp ? ` • ${msg.timestamp}` : ` • Turn ${turnCounter}`;
       currentOps.push(
-        `BT /F2 8 Tf 0.3 0.38 0.55 rg ${marginX + 10} ${curY - 13} Td (${escapePdfText(`USER INQUIRY #${Math.ceil(turnCounter / 2)}${timeLabel}`)}) Tj ET`
+        `BT /F2 8 Tf 0.3 0.38 0.55 rg ${marginX + 10} ${curY - 13} Td (${escapePdfText(`QUESTION #${Math.ceil(turnCounter / 2)}${timeLabel}`)}) Tj ET`
       );
 
       let qY = curY - 25;
@@ -2338,10 +2340,10 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
 
       ensureSpace(28);
       currentOps.push(
-        `BT /F2 10.5 Tf 0.08 0.12 0.24 rg ${marginX} ${curY - 12} Td (${escapePdfText(`RAISE RESEARCH INTELLIGENCE${durationLabel}`)}) Tj ET`
+        `BT /F2 10.5 Tf 0.08 0.12 0.24 rg ${marginX} ${curY - 12} Td (${escapePdfText(`ANSWER #${Math.ceil(turnCounter / 2)}${durationLabel}`)}) Tj ET`
       );
       currentOps.push(
-        `0.08 0.12 0.24 RG 1.25 w ${marginX} ${curY - 16} m ${marginX + 210} ${curY - 16} l S`
+        `0.08 0.12 0.24 RG 1.25 w ${marginX} ${curY - 16} m ${marginX + 80} ${curY - 16} l S`
       );
       curY -= 26;
 
@@ -2429,7 +2431,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },
     { label: 'Cross-Attention Reranker:', val: sProv.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: sProv.nliVerifierModel },
-    { label: 'Platform Attribution:', val: 'RAISE (Research Assessment Intelligence & Semantic Extraction)' },
+    { label: 'Platform Attribution:', val: 'RAISE' },
   ];
 
   let sessionSpecY = curY - 12;

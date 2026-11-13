@@ -82,9 +82,9 @@ class AcademicPipelineIngestor:
         download_dir: Optional[Path | str] = None,
         processed_dir: Optional[Path | str] = None,
     ):
-        base_rag_dir = Path(__file__).resolve().parents[3]
-        self.download_dir = Path(download_dir or base_rag_dir / "data" / "documents").resolve()
-        self.output_dir = Path(processed_dir or base_rag_dir / "data" / "processed").resolve()
+        from src.core.config import DOCUMENTS_DIR, PROCESSED_DIR
+        self.download_dir = Path(download_dir or DOCUMENTS_DIR).resolve()
+        self.output_dir = Path(processed_dir or PROCESSED_DIR).resolve()
 
         # Create output directories
         (self.output_dir / "chunks").mkdir(parents=True, exist_ok=True)

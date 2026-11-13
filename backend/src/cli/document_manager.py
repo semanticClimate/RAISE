@@ -18,31 +18,32 @@ from typing import Any, Dict, List, Optional
 
 from src.cli.commands import sanitize_path
 from src.cli.renderer import C
-from src.core.config import models
+from src.core.config import (
+    BACKEND_DIR,
+    DATA_DIR,
+    DOCUMENTS_DIR,
+    MANIFEST_FILE,
+    PROCESSED_DIR,
+    models,
+)
 
 logger = logging.getLogger("RAISE_DocManager")
 
 
 def _resolve_base_dir(base_dir: Optional[Path] = None) -> Path:
-    """Resolves canonical repository root directory and ensures the data folder hierarchy exists."""
+    """Resolves canonical backend directory and ensures the data folder hierarchy exists."""
     if base_dir is not None:
         root = Path(base_dir)
     else:
-        main_mod = sys.modules.get("main")
-        if main_mod and hasattr(main_mod, "BASE_DIR"):
-            root = Path(main_mod.BASE_DIR)
-        else:
-            resolved = Path(__file__).resolve()
-            root = resolved.parents[3] if len(resolved.parents) > 3 and resolved.parents[2].name == "backend" else resolved.parents[2]
+        root = BACKEND_DIR
 
-    # Automatically create the canonical data folder and its subdirectories when user clones the repo
-    data_dir = (root / "backend" / "data") if (root / "backend" / "data").exists() or (root / "backend").exists() else (root / "data")
+    # Automatically ensure canonical data folder and its subdirectories exist
+    data_dir = DATA_DIR
     for sub in ["documents", "library", "catalogs", "processed", "processed/chunks", "processed/graph_triples"]:
         (data_dir / sub).mkdir(parents=True, exist_ok=True)
-    manifest_file = data_dir / "processed" / "ingested_manifest.json"
-    if not manifest_file.exists():
+    if not MANIFEST_FILE.exists():
         try:
-            manifest_file.write_text('{\n  "ready_documents": [],\n  "timestamp": ""\n}', encoding="utf-8")
+            MANIFEST_FILE.write_text('{\n  "ready_documents": [],\n  "timestamp": ""\n}', encoding="utf-8")
         except Exception:
             pass
     return root
@@ -59,10 +60,7 @@ def get_active_documents_list(base_dir: Optional[Path] = None) -> List[Dict[str,
     except Exception:
         pass
 
-    root = _resolve_base_dir(base_dir)
-    manifest_file = root / "backend" / "data" / "processed" / "ingested_manifest.json"
-    if not manifest_file.exists():
-        manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+    manifest_file = MANIFEST_FILE
     if not manifest_file.exists():
         return []
     try:
@@ -114,8 +112,7 @@ def list_active_documents(focused_document: Optional[str] = None, base_dir: Opti
 
 def check_document_is_protected(doc_id_or_name: str, base_dir: Optional[Path] = None) -> bool:
     """Checks if a document is marked as protected institutional report in ingested_manifest.json."""
-    root = _resolve_base_dir(base_dir)
-    manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+    manifest_file = MANIFEST_FILE
     if not manifest_file.exists():
         return False
     try:
@@ -201,8 +198,8 @@ def ingest_pdf_from_path(
         print("   Evaluation datasets must NEVER be ingested into production ChromaDB or Neo4j to prevent test contamination.\n")
         return None
 
-    root = _resolve_base_dir(base_dir)
-    docs_dir = root / "data" / "documents"
+    _resolve_base_dir(base_dir)
+    docs_dir = DOCUMENTS_DIR
     docs_dir.mkdir(parents=True, exist_ok=True)
     dest_path = docs_dir / src_path.name
 
@@ -267,7 +264,7 @@ def ingest_pdf_from_path(
         res = academic_pipeline.process_pdf(dest_path, max_pages=pages_to_process, engine=selected_engine)
         elapsed = round(time.time() - t0, 2)
 
-        manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+        manifest_file = MANIFEST_FILE
         manifest_file.parent.mkdir(parents=True, exist_ok=True)
         manifest: Dict[str, Any] = {"ready_documents": [], "deleted_documents": []}
         if manifest_file.exists():

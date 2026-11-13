@@ -179,6 +179,16 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
     return Array.isArray(rawCitations) ? (rawCitations as Citation[]) : [];
   }, [rawCitations]);
 
+  const resolvedUserQuery =
+    activeQVer?.question ||
+    (prevUserMsg?.questionVersions &&
+      prevUserMsg.questionVersions[prevUserMsg.currentQuestionVersionIndex ?? 0]?.question) ||
+    prevUserMsg?.text ||
+    (prevUserMsg as any)?.content ||
+    msg.response?.query ||
+    (msg as any)?.query ||
+    '';
+
   return (
     <div
       key={`assistant-turn-${turnIndex}`}
@@ -211,6 +221,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
             turnIndex={turnIndex}
             msg={msg}
             resolvedContent={resolvedContent}
+            userQuery={resolvedUserQuery}
             isSpeaking={isSpeaking}
             isRegenerating={isRegenerating}
             isLoading={isLoading}

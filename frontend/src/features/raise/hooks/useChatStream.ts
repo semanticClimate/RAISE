@@ -238,6 +238,11 @@ export function useChatStream({
             latestStreamedTextRef.current ||
             '';
           const resolvedText = sanitizeStreamText(rawAns);
+          if (res.data) {
+            res.data.duration_sec = res.data.duration_sec ?? res.data.latency_sec ?? elapsedSec;
+            res.data.latency_sec = res.data.latency_sec ?? elapsedSec;
+            res.data.execution_time = res.data.execution_time ?? elapsedSec;
+          }
           assistantMsg = {
             role: 'assistant',
             text: resolvedText,

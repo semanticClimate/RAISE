@@ -94,11 +94,10 @@ class AsyncParallelRetriever:
             cached_index = getattr(self, "_cached_bm25", None)
             cached_sig = getattr(self, "_cached_bm25_sig", None)
 
+            from src.core.config import CHUNKS_DIR
             base_candidates = [
+                CHUNKS_DIR,
                 Path(__file__).resolve().parents[2] / "data" / "processed" / "chunks",
-                Path(__file__).resolve().parents[1] / "data" / "processed" / "chunks",
-                Path("backend/data/processed/chunks"),
-                Path("data/processed/chunks"),
             ]
             active_dir = next((b for b in base_candidates if b.exists()), None)
             chunk_files = list(active_dir.glob("*_chunks.json")) if active_dir else []

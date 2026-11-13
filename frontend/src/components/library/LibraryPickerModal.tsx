@@ -8,6 +8,7 @@ import { documentItemToLibraryItem, type LibraryItem } from '../settings/Setting
 import { sourceService } from '../../services/SourceService';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
 import { ExtractedDocumentModal } from './ExtractedDocumentModal';
+import { getDocumentStageLabel } from '../../utils/documentStageUtils';
 
 export interface OptimisticUploadItem {
   id: string;
@@ -290,7 +291,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
         ref={localFileInputRef}
         type="file"
         multiple
-        accept=".pdf,.txt,.docx,.csv,.md,.json"
+        accept=".pdf,.txt,.docx,.csv,.md,.json,.xlsx"
         className="hidden"
         onClick={(e) => {
           (e.target as HTMLInputElement).value = '';
@@ -398,16 +399,36 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
               ))}
             </div>
 
-            {onAttachAll && unattachedReadyItems.length > 0 && (
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                onClick={() => onAttachAll(unattachedReadyItems)}
-                className="text-[11px] font-semibold px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
-                title={`Attach all ${unattachedReadyItems.length} ready documents to current chat`}
+                onClick={() => {
+                  if (localFileInputRef.current) {
+                    localFileInputRef.current.click();
+                  } else {
+                    onOpenUploadFromPC();
+                  }
+                }}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1 shadow-2xs active:scale-95"
+                title="Add new document from PC to library"
               >
-                Attach All ({unattachedReadyItems.length})
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Add Document</span>
               </button>
-            )}
+
+              {onAttachAll && unattachedReadyItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onAttachAll(unattachedReadyItems)}
+                  className="text-[11px] font-semibold px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
+                  title={`Attach all ${unattachedReadyItems.length} ready documents to current chat`}
+                >
+                  Attach All ({unattachedReadyItems.length})
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -487,7 +508,9 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                   key={item.id}
                   className={`relative p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
                     !indexed
-                      ? 'filter blur-[1.5px] opacity-60 bg-slate-50/50 dark:bg-white/[0.01] border-slate-200/60 dark:border-white/5 cursor-not-allowed select-none'
+                      ? item.status === 'error'
+                        ? 'bg-rose-50/60 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20'
+                        : 'bg-amber-50/60 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 shadow-2xs cursor-wait'
                       : isAttached
                         ? 'bg-indigo-50/40 dark:bg-indigo-500/10 border-indigo-300/80 dark:border-indigo-500/30'
                         : 'bg-slate-50/70 dark:bg-white/[0.03] border-slate-200/80 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:bg-white dark:hover:bg-[#252834]'
@@ -531,8 +554,8 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                             </span>
                           ) : (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0 flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                              <span>Parsing...</span>
+                              <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin" />
+                              <span>{getDocumentStageLabel(progress)}</span>
                             </span>
                           )
                         )}
