@@ -22,7 +22,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 try:
     from gliner import GLiNER
     HAS_GLINER = True
-except ImportError:
+except (ImportError, OSError, Exception):
     HAS_GLINER = False
 
 

@@ -171,8 +171,9 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     print(C.BANNER + "╠" + "═" * 76 + "╣" + C.RESET)
 
     # 2. Subsystems
-    # Backend Config & Models
-    cfg = fetch_json_endpoint("http://127.0.0.1:8000/api/system/config", timeout=1.5)
+    # Backend Config & Provenance Models
+    cfg = fetch_json_endpoint("http://127.0.0.1:8000/api/system/config", timeout=1.5) or {}
+    prov = fetch_json_endpoint("http://127.0.0.1:8000/api/system/provenance", timeout=1.5) or {}
     synth = get_synthesizer_status()
 
     # ChromaDB Count (Lightweight PersistentClient check without loading PyTorch weights in supervisor)
@@ -198,20 +199,39 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     except Exception:
         pass
 
-    # Neo4j Graph Probe
+    # Substrate Network Probes
     neo4j_online = is_port_open(7687)
-    neo4j_str = f"{C.SUCCESS}CONNECTED (bolt://localhost:7687){C.RESET}" if neo4j_online else f"{C.WARN}OFFLINE (In-memory graph active){C.RESET}"
-    chroma_str = f"{C.SUCCESS}ACTIVE ({chroma_count} indexed chunks | {chroma_model}){C.RESET}" if chroma_online else f"{C.WARN}EMPTY / OFFLINE{C.RESET}"
+    neo4j_str = f"{C.SUCCESS}CONNECTED (bolt://localhost:7687){C.RESET}" if neo4j_online else f"{C.WARN}STANDBY (In-memory NetworkX active){C.RESET}"
+    
+    redis_online = is_port_open(6379)
+    redis_str = f"{C.SUCCESS}CONNECTED (localhost:6379){C.RESET}" if redis_online else f"{C.MUTED}STANDBY (In-memory LRU active){C.RESET}"
+    
+    pg_online = is_port_open(5432)
+    pg_str = f"{C.SUCCESS}CONNECTED (localhost:5432){C.RESET}" if pg_online else f"{C.MUTED}STANDBY (SQLite local persistence){C.RESET}"
+
+    chroma_str = f"{C.SUCCESS}ACTIVE ({chroma_count} chunks | {chroma_model} 768-dim){C.RESET}" if chroma_online else f"{C.WARN}EMPTY / OFFLINE{C.RESET}"
     synth_str = synth.get("display_string", f"{C.SUCCESS}ACTIVE{C.RESET}")
 
-    print(f"{C.BANNER}║{C.RESET} {C.SECTION}SUBSYSTEM STATUS:{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • ChromaDB Vector Store     : {chroma_str}")
-    print(f"{C.BANNER}║{C.RESET}   • Neo4j Graph Database      : {neo4j_str}")
-    print(f"{C.BANNER}║{C.RESET}   • Active LLM Synthesizer    : {synth_str}")
-    if cfg:
-        print(f"{C.BANNER}║{C.RESET}   • Embedding Neural Model    : {C.WHITE}{cfg.get('embedding_model', 'bge-base')}{C.RESET}")
-        print(f"{C.BANNER}║{C.RESET}   • Neural Reranker Model     : {C.WHITE}{cfg.get('reranker_model', 'jina-reranker-v3.5')}{C.RESET}")
-        print(f"{C.BANNER}║{C.RESET}   • NLI Entailment Verifier   : {C.WHITE}{cfg.get('nli_verifier_model', 'finecat-nli-ultra-l')}{C.RESET}")
+    encoder_name = prov.get("encoder_model") or cfg.get("embedding_model") or chroma_model
+    reranker_name = prov.get("reranker_model") or cfg.get("reranker_model") or "BAAI/bge-reranker-large"
+    nli_name = prov.get("nli_verifier_model") or cfg.get("nli_verifier_model") or "dleemiller/finecat-nli-ultra-l"
+
+    print(f"{C.BANNER}║{C.RESET} {C.SECTION}CONNECTION & NETWORK TOPOLOGY:{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}   • Backend API Gateway       : {C.WHITE}http://localhost:8000{C.RESET} | Swagger: {C.CYAN}/docs{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}   • Frontend Workstation UI   : {C.WHITE}http://localhost:5173{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}   • Live Telemetry Stream     : {C.WHITE}ws://localhost:8000/ws/traffic{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET} {C.SECTION}STORAGE & DATABASE SUBSTRATES:{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}   • Vector Store (ChromaDB)   : {chroma_str}")
+    print(f"{C.BANNER}║{C.RESET}   • Knowledge Graph (Neo4j)   : {neo4j_str}")
+    print(f"{C.BANNER}║{C.RESET}   • Semantic Cache (Redis)    : {redis_str}")
+    print(f"{C.BANNER}║{C.RESET}   • Relational DB (Postgres)  : {pg_str}")
+    print(f"{C.BANNER}║{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET} {C.SECTION}AI NEURAL MODEL PIPELINE:{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}   • Synthesis LLM Engine      : {synth_str}")
+    print(f"{C.BANNER}║{C.RESET}   • Dense Embedding Encoder   : {C.WHITE}{encoder_name}{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}   • Cross-Attention Reranker  : {C.WHITE}{reranker_name}{C.RESET}")
+    print(f"{C.BANNER}║{C.RESET}   • Claim Entailment Verifier : {C.WHITE}{nli_name}{C.RESET}")
 
     # Active Documents
     docs = get_active_documents_list()
@@ -279,12 +299,16 @@ def run_system_doctor() -> None:
 
     # Storage substrates probe
     neo_ok = is_port_open(7687)
-    neo_badge = f"{C.SUCCESS}ONLINE (Port 7687 responding){C.RESET}" if neo_ok else f"{C.WARN}OFFLINE (In-memory fallback){C.RESET}"
+    neo_badge = f"{C.SUCCESS}ONLINE (Port 7687 responding){C.RESET}" if neo_ok else f"{C.WARN}STANDBY (In-memory NetworkX active){C.RESET}"
     print(f"  • {'Neo4j Database (:7687)':<32} : {neo_badge}")
 
     redis_ok = is_port_open(6379)
-    redis_badge = f"{C.SUCCESS}ONLINE (Port 6379 responding){C.RESET}" if redis_ok else f"{C.MUTED}INACTIVE (In-memory fallback){C.RESET}"
+    redis_badge = f"{C.SUCCESS}ONLINE (Port 6379 responding){C.RESET}" if redis_ok else f"{C.MUTED}STANDBY (In-memory LRU active){C.RESET}"
     print(f"  • {'Redis Cache (:6379)':<32} : {redis_badge}")
+
+    pg_ok = is_port_open(5432)
+    pg_badge = f"{C.SUCCESS}ONLINE (Port 5432 responding){C.RESET}" if pg_ok else f"{C.MUTED}STANDBY (SQLite local persistence active){C.RESET}"
+    print(f"  • {'PostgreSQL Database (:5432)':<32} : {pg_badge}")
 
     print(C.BANNER + "═" * 76 + C.RESET + "\n")
 
