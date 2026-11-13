@@ -344,6 +344,7 @@ def create_chat_sse_stream(
                     (0.35, {"stage": "RERANKING", "node": "reranking", "status": "active", "detail": "Cross-encoder neural reranking & scoring"}),
                 ]
             emitted_indices = set()
+            last_keepalive = time.perf_counter()
 
             while not rag_task.done():
                 done, _ = await asyncio.wait([rag_task], timeout=0.08)
@@ -361,6 +362,12 @@ def create_chat_sse_stream(
                     if idx not in emitted_indices and curr_elapsed >= threshold:
                         emitted_indices.add(idx)
                         yield f"event: stage\ndata: {json.dumps(stg)}\n\n"
+
+                # Periodic keepalive to ensure browser fetch watchdog (45s) and intermediate proxies never timeout
+                now_loop = time.perf_counter()
+                if now_loop - last_keepalive >= 2.0:
+                    last_keepalive = now_loop
+                    yield f": keepalive {int(now_loop - t_start)}s\n\n"
 
             result = rag_task.result()
             elapsed = round(time.perf_counter() - t_start, 3)

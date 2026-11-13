@@ -315,7 +315,7 @@ class MultiHopAdaptiveRetriever:
                 prompt=prompt,
                 task=InferenceTask.REASONING,
                 temperature=0.0,
-                max_tokens=20,
+                max_tokens=256,
             ).strip().lower()
             if "yes" in resp and "no" not in resp:
                 return "yes"

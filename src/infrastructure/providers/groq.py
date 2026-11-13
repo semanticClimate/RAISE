@@ -66,10 +66,17 @@ class GroqProvider(LLMProvider):
         last_error = None
 
         for candidate in candidates:
+            # Reasoning models (e.g. gpt-oss, deepseek-r1, qwq) allocate tokens to an internal
+            # reasoning trace before emitting final content. If max_tokens is too low (< 256),
+            # the token budget is exhausted during reasoning and content is empty.
+            effective_max_tokens = max_tokens
+            if any(r_key in candidate.lower() for r_key in ("oss", "r1", "reason", "deepseek", "qwq")):
+                effective_max_tokens = max(max_tokens, 256)
+
             payload = {
                 "model": candidate,
                 "messages": messages,
-                "max_tokens": max_tokens,
+                "max_tokens": effective_max_tokens,
                 "temperature": temperature,
             }
             headers = {"Authorization": f"Bearer {key}"}
@@ -84,7 +91,14 @@ class GroqProvider(LLMProvider):
                 if candidate != self.model_name:
                     logger.info(f"Groq auto-updated model to active candidate: {candidate}")
                     self.model_name = candidate
-                return resp["choices"][0]["message"]["content"]
+
+                msg = resp["choices"][0]["message"]
+                content = msg.get("content") or ""
+                if not content:
+                    content = msg.get("reasoning") or msg.get("reasoning_content") or ""
+                if not content and "text" in resp["choices"][0]:
+                    content = resp["choices"][0]["text"]
+                return content
             except ProviderHTTPError as e:
                 last_error = e
                 if e.classification == "MODEL_UNAVAILABLE" or e.status_code in (400, 404):
@@ -128,10 +142,14 @@ class GroqProvider(LLMProvider):
             timeout = httpx.Timeout(kwargs.get("timeout", 45.0), connect=3.0)
             
             for candidate in candidates:
+                effective_max_tokens = max_tokens
+                if any(r_key in candidate.lower() for r_key in ("oss", "r1", "reason", "deepseek", "qwq")):
+                    effective_max_tokens = max(max_tokens, 256)
+
                 payload = {
                     "model": candidate,
                     "messages": messages,
-                    "max_tokens": max_tokens,
+                    "max_tokens": effective_max_tokens,
                     "temperature": temperature,
                     "stream": True,
                 }
@@ -156,6 +174,8 @@ class GroqProvider(LLMProvider):
                             logger.info(f"Groq stream auto-updated model to active candidate: {candidate}")
                             self.model_name = candidate
 
+                        reasoning_chunks = []
+                        yielded_any_content = False
                         async for line in resp.aiter_lines():
                             line = line.strip()
                             if not line or not line.startswith("data: "):
@@ -165,11 +185,18 @@ class GroqProvider(LLMProvider):
                                 break
                             try:
                                 chunk = json.loads(data_str)
-                                delta = chunk["choices"][0]["delta"].get("content", "")
+                                delta_obj = chunk["choices"][0]["delta"]
+                                delta = delta_obj.get("content") or ""
                                 if delta:
+                                    yielded_any_content = True
                                     yield delta
+                                elif not yielded_any_content and delta_obj.get("reasoning"):
+                                    reasoning_chunks.append(delta_obj["reasoning"])
                             except Exception:
                                 continue
+
+                        if not yielded_any_content and reasoning_chunks:
+                            yield "".join(reasoning_chunks)
                         return
         except ProviderHTTPError:
             raise
