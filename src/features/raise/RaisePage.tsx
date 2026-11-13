@@ -158,7 +158,7 @@ export const RaisePage: React.FC = () => {
         ref={c.autoScroll.contentContainerRef}
         className="flex-1 flex flex-col pl-0 sm:pl-16 w-full min-w-0 relative z-10 overflow-y-auto overflow-x-hidden mt-14 sm:mt-16"
       >
-        <title>RAISE — Research AI Synthesizer Engine</title>
+        <title>RAISE — Research Assessment Intelligence &amp; Semantic Extraction</title>
         <main
           className={`${RAISE_LAYOUT.streamContainer} ${
             c.chatSessions.conversation.length === 0
