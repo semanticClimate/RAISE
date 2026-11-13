@@ -119,20 +119,22 @@ class ModelConfig:
     # LLM Synthesis
     LLM_PROVIDER: str = os.getenv("RAISE_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini"))
     LLM_MODEL_NAME: str = os.getenv("RAISE_LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash"))
-    GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+    GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
     GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = (
+        "gemini-3.8-flash",
         "gemini-2.5-flash",
         "gemini-2.0-flash",
         "gemini-1.5-flash",
         "gemini-flash-latest",
     )
     OPENAI_MODEL_NAME: str = os.getenv("OPENAI_MODEL_NAME", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
-    GROQ_MODEL_NAME: str = os.getenv("GROQ_MODEL", "qwen/qwen-2.5-32b-instruct")
+    GROQ_MODEL_NAME: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     GROQ_FALLBACK_CANDIDATES: tuple[str, ...] = (
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
         "openai/gpt-oss-120b",
         "qwen/qwen3.8-27b",
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
     )
     DEEPSEEK_MODEL_NAME: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     NVIDIA_MODEL_NAME: str = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")

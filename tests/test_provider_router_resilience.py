@@ -58,7 +58,7 @@ def test_router_no_hardcoded_blacklists_on_init():
     # Groq default model must not be invalid qwen
     cloud_meta = router._get_cloud_meta()
     assert cloud_meta["groq"]["default_model"] != "qwen/qwen3.8-27b"
-    assert "llama-3" in cloud_meta["groq"]["default_model"] or "llama" in cloud_meta["groq"]["default_model"]
+    assert any(m in cloud_meta["groq"]["default_model"].lower() for m in ("llama-3", "llama", "gpt-oss"))
 
 
 def test_rate_limit_429_triggers_cooldown_and_fallback():
