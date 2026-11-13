@@ -235,6 +235,9 @@ class StandaloneRAGPipeline:
                 res["rerank_ms"] = timings.get("reranking_ms", 0.0)
             if "synthesis_ms" not in res:
                 res["synthesis_ms"] = timings.get("synthesis_ms", 0.0)
+            if "pipeline_info" not in res or not res["pipeline_info"]:
+                from src.infrastructure.provenance import build_pipeline_info
+                res["pipeline_info"] = build_pipeline_info(mode=mode)
         return res
 
     def run(self, query: str, active_docs: Optional[List[str]] = None, mode: Optional[str] = "fast") -> Dict[str, Any]:
