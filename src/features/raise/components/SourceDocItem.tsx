@@ -2,6 +2,7 @@ import React from 'react';
 import { CircularUploadProgress } from '../../../components/ui/CircularUploadProgress';
 import { useDocumentViewerStore } from '../../../stores/useDocumentViewerStore';
 import type { SourceDocument } from '../../../types';
+import { getDocumentStageLabel } from '../../../utils/documentStageUtils';
 import { formatBytes } from '../../../utils/formatters';
 
 export interface SourceDocItemProps {
@@ -29,7 +30,7 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
       onClick={() => !isProcessing && onToggle(doc.id)}
       className={`p-2.5 sm:p-3 rounded-xl border transition-all flex items-center justify-between gap-2.5 sm:gap-3 select-none ${
         isProcessing
-          ? 'filter blur-[1.5px] opacity-70 bg-slate-50/50 dark:bg-white/[0.01] border-slate-200/60 dark:border-white/5 cursor-wait'
+          ? 'bg-amber-50/60 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 shadow-2xs cursor-wait'
           : doc.selected
             ? 'bg-indigo-50/70 border-indigo-200 dark:bg-indigo-500/10 dark:border-indigo-500/30 shadow-2xs cursor-pointer'
             : 'bg-slate-50/50 hover:bg-slate-100 border-slate-200/60 dark:bg-white/[0.02] dark:hover:bg-white/[0.05] dark:border-white/[0.06] opacity-75 hover:opacity-100 cursor-pointer'
@@ -38,7 +39,7 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
       <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
         {isProcessing ? (
           <div className="shrink-0 w-4 h-4 flex items-center justify-center">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+            <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
           </div>
         ) : (
           <input
@@ -96,7 +97,7 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
             <span>•</span>
             {isProcessing ? (
               <span className="text-amber-600 dark:text-amber-400 font-medium animate-pulse truncate">
-                Processing document... ({Math.round(progress)}%)
+                {getDocumentStageLabel(progress)} ({Math.round(progress)}%)
               </span>
             ) : (
               <>

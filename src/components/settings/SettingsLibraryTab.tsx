@@ -2,6 +2,7 @@ import { FolderSync } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sourceService } from '../../services/SourceService';
 import { formatBytes } from '../../utils/formatters';
+import { getDocumentStageLabel } from '../../utils/documentStageUtils';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
 import { ExtractedDocumentModal } from '../library/ExtractedDocumentModal';
 
@@ -373,14 +374,17 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
     }, 300);
 
     try {
-      const pdfFiles = files.filter((f) => f.name.endsWith('.pdf'));
-      if (pdfFiles.length > 0) {
-        const uploadRes = await sourceService.uploadPdfs(pdfFiles);
+      const validFiles = files.filter((f) => {
+        const ext = f.name.toLowerCase().split('.').pop() || '';
+        return ['pdf', 'txt', 'docx', 'csv', 'md', 'json', 'xlsx'].includes(ext);
+      });
+      if (validFiles.length > 0) {
+        const uploadRes = await sourceService.uploadPdfs(validFiles);
         if (uploadRes.error || uploadRes.status >= 400) {
           throw new Error(uploadRes.error?.message || 'Upload failed');
         }
       } else {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
       clearInterval(progressTimer);
       setItems((prev) =>
@@ -779,7 +783,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                 key={item.id}
                 className={`group relative p-3.5 rounded-2xl border transition-all flex flex-col justify-between shadow-2xs hover:shadow-md ${
                   !indexed
-                    ? 'filter blur-[1.5px] opacity-65 bg-slate-50/50 dark:bg-white/[0.01] border-slate-200/60 dark:border-white/5 cursor-not-allowed select-none'
+                    ? 'bg-amber-50/60 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 cursor-wait select-none'
                     : 'bg-slate-50/70 dark:bg-white/[0.03] border-slate-200/80 dark:border-white/10 hover:border-slate-400 dark:hover:border-white/30 hover:bg-white dark:hover:bg-[#232631]'
                 }`}
                 title={
@@ -826,11 +830,11 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                 <div className="pt-2 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between">
                   {!indexed ? (
                     <span
-                      className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium"
-                      title="Parsing in GraphRAG..."
+                      className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate max-w-[150px]"
+                      title={`Pipeline stage: ${getDocumentStageLabel(progress)}`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                      <span>Parsing...</span>
+                      <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
+                      <span className="truncate">{getDocumentStageLabel(progress)}</span>
                     </span>
                   ) : (
                     <span className="text-[10px] text-slate-400 dark:text-[#a8a8a8] font-mono">
@@ -965,7 +969,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                       key={item.id}
                       className={`transition-colors group ${
                         !indexed
-                          ? 'filter blur-[1.5px] opacity-65 bg-slate-50/40 dark:bg-white/[0.01]'
+                          ? 'bg-amber-50/50 dark:bg-amber-500/10'
                           : 'hover:bg-slate-50/70 dark:hover:bg-white/[0.03]'
                       }`}
                     >
@@ -993,9 +997,9 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                       </td>
                       <td className="py-2.5 px-3">
                         {!indexed ? (
-                          <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                            <span>Parsing...</span>
+                          <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
+                            <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
+                            <span>{getDocumentStageLabel(progress)}</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
@@ -1128,7 +1132,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                 key={item.id}
                 className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs ${
                   !indexed
-                    ? 'filter blur-[1.5px] opacity-65 bg-slate-50/50 dark:bg-white/[0.01] border-slate-200/60 dark:border-white/5 cursor-not-allowed select-none'
+                    ? 'bg-amber-50/60 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 cursor-wait select-none'
                     : 'bg-slate-50/70 dark:bg-white/[0.03] border-slate-200/80 dark:border-white/10 hover:border-slate-400 dark:hover:border-white/30'
                 }`}
               >
@@ -1180,8 +1184,8 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                   {!indexed ? (
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-500/20 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                        <span>Parsing in GraphRAG...</span>
+                        <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
+                        <span>{getDocumentStageLabel(progress)}</span>
                       </span>
                       <div className="p-1" title={`Uploading: ${Math.round(progress)}%`}>
                         <CircularUploadProgress

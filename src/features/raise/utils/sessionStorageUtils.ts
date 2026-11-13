@@ -1,10 +1,11 @@
 import { isLegacySession } from '../../../utils/storageCleaner';
-import type { ChatMessage, ChatSession } from '../types';
+import type { ChatMessage, ChatSession, SourceDocument } from '../types';
 import { deduplicateTurns } from './messageNormalizer';
 
 export const SESSIONS_STORAGE_KEY = 'raise_recent_sessions_v2';
 export const CURRENT_SESSION_KEY = 'raise_current_session_id';
 export const PERSIST_ON_RELOAD_KEY = 'raise_persist_session_on_reload';
+export const DRAFT_SOURCES_STORAGE_KEY = 'raise_draft_source_docs';
 
 let debounceSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -162,6 +163,54 @@ export function getInitialConversation(): ChatMessage[] {
               };
             })
           );
+        }
+      }
+    }
+  } catch {}
+  return [];
+}
+
+export function getInitialSourceDocs(): SourceDocument[] {
+  try {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlSession = searchParams.get('session') || searchParams.get('session_id');
+      const targetId =
+        (urlSession && urlSession.trim()) ||
+        localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
+
+      if (!targetId || targetId === 'new') {
+        const draft = localStorage.getItem(DRAFT_SOURCES_STORAGE_KEY);
+        if (draft) {
+          const parsed = JSON.parse(draft) as SourceDocument[];
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+        return [];
+      }
+
+      const cached = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as ChatSession[];
+        const match = parsed.find((s) => s.id === targetId);
+        if (match) {
+          if (Array.isArray(match.sources) && match.sources.length > 0) {
+            return match.sources;
+          }
+          if (Array.isArray(match.attached_docs) && match.attached_docs.length > 0) {
+            const selectedIds = new Set(match.selectedSourceIds || []);
+            return match.attached_docs.map((name, idx) => ({
+              id: `src-${idx}-${name}`,
+              name,
+              size: '1.0 MB',
+              pages: 1,
+              color: name.toLowerCase().endsWith('.pdf') ? ('rose' as const) : ('indigo' as const),
+              selected:
+                selectedIds.size > 0
+                  ? selectedIds.has(`src-${idx}-${name}`) || selectedIds.has(name)
+                  : true,
+              status: 'ready' as const,
+            }));
+          }
         }
       }
     }

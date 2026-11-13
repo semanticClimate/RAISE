@@ -60,7 +60,8 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.txt,.docx,.md,.csv"
+        multiple
+        accept=".pdf,.txt,.docx,.md,.csv,.xlsx,.json"
         onChange={onFileUpload}
         onClick={(e) => {
           (e.target as HTMLInputElement).value = '';

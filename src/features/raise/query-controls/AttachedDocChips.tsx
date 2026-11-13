@@ -2,6 +2,7 @@ import type React from 'react';
 import { CircularUploadProgress } from '../../../components/ui/CircularUploadProgress';
 import { useDocumentViewerStore } from '../../../stores/useDocumentViewerStore';
 import type { SourceDocument } from '../../../types';
+import { getDocumentStageLabel } from '../../../utils/documentStageUtils';
 
 export interface AttachedDocChipsProps {
   selectedDocs: SourceDocument[];
@@ -133,11 +134,11 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
               title={`View ${file.name}`}
               className={`${
                 conversationLength === 0 ? 'w-7.5 h-7.5 sm:w-9 sm:h-9' : 'w-6 h-6 sm:w-7 sm:h-7'
-              } rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300/80 dark:bg-white/[0.06] dark:hover:bg-white/10 dark:border-white/10 hover:border-indigo-400/40 flex items-center justify-center transition-all shadow-xs active:scale-95 cursor-pointer relative overflow-hidden select-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 ${
+              } rounded-lg ${
                 isProcessing
-                  ? 'filter blur-[1.5px] opacity-70 cursor-wait'
-                  : 'filter-none opacity-100'
-              }`}
+                  ? 'bg-amber-50/80 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/40 cursor-wait'
+                  : 'bg-slate-100 hover:bg-slate-200 border-slate-300/80 dark:bg-white/[0.06] dark:hover:bg-white/10 dark:border-white/10 hover:border-indigo-400/40 cursor-pointer'
+              } flex items-center justify-center transition-all shadow-xs active:scale-95 relative overflow-hidden select-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50`}
             >
               <svg
                 className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${
@@ -208,7 +209,7 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
             {/* Simple tooltip with doc name on hover */}
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none">
               <div className="bg-slate-900 text-white dark:bg-[#1a1c23] dark:border dark:border-white/10 dark:text-slate-200 text-[11px] font-medium py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap max-w-[240px] truncate">
-                {isProcessing ? `Uploading: ${file.name} (${Math.round(progress)}%)` : file.name}
+                {isProcessing ? `${getDocumentStageLabel(progress)}: ${file.name} (${Math.round(progress)}%)` : file.name}
               </div>
               <div className="w-1.5 h-1.5 -mt-0.5 rotate-45 bg-slate-900 dark:bg-[#1a1c23] border-r border-b border-slate-900 dark:border-white/10" />
             </div>

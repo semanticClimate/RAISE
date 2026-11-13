@@ -249,7 +249,11 @@ export function useChatSessions({
     setIsAutoScrollLocked(false);
     setShowScrollToBottom(false);
 
+    // Reset drawer sources so previous conversation documents do not leak into new chat
+    setSourceDocs([]);
+
     try {
+      localStorage.removeItem('raise_draft_source_docs');
       localStorage.removeItem(CURRENT_SESSION_KEY);
       if (typeof window !== 'undefined' && window.history?.replaceState) {
         const url = new URL(window.location.href);
