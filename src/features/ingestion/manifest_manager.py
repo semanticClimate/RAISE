@@ -28,7 +28,7 @@ def load_manifest(output_dir: Path) -> Dict[str, Any]:
     manifest_file = output_dir / "ingested_manifest.json"
     if manifest_file.exists():
         try:
-            return json.loads(manifest_file.read_text(encoding="utf-8"))
+            return json.loads(manifest_file.read_text(encoding="utf-8-sig"))
         except Exception as e:
             logger.warning("Manifest read error: %s", e)
     return {"ready_documents": [], "deleted_documents": []}
