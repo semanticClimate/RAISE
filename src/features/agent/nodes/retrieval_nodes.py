@@ -125,6 +125,7 @@ class RetrievalNodesMixin:
 
         # Active Sparse BM25 Search
         bm25_chunks = []
+        seen_bm25_keys = set()
         bm25_idx = self._get_bm25_index()
         if bm25_idx:
             for q_sub in queries_to_search:
@@ -157,8 +158,8 @@ class RetrievalNodesMixin:
                         "metadata": b_meta,
                     }
                     bkey = b_chunk.get("chunk_id")
-                    if bkey not in seen_chunk_keys:
-                        seen_chunk_keys.add(bkey)
+                    if bkey not in seen_bm25_keys:
+                        seen_bm25_keys.add(bkey)
                         bm25_chunks.append(b_chunk)
 
         if telemetry:
@@ -319,7 +320,7 @@ class RetrievalNodesMixin:
         rerank_query = state.get("standalone_query") or state.get("query", "")
         rerank_top_n = max(state.get("top_k", 10), 10)
         is_fast_mode = (state.get("mode") or "fast").lower() == "fast"
-        rerank_pool = fused_candidates[:16] if (is_fast_mode and len(fused_candidates) > 16) else fused_candidates
+        rerank_pool = fused_candidates[:24] if (is_fast_mode and len(fused_candidates) > 24) else fused_candidates
         reranked = self.rag_engine.agent_router.reranker.rerank(
             query=rerank_query,
             candidates=rerank_pool,

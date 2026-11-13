@@ -128,8 +128,6 @@ class SmartDocumentParser:
                 use_docling = self.should_use_docling(pdf_path)
 
         effective_extract_tables = extract_tables
-        if total_pages > 40 and eng_lower in ("fast", "auto") and not full_potential:
-            effective_extract_tables = False
 
         if use_docling:
             pages = self._docling_engine.parse(pdf_path=pdf_path, max_pages=max_pages)

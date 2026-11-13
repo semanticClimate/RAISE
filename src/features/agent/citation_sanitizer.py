@@ -75,7 +75,8 @@ def build_evidence_citations(
             cleaned_excerpt,
         ).strip()
         cleaned_excerpt = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", cleaned_excerpt)
-        cleaned_excerpt = re.sub(r"\s+", " ", cleaned_excerpt).strip()
+        cleaned_excerpt = re.sub(r"[ \t]+", " ", cleaned_excerpt)
+        cleaned_excerpt = re.sub(r"\n{3,}", "\n\n", cleaned_excerpt).strip()
 
         p_page = meta.get("primary_page") or meta.get("physical_page") or meta.get("page")
         if not p_page or int(p_page) < 1:
@@ -112,7 +113,7 @@ def build_evidence_citations(
             "source_pages": [int(sp) for sp in source_pages if str(sp).isdigit()],
             "printed_page": d_page if (d_page and str(d_page).strip() != "") else None,
             "heading": meta.get("heading") or f"Section (Page {p_page})",
-            "plain_text": cleaned_excerpt[:1000],
+            "plain_text": cleaned_excerpt[:4000],
             "university": meta.get("university", "Academic Institution"),
             "similarity": round(float(c.get("similarity", 0.88)), 3),
             "page_url": page_url,

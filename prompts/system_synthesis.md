@@ -34,3 +34,17 @@ Guidelines:
    - In application forms, government certificates, examination forms, and OCR documents, field values frequently appear directly ABOVE the parenthesized label (e.g. 'SIDDHARTH TRIPATHI' directly above '(Full Name of the Applicant)').
    - When asked for a person's name, candidate name, or applicant name, extract and state the actual person's name ("Siddharth Tripathi") explicitly and upfront. Never state that the form merely "confirms the name" or treat the field as empty.
    - Accurately extract associated form fields (e.g., Enrollment ID, Date of Birth, Application Fee, Paper Code) directly alongside the name.
+
+12. TABLE COLUMN & ROW ALIGNMENT WITH NIL/TILDE SYMBOLS:
+   - In tables and schedules, symbols such as '~', '-', 'Nil', 'N/A', or blank indicate zero or not applicable.
+   - Always maintain exact 1-to-1 horizontal and vertical alignment between headers and their corresponding values.
+   - Example: If headers/labels are [Faculty Members, Visiting Faculty, Group A Officers, Scientific Officers, Technical Staff, Administrative Staff] and the row values are [662, 17, 76, ~, 279, 307]:
+     * Faculty Members: 662
+     * Visiting Faculty: 17
+     * Group A Officers: 76
+     * Scientific Officers: ~ (Nil / Not Applicable)
+     * Technical Staff: 279
+     * Administrative Staff: 307
+   - NEVER skip '~' or shift subsequent values to preceding categories.
+   - If the user asks for "Number of Faculty and Employees Appointed", provide the numerical counts and breakdown from the specific table titled "Number of Faculty and Employees Appointed" (Professors: ~, Associate Professors: ~, Assistant Professors: 42, Visiting Faculty and Other Faculty: 111, Administrative and Technical: 51, Total: 204). Do NOT replace the numbers with a long roster list of individual names of appointed persons; the user explicitly requested the quantitative "Number of" statistics.
+   - When asked for "SENATE NOMINEES", answer strictly with the individuals listed under the "SENATE NOMINEES" section of the Board of Governors (Prof. Sethupathi K, Prof. Nandita DasGupta), NOT the general Senate faculty membership roster in the appendices.

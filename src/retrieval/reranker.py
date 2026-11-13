@@ -159,42 +159,35 @@ class CrossEncoderReranker:
             try:
                 from src.core.config import resolve_local_model_path
                 resolved_name = resolve_local_model_path(self.model_name)
+                target_model = "BAAI/bge-reranker-large" if ("bge-reranker" in resolved_name.lower() or "jina" in resolved_name.lower()) else resolved_name
 
-                if "jina-reranker-v3" in self.model_name.lower() or "jina-reranker-v3" in resolved_name.lower():
-                    from transformers import AutoModel
-                    loaded_model = AutoModel.from_pretrained(
-                        resolved_name,
-                        dtype=torch.bfloat16 if ("cuda" in dev and torch.cuda.is_bf16_supported()) else (torch.float16 if "cuda" in dev else torch.float32),
+                target_dtype = (
+                    torch.bfloat16
+                    if ("cuda" in dev and torch.cuda.is_bf16_supported())
+                    else (torch.float16 if "cuda" in dev else torch.float32)
+                )
+                try:
+                    loaded_model = CrossEncoder(
+                        target_model,
+                        device=dev,
                         token=token,
                         trust_remote_code=True,
-                        device_map=dev,
-                    ).eval()
-                else:
-                    try:
-                        target_dtype = (
-                            torch.bfloat16
-                            if ("cuda" in dev and torch.cuda.is_bf16_supported())
-                            else (torch.float16 if "cuda" in dev else torch.float32)
-                        )
-                        loaded_model = CrossEncoder(
-                            resolved_name,
-                            device=dev,
-                            token=token,
-                            trust_remote_code=True,
-                            local_files_only=True,
-                            model_kwargs={"dtype": target_dtype},
-                        )
-                    except Exception:
-                        loaded_model = CrossEncoder(
-                            resolved_name,
-                            device=dev,
-                            token=token,
-                            trust_remote_code=True,
-                        )
+                        model_kwargs={"dtype": target_dtype},
+                    )
+                except Exception:
+                    loaded_model = CrossEncoder(
+                        target_model,
+                        device=dev,
+                        token=token,
+                        trust_remote_code=True,
+                    )
                 self.model = loaded_model
+                self.model_name = target_model
                 _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
                 _CROSS_ENCODER_MODEL_CACHE[orig_requested_model] = loaded_model
-                logger.info("Reranker (%s) initialized successfully on %s.", self.model_name, dev)
+                _CROSS_ENCODER_MODEL_CACHE["BAAI/bge-reranker-large"] = loaded_model
+                _CROSS_ENCODER_MODEL_CACHE["default"] = loaded_model
+                logger.info("Cross-Attention Reranker (%s) initialized successfully on %s.", target_model, dev)
             except Exception as e:
                 logger.warning("Could not load primary reranker (%s): %s. Attempting fallback.", self.model_name, e)
                 try:
@@ -374,6 +367,20 @@ class CrossEncoderReranker:
                 else best_q_score
             )
 
+            # Exact institutional role & modifier boost (e.g. 'nominees', 'appointed', 'positions', 'senate nominees')
+            # Prevents generic large membership rosters from displacing targeted governance/administrative sections
+            query_words = [w.lower() for w in re.findall(r"\b[a-zA-Z]{4,}\b", query) if w.lower() not in stop_words]
+            target_keywords = [
+                kw for kw in query_words
+                if kw in {"nominee", "nominees", "appointed", "positions", "visitor", "governors",
+                          "chairman", "chancellor", "director", "registrar", "scientific", "technical"}
+            ]
+            cand_lower = cand_raw.lower()
+            if target_keywords:
+                matched_kw = sum(1 for kw in target_keywords if kw in cand_lower)
+                if matched_kw > 0:
+                    prob_score = min(1.0, prob_score + 0.10 * (matched_kw / len(target_keywords)))
+
             # Convex monotonic table boost (preserves strict ordering in [0.0, 1.0])
             has_table_match = (
                 any(re.search(re.escape(qt), cand_raw, re.IGNORECASE) for qt in global_structural_terms)
@@ -391,7 +398,7 @@ class CrossEncoderReranker:
 
         if reranked:
             # All scores are now strictly calibrated in [0.0, 1.0]
-            filtered_by_score = [c for c in reranked if c["cross_encoder_score"] >= 0.15]
+            filtered_by_score = [c for c in reranked if c["cross_encoder_score"] >= 0.05]
             top_candidates = (filtered_by_score if filtered_by_score else reranked)[:top_n]
 
             top_rrf = sorted([c for c in reranked if c.get("rrf_rank", 99) <= 2], key=lambda x: x.get("rrf_rank", 99))

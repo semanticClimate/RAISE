@@ -115,23 +115,17 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
     )
 
     # 4. Mode-Aware Reranker & NLI Models (Never emit null)
-    is_fast_mode = str(mode or "").lower() == "fast"
-
-    if is_fast_mode:
-        reranker_model = "None (Bypassed in Fast Mode)"
-        nli_verifier_model = "None (Bypassed in Fast Mode)"
-    else:
-        raw_rerank = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
-        try:
-            from src.retrieval.reranker import CrossEncoderReranker
-            reranker_model = CrossEncoderReranker.AVAILABLE_RERANKERS.get(raw_rerank, raw_rerank)
-        except Exception:
-            reranker_model = "BAAI/bge-reranker-large"
-        nli_verifier_model = (
-            os.getenv("NLI_VERIFIER_MODEL")
-            or os.getenv("NLI_MODEL")
-            or "dleemiller/finecat-nli-ultra-l"
-        )
+    raw_rerank = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
+    try:
+        from src.retrieval.reranker import CrossEncoderReranker
+        reranker_model = CrossEncoderReranker.AVAILABLE_RERANKERS.get(raw_rerank, raw_rerank)
+    except Exception:
+        reranker_model = "BAAI/bge-reranker-large"
+    nli_verifier_model = (
+        os.getenv("NLI_VERIFIER_MODEL")
+        or os.getenv("NLI_MODEL")
+        or "dleemiller/finecat-nli-ultra-l"
+    )
 
     return {
         "storage_used": storage_desc,
