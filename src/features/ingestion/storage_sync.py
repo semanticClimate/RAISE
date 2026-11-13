@@ -102,7 +102,8 @@ def sync_and_persist_artifacts(
                 "id": e.entity_id,
                 "label": e.name,
                 "type": e.label,
-                "properties": e.properties,
+                "document_id": doc_id,
+                "properties": {**(e.properties or {}), "document_id": doc_id},
                 "provenance": e.provenance,
             }
             for e in unique_entities.values()
@@ -112,7 +113,8 @@ def sync_and_persist_artifacts(
                 "source": r.source_id,
                 "target": r.target_id,
                 "type": r.relation_type,
-                "properties": r.properties,
+                "document_id": doc_id,
+                "properties": {**(r.properties or {}), "document_id": doc_id},
             }
             for r in unique_relations.values()
         ],

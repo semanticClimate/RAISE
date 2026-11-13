@@ -284,14 +284,13 @@ def auto_ensure_okf_catalogs(
     catalog_dir = registry.catalog_dir
     catalog_dir.mkdir(parents=True, exist_ok=True)
 
-    base_dir = Path(__file__).resolve().parents[3]
+    from src.core.config import DOCUMENTS_DIR, PROCESSED_DIR, CHUNKS_DIR
     candidate_doc_dirs = [
         upload_dir if upload_dir else None,
-        base_dir / "data" / "documents",
-        base_dir / "data" / "uploaded_pdfs",
+        DOCUMENTS_DIR,
     ]
-    proc_dir = processed_dir or (base_dir / "data" / "processed")
-    chunks_dir = proc_dir / "chunks"
+    proc_dir = processed_dir or PROCESSED_DIR
+    chunks_dir = proc_dir / "chunks" if hasattr(proc_dir, "__truediv__") else Path(proc_dir) / "chunks"
 
     generated_count = 0
 

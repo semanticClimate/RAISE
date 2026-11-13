@@ -28,11 +28,14 @@ from src.api.routers.vault_batch import execute_load_vault_defaults, execute_ing
 logger = logging.getLogger("raise.router.documents")
 router = APIRouter(tags=["Documents & Ingestion"])
 
-BASE_DIR = Path(__file__).resolve().parents[3]
+from src.core.config import BACKEND_DIR
+
+BASE_DIR = BACKEND_DIR
 
 
 @router.post("/api/upload")
 @router.post("/api/documents/upload")
+@router.post("/api/sources/upload")
 async def upload_document_spec(
     request: Request,
     files: Optional[List[UploadFile]] = File(None),

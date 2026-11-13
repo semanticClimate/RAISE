@@ -110,8 +110,9 @@ async def search_graph_entities(
 @router.get("/api/cypher")
 async def get_cypher_script(rag_engine: Any = Depends(get_rag_engine)):
     """Download Neo4j Cypher ingestion script."""
+    from src.core.config import PROCESSED_DIR
     cypher_text = rag_engine.get_cypher_script()
-    cypher_file = BASE_DIR / "data" / "processed" / "neo4j" / "academic_graph.cypher"
+    cypher_file = PROCESSED_DIR / "neo4j" / "academic_graph.cypher"
     cypher_file.parent.mkdir(parents=True, exist_ok=True)
     cypher_file.write_text(cypher_text, encoding="utf-8")
     return FileResponse(str(cypher_file), filename="academic_graph.cypher", media_type="text/plain")

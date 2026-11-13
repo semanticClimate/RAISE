@@ -1,4 +1,4 @@
-﻿"""
+"""
 Unit Test Suite for Chunking and Retrieval Integrity
 =====================================================
 Verifies that:

@@ -1,0 +1,24 @@
+{
+  "ready_documents": [
+    {
+      "filename": "NIPGR_BRIC_Annual_Report_2025.pdf",
+      "pages": 218,
+      "size_mb": 32.87,
+      "chunks_count": 322,
+      "status": "ready"
+    },
+    {
+      "filename": "test_sample.pdf",
+      "pages": 1,
+      "size_mb": 0.0,
+      "chunks_count": 1,
+      "status": "ready"
+    }
+  ],
+  "timestamp": "2026-11-13T19:30:00Z",
+  "deleted_documents": [
+    "ARE-2016-17.pdf",
+    "ApplicationForm.pdf",
+    "nipgr_annual_report_2024_25.pdf"
+  ]
+}

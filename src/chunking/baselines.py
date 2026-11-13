@@ -1,4 +1,4 @@
-﻿"""
+"""
 Baseline Chunking Strategies (Fixed-Size & Recursive)
 =====================================================
 Component: `src.chunking.baselines`
