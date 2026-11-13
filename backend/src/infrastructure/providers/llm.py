@@ -65,12 +65,12 @@ class LocalVLLMProvider(BaseLLMProvider):
 
     def __init__(self, base_url: Optional[str] = None, model_name: Optional[str] = None):
         self.base_url = (base_url or os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")).rstrip("/")
-        self.model_name = model_name or os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME)
+        self.model_name = model_name or os.getenv("VLLM_MODEL_NAME", models.VLLM_MODEL_NAME)
 
     def is_available(self) -> bool:
         """Fast non-blocking check to determine if the local vLLM server is alive across common ports."""
         candidate_urls = [self.base_url]
-        for fallback in ["http://localhost:8002/v1", "http://127.0.0.1:8002/v1", "http://localhost:8000/v1", "http://127.0.0.1:8000/v1", "http://localhost:8080/v1"]:
+        for fallback in ["http://localhost:8002/v1", "http://127.0.0.1:8002/v1", "http://localhost:8080/v1", "http://localhost:1234/v1"]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
         for u in candidate_urls:
@@ -83,7 +83,12 @@ class LocalVLLMProvider(BaseLLMProvider):
                             models_data = json.loads(resp.read().decode("utf-8"))
                             if "data" in models_data and len(models_data["data"]) > 0:
                                 discovered_id = models_data["data"][0].get("id")
-                                if discovered_id and (self.model_name == models.LLM_MODEL_NAME or self.model_name == "default"):
+                                if discovered_id and (
+                                    self.model_name == models.LLM_MODEL_NAME
+                                    or self.model_name == models.VLLM_MODEL_NAME
+                                    or self.model_name == "default"
+                                    or not self.model_name
+                                ):
                                     self.model_name = discovered_id
                         except Exception:
                             pass
@@ -270,6 +275,9 @@ class LocalTransformersProvider(BaseLLMProvider):
     def is_available(self) -> bool:
         """Check if local environment supports torch inference."""
         try:
+            m_lower = (self.model_name or "").lower()
+            if any(cloud in m_lower for cloud in ["gemini", "openai", "claude", "command-r"]):
+                return False
             import torch
             return bool(torch.cuda.is_available() or os.getenv("ALLOW_CPU_LOCAL_LLM", "true").lower() in ("true", "1"))
         except Exception:
@@ -304,9 +312,15 @@ class LocalTransformersProvider(BaseLLMProvider):
                         local_files_only=local_only,
                     )
                     break
-                except Exception:
+                except Exception as _load_err:
+                    err_msg = str(_load_err)
+                    if "QuantizeConfig" in err_msg or "quant" in err_msg.lower():
+                        logger.warning(
+                            f"In-process local LLM '{self.model_name}' requires external quantization packages: {_load_err}. "
+                            "Please use running vLLM or Ollama instance for quantized models."
+                        )
                     if not local_only:
-                        raise
+                        raise RuntimeError(f"Could not load in-process local LLM '{self.model_name}': {_load_err}")
             if tok is None or mod is None:
                 raise RuntimeError(f"Could not load local LLM {self.model_name}")
             mod.eval()
@@ -466,7 +480,56 @@ class LocalOllamaProvider(BaseLLMProvider):
 
     def __init__(self, base_url: Optional[str] = None, model_name: Optional[str] = None):
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
-        self.model_name = model_name or os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+        self.model_name = model_name or os.getenv("OLLAMA_MODEL", models.OLLAMA_MODEL_NAME)
+
+    def is_available(self) -> bool:
+        """Fast non-blocking check to determine if local Ollama server is alive and has models."""
+        candidate_urls = [self.base_url]
+        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434"]:
+            if fallback not in candidate_urls:
+                candidate_urls.append(fallback)
+        for u in candidate_urls:
+            try:
+                # 1. Probe Ollama native tags endpoint
+                req = urllib.request.Request(f"{u}/api/tags", headers={"User-Agent": "RAISE-Provider"})
+                with urllib.request.urlopen(req, timeout=0.35) as resp:
+                    if resp.status == 200:
+                        self.base_url = u
+                        data = json.loads(resp.read().decode("utf-8"))
+                        model_list = [m.get("name") for m in data.get("models", []) if m.get("name")]
+                        if model_list and (not self.model_name or self.model_name == models.OLLAMA_MODEL_NAME):
+                            self.model_name = model_list[0]
+                        return True
+            except Exception:
+                pass
+            try:
+                # 2. Probe Ollama OpenAI-compatible models endpoint
+                req = urllib.request.Request(f"{u}/v1/models", headers={"User-Agent": "RAISE-Provider"})
+                with urllib.request.urlopen(req, timeout=0.35) as resp:
+                    if resp.status == 200:
+                        self.base_url = u
+                        data = json.loads(resp.read().decode("utf-8"))
+                        model_list = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                        if model_list and (not self.model_name or self.model_name == models.OLLAMA_MODEL_NAME):
+                            self.model_name = model_list[0]
+                        return True
+            except Exception:
+                pass
+        return False
+
+    def health_check(self, timeout: float = 5.0) -> ProviderHealth:
+        """Ping local Ollama endpoint."""
+        alive = self.is_available()
+        return ProviderHealth(
+            provider=self.name,
+            configured=True,
+            credential_valid=True,
+            endpoint_reachable=alive,
+            model_available=alive,
+            functional_test=alive,
+            status="READY" if alive else "ENDPOINT_UNREACHABLE",
+            cost_mode=self.cost_mode,
+        )
 
     def complete(
         self,
