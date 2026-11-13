@@ -49,7 +49,16 @@ def _resolve_base_dir(base_dir: Optional[Path] = None) -> Path:
 
 
 def get_active_documents_list(base_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
-    """Returns list of active documents from the ingested manifest."""
+    """Returns list of active documents from the library documents catalog."""
+    try:
+        from src.api.context import get_library_documents
+        lib = get_library_documents(auto_scan=True)
+        docs = lib.get("documents", [])
+        if docs:
+            return docs
+    except Exception:
+        pass
+
     root = _resolve_base_dir(base_dir)
     manifest_file = root / "backend" / "data" / "processed" / "ingested_manifest.json"
     if not manifest_file.exists():
@@ -58,7 +67,8 @@ def get_active_documents_list(base_dir: Optional[Path] = None) -> List[Dict[str,
         return []
     try:
         data = json.loads(manifest_file.read_text(encoding="utf-8"))
-        return data.get("ready_documents", [])
+        ready = data.get("ready_documents", [])
+        return [d for d in ready if not d.get("filename", "").lower().startswith("test_")]
     except Exception:
         return []
 
