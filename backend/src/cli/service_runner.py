@@ -28,11 +28,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Ensure UTF-8 console output
+# Ensure UTF-8 unbuffered write-through console output
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", write_through=True)
 if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8", write_through=True)
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
@@ -52,6 +52,23 @@ from src.core.config import models
 
 logger = logging.getLogger("RAISE_ServiceRunner")
 
+# High-contrast TrueColor stream tags and box styling constants
+DIM = "\033[38;5;240m"
+TAG_READY = "\033[38;5;48m● READY\033[0m"
+TAG_FAST = "\033[38;5;39m⚡ FAST-PATH\033[0m"
+TAG_SYNC = "\033[38;5;220m↻ SYNC\033[0m"
+TAG_NEURAL = "\033[38;5;141m◆ NEURAL\033[0m"
+TAG_INGEST = "\033[38;5;214m╰─ INGEST\033[0m"
+TAG_RAG = "\033[38;5;45m🔍 RAG\033[0m"
+TAG_FAILOVER = "\033[38;5;196m✕ FAILOVER\033[0m"
+TAG_WARN = "\033[38;5;220m⚠️  WARN\033[0m"
+
+
+def format_stream_row(tag: str, text: str) -> str:
+    """Formats an operational event row with dim brackets and high-contrast badge."""
+    return f"{DIM}[{C.RESET}{tag}{DIM}]{C.RESET} {text}"
+
+
 # Global console prompt synchronization lock
 _console_lock = threading.Lock()
 _active_repl_prompt: Optional[str] = None
@@ -70,6 +87,8 @@ def print_supervisor_event(text: str) -> None:
             sys.stdout.flush()
         else:
             print(text)
+            sys.stdout.flush()
+
 
 
 # ==============================================================================
@@ -131,18 +150,18 @@ def fetch_json_endpoint(url: str, timeout: float = 3.0) -> Optional[Dict[str, An
 
 
 def print_banner() -> None:
-    """Renders the top-level RAISE workstation banner."""
-    print("\n" + C.BANNER + "╔" + "═" * 76 + "╗" + C.RESET)
-    print(f"{C.BANNER}║{C.RESET}  {C.TITLE}🚀 RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} — {C.CYAN}MONOREPO WORKSTATION{C.RESET}{' ' * 16}{C.BANNER}║{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}  {C.MUTED}Backend API : http://localhost:8000   | Swagger Docs: http://localhost:8000/docs{C.RESET}{C.BANNER}║{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173   | Architecture: Hybrid GraphRAG + NLI{C.RESET}{C.BANNER}║{C.RESET}")
-    print(C.BANNER + "╚" + "═" * 76 + "╝" + C.RESET + "\n")
+    """Renders the top-level RAISE workstation banner with clean rounded box geometry."""
+    print("\n" + DIM + "╭─" + "─" * 74 + "╮" + C.RESET)
+    print(f"{DIM}│{C.RESET}  {C.TITLE}🚀 RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} — {C.CYAN}MONOREPO WORKSTATION{C.RESET}{' ' * 16}{DIM}│{C.RESET}")
+    print(f"{DIM}│{C.RESET}  {C.MUTED}Backend API : http://localhost:8000   | Swagger Docs: http://localhost:8000/docs{C.RESET}{DIM}│{C.RESET}")
+    print(f"{DIM}│{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173   | Architecture: Hybrid GraphRAG + NLI{C.RESET}{DIM}│{C.RESET}")
+    print(DIM + "╰─" + "─" * 74 + "╯" + C.RESET + "\n")
 
 
 def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     """Renders real-time diagnostic dashboard modeled from dev_main.py."""
-    print(C.BANNER + "╔" + "═" * 76 + "╗" + C.RESET)
-    print(f"{C.BANNER}║{C.RESET} {C.TITLE}🩺  RAISE WORKSTATION HEALTH & SUBSYSTEM DIAGNOSTICS{C.RESET}{' ' * 23}{C.BANNER}║{C.RESET}")
+    print(DIM + "╭─" + "─" * 74 + "╮" + C.RESET)
+    print(f"{DIM}│{C.RESET} {C.TITLE}🩺  RAISE WORKSTATION HEALTH & SUBSYSTEM DIAGNOSTICS{C.RESET}{' ' * 23}{DIM}│{C.RESET}")
 
     # 1. Hardware Summary (with instantaneous local fallback)
     hw = fetch_json_endpoint("http://127.0.0.1:8000/api/system/hardware", timeout=1.5)
@@ -175,8 +194,8 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
             hw_line = f"GPU: {gpu_str} | RAM: {ram_str} ({cpu_cnt} Cores)"
         except Exception:
             hw_line = "Hardware detection ready"
-    print(f"{C.BANNER}║{C.RESET} {C.MUTED}Hardware: {hw_line}{C.RESET}")
-    print(C.BANNER + "╠" + "═" * 76 + "╣" + C.RESET)
+    print(f"{DIM}│{C.RESET} {C.MUTED}Hardware: {hw_line}{C.RESET}")
+    print(DIM + "├─" + "─" * 74 + "┤" + C.RESET)
 
     # 2. Subsystems
     # Backend Config & Provenance Models
@@ -224,27 +243,27 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     reranker_name = prov.get("reranker_model") or cfg.get("reranker_model") or models.RERANKER_MODEL_NAME
     nli_name = prov.get("nli_verifier_model") or cfg.get("nli_verifier_model") or models.NLI_MODEL_NAME
 
-    print(f"{C.BANNER}║{C.RESET} {C.SECTION}CONNECTION & NETWORK TOPOLOGY:{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Backend API Gateway       : {C.WHITE}http://localhost:8000{C.RESET} | Swagger: {C.CYAN}/docs{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Frontend Workstation UI   : {C.WHITE}http://localhost:5173{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Live Telemetry Stream     : {C.WHITE}ws://localhost:8000/ws/traffic{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET} {C.SECTION}STORAGE & DATABASE SUBSTRATES:{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Vector Store (ChromaDB)   : {chroma_str}")
-    print(f"{C.BANNER}║{C.RESET}   • Knowledge Graph (Neo4j)   : {neo4j_str}")
-    print(f"{C.BANNER}║{C.RESET}   • Semantic Cache (Redis)    : {redis_str}")
-    print(f"{C.BANNER}║{C.RESET}   • Relational DB (Postgres)  : {pg_str}")
-    print(f"{C.BANNER}║{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET} {C.SECTION}AI NEURAL MODEL PIPELINE:{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Synthesis LLM Engine      : {synth_str}")
-    print(f"{C.BANNER}║{C.RESET}   • Dense Embedding Encoder   : {C.WHITE}{encoder_name}{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Cross-Attention Reranker  : {C.WHITE}{reranker_name}{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Claim Entailment Verifier : {C.WHITE}{nli_name}{C.RESET}")
+    print(f"{DIM}│{C.RESET} {C.SECTION}CONNECTION & NETWORK TOPOLOGY:{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Backend API Gateway       : {C.WHITE}http://localhost:8000{C.RESET} | Swagger: {C.CYAN}/docs{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Frontend Workstation UI   : {C.WHITE}http://localhost:5173{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Live Telemetry Stream     : {C.WHITE}ws://localhost:8000/ws/traffic{C.RESET}")
+    print(f"{DIM}│{C.RESET}")
+    print(f"{DIM}│{C.RESET} {C.SECTION}STORAGE & DATABASE SUBSTRATES:{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Vector Store (ChromaDB)   : {chroma_str}")
+    print(f"{DIM}│{C.RESET}   • Knowledge Graph (Neo4j)   : {neo4j_str}")
+    print(f"{DIM}│{C.RESET}   • Semantic Cache (Redis)    : {redis_str}")
+    print(f"{DIM}│{C.RESET}   • Relational DB (Postgres)  : {pg_str}")
+    print(f"{DIM}│{C.RESET}")
+    print(f"{DIM}│{C.RESET} {C.SECTION}AI NEURAL MODEL PIPELINE:{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Synthesis LLM Engine      : {synth_str}")
+    print(f"{DIM}│{C.RESET}   • Dense Embedding Encoder   : {C.WHITE}{encoder_name}{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Cross-Attention Reranker  : {C.WHITE}{reranker_name}{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Claim Entailment Verifier : {C.WHITE}{nli_name}{C.RESET}")
 
     # Active Documents
     docs = get_active_documents_list()
-    print(f"{C.BANNER}║{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET} {C.SECTION}REGISTERED DOCUMENT LIBRARY ({len(docs)} documents):{C.RESET}")
+    print(f"{DIM}│{C.RESET}")
+    print(f"{DIM}│{C.RESET} {C.SECTION}REGISTERED DOCUMENT LIBRARY ({len(docs)} documents):{C.RESET}")
     if docs:
         for idx, d in enumerate(docs[:8], 1):
             fn = d.get("filename", "document.pdf")
@@ -252,18 +271,18 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
             pgs = d.get("pages", 0)
             chks = d.get("chunks_count", 0)
             sz = f"{d.get('size_mb', 0):.1f}MB"
-            print(f"{C.BANNER}║{C.RESET}   [{C.NUM}{idx}{C.RESET}] {C.WHITE}{short_fn:<38}{C.RESET} {C.NUM}{pgs:>3}p{C.RESET} | {C.NUM}{chks:>3} chks{C.RESET} | {sz:>7}")
+            print(f"{DIM}│{C.RESET}   [{C.NUM}{idx}{C.RESET}] {C.WHITE}{short_fn:<38}{C.RESET} {C.NUM}{pgs:>3}p{C.RESET} | {C.NUM}{chks:>3} chks{C.RESET} | {sz:>7}")
         if len(docs) > 8:
-            print(f"{C.BANNER}║{C.RESET}   ... and {len(docs) - 8} more documents (use 'docs' to list all)")
+            print(f"{DIM}│{C.RESET}   ... and {len(docs) - 8} more documents (use 'docs' to list all)")
     else:
-        print(f"{C.BANNER}║{C.RESET}   {C.WARN}⚠️  No documents in catalog. Upload PDFs via Web UI or 'upload <path>'{C.RESET}")
+        print(f"{DIM}│{C.RESET}   {C.WARN}⚠️  No documents in catalog. Upload PDFs via Web UI or 'upload <path>'{C.RESET}")
 
     scope_name = f"'{focused_doc}' (Single Document Target)" if focused_doc else "ALL REGISTERED DOCUMENTS (Multi-Hop Graph Scope)"
-    print(f"{C.BANNER}║{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET} {C.SECTION}INTERACTIVE CONSOLE STATE:{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Active Research Scope     : {C.ACCENT}{scope_name}{C.RESET}")
-    print(f"{C.BANNER}║{C.RESET}   • Web UI Link               : {C.CYAN}http://localhost:5173{C.RESET}")
-    print(C.BANNER + "╚" + "═" * 76 + "╝" + C.RESET + "\n")
+    print(f"{DIM}│{C.RESET}")
+    print(f"{DIM}│{C.RESET} {C.SECTION}INTERACTIVE CONSOLE STATE:{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Active Research Scope     : {C.ACCENT}{scope_name}{C.RESET}")
+    print(f"{DIM}│{C.RESET}   • Web UI Link               : {C.CYAN}http://localhost:5173{C.RESET}")
+    print(DIM + "╰─" + "─" * 74 + "╯" + C.RESET + "\n")
 
 
 def print_live_status_dashboard(focused_doc: Optional[str] = None) -> None:
@@ -391,16 +410,22 @@ class DualProcessSupervisor:
         self._last_progress_print = 0.0
 
     def start_backend(self) -> bool:
-        """Starts the FastAPI backend service."""
+        """Starts the FastAPI backend service with unbuffered I/O."""
         server_script = self.backend_dir / "server.py"
         cmd = [self.python_exe, "-u", str(server_script), "--no-tunnel"]
         
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env["FORCE_COLOR"] = "1"
+        env["TERM"] = "xterm-256color"
+
         try:
             self.backend_proc = subprocess.Popen(
                 cmd,
                 cwd=str(self.backend_dir),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=env,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -415,12 +440,16 @@ class DualProcessSupervisor:
             return False
 
     def start_frontend(self) -> bool:
-        """Starts the React / Vite frontend service."""
+        """Starts the React / Vite frontend service with unbuffered I/O."""
         vite_bin = self.frontend_dir / "node_modules" / "vite" / "bin" / "vite.js"
         if vite_bin.exists():
             cmd = [self.node_exe, str(vite_bin), "--clearScreen", "false"]
         else:
             cmd = ["cmd.exe", "/c", "npm", "run", "dev", "--", "--clearScreen", "false"]
+
+        env = os.environ.copy()
+        env["FORCE_COLOR"] = "1"
+        env["TERM"] = "xterm-256color"
 
         try:
             self.frontend_proc = subprocess.Popen(
@@ -428,6 +457,7 @@ class DualProcessSupervisor:
                 cwd=str(self.frontend_dir),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=env,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -462,77 +492,77 @@ class DualProcessSupervisor:
 
                 clean_line = sanitize_text(line)
 
-                # 1. Capture model loading / weights progress (throttled):
+                # 1. Capture model loading / weights progress (throttled at 0.25s for instantaneous telemetry):
                 if any(kw in clean_line for kw in ("it/s", "%|", "Loading weights:", "Downloading")):
                     if ("100%|" in clean_line or "Loaded 20 prompts" in clean_line) and not self._model_ready_announced:
                         self._model_ready_announced = True
-                        print_supervisor_event(f"{C.SUCCESS}✨ [MODEL-READY] Neural embedding weights initialized successfully.{C.RESET}")
+                        print_supervisor_event(format_stream_row(TAG_READY, "Neural embedding weights initialized successfully."))
                     else:
                         now_ts = time.time()
-                        if now_ts - self._last_progress_print >= 4.0:
+                        if now_ts - self._last_progress_print >= 0.25:
                             self._last_progress_print = now_ts
                             short_prog = clean_line.strip()
                             if len(short_prog) > 85:
                                 short_prog = short_prog[:82] + "..."
-                            print_supervisor_event(f"{C.MUTED}⏳ [NEURAL] {short_prog}{C.RESET}")
+                            print_supervisor_event(format_stream_row(TAG_NEURAL, short_prog))
                     continue
 
                 # 2. Check for high-value lifecycle & routing events first
                 if "Loading SentenceTransformer model" in clean_line:
                     model_id = clean_line.split("from")[-1].strip().rstrip(".")
-                    print_supervisor_event(f"{C.CYAN}🧠 [NEURAL] Initializing SentenceTransformer ({model_id})...{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_NEURAL, f"Initializing SentenceTransformer ({model_id})..."))
                     continue
 
                 if "Starting neural models pre-warming" in clean_line:
-                    print_supervisor_event(f"{C.CYAN}⚡ [WARMUP] Pre-warming neural inference stack (reranker, NLI)...{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_FAST, "Pre-warming neural inference stack (reranker, NLI)..."))
                     continue
 
                 if "Neural models pre-warming completed successfully" in clean_line:
-                    print_supervisor_event(f"{C.SUCCESS}✨ [NEURAL] All neural models warmed up and ready.{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_READY, "All neural models warmed up and ready."))
                     continue
 
                 if "Successfully mounted all core RAISE GraphRAG routes" in clean_line:
-                    print_supervisor_event(f"{C.SUCCESS}📦 [CORE] All GraphRAG routers mounted successfully.{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_READY, "All GraphRAG routers mounted successfully."))
                     continue
 
                 if "[GRAPH-RAG]" in clean_line:
                     clean_rag = clean_line.split("[GRAPH-RAG]")[-1].strip()
-                    print_supervisor_event(f"{C.CYAN}{clean_rag}{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_RAG, clean_rag))
                     continue
 
                 if "switched to" in clean_line and "Reason" in clean_line:
                     clean_fo = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
-                    print_supervisor_event(f"{C.WARN}🔄 [FAILOVER] {clean_fo}{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_FAILOVER, clean_fo))
                     continue
 
                 if "Permanently disabled" in clean_line:
                     clean_dis = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
-                    print_supervisor_event(f"{C.WARN}⚠️  [WARNING] {clean_dis}{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_WARN, clean_dis))
                     continue
 
                 if "[INFERENCE]" in clean_line or "Executing task" in clean_line:
                     clean_inf = clean_line.split("[INFERENCE]")[-1].replace("raise.infrastructure.providers.router:", "").strip()
                     clean_inf = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_inf)
-                    print_supervisor_event(f"{C.ACCENT}⚡ [ROUTER] {clean_inf}{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_RAG, clean_inf))
                     continue
 
                 if "Synthesis Success" in clean_line:
                     clean_syn = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
-                    print_supervisor_event(f"{C.SUCCESS}✍️  [SYNTHESIS] {clean_syn}{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_FAST, f"Synthesis Success: {clean_syn}"))
                     continue
 
                 if "POST /api/documents/upload" in clean_line:
-                    print_supervisor_event(f"{C.SUCCESS}📄 [INGESTION] Document upload received from UI Library.{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_INGEST, "Document upload received from UI Library."))
                     continue
 
                 if "GET /api/pdf/" in clean_line and "200 OK" not in clean_line:
                     pdf_match = re.search(r'GET /api/pdf/([^ /]+)', clean_line)
                     pdf_name = urllib.parse.unquote(pdf_match.group(1)) if pdf_match else "PDF"
-                    print_supervisor_event(f"{C.MUTED}📖 [DOCUMENT VIEWER] Streaming PDF: {pdf_name}{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_SYNC, f"Streaming PDF: {pdf_name}"))
                     continue
 
                 if "ready in" in clean_line or "Local:" in clean_line:
-                    print_supervisor_event(f"{C.SUCCESS}🚀 [FRONTEND] React / Vite workstation ready on http://localhost:5173{C.RESET}")
+                    print_supervisor_event(format_stream_row(TAG_READY, "React / Vite workstation ready on http://localhost:5173"))
                     continue
 
                 # 3. Suppress high-frequency background polling endpoints, raw HTTP access logs & internal noise
@@ -785,7 +815,7 @@ def main():
         pass
 
     # 1. Launch Backend
-    print(f"{C.CYAN}[RAISE] Launching Backend on http://localhost:8000...{C.RESET}")
+    print_supervisor_event(format_stream_row(TAG_FAST, "Launching Backend on http://localhost:8000..."))
     if not supervisor.start_backend():
         print(f"{C.DANGER}[FATAL] Could not launch backend server.{C.RESET}")
         return
@@ -795,19 +825,19 @@ def main():
         print(f"{C.DANGER}[FATAL] Backend failed to become healthy. Check backend.log for tracebacks.{C.RESET}")
         supervisor.shutdown()
         return
-    print(f"{C.SUCCESS}[RAISE] Backend Gateway is LIVE on http://localhost:8000{C.RESET}")
+    print_supervisor_event(format_stream_row(TAG_READY, "Backend Gateway is LIVE on http://localhost:8000"))
 
     # 2. Launch Frontend
-    print(f"{C.CYAN}[RAISE] Launching Frontend on http://localhost:5173...{C.RESET}")
+    print_supervisor_event(format_stream_row(TAG_FAST, "Launching Frontend on http://localhost:5173..."))
     if not supervisor.start_frontend():
         print(f"{C.DANGER}[FATAL] Could not launch frontend server.{C.RESET}")
         supervisor.shutdown()
         return
 
     if not supervisor.wait_for_frontend(timeout_sec=35):
-        print(f"{C.WARN}[NOTICE] Frontend taking longer to initialize. Continuing...{C.RESET}")
+        print_supervisor_event(format_stream_row(TAG_WARN, "Frontend taking longer to initialize. Continuing..."))
     else:
-        print(f"{C.SUCCESS}[RAISE] Frontend Workstation is LIVE on http://localhost:5173{C.RESET}")
+        print_supervisor_event(format_stream_row(TAG_READY, "Frontend Workstation is LIVE on http://localhost:5173"))
 
     # Launch browser if not disabled
     no_browser = any(arg in sys.argv for arg in ("--no-browser", "-nb", "--nobrowser"))
@@ -816,7 +846,7 @@ def main():
         try:
             import webbrowser
             webbrowser.open(target_url)
-            print(f"{C.MUTED}[NOTE] Browser opened to {target_url}. Terminal is ready for commands!{C.RESET}")
+            print_supervisor_event(format_stream_row(TAG_SYNC, f"Browser opened to {target_url}."))
         except Exception:
             pass
 
@@ -824,110 +854,153 @@ def main():
     focused_doc: Optional[str] = None
     print_live_status_dashboard(focused_doc=focused_doc)
 
-    print(C.BANNER + "═" * 76 + C.RESET)
-    print(f" {C.TITLE}💬 RAISE INTERACTIVE TERMINAL READY{C.RESET}")
-    print(f" {C.MUTED}Type a question to run research, 'status' for telemetry, 'doctor' to test, or 'exit'{C.RESET}")
-    print(C.BANNER + "═" * 76 + C.RESET + "\n")
+    print(DIM + "╭─" + "─" * 74 + "╮" + C.RESET)
+    print(f"{DIM}│{C.RESET}  {C.TITLE}💬 RAISE INTERACTIVE TERMINAL READY{C.RESET}{' ' * 37}{DIM}│{C.RESET}")
+    print(f"{DIM}│{C.RESET}  {C.MUTED}Type a question, 'status' for telemetry, 'doctor' to test, or 'exit'{C.RESET}{' ' * 5}{DIM}│{C.RESET}")
+    print(DIM + "╰─" + "─" * 74 + "╯" + C.RESET + "\n")
 
-    # Interactive REPL Loop
-    while True:
-        try:
-            scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
-            prompt_str = f"RAISE [{C.ACCENT}{scope_badge}{C.RESET}] > "
-            
-            global _active_repl_prompt
-            _active_repl_prompt = prompt_str
+    # Non-blocking interactive input bar using prompt_toolkit with patch_stdout
+    try:
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.patch_stdout import patch_stdout
+        from prompt_toolkit.formatted_text import ANSI
+        has_pt = True
+    except ImportError:
+        has_pt = False
+
+    if has_pt:
+        pt_session = PromptSession()
+        with patch_stdout(raw=True):
+            while True:
+                try:
+                    scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
+                    prompt_str = (
+                        f"{DIM}╭─{C.RESET} {C.ACCENT}RAISE{C.RESET} [{C.TITLE}{scope_badge}{C.RESET}] {DIM}─╮{C.RESET}\n"
+                        f"{DIM}╰─>{C.RESET} "
+                    )
+                    user_input = pt_session.prompt(ANSI(prompt_str)).strip()
+                    if not user_input:
+                        continue
+                    should_exit, focused_doc = dispatch_repl_command(user_input, focused_doc, supervisor)
+                    if should_exit:
+                        break
+                except (KeyboardInterrupt, EOFError):
+                    break
+                except Exception as err:
+                    print(f"{C.DANGER}[ERROR] Console error: {err}{C.RESET}")
+    else:
+        while True:
             try:
-                user_input = input(prompt_str).strip()
-            finally:
-                _active_repl_prompt = None
+                scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
+                prompt_str = f"RAISE [{C.ACCENT}{scope_badge}{C.RESET}] > "
+                
+                global _active_repl_prompt
+                _active_repl_prompt = prompt_str
+                try:
+                    user_input = input(prompt_str).strip()
+                finally:
+                    _active_repl_prompt = None
 
-            if not user_input:
-                continue
+                if not user_input:
+                    continue
 
-            cmd_lower = user_input.lower()
-
-            if cmd_lower in ("exit", "quit", "q", ":q"):
+                should_exit, focused_doc = dispatch_repl_command(user_input, focused_doc, supervisor)
+                if should_exit:
+                    break
+            except (KeyboardInterrupt, EOFError):
                 break
-            elif cmd_lower in ("help", "?", "commands"):
-                print_help_cheatsheet()
-            elif cmd_lower in ("status", "health", "info"):
-                print_live_status_dashboard(focused_doc=focused_doc)
-            elif cmd_lower in ("doctor", "diag", "test"):
-                run_system_doctor()
-            elif cmd_lower in ("clear", "cls"):
-                os.system("cls" if os.name == "nt" else "clear")
-                print_banner()
-                print_live_status_dashboard(focused_doc=focused_doc)
-            elif cmd_lower in ("docs", "list", "documents"):
-                docs = get_active_documents_list()
-                print(f"\n{C.TITLE}📚 Active Ingested Document Catalog ({len(docs)} files):{C.RESET}")
-                for idx, d in enumerate(docs, 1):
-                    fn = d.get("filename", "")
-                    pgs = d.get("pages", 0)
-                    chks = d.get("chunks_count", 0)
-                    sz = f"{d.get('size_mb', 0):.1f}MB"
-                    foc_marker = f" {C.SUCCESS}◄ ACTIVE TARGET{C.RESET}" if focused_doc and focused_doc.lower() in fn.lower() else ""
-                    print(f"  [{C.NUM}{idx}{C.RESET}] {C.WHITE}{fn:<40}{C.RESET} | {pgs:>3}p | {chks:>4} chks | {sz:>7}{foc_marker}")
-                print("")
-            elif cmd_lower.startswith("attach "):
-                target = user_input[7:].strip()
-                docs = get_active_documents_list()
-                matched = None
-                if target.isdigit():
-                    idx = int(target) - 1
-                    if 0 <= idx < len(docs):
-                        matched = docs[idx].get("filename")
-                else:
-                    for d in docs:
-                        if target.lower() in d.get("filename", "").lower():
-                            matched = d.get("filename")
-                            break
-                if matched:
-                    focused_doc = matched
-                    print(f"{C.SUCCESS}🎯 Attached focus target: '{focused_doc}'{C.RESET}\n")
-                else:
-                    print(f"{C.WARN}⚠️  Document matching '{target}' not found.{C.RESET}\n")
-            elif cmd_lower in ("detach", "attach all", "clear focus"):
-                focused_doc = None
-                print(f"{C.SUCCESS}🎯 Research scope reset to ALL DOCUMENTS.{C.RESET}\n")
-            elif cmd_lower == "logs backend":
-                print(f"\n{C.TITLE}📜 Latest Backend Logs (last 30 lines):{C.RESET}")
-                with supervisor.log_lock:
-                    for l in supervisor.backend_recent_logs[-30:]:
-                        print(f"  {l}")
-                print("")
-            elif cmd_lower == "logs frontend":
-                print(f"\n{C.TITLE}📜 Latest Frontend Logs (last 30 lines):{C.RESET}")
-                with supervisor.log_lock:
-                    for l in supervisor.frontend_recent_logs[-30:]:
-                        print(f"  {l}")
-                print("")
-            elif cmd_lower == "model":
-                synth = get_synthesizer_status()
-                print(f"\n{C.TITLE}🤖 Active Model Configuration:{C.RESET}")
-                print(f"  • Provider : {synth.get('provider', 'unknown')}")
-                print(f"  • Model    : {synth.get('model', 'unknown')}")
-                print(f"  • Status   : {synth.get('display_string')}\n")
-            elif cmd_lower == "bench":
-                print(f"\n{C.TITLE}⚡ Running Quick 3-Query Benchmark Verification...{C.RESET}")
-                sample_queries = [
-                    "What is the primary mission or purpose of the institution?",
-                    "What are the major academic programmes offered?",
-                    "Summarize key research and industry collaboration highlights.",
-                ]
-                for q in sample_queries:
-                    execute_terminal_query(q, focused_doc=focused_doc)
-            else:
-                # Regular user query
-                execute_terminal_query(user_input, focused_doc=focused_doc)
-
-        except (KeyboardInterrupt, EOFError):
-            break
-        except Exception as err:
-            print(f"{C.DANGER}[ERROR] Console error: {err}{C.RESET}")
+            except Exception as err:
+                print(f"{C.DANGER}[ERROR] Console error: {err}{C.RESET}")
 
     supervisor.shutdown()
+
+
+def dispatch_repl_command(
+    user_input: str,
+    focused_doc: Optional[str],
+    supervisor: DualProcessSupervisor,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Dispatches interactive REPL commands.
+    Returns (should_exit, updated_focused_doc).
+    """
+    cmd_lower = user_input.lower().strip()
+    if cmd_lower in ("exit", "quit", "q", ":q"):
+        return True, focused_doc
+    elif cmd_lower in ("help", "?", "commands"):
+        print_help_cheatsheet()
+    elif cmd_lower in ("status", "health", "info"):
+        print_live_status_dashboard(focused_doc=focused_doc)
+    elif cmd_lower in ("doctor", "diag", "test"):
+        run_system_doctor()
+    elif cmd_lower in ("clear", "cls"):
+        os.system("cls" if os.name == "nt" else "clear")
+        print_banner()
+        print_live_status_dashboard(focused_doc=focused_doc)
+    elif cmd_lower in ("docs", "list", "documents"):
+        docs = get_active_documents_list()
+        print(f"\n{C.TITLE}📚 Active Ingested Document Catalog ({len(docs)} files):{C.RESET}")
+        for idx, d in enumerate(docs, 1):
+            fn = d.get("filename", "")
+            pgs = d.get("pages", 0)
+            chks = d.get("chunks_count", 0)
+            sz = f"{d.get('size_mb', 0):.1f}MB"
+            foc_marker = f" {C.SUCCESS}◄ ACTIVE TARGET{C.RESET}" if focused_doc and focused_doc.lower() in fn.lower() else ""
+            print(f"  [{C.NUM}{idx}{C.RESET}] {C.WHITE}{fn:<40}{C.RESET} | {pgs:>3}p | {chks:>4} chks | {sz:>7}{foc_marker}")
+        print("")
+    elif cmd_lower.startswith("attach "):
+        target = user_input[7:].strip()
+        docs = get_active_documents_list()
+        matched = None
+        if target.isdigit():
+            idx = int(target) - 1
+            if 0 <= idx < len(docs):
+                matched = docs[idx].get("filename")
+        else:
+            for d in docs:
+                if target.lower() in d.get("filename", "").lower():
+                    matched = d.get("filename")
+                    break
+        if matched:
+            focused_doc = matched
+            print(f"{C.SUCCESS}🎯 Attached focus target: '{focused_doc}'{C.RESET}\n")
+        else:
+            print(f"{C.WARN}⚠️  Document matching '{target}' not found.{C.RESET}\n")
+    elif cmd_lower in ("detach", "attach all", "clear focus"):
+        focused_doc = None
+        print(f"{C.SUCCESS}🎯 Research scope reset to ALL DOCUMENTS.{C.RESET}\n")
+    elif cmd_lower == "logs backend":
+        print(f"\n{C.TITLE}📜 Latest Backend Logs (last 30 lines):{C.RESET}")
+        with supervisor.log_lock:
+            for l in supervisor.backend_recent_logs[-30:]:
+                print(f"  {l}")
+        print("")
+    elif cmd_lower == "logs frontend":
+        print(f"\n{C.TITLE}📜 Latest Frontend Logs (last 30 lines):{C.RESET}")
+        with supervisor.log_lock:
+            for l in supervisor.frontend_recent_logs[-30:]:
+                print(f"  {l}")
+        print("")
+    elif cmd_lower == "model":
+        synth = get_synthesizer_status()
+        print(f"\n{C.TITLE}🤖 Active Model Configuration:{C.RESET}")
+        print(f"  • Provider : {synth.get('provider', 'unknown')}")
+        print(f"  • Model    : {synth.get('model', 'unknown')}")
+        print(f"  • Status   : {synth.get('display_string')}\n")
+    elif cmd_lower == "bench":
+        print(f"\n{C.TITLE}⚡ Running Quick 3-Query Benchmark Verification...{C.RESET}")
+        sample_queries = [
+            "What is the primary mission or purpose of the institution?",
+            "What are the major academic programmes offered?",
+            "Summarize key research and industry collaboration highlights.",
+        ]
+        for q in sample_queries:
+            execute_terminal_query(q, focused_doc=focused_doc)
+    else:
+        # Regular user query
+        execute_terminal_query(user_input, focused_doc=focused_doc)
+
+    return False, focused_doc
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title RAISE
+title RAISE // Workstation CLI
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 set "BAT_FILE=%~f0"
@@ -8,34 +8,72 @@ set "BAT_DIR=%~dp0"
 set "RAISE_CLI_ARGS=%*"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
+set "PYTHONUNBUFFERED=1"
+set "FORCE_COLOR=1"
+set "TERM=xterm-256color"
 set "HF_HUB_DISABLE_PROGRESS_BARS=0"
 set "TRANSFORMERS_VERBOSITY=error"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$raw = [System.IO.File]::ReadAllText($env:BAT_FILE, [System.Text.Encoding]::UTF8); $tag = '<' + '#PS_CODE#>'; $idx = $raw.LastIndexOf($tag); if ($idx -ge 0) { Invoke-Expression $raw.Substring($idx + $tag.Length) }"
 set "EXIT_CODE=%ERRORLEVEL%"
-if %EXIT_CODE% neq 0 (if "%~1"=="" (echo. & echo [ERROR] Process exited with code %EXIT_CODE%. & pause))
+if %EXIT_CODE% neq 0 (if "%~1"=="" (echo. & echo  [x] Process exited with code %EXIT_CODE%. & pause))
 exit /b %EXIT_CODE%
 
 <#PS_CODE#>
 param([switch]$NoBrowser)
 
 $ErrorActionPreference = "Continue"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+
 # Early arguments extraction
 $rawArgs = if ($env:RAISE_CLI_ARGS) { $env:RAISE_CLI_ARGS } else { [string]::Join(" ", $args) }
 if ($rawArgs -match "(?i)--no-browser|--nobrowser|-nobrowser|-no-browser") { $NoBrowser = $true }
 $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONUTF8 = "1"
+$env:PYTHONUNBUFFERED = "1"
+$env:FORCE_COLOR = "1"
+$env:TERM = "xterm-256color"
 $env:HF_HUB_DISABLE_PROGRESS_BARS = "0"
 $env:TRANSFORMERS_VERBOSITY = "error"
+
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [enum]::Parse([Net.SecurityProtocolType], 'Tls13') } catch {}
 $ProgressPreference = 'SilentlyContinue'
+
+# Enable Windows Virtual Terminal Processing for ANSI TrueColor & Box Geometry
+try {
+    $kernel32 = Add-Type -MemberDefinition @"
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern IntPtr GetStdHandle(int nStdHandle);
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+"@ -Name "WinVTConsole" -Namespace "Win32" -PassThru
+    $hOut = $kernel32::GetStdHandle(-11)
+    $mode = 0
+    if ($kernel32::GetConsoleMode($hOut, [ref]$mode)) {
+        $kernel32::SetConsoleMode($hOut, $mode -bor 0x0004) | Out-Null
+    }
+} catch {}
+
+$Esc = [char]27
+$Dim = "$Esc[38;5;240m"
+$Reset = "$Esc[0m"
+$Bold = "$Esc[1m"
+$Cyan = "$Esc[38;5;39m"
+$Green = "$Esc[38;5;48m"
+$Yellow = "$Esc[38;5;220m"
+$Red = "$Esc[38;5;196m"
+$Magenta = "$Esc[38;5;141m"
+$White = "$Esc[38;5;255m"
 
 $repoRoot = if ($env:BAT_DIR -and (Test-Path -LiteralPath $env:BAT_DIR)) { (Resolve-Path -LiteralPath $env:BAT_DIR).Path } else { (Get-Location).Path }
 Set-Location -LiteralPath $repoRoot
 
 $backendDir = Join-Path $repoRoot "backend"; $frontendDir = Join-Path $repoRoot "frontend"
-if (-not (Test-Path (Join-Path $backendDir "server.py"))) { Write-Host "[ERROR] Backend folder not found at: $backendDir" -ForegroundColor Red; exit 1 }
-if (-not (Test-Path (Join-Path $frontendDir "package.json"))) { Write-Host "[ERROR] Frontend folder not found at: $frontendDir" -ForegroundColor Red; exit 1 }
+if (-not (Test-Path (Join-Path $backendDir "server.py"))) { Write-Host "$Dim[${Reset}${Red}✕ FATAL${Reset}${Dim}]${Reset} Backend folder not found at: $backendDir" -ForegroundColor Red; exit 1 }
+if (-not (Test-Path (Join-Path $frontendDir "package.json"))) { Write-Host "$Dim[${Reset}${Red}✕ FATAL${Reset}${Dim}]${Reset} Frontend folder not found at: $frontendDir" -ForegroundColor Red; exit 1 }
 
 $logsDir = Join-Path $backendDir "logs"
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
@@ -64,7 +102,18 @@ function global:Format-SanitizeOutput {
 }
 function prompt { "RAISE > " }
 
-function Write-Info { param([string]$Text, [string]$Color = "Cyan"); Write-Host "[RAISE] $(Format-SanitizeOutput $Text)" -ForegroundColor $Color }
+function Write-Info {
+    param([string]$Text, [string]$Color = "Cyan")
+    $sanitized = Format-SanitizeOutput $Text
+    switch ($Color.ToLower()) {
+        "green"      { Write-Host "$Dim[${Reset}${Green}● READY${Reset}${Dim}]${Reset} $sanitized" }
+        "yellow"     { Write-Host "$Dim[${Reset}${Yellow}↻ SYNC${Reset}${Dim}]${Reset} $sanitized" }
+        "darkyellow" { Write-Host "$Dim[${Reset}${Yellow}↻ SYNC${Reset}${Dim}]${Reset} $sanitized" }
+        "red"        { Write-Host "$Dim[${Reset}${Red}✕ ERROR${Reset}${Dim}]${Reset} $sanitized" }
+        "magenta"    { Write-Host "$Dim[${Reset}${Magenta}◆ NEURAL${Reset}${Dim}]${Reset} $sanitized" }
+        default      { Write-Host "$Dim[${Reset}${Cyan}RAISE${Reset}${Dim}]${Reset} $sanitized" }
+    }
+}
 Write-Info "Starting application..." "Cyan"
 
 # 1. Backend and Frontend directories verified
@@ -314,13 +363,35 @@ if (-not (Test-PythonHasCoreDeps $pythonExe)) {
     }
 }
 
-# Native Rust acceleration engine check
+# Native Rust acceleration engine check & self-provisioning
 $rustDll = Join-Path $backendDir "rust\raise_engine\target\release\raise_engine.dll"
-if ((-not (Test-Path $rustDll)) -and (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
-    $cargoToml = Join-Path $backendDir "rust\raise_engine\Cargo.toml"
-    if (Test-Path $cargoToml) {
+$cargoToml = Join-Path $backendDir "rust\raise_engine\Cargo.toml"
+if ((-not (Test-Path $rustDll)) -and (Test-Path $cargoToml)) {
+    $cargoCmd = Get-Command "cargo" -ErrorAction SilentlyContinue
+    $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
+    if (-not $cargoCmd -and (Test-Path $cargoBin)) {
+        $env:PATH = (Join-Path $env:USERPROFILE ".cargo\bin") + ";" + $env:PATH
+        $cargoCmd = Get-Command "cargo" -ErrorAction SilentlyContinue
+    }
+    if (-not $cargoCmd) {
+        Write-Info "Rust compiler not detected. Auto-provisioning Rust toolchain via rustup..." "Cyan"
+        $rustupExe = Join-Path $env:TEMP "rustup-init.exe"
+        if (Download-FileReliable -Url "https://win.rustup.rs/x86_64" -Destination $rustupExe) {
+            Write-Info "Installing minimal Rust toolchain (cargo + rustc)..." "Yellow"
+            & $rustupExe -y --default-toolchain stable --profile minimal --no-modify-path 2>&1 | Out-Null
+            Remove-Item -LiteralPath $rustupExe -Force -ErrorAction SilentlyContinue
+            if (Test-Path $cargoBin) {
+                $env:PATH = (Join-Path $env:USERPROFILE ".cargo\bin") + ";" + $env:PATH
+                $cargoCmd = Get-Command "cargo" -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    if ($cargoCmd) {
         Write-Info "Compiling native Rust acceleration engine (raise_engine)..." "Cyan"
         & cargo build --manifest-path $cargoToml --release 2>&1 | Out-Null
+        if (Test-Path $rustDll) {
+            Write-Info "Native Rust acceleration engine compiled successfully." "Green"
+        }
     }
 }
 
@@ -812,7 +883,7 @@ if ($cliMode) {
     Write-Info "Launching RAISE Interactive Research Studio CLI (dev_main.py)..." "Green"
     Push-Location -LiteralPath $backendDir
     $env:PYTHONPATH = "$backendDir;$backendDir\src"
-    & $pythonExe (Join-Path $backendDir "dev_main.py")
+    & $pythonExe -u (Join-Path $backendDir "dev_main.py")
     $code = $LASTEXITCODE
     Pop-Location
     exit $code
@@ -826,7 +897,7 @@ $forwardArgs = @()
 if ($rawArgs) {
     $forwardArgs = $rawArgs.Split(' ') | Where-Object { $_ -ne "" }
 }
-& $pythonExe -m src.cli.service_runner @forwardArgs
+& $pythonExe -u -m src.cli.service_runner @forwardArgs
 $exitCode = $LASTEXITCODE
 Pop-Location
 exit $exitCode

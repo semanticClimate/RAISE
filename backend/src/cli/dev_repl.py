@@ -78,13 +78,36 @@ def run_dev_repl(
     print(f" {C.MUTED}Commands: 'docs', 'attach <N>', 'mode <1-4>', 'export', 'status', 'help', 'exit'{C.RESET}")
     print(C.BANNER + "═" * 78 + C.RESET)
 
+    # Initialize non-blocking prompt session if prompt_toolkit is available
+    try:
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.patch_stdout import patch_stdout
+        from prompt_toolkit.formatted_text import ANSI
+        has_pt = True
+        pt_session = PromptSession()
+    except ImportError:
+        has_pt = False
+        pt_session = None
+
+    dim_border = "\033[38;5;240m"
+
     while True:
         try:
             scope_badge = f"{focused_document}" if focused_document else "ALL DOCUMENTS"
-            prompt_label = f"🔬 [{C.ACCENT}{scope_badge}{C.RESET} | {C.NUM}{session.mode.value}{C.RESET}] Enter Query: "
+            prompt_label = (
+                f"{dim_border}╭─{C.RESET} 🔬 [{C.ACCENT}{scope_badge}{C.RESET} | {C.NUM}{session.mode.value}{C.RESET}] {dim_border}─╮{C.RESET}\n"
+                f"{dim_border}╰─>{C.RESET} "
+            )
             if cli_query is not None:
                 query = cli_query.strip()
                 print(f"{prompt_label}{query}")
+            elif has_pt and pt_session is not None:
+                try:
+                    with patch_stdout(raw=True):
+                        query = pt_session.prompt(ANSI(prompt_label)).strip()
+                except (EOFError, KeyboardInterrupt):
+                    print(f"\n{C.CYAN}Exiting RAISE Dev Studio. Goodbye!{C.RESET}")
+                    break
             else:
                 try:
                     query = input(prompt_label).strip()
