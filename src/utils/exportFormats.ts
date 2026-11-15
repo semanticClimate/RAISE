@@ -110,11 +110,11 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
   const pInfo = response?.pipeline_info;
   const rawStorage = pInfo?.storage_used || response?.storage_used;
 
-  // Use complete backend multi-substrate descriptor directly without stripping markers
+  // Use authoritative backend multi-substrate descriptor directly when available
   const storageUsed =
     typeof rawStorage === 'string' && rawStorage.trim().length > 0
       ? rawStorage.trim()
-      : 'ChromaDB (Vector) + NetworkX (Graph) + Redis (Cache) + SQLite (Relational)';
+      : 'ChromaDB (Vector) + SQLite (Local)';
 
   const llmModel = pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite';
   const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
@@ -2389,10 +2389,16 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       ).trim() || '(Empty inquiry)';
       const queryLines = wordWrap(userText, 82);
 
-      const timeLabel = ex.userMsg.timestamp ? ` • ${ex.userMsg.timestamp}` : '';
+      const qTitle = `QUESTION ${ex.turnIndex}`;
+      const qTitleWidth = estimateHelveticaWidth(qTitle, 9.5);
       currentOps.push(
-        `BT /F2 9.5 Tf 0.08 0.10 0.15 rg ${cardInnerX} ${curY - 12} Td (${escapePdfText(`QUESTION #${ex.turnIndex}${timeLabel}`)}) Tj ET`
+        `BT /F2 9.5 Tf 0.08 0.10 0.15 rg ${cardInnerX} ${curY - 12} Td (${escapePdfText(qTitle)}) Tj ET`
       );
+      if (ex.userMsg.timestamp) {
+        currentOps.push(
+          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + qTitleWidth + 8} ${curY - 12} Td (${escapePdfText(ex.userMsg.timestamp)}) Tj ET`
+        );
+      }
       curY -= 16;
 
       for (const ql of queryLines) {
@@ -2427,12 +2433,19 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       const { cleanText, citations } = cleanRagResponseText(rawAns, citationsList);
 
       const durationSec = ex.assistantMsg.durationSec ?? ex.assistantMsg.response?.duration_sec;
-      const thoughtLabel = durationSec != null ? ` • Thought for ${Number(durationSec).toFixed(1)}s` : '';
+      const ansTitle = `ANSWER ${ex.turnIndex}`;
+      const ansTitleWidth = estimateHelveticaWidth(ansTitle, 9.5);
 
       ensureSpace(20);
       currentOps.push(
-        `BT /F2 9.5 Tf 0.15 0.38 0.92 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(`ANSWER #${ex.turnIndex}${thoughtLabel}`)}) Tj ET`
+        `BT /F2 9.5 Tf 0.15 0.38 0.92 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(ansTitle)}) Tj ET`
       );
+      if (durationSec != null && Number(durationSec) > 0) {
+        const thoughtText = `Thought for ${Number(durationSec).toFixed(1)}s`;
+        currentOps.push(
+          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + ansTitleWidth + 8} ${curY - 10} Td (${escapePdfText(thoughtText)}) Tj ET`
+        );
+      }
       curY -= 16;
 
       if (cleanText) {

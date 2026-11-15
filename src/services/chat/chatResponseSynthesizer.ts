@@ -83,26 +83,42 @@ export function synthesizeSubgraphResponse(
       : {};
 
   const rawStorage = rawPipelineInfo.storage_used || meta.storage_used;
-  const hasNeo4j =
-    typeof rawStorage === 'string' &&
-    rawStorage.includes('Neo4j') &&
-    !rawStorage.toLowerCase().includes('offline') &&
-    !rawStorage.toLowerCase().includes('fallback') &&
-    !rawStorage.toLowerCase().includes('degraded');
+  let storageUsed = '';
 
-  const hasNetworkX =
-    typeof rawStorage === 'string' && rawStorage.includes('NetworkX');
+  // 1. If backend provided an authoritative dynamic storage_used string, use it directly without overriding
+  if (typeof rawStorage === 'string' && rawStorage.trim().length > 0) {
+    storageUsed = rawStorage.trim();
+  } else {
+    // 2. Only add substrates that are genuinely reported active by backend telemetry / subsystems
+    const subsystems = (meta as any).subsystems || {};
+    const substrates: string[] = ['ChromaDB (Vector)'];
 
-  const substrates: string[] = ['ChromaDB (Vector)'];
-  if (hasNeo4j) {
-    substrates.push('Neo4j (Graph)');
-  } else if (hasNetworkX) {
-    substrates.push('NetworkX (Graph)');
+    const hasNeo4j =
+      Boolean(subsystems.neo4j) ||
+      (typeof rawStorage === 'string' &&
+        rawStorage.includes('Neo4j') &&
+        !rawStorage.toLowerCase().includes('offline') &&
+        !rawStorage.toLowerCase().includes('fallback') &&
+        !rawStorage.toLowerCase().includes('degraded'));
+
+    if (hasNeo4j) {
+      substrates.push('Neo4j (Graph)');
+    } else {
+      substrates.push('NetworkX (In-Memory Graph)');
+    }
+
+    if (subsystems.postgres || (meta as any).postgres_online) {
+      substrates.push('PostgreSQL');
+    } else {
+      substrates.push('SQLite (Local Relational)');
+    }
+
+    if (subsystems.redis || (meta as any).redis_online) {
+      substrates.push('Redis (Cache)');
+    }
+
+    storageUsed = substrates.join(' + ');
   }
-  substrates.push('PostgreSQL');
-  substrates.push('Redis');
-
-  const storageUsed = substrates.join(' + ');
 
   const llmProvider =
     typeof rawPipelineInfo.llm_provider === 'string' && rawPipelineInfo.llm_provider
