@@ -31,7 +31,7 @@ const EMBEDDING_PRESETS: ModelOption[] = [
     dimOrType: '768-dim',
     tokens: '8,192 tokens context',
     chunkSize: '512 tokens (64 overlap)',
-    desc: 'Dense semantic embeddings with Google Gemma 2 architecture',
+    desc: 'Dense semantic embeddings (Gemma 2 architecture)',
     recommended: true,
   },
   {
@@ -40,7 +40,7 @@ const EMBEDDING_PRESETS: ModelOption[] = [
     dimOrType: '1024-dim',
     tokens: '512 tokens max',
     chunkSize: '256 tokens (32 overlap)',
-    desc: 'MTEB top-tier benchmark dense vector substrate',
+    desc: 'BGE Large 1024-dim dense vector embeddings',
   },
   {
     id: 'nomic-ai/nomic-embed-text-v1.5',
@@ -48,7 +48,7 @@ const EMBEDDING_PRESETS: ModelOption[] = [
     dimOrType: '768-dim',
     tokens: '8,192 tokens context',
     chunkSize: '512 tokens',
-    desc: 'Extended long-context document embedding',
+    desc: 'Nomic Embed 768-dim extended context embeddings',
   },
   {
     id: 'sentence-transformers/all-MiniLM-L6-v2',
@@ -56,7 +56,7 @@ const EMBEDDING_PRESETS: ModelOption[] = [
     dimOrType: '384-dim',
     tokens: '256 tokens max',
     chunkSize: '128 tokens',
-    desc: 'SentenceTransformers lightweight low-latency embeddings',
+    desc: 'MiniLM 384-dim lightweight low-latency embeddings',
   },
 ];
 
@@ -66,24 +66,16 @@ const RERANKER_PRESETS: ModelOption[] = [
     name: 'BGE Reranker v2 M3',
     dimOrType: 'Multilingual Cross-Attention',
     tokens: '8,192 tokens max',
-    chunkSize: 'Reranks candidate top-20 chunks down to top-4',
-    desc: 'Production 8,192-token context cross-encoder matching Gemma 2',
+    chunkSize: 'Candidate top-20 chunks down to top-4',
+    desc: 'Multilingual cross-attention neural reranker',
     recommended: true,
-  },
-  {
-    id: 'jinaai/jina-reranker-v3.5',
-    name: 'Jina Reranker v3.5',
-    dimOrType: 'Listwise Cross-Attention',
-    tokens: '8,192 tokens max',
-    chunkSize: 'Reranks candidate top-20 chunks down to top-4',
-    desc: 'State-of-the-art listwise neural reranker with Flash Attention',
   },
   {
     id: 'BAAI/bge-reranker-large',
     name: 'BGE Reranker Large',
     dimOrType: 'Cross-Attention',
     tokens: '512 tokens max',
-    chunkSize: 'Reranks candidate top-20 chunks down to top-4',
+    chunkSize: 'Candidate top-20 chunks down to top-4',
     desc: 'Deep cross-attention scoring on passage chunks',
   },
   {
@@ -91,16 +83,16 @@ const RERANKER_PRESETS: ModelOption[] = [
     name: 'MS MARCO MiniLM L6',
     dimOrType: 'Lightweight Cross-Encoder',
     tokens: '512 tokens max',
-    chunkSize: 'Reranks candidate top-20 chunks down to top-4',
-    desc: 'Fast passage scoring optimized for high throughput',
+    chunkSize: 'Candidate top-20 chunks down to top-4',
+    desc: 'High-throughput passage cross-attention scoring',
   },
   {
-    id: 'mixedbread-ai/mxbai-rerank-large-v1',
-    name: 'MxBAI Rerank Large v1',
-    dimOrType: 'High Precision',
-    tokens: '512 tokens max',
-    chunkSize: 'Scoring on 512-token chunks',
-    desc: 'Fine-tuned cross-encoder for scientific domain retrieval',
+    id: 'In-Memory Heuristic Reranker',
+    name: 'In-Memory Heuristic Reranker',
+    dimOrType: 'Zero-Dependency',
+    tokens: '512 tokens',
+    chunkSize: 'Built-in lexical cross-attention fallback',
+    desc: 'In-process lexical scoring (active when neural weights offline)',
   },
 ];
 
@@ -108,34 +100,18 @@ const NLI_PRESETS: ModelOption[] = [
   {
     id: 'dleemiller/finecat-nli-ultra-l',
     name: 'FineCat NLI Ultra-L',
-    dimOrType: 'Ultra-L / RoBERTa',
+    dimOrType: 'RoBERTa / Cross-Attention',
     tokens: '512 tokens max',
     chunkSize: 'Pairwise Citation Chunk vs. Claim verification',
-    desc: 'Fine-grained claim entailment verification & strict hallucination guard',
+    desc: 'Faithfulness & factual claim verification',
     recommended: true,
-  },
-  {
-    id: 'FineCat-NLI-DeBERTa',
-    name: 'FineCat NLI DeBERTa',
-    dimOrType: 'DeBERTa-v3',
-    tokens: '512 tokens max',
-    chunkSize: 'Pairwise Citation Chunk vs. Claim verification',
-    desc: 'Standard DeBERTa-v3 claim entailment verification',
-  },
-  {
-    id: 'facebook/bart-large-mnli',
-    name: 'BART Large MNLI',
-    dimOrType: 'Zero-Shot',
-    tokens: '1,024 tokens max',
-    chunkSize: 'Multi-genre claim premise-hypothesis verification',
-    desc: 'Zero-shot multi-genre NLI classification',
   },
   {
     id: 'In-Memory Verifier',
     name: 'In-Memory Verifier',
-    dimOrType: 'Zero-Dep',
+    dimOrType: 'Zero-Dependency',
     tokens: '512 tokens',
-    chunkSize: 'Heuristic lexical premise checking',
+    chunkSize: 'Deterministic lexical claim verification',
     desc: 'Zero-dependency local verification fallback',
   },
 ];
@@ -144,7 +120,10 @@ export const NeuralStep: React.FC = () => {
   const { config, updateConfig } = useControlCenterStore();
 
   const currentEmbedding = config.embeddingModel || 'google/embeddinggemma-2';
-  const currentReranker = config.rerankerModel || 'jinaai/jina-reranker-v3.5';
+  const currentReranker =
+    config.rerankerModel && config.rerankerModel !== 'jinaai/jina-reranker-v3.5'
+      ? config.rerankerModel
+      : 'BAAI/bge-reranker-v2-m3';
   const currentNli = config.nliVerifierModel || 'dleemiller/finecat-nli-ultra-l';
   const currentDevice = config.neuralDevice || 'auto';
 
@@ -375,6 +354,7 @@ export const NeuralStep: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {RERANKER_PRESETS.map((m) => {
               const isSelected = !showCustomReranker && currentReranker === m.id;
+              const isZeroDep = m.id.startsWith('In-Memory');
               const cached = isAssetCached(m.id);
               return (
                 <button
@@ -393,7 +373,11 @@ export const NeuralStep: React.FC = () => {
                   <div className="min-w-0 pr-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-bold truncate">{m.name}</span>
-                      {cached ? (
+                      {isZeroDep ? (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          Zero-Dependency
+                        </span>
+                      ) : cached ? (
                         <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
                           Cached On-Device
                         </span>
