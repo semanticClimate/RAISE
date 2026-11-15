@@ -25,77 +25,9 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
   variant = 'desktop',
   className = '',
 }) => {
+  // Mobile pill strip removed: on smaller screens the drawer toggle / source badge is used instead
   if (variant === 'mobile') {
-    if (selectedDocs.length === 0) return null;
-    return (
-      <div
-        className={`flex sm:hidden items-center gap-1.5 mb-1.5 px-2.5 py-1 bg-white/95 dark:bg-[#1e1f20]/95 border border-slate-200/90 dark:border-white/10 rounded-full shadow-xs overflow-x-auto scrollbar-none animate-in fade-in slide-in-from-bottom-1 select-none ${className}`}
-        data-purpose="mobile-attached-sources"
-      >
-        <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider pl-0.5 shrink-0">
-          Sources ({selectedDocs.length}):
-        </span>
-        {selectedDocs.map((file) => {
-          const ready = isDocReady(file);
-          const isProcessing = !ready;
-          const progress = file.uploadProgress ?? (isProcessing ? 45 : 100);
-
-          return (
-            <div
-              key={`mob-${file.id}`}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/10 shrink-0 text-[11px]"
-            >
-              <span
-                onClick={() => {
-                  if (ready) {
-                    if (file.name.toLowerCase().endsWith('.pdf')) {
-                      useDocumentViewerStore.getState().openDocument(file.name, 1);
-                      onViewPdf?.(file.name, 1);
-                    } else if (onOpenDrawer) {
-                      onOpenDrawer();
-                    } else {
-                      useDocumentViewerStore.getState().openDocument(file.name, 1);
-                      onViewPdf?.(file.name, 1);
-                    }
-                  }
-                }}
-                className={`truncate max-w-[100px] font-medium text-slate-700 dark:text-slate-200 ${
-                  ready ? 'cursor-pointer hover:underline' : ''
-                }`}
-                title={ready ? `View ${file.name}` : undefined}
-              >
-                {file.name}
-              </span>
-              {isProcessing ? (
-                <div className="w-3 h-3">
-                  <CircularUploadProgress progress={progress} size={12} strokeWidth={2} />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveDoc(file.id);
-                  }}
-                  aria-label={`Remove mobile ${file.name}`}
-                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-full p-0.5 cursor-pointer"
-                >
-                  <svg
-                    className="w-2.5 h-2.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
+    return null;
   }
 
   if (selectedDocs.length === 0) return null;

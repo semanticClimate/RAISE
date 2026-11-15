@@ -116,7 +116,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
           error={msg.error}
           targetUrl={apiBaseUrl}
           onRetry={async () => {
-            if (msg.error?.isOffline || appMode !== 'connected') {
+            if (msg.error?.isOffline || appMode === 'offline') {
               await runCapabilityProbe();
             }
             handleRegenerateResponse(turnIndex);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { LibraryItem } from '../../../components/settings/SettingsLibraryTab';
 import { chatService } from '../../../services/ChatService';
 import { sourceService } from '../../../services/SourceService';
@@ -17,6 +18,7 @@ export function useSessionSources({
   activeSessionIdRef,
   setSessions,
 }: UseSessionSourcesOptions) {
+  const queryClient = useQueryClient();
   const [sourceDocs, setSourceDocs] = useState<SourceDocument[]>(getInitialSourceDocs);
   const [isSourcesDrawerOpen, setIsSourcesDrawerOpen] = useState(false);
   const [isLibraryPickerOpen, setIsLibraryPickerOpen] = useState(false);
@@ -25,12 +27,27 @@ export function useSessionSources({
 
   useEffect(() => {
     let isMounted = true;
+    // Check if queryClient already has cached documents to avoid waiting on initial render
+    const cached = queryClient.getQueryData<any[]>(['documents']);
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      setApiReadyDocs(cached);
+      const readyNames = new Set<string>();
+      cached.forEach((d: any) => {
+        const name = d.filename || d.name;
+        if (name && (d.status === 'ready' || d.status === 'indexed')) {
+          readyNames.add(name.toLowerCase());
+        }
+      });
+      setApiReadyFilenames(readyNames);
+    }
+
     sourceService
       .getDocuments()
       .then((res) => {
         if (!isMounted || !res.data) return;
         const docs = Array.isArray(res.data) ? res.data : (res.data as any).documents || [];
         setApiReadyDocs(docs);
+        queryClient.setQueryData(['documents'], docs);
         const readyNames = new Set<string>();
         docs.forEach((d: any) => {
           const name = d.filename || d.name;
@@ -44,7 +61,7 @@ export function useSessionSources({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [queryClient]);
 
   const getEffectiveSessionId = useCallback(() => {
     return activeSessionIdRef?.current ?? currentSessionId ?? null;

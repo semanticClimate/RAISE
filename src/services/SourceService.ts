@@ -38,86 +38,98 @@ export class SourceService {
     signal?: AbortSignal,
     options?: { parseMode?: 'fast' | 'expert'; parser?: string; sessionId?: string }
   ): Promise<ApiResponse<UploadResponse>> {
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append('files', file);
+    if (typeof window !== 'undefined') {
+      (window as any).__RAISE_ACTIVE_OPS__ = ((window as any).__RAISE_ACTIVE_OPS__ || 0) + 1;
     }
-    if (options?.sessionId) {
-      formData.append('session_id', options.sessionId);
-    }
+    try {
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('files', file);
+      }
+      if (options?.sessionId) {
+        formData.append('session_id', options.sessionId);
+      }
 
-    // Pass parser and mode parameters based on selected mode
-    const mode = options?.parseMode || 'fast';
-    const isExpert = mode === 'expert' || options?.parser === 'docling';
-    const parser = options?.parser || (isExpert ? 'docling' : 'fast');
-    formData.append('parser', parser);
-    formData.append('engine', parser);
-    formData.append('parse_mode', mode);
-    formData.append('mode', mode);
-    if (isExpert) {
-      formData.append('extract_tables', 'true');
-      formData.append('full_potential', 'true');
-    }
+      // Pass parser and mode parameters based on selected mode
+      const mode = options?.parseMode || 'fast';
+      const isExpert = mode === 'expert' || options?.parser === 'docling';
+      const parser = options?.parser || (isExpert ? 'docling' : 'fast');
+      formData.append('parser', parser);
+      formData.append('engine', parser);
+      formData.append('parse_mode', mode);
+      formData.append('mode', mode);
+      if (isExpert) {
+        formData.append('extract_tables', 'true');
+        formData.append('full_potential', 'true');
+      }
 
-    // 1. Try standard POST /api/upload with query parameters
-    const uploadUrl = isExpert
-      ? `${ENDPOINTS.UPLOAD}?parser=docling&mode=expert`
-      : ENDPOINTS.UPLOAD;
+      // 1. Try standard POST /api/upload with query parameters
+      const uploadUrl = isExpert
+        ? `${ENDPOINTS.UPLOAD}?parser=docling&mode=expert`
+        : ENDPOINTS.UPLOAD;
 
-    const uploadRes = await apiClient.request<any>(uploadUrl, undefined, {
-      method: 'POST',
-      body: formData,
-      signal,
-      timeoutMs: 120000,
-    });
+      const uploadRes = await apiClient.request<any>(uploadUrl, undefined, {
+        method: 'POST',
+        body: formData,
+        signal,
+        timeoutMs: 120000,
+      });
 
-    if (uploadRes.status === 200 && uploadRes.data) {
-      const data = uploadRes.data;
-      const parsedDirect = UploadResponseSchema.safeParse(data);
-      if (parsedDirect.success) {
+      if (uploadRes.status === 200 && uploadRes.data) {
+        const data = uploadRes.data;
+        const parsedDirect = UploadResponseSchema.safeParse(data);
+        if (parsedDirect.success) {
+          return {
+            data: parsedDirect.data,
+            error: null,
+            isMock: uploadRes.isMock,
+            status: 200,
+          };
+        }
+
+        const synthesized: UploadResponse = {
+          status: data.status || 'success',
+          uploaded_count: data.uploaded_count ?? files.length,
+          reports: Array.isArray(data.reports)
+            ? data.reports
+            : files.map((f) => ({
+                filename: f.name,
+                pages_processed: 1,
+                chunks_extracted: data.total_chunks ?? 1,
+                facts_extracted: data.total_entities ?? 0,
+                triples_extracted: 0,
+              })),
+          total_nodes: data.total_nodes ?? data.total_entities ?? 0,
+          total_edges: data.total_edges ?? 0,
+        };
+        const parsedSynth = UploadResponseSchema.safeParse(synthesized);
         return {
-          data: parsedDirect.data,
+          data: parsedSynth.success ? parsedSynth.data : synthesized,
           error: null,
           isMock: uploadRes.isMock,
           status: 200,
         };
       }
 
-      const synthesized: UploadResponse = {
-        status: data.status || 'success',
-        uploaded_count: data.uploaded_count ?? files.length,
-        reports: Array.isArray(data.reports)
-          ? data.reports
-          : files.map((f) => ({
-              filename: f.name,
-              pages_processed: 1,
-              chunks_extracted: data.total_chunks ?? 1,
-              facts_extracted: data.total_entities ?? 0,
-              triples_extracted: 0,
-            })),
-        total_nodes: data.total_nodes ?? data.total_entities ?? 0,
-        total_edges: data.total_edges ?? 0,
-      };
-      const parsedSynth = UploadResponseSchema.safeParse(synthesized);
-      return {
-        data: parsedSynth.success ? parsedSynth.data : synthesized,
-        error: null,
-        isMock: uploadRes.isMock,
-        status: 200,
-      };
+      // 2. Fallback to /api/upload-academic-pdfs with Docling query parameters
+      const fallbackUrl = isExpert
+        ? `${ENDPOINTS.UPLOAD_ACADEMIC_PDFS}?parser=docling&mode=expert`
+        : ENDPOINTS.UPLOAD_ACADEMIC_PDFS;
+
+      return await apiClient.request<UploadResponse>(fallbackUrl, UploadResponseSchema, {
+        method: 'POST',
+        body: formData,
+        signal,
+        timeoutMs: 120000,
+      });
+    } finally {
+      if (typeof window !== 'undefined') {
+        (window as any).__RAISE_ACTIVE_OPS__ = Math.max(
+          0,
+          ((window as any).__RAISE_ACTIVE_OPS__ || 1) - 1
+        );
+      }
     }
-
-    // 2. Fallback to /api/upload-academic-pdfs with Docling query parameters
-    const fallbackUrl = isExpert
-      ? `${ENDPOINTS.UPLOAD_ACADEMIC_PDFS}?parser=docling&mode=expert`
-      : ENDPOINTS.UPLOAD_ACADEMIC_PDFS;
-
-    return apiClient.request<UploadResponse>(fallbackUrl, UploadResponseSchema, {
-      method: 'POST',
-      body: formData,
-      signal,
-      timeoutMs: 120000,
-    });
   }
 
   /**

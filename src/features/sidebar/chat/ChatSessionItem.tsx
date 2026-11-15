@@ -1,8 +1,10 @@
+import { useEffect, useRef } from 'react';
 import type React from 'react';
 import { GitBranch } from 'lucide-react';
 import type { ChatSession } from '../../../types';
 import { formatSessionDate } from '../../../utils/uuid';
 import { exportSessionAsPdf } from '../../../utils/exportFormats';
+import { useClickOutside } from '../../../hooks';
 
 export interface ChatSessionItemProps {
   session: ChatSession;
@@ -16,6 +18,7 @@ export interface ChatSessionItemProps {
   onSelect: (session: ChatSession) => void;
   onTogglePin: (id: string) => void;
   onToggleMenu: (id: string) => void;
+  onCloseMenu?: () => void;
   onStartRename: (session: ChatSession) => void;
   onSaveRename: (id: string) => void;
   onCancelRename: () => void;
@@ -34,11 +37,38 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
   onSelect,
   onTogglePin,
   onToggleMenu,
+  onCloseMenu,
   onStartRename,
   onSaveRename,
   onCancelRename,
   onDeleteSession,
 }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown menu when clicking outside
+  useClickOutside(
+    menuRef,
+    () => {
+      if (isMenuOpen) {
+        if (onCloseMenu) onCloseMenu();
+        else onToggleMenu(session.id);
+      }
+    },
+    isMenuOpen
+  );
+
+  // Close dropdown on Escape key
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (onCloseMenu) onCloseMenu();
+        else onToggleMenu(session.id);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMenuOpen, onCloseMenu, onToggleMenu, session.id]);
   return (
     <div
       onClick={() => onSelect(session)}
@@ -135,7 +165,7 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
         </button>
 
         {/* Three-dots menu button */}
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => onToggleMenu(session.id)}
@@ -182,6 +212,8 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   exportSessionAsPdf(session);
+                  if (onCloseMenu) onCloseMenu();
+                  else onToggleMenu(session.id);
                 }}
                 className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
                 title="Download full conversation transcript as PDF"
@@ -204,7 +236,11 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
 
               <button
                 type="button"
-                onClick={() => onDeleteSession(session.id)}
+                onClick={() => {
+                  onDeleteSession(session.id);
+                  if (onCloseMenu) onCloseMenu();
+                  else onToggleMenu(session.id);
+                }}
                 className="w-full text-left px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

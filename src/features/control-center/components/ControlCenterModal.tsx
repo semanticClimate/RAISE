@@ -36,7 +36,7 @@ export const ControlCenterModal: React.FC = () => {
   } = useControlCenterStore();
 
   const { appMode, readinessMessage } = useModeStore();
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
 
   const { isSaving, connectNotice, setConnectNotice, handleFinalStart } = useControlCenterSave(
     config,

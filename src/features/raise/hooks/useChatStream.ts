@@ -11,6 +11,12 @@ import {
   getFormattedChatHistory,
   isResponsePersisted,
 } from '../utils/messageNormalizer';
+import { getTurnQuestionVersions } from '../utils/speechUtils';
+
+export interface ExecuteQueryOptions {
+  regenerateAtAssistantIndex?: number;
+  baseConversation?: ChatMessage[];
+}
 
 export interface UseChatStreamOptions {
   currentSessionId: string | null;
@@ -131,9 +137,9 @@ export function useChatStream({
     isSubmittingQueryRef.current = false;
   }, [flushPendingStreamRafImmediately]);
 
-  // Execute a fresh query
+  // Execute a query (fresh inquiry, prompt edit, or in-place retry/regenerate)
   const executeQuery = useCallback(
-    async (q: string) => {
+    async (q: string, options?: ExecuteQueryOptions) => {
       const trimmed = q.trim();
       if (!trimmed || isSubmittingQueryRef.current) return;
 
@@ -152,22 +158,67 @@ export function useChatStream({
       const enterTimestamp = performance.now();
       queryStartTimeRef.current = enterTimestamp;
 
-      const userMsg: ChatMessage = {
-        role: 'user',
-        text: trimmed,
-        content: trimmed,
-        created_at: new Date().toISOString(),
-      };
-      const pendingAssistantMsg: ChatMessage = {
-        role: 'assistant',
-        text: '',
-        content: '',
-        isThinking: true,
-        created_at: new Date().toISOString(),
-        startedAtMs: enterTimestamp,
-      };
+      const isRegenerate =
+        typeof options?.regenerateAtAssistantIndex === 'number' &&
+        options.regenerateAtAssistantIndex >= 0;
+      const targetAssistantIdx = isRegenerate ? options.regenerateAtAssistantIndex! : undefined;
 
-      const updatedConversation = [...conversation, userMsg, pendingAssistantMsg];
+      let updatedConversation: ChatMessage[];
+      if (isRegenerate && targetAssistantIdx !== undefined) {
+        // Retry/Regenerate in-place: truncate downstream turns and set target assistant message to thinking
+        const base = (options?.baseConversation || conversation).slice(0, targetAssistantIdx + 1);
+        const existingAssistant = base[targetAssistantIdx];
+        base[targetAssistantIdx] = {
+          ...(existingAssistant || {}),
+          role: 'assistant',
+          text: '',
+          content: '',
+          isThinking: true,
+          startedAtMs: enterTimestamp,
+          error: undefined,
+          isStopped: false,
+          durationSec: undefined,
+        };
+        updatedConversation = base;
+        streamTargetIndexRef.current = targetAssistantIdx;
+      } else if (options?.baseConversation) {
+        // Prompt edit: build on the provided base conversation
+        const userMsg: ChatMessage = {
+          role: 'user',
+          text: trimmed,
+          content: trimmed,
+          created_at: new Date().toISOString(),
+        };
+        const pendingAssistantMsg: ChatMessage = {
+          role: 'assistant',
+          text: '',
+          content: '',
+          isThinking: true,
+          created_at: new Date().toISOString(),
+          startedAtMs: enterTimestamp,
+        };
+        updatedConversation = [...options.baseConversation, userMsg, pendingAssistantMsg];
+        streamTargetIndexRef.current = 'last';
+      } else {
+        // Normal query: append new user inquiry and pending assistant turn
+        const userMsg: ChatMessage = {
+          role: 'user',
+          text: trimmed,
+          content: trimmed,
+          created_at: new Date().toISOString(),
+        };
+        const pendingAssistantMsg: ChatMessage = {
+          role: 'assistant',
+          text: '',
+          content: '',
+          isThinking: true,
+          created_at: new Date().toISOString(),
+          startedAtMs: enterTimestamp,
+        };
+        updatedConversation = [...conversation, userMsg, pendingAssistantMsg];
+        streamTargetIndexRef.current = 'last';
+      }
+
       setConversation(updatedConversation);
       setActiveExecutingQuery(trimmed);
       setIsLoading(true);
@@ -179,7 +230,12 @@ export function useChatStream({
         setCurrentSessionId(threadId);
       }
       updateSessionInMemory(updatedConversation, threadId);
-      const recentHistory = getFormattedChatHistory(conversation);
+
+      const historyBase =
+        isRegenerate && targetAssistantIdx !== undefined
+          ? (options?.baseConversation || conversation).slice(0, Math.max(0, targetAssistantIdx - 1))
+          : (options?.baseConversation || conversation);
+      const recentHistory = getFormattedChatHistory(historyBase);
 
       const isConversational = isConversationalQuery(trimmed);
       const activeDocNames = sourceDocs.filter((d) => d.selected).map((d) => d.name);
@@ -193,6 +249,8 @@ export function useChatStream({
       isUserAbortingRef.current = false;
       const reqId = generateUUID();
       activeRequestIdRef.current = reqId;
+
+      const streamTarget = isRegenerate && targetAssistantIdx !== undefined ? targetAssistantIdx : 'last';
 
       try {
         const queryTask = chatService.querySubgraph(
@@ -214,7 +272,7 @@ export function useChatStream({
           },
           controller.signal,
           (_chunk, fullAccumulated) => {
-            flushStreamToConversation('last', fullAccumulated);
+            flushStreamToConversation(streamTarget, fullAccumulated);
           },
           (stageUpdate) => {
             setActiveStreamingStage(stageUpdate);
@@ -223,7 +281,7 @@ export function useChatStream({
 
         const res = await queryTask;
         setActiveStreamingStage(null);
-        flushPendingStreamRafImmediately('last');
+        flushPendingStreamRafImmediately(streamTarget);
 
         if (isUnmountedRef.current) return;
         const elapsedSec = Math.max(0.1, Number(((performance.now() - enterTimestamp) / 1000).toFixed(1)));
@@ -312,18 +370,55 @@ export function useChatStream({
 
         setConversation((prev) => {
           const base = [...prev];
-          const lastIdx = base.length - 1;
-          if (lastIdx >= 0 && base[lastIdx]?.role === 'assistant') {
-            base[lastIdx] = mergedAssistant;
+          const destIdx = streamTarget === 'last' ? base.length - 1 : streamTarget;
+          if (destIdx >= 0 && base[destIdx]?.role === 'assistant') {
+            if (isRegenerate && destIdx > 0 && base[destIdx - 1]?.role === 'user') {
+              const uMsg = base[destIdx - 1];
+              const qVers = getTurnQuestionVersions(uMsg, base[destIdx]);
+              const currQIdx = uMsg.currentQuestionVersionIndex ?? qVers.length - 1;
+              const activeQVer = qVers[currQIdx] || qVers[0];
+
+              const newRespVer: ResponseVersion = {
+                id: generateUUID(),
+                text: assistantMsg.text,
+                content: assistantMsg.content,
+                response: assistantMsg.response,
+                error: assistantMsg.error,
+                durationSec: assistantMsg.durationSec,
+                created_at: assistantMsg.created_at,
+                isStopped: assistantMsg.isStopped,
+              };
+
+              const existingRespVersions = activeQVer?.responseVersions || [];
+              const updatedRespVers = [...existingRespVersions, newRespVer];
+              const updatedQVers = [...qVers];
+              updatedQVers[currQIdx] = {
+                ...activeQVer,
+                responseVersions: updatedRespVers,
+                currentResponseVersionIndex: updatedRespVers.length - 1,
+              };
+
+              base[destIdx - 1] = {
+                ...uMsg,
+                questionVersions: updatedQVers,
+              };
+              base[destIdx] = {
+                ...assistantMsg,
+                questionVersions: updatedQVers,
+                currentQuestionVersionIndex: currQIdx,
+              };
+            } else {
+              base[destIdx] = mergedAssistant;
+              if (destIdx > 0 && base[destIdx - 1]?.role === 'user') {
+                base[destIdx - 1] = {
+                  ...base[destIdx - 1],
+                  questionVersions: [initialQVer],
+                  currentQuestionVersionIndex: 0,
+                };
+              }
+            }
           } else {
             base.push(mergedAssistant);
-          }
-          if (lastIdx > 0 && base[lastIdx - 1]?.role === 'user') {
-            base[lastIdx - 1] = {
-              ...base[lastIdx - 1],
-              questionVersions: [initialQVer],
-              currentQuestionVersionIndex: 0,
-            };
           }
           const committed = deduplicateTurns(base);
           if (res.data && !assistantMsg.persistenceFailed && committed.length > 0) {
@@ -349,9 +444,9 @@ export function useChatStream({
         };
         setConversation((prev) => {
           const base = [...prev];
-          const lastIdx = base.length - 1;
-          if (lastIdx >= 0 && base[lastIdx]?.role === 'assistant') {
-            base[lastIdx] = errorMsg;
+          const destIdx = streamTarget === 'last' ? base.length - 1 : streamTarget;
+          if (destIdx >= 0 && base[destIdx]?.role === 'assistant') {
+            base[destIdx] = errorMsg;
           } else {
             base.push(errorMsg);
           }

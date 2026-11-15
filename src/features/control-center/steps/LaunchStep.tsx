@@ -19,7 +19,7 @@ import { platformAdapter, type ConnectionTestResult } from '../services/platform
 export const LaunchStep: React.FC = () => {
   const { config, hardware, setHardware, setActiveTab } = useControlCenterStore();
   const { appMode, apiBaseUrl, latencyMs, runCapabilityProbe } = useModeStore();
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
 
   const [isTestingSubstrates, setIsTestingSubstrates] = useState(false);
   const [testResults, setTestResults] = useState<ConnectionTestResult | null>(null);

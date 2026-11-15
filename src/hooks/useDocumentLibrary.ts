@@ -16,7 +16,7 @@ export interface UseDocumentLibraryOptions {
  */
 export function useDocumentLibrary(options: UseDocumentLibraryOptions = {}) {
   const { enabled = true } = options;
-  const isConnected = useModeStore((s) => s.appMode === 'connected');
+  const isConnected = useModeStore((s) => s.appMode === 'connected' || s.appMode === 'degraded');
   const queryClient = useQueryClient();
 
   const documentsQuery = useQuery({

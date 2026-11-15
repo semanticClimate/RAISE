@@ -33,7 +33,7 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
     isTunnelConfigured,
   } = useModeStore();
 
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
   const isGatewayActive = isConnected && isTunnelConfigured;
 
   const [detectedClient] = useState(getClientSystemAndTime);

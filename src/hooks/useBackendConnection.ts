@@ -106,7 +106,7 @@ export function useBackendConnection(
     runCapabilityProbe,
   } = useModeStore();
 
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
   const isConnecting = isProbing || isScanning || isPendingTransition;
   const isOffline = appMode === 'offline';
   const isTunnelConfigured = Boolean(apiBaseUrl && apiBaseUrl.trim() !== '');
@@ -257,12 +257,21 @@ export function useBackendConnection(
     };
   }, [isConnected, apiBaseUrl]);
 
-  // Periodic heartbeat when connected to keep latency and liveness authoritative
+  // Periodic heartbeat to keep latency and liveness authoritative, running as long as apiBaseUrl is configured
   useEffect(() => {
-    if (!enableHeartbeat || !isConnected || !apiBaseUrl) return;
+    if (!enableHeartbeat || !apiBaseUrl) return;
 
     const timer = setInterval(async () => {
       if (heartbeatInFlight.current) return;
+
+      // Suppress background ping if document upload or chat streaming is active
+      if (
+        typeof window !== 'undefined' &&
+        ((window as any).__RAISE_ACTIVE_OPS__ > 0 || (window as any).__RAISE_ACTIVE_STREAM__)
+      ) {
+        return;
+      }
+
       heartbeatInFlight.current = true;
       try {
         await testConnection(apiBaseUrl);
@@ -274,7 +283,7 @@ export function useBackendConnection(
     }, heartbeatIntervalMs);
 
     return () => clearInterval(timer);
-  }, [enableHeartbeat, isConnected, apiBaseUrl, heartbeatIntervalMs, testConnection]);
+  }, [enableHeartbeat, apiBaseUrl, heartbeatIntervalMs, testConnection]);
 
   // Auto-detect local backend on mount if requested and currently offline
   useEffect(() => {

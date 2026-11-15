@@ -14,7 +14,7 @@ export interface UseChatEditingOptions {
   setRegeneratingIndex: (idx: number | null) => void;
   setActiveExecutingQuery: (q: string) => void;
   updateSessionInMemory: (msgs: ChatMessage[], threadId: string) => void;
-  executeQuery: (q: string) => Promise<void>;
+  executeQuery: (q: string, options?: { regenerateAtAssistantIndex?: number; baseConversation?: ChatMessage[] }) => Promise<void>;
   setIsAutoScrollLocked: (locked: boolean) => void;
   setShowScrollToBottom: (show: boolean) => void;
 }
@@ -198,18 +198,18 @@ export function useChatEditing({
 
       // Truncate to userIndex, updating with the edited question and clearing later turns
       const baseConversation = conversation.slice(0, userIndex);
-      setConversation(baseConversation);
       setEditingMessageIndex(null);
       setIsAutoScrollLocked(false);
       setShowScrollToBottom(false);
 
-      await executeQuery(trimmed);
+      await executeQuery(trimmed, {
+        baseConversation,
+      });
     },
     [
       conversation,
       isLoading,
       executeQuery,
-      setConversation,
       setEditingMessageIndex,
       setIsAutoScrollLocked,
       setShowScrollToBottom,
@@ -233,13 +233,15 @@ export function useChatEditing({
       const activeQuestion = activeQVer?.question || userMsg.text;
 
       setRegeneratingIndex(assistantIndex);
-      const baseConversation = conversation.slice(0, userIndex);
-      setConversation(baseConversation);
-
-      await executeQuery(activeQuestion);
-      setRegeneratingIndex(null);
+      try {
+        await executeQuery(activeQuestion, {
+          regenerateAtAssistantIndex: assistantIndex,
+        });
+      } finally {
+        setRegeneratingIndex(null);
+      }
     },
-    [conversation, isLoading, executeQuery, setConversation, setRegeneratingIndex]
+    [conversation, isLoading, executeQuery, setRegeneratingIndex]
   );
 
   const handleFeedback = useCallback(

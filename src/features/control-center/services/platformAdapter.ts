@@ -131,9 +131,14 @@ export interface SystemConfigPayload {
   redis_url?: string;
   tunnel_url?: string;
   huggingface_token?: string;
+  hf_token?: string;
   embedding_model?: string;
+  embedder_id?: string;
   reranker_model?: string;
+  reranker_id?: string;
   nli_verifier_model?: string;
+  verifier_id?: string;
+  [key: string]: unknown;
 }
 
 const isTauri = (): boolean => {
@@ -587,6 +592,37 @@ export const platformAdapter = {
         success: false,
         message: `Network error connecting to backend: ${err instanceof Error ? err.message : String(err)}`,
       };
+    }
+  },
+
+  /**
+   * Triggers model pre-warming or Hugging Face weights download with dual-key aliases
+   */
+  async triggerModelPrewarm(payload: {
+    embedder_id?: string;
+    embedding_model?: string;
+    reranker_id?: string;
+    reranker_model?: string;
+    verifier_id?: string;
+    nli_verifier_model?: string;
+    hf_token?: string;
+    huggingface_token?: string;
+    [key: string]: unknown;
+  }): Promise<{ success: boolean; message?: string }> {
+    if (isTestEnv) return { success: true, message: 'Prewarm skipped in test mode' };
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/models/load'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as any;
+        return { success: true, message: data?.message || 'Models loaded and prewarmed' };
+      }
+      return { success: false, message: `Failed to load models (HTTP ${res.status})` };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : String(err) };
     }
   },
 

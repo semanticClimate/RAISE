@@ -173,7 +173,9 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   // Authoritative sync with GraphRAG backend: fetch live documents from GET /api/documents
   const fetchLibraryDocuments = React.useCallback(async () => {
     if (!isMountedRef.current) return;
-    setIsLoading(true);
+    if (items.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const resp = await sourceService.getDocuments();
       if (!isMountedRef.current) return;

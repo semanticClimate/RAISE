@@ -197,14 +197,14 @@ export class SystemService {
       let aliveRes = await apiClient.request(ENDPOINTS.HEALTH, undefined, {
         method: 'GET',
         skipModeCheck: true,
-        timeoutMs: 1800,
+        timeoutMs: 6000,
       });
 
       if (aliveRes.status !== 200) {
         aliveRes = await apiClient.request(ENDPOINTS.HEALTH_ALT, undefined, {
           method: 'GET',
           skipModeCheck: true,
-          timeoutMs: 1800,
+          timeoutMs: 6000,
         });
       }
 
@@ -240,12 +240,12 @@ export class SystemService {
           apiClient.request(ENDPOINTS.HARDWARE_TELEMETRY, undefined, {
             method: 'GET',
             skipModeCheck: true,
-            timeoutMs: 2000,
+            timeoutMs: 5000,
           }),
           apiClient.request(ENDPOINTS.NEO4J_STATUS, undefined, {
             method: 'GET',
             skipModeCheck: true,
-            timeoutMs: 2000,
+            timeoutMs: 5000,
           }),
         ]);
 
@@ -323,7 +323,7 @@ export class SystemService {
 
     // Fast-path 1: Probe /api/health
     try {
-      const { res, endpoint } = await fetchEndpoint('/api/health', 2000);
+      const { res, endpoint } = await fetchEndpoint('/api/health', 8000);
       const latencyMs = Math.round(performance.now() - startTime);
       if (res.status >= 200 && res.status < 300) {
         let parsedVersion: string | undefined;
@@ -356,7 +356,7 @@ export class SystemService {
     const fallbackEndpoints = ['/health', '/api/documents'];
     try {
       const probePromises = fallbackEndpoints.map(async (ep) => {
-        const result = await fetchEndpoint(ep, 2500);
+        const result = await fetchEndpoint(ep, 6000);
         if (result.res.status >= 200 && result.res.status < 300) {
           const body = await result.res.clone().json().catch(() => null);
           if (isBackendJson(result.res, body)) {
