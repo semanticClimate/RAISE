@@ -154,7 +154,12 @@ class ProviderRouter:
         local_target = "vllm" if vllm_alive else ("ollama" if ollama_alive else ("vllm" if "vllm" in self.providers else "local"))
 
         routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", "")).upper().strip()
-        local_first = (routing_policy == "LOCAL_FIRST") or (self.mode == ExecutionMode.LOCAL) or (env_backend in ("vllm", "ollama", "local"))
+        local_first = (
+            (routing_policy == "LOCAL_FIRST")
+            or (self.mode == ExecutionMode.LOCAL)
+            or (env_backend in ("vllm", "ollama", "local"))
+            or (vllm_alive and routing_policy != "CLOUD_FIRST")
+        )
 
         if local_first and (vllm_alive or ollama_alive):
             default_target = local_target
@@ -194,69 +199,95 @@ class ProviderRouter:
         self._rr_lock = threading.Lock()
         self._round_robin_index = 0
 
-        # Construct dynamic fallback chain based on user-provided keys
+        # Construct dynamic fallback chain based on active engines and user keys
         self.fallback_chain: List[str] = []
-        self._refresh_fallback_chain(primary_cloud)
+        self._refresh_fallback_chain(default_target)
 
     def _refresh_fallback_chain(self, primary_cloud: Optional[str] = None) -> None:
         """
-        Dynamically constructs the fallback chain based on user-provided API keys.
-        Orders all configured providers so every model gets called sequentially in a line.
+        Dynamically constructs the fallback chain based on active local engines and user-provided API keys.
+        - Prioritizes local GPU engine (vLLM on :8002) when alive to minimize latency, eliminate cloud quota exhaustion, and run locally.
+        - Only includes cloud providers whose genuine keys are present and configured (cm.get_credential_status(cand) == 'configured').
+        - Excludes dead/offline local engines (e.g. offline ollama) and avoids slow CPU 'local' unless strictly needed.
         """
         cm = get_credential_manager()
-        prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else "groq")
 
-        # Multi-model sequence line: prioritize tested & verified active providers (Groq, Gemini)
-        ordered_candidates = ["groq", "gemini", "nvidia", "mistral", "cohere"]
-        active = []
-        if prim in ("vllm", "ollama", "local") or self.mode == ExecutionMode.LOCAL:
-            active.append(prim if prim in self.providers else "vllm")
+        # 1. Probe local engines
+        vllm_alive = False
+        if "vllm" in self.providers and "vllm" not in self.disabled_providers:
+            try:
+                vllm_alive = self.providers["vllm"].is_available()
+            except Exception:
+                vllm_alive = False
 
-        if prim in ordered_candidates and prim not in self.disabled_providers and cm.get_credential_status(prim) == "configured":
-            if prim not in active:
-                active.append(prim)
+        ollama_alive = False
+        if "ollama" in self.providers and "ollama" not in self.disabled_providers:
+            try:
+                ollama_alive = self.providers["ollama"].is_available()
+            except Exception:
+                ollama_alive = False
 
+        alive_local = []
+        if vllm_alive:
+            alive_local.append("vllm")
+        if ollama_alive:
+            alive_local.append("ollama")
+
+        # 2. Collect verified configured cloud candidates in priority sequence
+        ordered_candidates = ["groq", "gemini", "nvidia", "mistral", "cohere", "deepseek", "openrouter", "universal"]
+        configured_clouds = []
         for cand in ordered_candidates:
             if cand in self.disabled_providers:
                 continue
             if cm.get_credential_status(cand) == "configured":
+                configured_clouds.append(cand)
+
+        # 3. Determine ordering preference
+        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", "")).upper().strip()
+        prefer_local = (
+            (routing_policy == "LOCAL_FIRST")
+            or (self.mode == ExecutionMode.LOCAL)
+            or (len(alive_local) > 0 and routing_policy != "CLOUD_FIRST")
+        )
+
+        active = []
+        if prefer_local:
+            # Local first: vllm (and/or ollama if running)
+            for eng in alive_local:
+                if eng not in active:
+                    active.append(eng)
+            # Then verified configured cloud providers
+            for cand in configured_clouds:
                 if cand not in active:
                     active.append(cand)
-
-        for paid in ["openrouter", "universal"]:
-            if paid not in self.disabled_providers and cm.get_credential_status(paid) == "configured":
-                if paid not in active:
-                    active.append(paid)
-
-        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", "")).upper().strip()
-        local_first = (routing_policy == "LOCAL_FIRST") or (self.mode == ExecutionMode.LOCAL)
-
-        vllm_alive = False
-        try:
-            vllm_alive = self.providers["vllm"].is_available()
-        except Exception:
-            pass
-
-        ollama_alive = False
-        try:
-            ollama_alive = self.providers["ollama"].is_available()
-        except Exception:
-            pass
-
-        for eng in ["vllm", "ollama"]:
-            if eng not in active:
-                is_alive = vllm_alive if eng == "vllm" else ollama_alive
-                if is_alive:
-                    if local_first or not any(cm.get_credential_status(k) == "configured" for k in ordered_candidates):
-                        active.insert(0, eng)
-                    else:
-                        insert_pos = 1 if len(active) > 0 else 0
-                        active.insert(insert_pos, eng)
-                else:
+        else:
+            # Cloud first: configured cloud providers
+            for cand in configured_clouds:
+                if cand not in active:
+                    active.append(cand)
+            # Then local engines
+            for eng in alive_local:
+                if eng not in active:
                     active.append(eng)
 
-        if "local" not in active:
-            active.append("local")
+        # 4. If a primary provider was explicitly requested and is valid/alive
+        prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else None)
+        if prim and prim in self.providers and prim not in self.disabled_providers:
+            if prim in ("vllm", "ollama") and prim not in alive_local:
+                pass  # Do not promote dead local engine to primary
+            else:
+                if prim in active:
+                    active.remove(prim)
+                active.insert(0, prim)
+
+        # 5. Fallback safeguard: ensure active is never empty
+        if not active:
+            if alive_local:
+                active.extend(alive_local)
+            elif configured_clouds:
+                active.extend(configured_clouds)
+            elif "local" in self.providers and "local" not in self.disabled_providers:
+                active.append("local")
 
         self.fallback_chain = active
         logger.info(f"Dynamic fallback chain updated: {self.fallback_chain}")
@@ -450,7 +481,7 @@ class ProviderRouter:
             prov_obj = self.providers[p_id]
             is_disabled = p_id in self.disabled_providers
             is_active = (p_id == primary)
-            order_index = self.fallback_chain.index(p_id) if p_id in self.fallback_chain else 99
+            order_index = self.fallback_chain.index(p_id) + 1 if p_id in self.fallback_chain else 999
 
             if p_id == "vllm":
                 is_avail = False
@@ -505,7 +536,7 @@ class ProviderRouter:
                 "status": p["status"],
                 "tier": p["tier"],
                 "cooldown_until": self.provider_cooldowns.get(pid),
-                "cooldown_reason": None,
+                "cooldown_reason": "Rate limit (429) hit" if self.provider_cooldowns.get(pid, 0) > time.time() else ("Disabled by user" if pid in self.disabled_providers else None),
                 "is_primary": p["isActive"],
                 "is_disabled": p["isDisabled"],
                 "is_in_fallback_chain": not p["isDisabled"] and pid in self.fallback_chain,
@@ -606,7 +637,7 @@ class ProviderRouter:
                     continue
                 healthy_chain.append(cand)
             else:
-                if self.mode == ExecutionMode.LOCAL or not self.cloud_allowed:
+                if (self.mode == ExecutionMode.LOCAL and not self.cloud_allowed) or not self.cloud_allowed:
                     continue
                 if cm.get_credential_status(cand) == "configured":
                     healthy_chain.append(cand)
@@ -625,7 +656,7 @@ class ProviderRouter:
                         if getattr(self, "local_allowed", True) and cand in self.providers and getattr(self.providers[cand], "is_available", lambda: True)():
                             target_name = cand
                             break
-                    elif cm.get_credential_status(cand) == "configured" and self.mode != ExecutionMode.LOCAL and self.cloud_allowed:
+                    elif cm.get_credential_status(cand) == "configured" and ((self.mode != ExecutionMode.LOCAL) or self.cloud_allowed) and self.cloud_allowed:
                         target_name = cand
                         break
             else:
@@ -640,7 +671,7 @@ class ProviderRouter:
                         if not getattr(self, "local_allowed", True) or not getattr(self.providers[cand], "is_available", lambda: True)():
                             continue
                     else:
-                        if self.mode == ExecutionMode.LOCAL or not self.cloud_allowed or cm.get_credential_status(cand) != "configured":
+                        if ((self.mode == ExecutionMode.LOCAL and not self.cloud_allowed) or not self.cloud_allowed) or cm.get_credential_status(cand) != "configured":
                             continue
                     logger.info(f"Provider '{target_name}' unavailable (cooldown/disabled). Routing {t.value} to '{cand}'.")
                     target_name = cand
@@ -713,7 +744,7 @@ class ProviderRouter:
                 cooldown_secs = 3.0 if num_configured_clouds <= 1 else (15.0 if primary_provider.name == "groq" else 60.0)
                 self.provider_cooldowns[primary_provider.name] = time.time() + cooldown_secs
                 logger.info(f"Activated {int(cooldown_secs)}s cooldown for provider '{primary_provider.name}'.")
-            elif "401" in err_msg or "AUTH_FAILED" in err_msg or "invalid_api_key" in err_msg.lower() or "402" in err_msg or "BILLING_RESTRICTED" in err_msg or "credit card" in err_msg.lower() or "403" in err_msg:
+            elif ("401" in err_msg or "AUTH_FAILED" in err_msg or "invalid_api_key" in err_msg.lower() or "402" in err_msg or "BILLING_RESTRICTED" in err_msg or "credit card" in err_msg.lower() or "403" in err_msg) and primary_provider.name not in ("vllm", "ollama", "local"):
                 self.disabled_providers.add(primary_provider.name)
                 logger.warning(f"Permanently disabled billing/auth-restricted provider '{primary_provider.name}'.")
             elif "404" in err_msg or "MODEL_UNAVAILABLE" in err_msg or "not found" in err_msg.lower() or "timed out" in err_msg.lower() or "timeout" in err_msg.lower() or "connection refused" in err_msg.lower() or "10061" in err_msg:
@@ -733,7 +764,7 @@ class ProviderRouter:
                     if not getattr(self.providers[candidate_name], "is_available", lambda: True)():
                         continue
                 else:
-                    if self.mode == ExecutionMode.LOCAL or not self.cloud_allowed:
+                    if (self.mode == ExecutionMode.LOCAL and not self.cloud_allowed) or not self.cloud_allowed:
                         continue
                     if cm.get_credential_status(candidate_name) != "configured":
                         continue
@@ -779,7 +810,7 @@ class ProviderRouter:
                     fb_str = str(fb_err)
                     if "429" in fb_str or "RATE_LIMITED" in fb_str or "quota" in fb_str.lower():
                         self.provider_cooldowns[candidate_name] = time.time() + 60.0
-                    elif "401" in fb_str or "AUTH_FAILED" in fb_str or "invalid_api_key" in fb_str.lower() or "402" in fb_str or "BILLING_RESTRICTED" in fb_str or "credit card" in fb_str.lower() or "403" in fb_str:
+                    elif ("401" in fb_str or "AUTH_FAILED" in fb_str or "invalid_api_key" in fb_str.lower() or "402" in fb_str or "BILLING_RESTRICTED" in fb_str or "credit card" in fb_str.lower() or "403" in fb_str) and candidate_name not in ("vllm", "ollama", "local"):
                         self.disabled_providers.add(candidate_name)
                         logger.warning(f"Permanently disabled invalid/unauthorized fallback '{candidate_name}'.")
                     elif "404" in fb_str or "MODEL_UNAVAILABLE" in fb_str or "timed out" in fb_str.lower() or "timeout" in fb_str.lower() or "connection refused" in fb_str.lower() or "10061" in fb_str:

@@ -10,6 +10,15 @@ import src.infrastructure.providers.router as router_mod
 
 
 @pytest.fixture(autouse=True)
+def isolate_environment():
+    """Preserve and restore environment variables across tests to prevent cross-test leakage."""
+    orig_env = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(orig_env)
+
+
+@pytest.fixture(autouse=True)
 def reset_router_singleton():
     """Reset the ProviderRouter singleton before and after every test."""
     router_mod._router_instance = None
