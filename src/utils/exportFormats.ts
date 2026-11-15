@@ -1417,19 +1417,24 @@ function formatPdfDate(date: Date = new Date()): string {
 /**
  * Clean word-wrapping helper for fixed-width text columns.
  */
-function wordWrap(text: string, maxCharsPerLine: number): string[] {
+/**
+ * Typographic word-wrapping helper that wraps text based on points width in Helvetica.
+ * Ensures lines use the full available width of container boxes without premature line breaks.
+ */
+function wrapTextToWidth(text: string, maxWidthPts: number, fontSize: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let cur = '';
 
   for (const w of words) {
     if (!w) continue;
-    if (cur.length === 0) {
-      cur = w;
-    } else if (cur.length + 1 + w.length <= maxCharsPerLine) {
-      cur += ' ' + w;
+    const testLine = cur.length === 0 ? w : cur + ' ' + w;
+    if (estimateHelveticaWidth(testLine, fontSize) <= maxWidthPts) {
+      cur = testLine;
     } else {
-      lines.push(cur);
+      if (cur.length > 0) {
+        lines.push(cur);
+      }
       cur = w;
     }
   }
@@ -1511,7 +1516,7 @@ export function generatePdfBlob(
 
   // --- QUERY BOX ---
   ensureSpace(45);
-  const queryLines = wordWrap(query || 'Research Inquiry', 85);
+  const queryLines = wrapTextToWidth(query || 'Research Inquiry', contentWidth - 20, 9.5);
   const queryBoxHeight = Math.max(34, queryLines.length * 13 + 18);
   currentOps.push(`0.96 0.97 0.99 rg 0.85 0.88 0.92 RG 0.5 w`);
   currentOps.push(`${marginX} ${curY - queryBoxHeight} ${contentWidth} ${queryBoxHeight} re b`);
@@ -1702,8 +1707,8 @@ export function generatePdfBlob(
     const isBullet =
       trimmed.startsWith('* ') || trimmed.startsWith('- ') || trimmed.startsWith('• ');
     const cleanBulletText = trimmed.replace(/^[-*•]\s+/, '').replace(/\*\*/g, '');
-    const wrapped = wordWrap(cleanBulletText, isBullet ? 84 : 90);
     const targetLineWidth = contentWidth - (isBullet ? 12 : 0);
+    const wrapped = wrapTextToWidth(cleanBulletText, targetLineWidth, 9);
 
     for (let idx = 0; idx < wrapped.length; idx++) {
       ensureSpace(14);
@@ -1763,7 +1768,7 @@ export function generatePdfBlob(
       const extra = parts.length > 0 ? ` (${parts.join(', ')})` : '';
       const refStr = `[${cit.citation_index}] ${cit.pdf_filename || 'Audited Document'}${extra}`;
 
-      const wrappedLines = wordWrap(refStr, 95);
+      const wrappedLines = wrapTextToWidth(refStr, contentWidth - 10, 8.5);
       for (let i = 0; i < wrappedLines.length; i++) {
         ensureSpace(13);
         const font = i === 0 ? '/F2 8.5 Tf 0.1 0.16 0.28 rg' : '/F1 8.5 Tf 0.25 0.3 0.38 rg';
@@ -2276,8 +2281,8 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       const isBullet =
         trimmed.startsWith('* ') || trimmed.startsWith('- ') || trimmed.startsWith('• ');
       const cleanBulletText = trimmed.replace(/^[-*•]\s+/, '').replace(/\*\*/g, '');
-      const wrapped = wordWrap(cleanBulletText, isBullet ? 80 : 86);
       const targetLineWidth = blockWidth - (isBullet ? 12 : 0);
+      const wrapped = wrapTextToWidth(cleanBulletText, targetLineWidth, 9);
 
       for (let idx = 0; idx < wrapped.length; idx++) {
         ensureSpace(14);
@@ -2387,7 +2392,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         (ex.userMsg as any).query ||
         ''
       ).trim() || '(Empty inquiry)';
-      const queryLines = wordWrap(userText, 82);
+      const queryLines = wrapTextToWidth(userText, cardInnerWidth, 9.5);
 
       const qTitle = `QUESTION ${ex.turnIndex}`;
       const qTitleWidth = estimateHelveticaWidth(qTitle, 9.5);
@@ -2479,7 +2484,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
           const extra = parts.length > 0 ? ` (${parts.join(', ')})` : '';
           const refStr = `[${cit.citation_index}] ${cit.pdf_filename || 'Audited Document'}${extra}`;
 
-          const wrappedLines = wordWrap(refStr, 90);
+          const wrappedLines = wrapTextToWidth(refStr, cardInnerWidth - 10, 8);
           for (let i = 0; i < wrappedLines.length; i++) {
             ensureSpace(12);
             const font = i === 0 ? '/F2 8 Tf 0.12 0.2 0.3 rg' : '/F1 8 Tf 0.28 0.32 0.4 rg';
