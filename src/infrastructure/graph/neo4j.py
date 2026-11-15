@@ -44,6 +44,16 @@ except ImportError:
 from src.core.config import settings
 
 
+def _fast_port_open(host: str, port: int, timeout: float = 0.03) -> bool:
+    """Fast loopback TCP probe to eliminate multi-second socket timeout stalls."""
+    try:
+        import socket
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
 class Neo4jDatabase(Neo4jIngestionMixin, Neo4jTraversalMixin, IGraphStore):
     """
     Manages connections, transactions, schema indexes, batch ingestion,
@@ -82,6 +92,25 @@ class Neo4jDatabase(Neo4jIngestionMixin, Neo4jTraversalMixin, IGraphStore):
         """Initializes or returns cached BoltDriver connection pool."""
         if not HAS_NEO4J:
             return None
+
+        storage_mode = os.getenv("RAISE_STORAGE_MODE", "auto").lower()
+        if storage_mode in ("fast", "memory", "test") or os.getenv("TESTING", "").lower() in ("true", "1"):
+            return None
+
+        if not self.is_cloud:
+            host = "127.0.0.1"
+            port = 7687
+            if self.uri and "://" in self.uri:
+                netloc = self.uri.split("://")[1].split("/")[0]
+                if ":" in netloc:
+                    h_str, p_str = netloc.split(":")
+                    port = int(p_str)
+                    host = "127.0.0.1" if h_str in ("localhost", "127.0.0.1") else h_str
+                else:
+                    host = "127.0.0.1" if netloc in ("localhost", "127.0.0.1") else netloc
+            if not _fast_port_open(host, port, timeout=0.03):
+                return None
+
         if self._driver is None:
             try:
                 conn_timeout = 15.0 if self.is_cloud else 3.0
@@ -223,6 +252,16 @@ class Neo4jDatabase(Neo4jIngestionMixin, Neo4jTraversalMixin, IGraphStore):
         """
         Verify live connection to Neo4j database using Bolt protocol with HTTP Query v2 fallback.
         """
+        storage_mode = os.getenv("RAISE_STORAGE_MODE", "auto").lower()
+        if storage_mode in ("fast", "memory", "test") or os.getenv("TESTING", "").lower() in ("true", "1"):
+            return {
+                "connected": False,
+                "uri": self.uri,
+                "provider": "NetworkX (In-Memory Fallback)",
+                "total_nodes": 0,
+                "mode": "fast",
+            }
+
         if not HAS_NEO4J:
             return {"connected": False, "error": "neo4j python package not installed"}
         now = time.time()
@@ -230,42 +269,47 @@ class Neo4jDatabase(Neo4jIngestionMixin, Neo4jTraversalMixin, IGraphStore):
             return {"connected": False, "uri": self.uri, "error": "Neo4j offline (cached)"}
         self._last_neo_probe = now
 
-        try:
-            import socket
-            host = "127.0.0.1"
-            port = 7687
-            if self.uri and "://" in self.uri:
-                netloc = self.uri.split("://")[1].split("/")[0]
-                if ":" in netloc:
-                    h_str, p_str = netloc.split(":")
-                    port = int(p_str)
-                    host = "127.0.0.1" if h_str in ("localhost", "127.0.0.1") else h_str
-                else:
-                    host = "127.0.0.1" if netloc in ("localhost", "127.0.0.1") else netloc
-            probe_timeout = 3.0 if self.is_cloud else 0.5
-            with socket.create_connection((host, port), timeout=probe_timeout):
-                pass
-        except Exception as e:
-            if self.is_cloud and self.http_query_url:
-                try:
-                    http_test = self.execute_http_query("RETURN 1 AS ping")
-                    if http_test and http_test[0].get("ping") == 1:
-                        self._last_connected_state = True
-                        cnt_res = self.execute_http_query("MATCH (n) RETURN count(n) AS total_nodes")
-                        total = cnt_res[0].get("total_nodes", 0) if cnt_res else 0
-                        return {
-                            "connected": True,
-                            "uri": self.uri,
-                            "http_url": self.http_query_url,
-                            "user": self.user,
-                            "database": self.database,
-                            "provider": "Neo4j AuraDB Cloud (HTTP Query v2 API)",
-                            "total_nodes": total,
-                        }
-                except Exception:
+        host = "127.0.0.1"
+        port = 7687
+        if self.uri and "://" in self.uri:
+            netloc = self.uri.split("://")[1].split("/")[0]
+            if ":" in netloc:
+                h_str, p_str = netloc.split(":")
+                port = int(p_str)
+                host = "127.0.0.1" if h_str in ("localhost", "127.0.0.1") else h_str
+            else:
+                host = "127.0.0.1" if netloc in ("localhost", "127.0.0.1") else netloc
+
+        if self.is_cloud:
+            try:
+                import socket
+                with socket.create_connection((host, port), timeout=3.0):
                     pass
-            self._last_connected_state = False
-            return {"connected": False, "uri": self.uri, "error": f"Neo4j offline: {e}"}
+            except Exception as e:
+                if self.http_query_url:
+                    try:
+                        http_test = self.execute_http_query("RETURN 1 AS ping")
+                        if http_test and http_test[0].get("ping") == 1:
+                            self._last_connected_state = True
+                            cnt_res = self.execute_http_query("MATCH (n) RETURN count(n) AS total_nodes")
+                            total = cnt_res[0].get("total_nodes", 0) if cnt_res else 0
+                            return {
+                                "connected": True,
+                                "uri": self.uri,
+                                "http_url": self.http_query_url,
+                                "user": self.user,
+                                "database": self.database,
+                                "provider": "Neo4j AuraDB Cloud (HTTP Query v2 API)",
+                                "total_nodes": total,
+                            }
+                    except Exception:
+                        pass
+                self._last_connected_state = False
+                return {"connected": False, "uri": self.uri, "error": f"Neo4j offline: {e}"}
+        else:
+            if not _fast_port_open(host, port, timeout=0.03):
+                self._last_connected_state = False
+                return {"connected": False, "uri": self.uri, "error": "Neo4j offline (port 7687 closed)"}
 
         try:
             driver = self.get_driver()

@@ -4,7 +4,7 @@ Tests for Patch 13: Provider Router Resilience & Fallback under 403/AUTH_FAILED.
 
 import pytest
 from unittest.mock import MagicMock, patch
-from src.infrastructure.providers.router import ProviderRouter, InferenceTask, ProviderExhaustedError
+from src.infrastructure.providers.router import ProviderRouter, InferenceTask, ProviderExhaustedError, ExecutionMode
 from src.infrastructure.providers.base import LLMProvider
 
 
@@ -28,7 +28,7 @@ class DummyMockProvider(LLMProvider):
 
 
 def test_router_disables_403_and_fails_over():
-    router = ProviderRouter()
+    router = ProviderRouter(mode=ExecutionMode.AUTOMATIC, cloud_allowed=True)
     p1 = DummyMockProvider("dummy_cloud", fails_with=RuntimeError("HTTP 403 (AUTH_FAILED)"))
     p2 = DummyMockProvider("dummy_fallback", returns="Fallback success response")
 
@@ -52,7 +52,7 @@ def test_router_disables_403_and_fails_over():
 
 
 def test_router_raises_no_llm_available_when_exhausted():
-    router = ProviderRouter()
+    router = ProviderRouter(mode=ExecutionMode.AUTOMATIC, cloud_allowed=True)
     p1 = DummyMockProvider("dummy_cloud", fails_with=RuntimeError("HTTP 403 (AUTH_FAILED)"))
 
     router.providers = {

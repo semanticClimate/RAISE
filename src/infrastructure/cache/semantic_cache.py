@@ -32,6 +32,20 @@ except Exception:
 logger = logging.getLogger("raise.infrastructure.cache.semantic")
 
 
+def _make_semantic_hash(
+    query: str,
+    mode: str,
+    library: Optional[str] = None,
+    active_docs: Optional[List[str]] = None,
+) -> str:
+    """Computes a deterministic semantic cache key incorporating query, mode, library, and active docs."""
+    import hashlib
+    norm_docs = ",".join(sorted(active_docs or []))
+    lib = library or "default"
+    raw = f"{query.strip().lower()}:{mode}:{lib}:{norm_docs}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
 class SemanticCacheMixin:
     """
     Mixin adding GPTCache and vector similarity caching capabilities to RedisCacheManager.
@@ -48,7 +62,7 @@ class SemanticCacheMixin:
     ) -> Optional[Dict[str, Any]]:
         """
         Retrieves cached response by exact match first, then by embedding cosine similarity (> threshold).
-        Returns matching cached payload or None.
+        Uses pipelined mget candidate retrieval with automated dead-key pruning (srem).
         """
         # 1. Exact match check
         exact = self.get_completion(query, mode=mode, library=library, active_docs=active_docs)
@@ -63,14 +77,24 @@ class SemanticCacheMixin:
             try:
                 keys = self._client.smembers("cache:semantic:keys")
                 if keys:
-                    for k in list(keys)[-100:]:
-                        k_str = k.decode("utf-8") if isinstance(k, bytes) else k
-                        val = self._client.get(k_str)
-                        if val:
-                            try:
-                                candidates.append(json.loads(val.decode("utf-8")))
-                            except Exception:
-                                pass
+                    raw_keys = list(keys)[-100:]
+                    target_keys = [k.decode("utf-8") if isinstance(k, bytes) else k for k in raw_keys]
+                    raw_vals = self._client.mget(target_keys)
+                    expired_keys = []
+                    for k_str, val in zip(target_keys, raw_vals):
+                        if val is None:
+                            expired_keys.append(k_str)
+                            continue
+                        try:
+                            val_str = val.decode("utf-8") if isinstance(val, bytes) else val
+                            candidates.append(json.loads(val_str))
+                        except Exception:
+                            pass
+                    if expired_keys:
+                        try:
+                            self._client.srem("cache:semantic:keys", *expired_keys)
+                        except Exception:
+                            pass
             except Exception as e:
                 logger.debug(f"Redis semantic get lookup error: {e}")
 
@@ -147,8 +171,7 @@ class SemanticCacheMixin:
         if not hasattr(self, "_memory_semantic_cache"):
             self._memory_semantic_cache = {}
 
-        import hashlib
-        q_hash = hashlib.sha256(f"{query.strip().lower()}:{mode}".encode("utf-8")).hexdigest()[:16]
+        q_hash = _make_semantic_hash(query, mode, library=library, active_docs=active_docs)
         entry = {
             "query": query,
             "mode": mode,
@@ -168,7 +191,7 @@ class SemanticCacheMixin:
         if self.is_connected and self._client:
             try:
                 sem_key = f"cache:semantic:{mode}:{q_hash}"
-                self._client.set(sem_key, json.dumps(entry), ex=ttl)
+                self._client.set(sem_key, json.dumps(entry), ex=effective_ttl)
                 self._client.sadd("cache:semantic:keys", sem_key)
             except Exception as e:
                 logger.debug(f"Redis semantic set error: {e}")

@@ -97,7 +97,7 @@ def create_empty_drawer_sse_stream(
         for w in words:
             if await request.is_disconnected():
                 return
-            yield f"data: {json.dumps({'token': w})}\n\n"
+            yield f"event: token\ndata: {json.dumps({'token': w})}\n\n"
             await asyncio.sleep(0.015)
 
         lat = round(time.time() - start_time, 2)
@@ -489,14 +489,19 @@ def create_chat_sse_stream(
             yield f"data: {json.dumps(final_meta)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
-            record_query_metric(round(time.perf_counter() - t_start, 3), success=False)
+            elapsed_err = round(time.perf_counter() - t_start, 3)
+            record_query_metric(elapsed_err, success=False)
+            logger.exception(f"[GRAPH-RAG] ❌ SSE Stream Execution Exception ({elapsed_err:.2f}s): {exc}")
+
             if hasattr(exc, "detail") and isinstance(exc.detail, dict):
                 err_payload = {"error": exc.detail}
             elif "NO_LLM_CONFIGURED" in str(exc) or "No functional LLM provider" in str(exc):
                 err_payload = {"error": {"code": "NO_LLM_CONFIGURED", "message": str(exc)}}
             else:
                 err_payload = {"error": {"code": "PIPELINE_ERROR", "message": str(exc)}}
-            yield f"data: {json.dumps(err_payload)}\n\n"
+
+            # Emit compliant event: error payload followed by termination marker
+            yield f"event: error\ndata: {json.dumps(err_payload)}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

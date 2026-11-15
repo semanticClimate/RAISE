@@ -257,7 +257,42 @@ class VectorEmbeddingsMixin:
                         print(f"Fallback {fb_id} failed: {fb_err}")
 
                 if not fallback_loaded:
-                    self.embed_model = None
+                    try:
+                        import torch
+                        from transformers import AutoModel, AutoTokenizer
+                        from src.core.config import resolve_local_model_path
+                        res_model_id = resolve_local_model_path(raw_id)
+                        token_hf = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+
+                        tok = AutoTokenizer.from_pretrained(res_model_id, token=token_hf)
+                        mod = AutoModel.from_pretrained(res_model_id, token=token_hf).to(dev).eval()
+
+                        class PureTransformersEmbeddingWrapper:
+                            def __init__(self, tokenizer, model, device):
+                                self.tokenizer = tokenizer
+                                self.model = model
+                                self.device = device
+
+                            def encode(self, texts, **kwargs):
+                                if isinstance(texts, str):
+                                    texts = [texts]
+                                inputs = self.tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors="pt").to(self.device)
+                                with torch.inference_mode():
+                                    outputs = self.model(**inputs)
+                                    attention_mask = inputs["attention_mask"].unsqueeze(-1)
+                                    token_embeddings = outputs[0]
+                                    sum_embeddings = torch.sum(token_embeddings * attention_mask, dim=1)
+                                    sum_mask = torch.clamp(attention_mask.sum(dim=1), min=1e-9)
+                                    pooled = sum_embeddings / sum_mask
+                                    normalized = torch.nn.functional.normalize(pooled, p=2, dim=1)
+                                return normalized.cpu().numpy()
+
+                        self.embed_model = PureTransformersEmbeddingWrapper(tok, mod, dev)
+                        fallback_loaded = True
+                        print(f"Embedding fallback: initialized pure transformers mean-pooling model on {dev}.")
+                    except Exception as tf_err:
+                        print(f"Pure transformers fallback failed: {tf_err}")
+                        self.embed_model = None
 
 
 

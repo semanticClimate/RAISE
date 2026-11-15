@@ -21,12 +21,19 @@ from __future__ import annotations
 
 import os
 import socket
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 from src.core.config import models
 
+_PROVENANCE_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0.0, "mode": None}
+_PROVENANCE_TTL: float = 15.0
 
-def _is_port_online(host: str, port: int, timeout: float = 0.3) -> bool:
+
+def _is_port_online(host: str, port: int, timeout: float = 0.03) -> bool:
+    storage_mode = os.getenv("RAISE_STORAGE_MODE", "auto").lower()
+    if storage_mode in ("fast", "memory", "test") or os.getenv("TESTING", "").lower() in ("true", "1"):
+        return False
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(timeout)
@@ -40,7 +47,17 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
     Constructs a validated PipelineInfo dictionary for exports and provenance tracking.
     Accurately discovers all active storage substrates (ChromaDB, Neo4j, Redis, PostgreSQL)
     and AI neural models (Dense Embeddings, BGE Reranker, FineCat NLI, Synthesis LLM).
+    Caches results for 15s to eliminate persistent SQLite/ChromaDB file-locking overhead.
     """
+    global _PROVENANCE_CACHE
+    now = time.time()
+    if (
+        _PROVENANCE_CACHE["data"] is not None
+        and _PROVENANCE_CACHE["mode"] == mode
+        and (now - _PROVENANCE_CACHE["timestamp"]) < _PROVENANCE_TTL
+    ):
+        return dict(_PROVENANCE_CACHE["data"])
+
     # 1. LLM Provider & Model Resolution
     try:
         from src.infrastructure.providers.router import get_provider_router
@@ -53,27 +70,34 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
         actual_llm_model = models.LLM_MODEL_NAME
 
     # 2. Storage Substrates Resolution
-    # A. ChromaDB Vector Store
+    # A. ChromaDB Vector Store via LocalVectorEngine instance
     chroma_count = 0
     chroma_model = models.EMBEDDING_MODEL_NAME
     try:
-        import chromadb
-        base_dir = Path(__file__).resolve().parent.parent.parent
-        candidates = [
-            base_dir / ".chromadb_embeddinggemma_2",
-            base_dir / "backend" / ".chromadb_embeddinggemma_2",
-            base_dir.parent / "backend" / ".chromadb_embeddinggemma_2",
-            base_dir / ".chromadb_bge_large",
-            base_dir / "backend" / ".chromadb_bge_large",
-        ]
-        target_chroma = next((p for p in candidates if p.exists()), None)
-        if target_chroma:
-            client = chromadb.PersistentClient(path=str(target_chroma))
-            cols = client.list_collections()
-            chroma_count = sum(c.count() for c in cols)
-            chroma_model = models.EMBEDDING_MODEL_NAME if models.EMBEDDING_MODEL_KEYWORD in target_chroma.name else models.EMBEDDING_FALLBACK_MODEL_NAME
+        from src.vector.local_vector_engine import LocalVectorEngine
+        v_engine = LocalVectorEngine()
+        stats = v_engine.get_stats()
+        chroma_count = stats.get("total_vectors", 0)
+        chroma_model = stats.get("active_model", models.EMBEDDING_MODEL_NAME)
     except Exception:
-        pass
+        try:
+            import chromadb
+            base_dir = Path(__file__).resolve().parent.parent.parent
+            candidates = [
+                base_dir / ".chromadb_embeddinggemma_2",
+                base_dir / "backend" / ".chromadb_embeddinggemma_2",
+                base_dir.parent / "backend" / ".chromadb_embeddinggemma_2",
+                base_dir / ".chromadb_bge_large",
+                base_dir / "backend" / ".chromadb_bge_large",
+            ]
+            target_chroma = next((p for p in candidates if p.exists()), None)
+            if target_chroma:
+                client = chromadb.PersistentClient(path=str(target_chroma))
+                cols = client.list_collections()
+                chroma_count = sum(c.count() for c in cols)
+                chroma_model = models.EMBEDDING_MODEL_NAME if models.EMBEDDING_MODEL_KEYWORD in target_chroma.name else models.EMBEDDING_FALLBACK_MODEL_NAME
+        except Exception:
+            pass
 
     vector_desc = f"ChromaDB ({chroma_count} chunks | {chroma_model})" if chroma_count > 0 else f"ChromaDB ({chroma_model})"
 
@@ -128,7 +152,7 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
         or models.NLI_MODEL_NAME
     )
 
-    return {
+    result = {
         "storage_used": storage_desc,
         "llm_provider": actual_llm_prov,
         "llm_model": actual_llm_model,
@@ -140,3 +164,5 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
         "cache_database": cache_desc,
         "relational_database": db_desc,
     }
+    _PROVENANCE_CACHE = {"data": dict(result), "timestamp": now, "mode": mode}
+    return result

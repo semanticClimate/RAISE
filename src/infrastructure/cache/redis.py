@@ -34,8 +34,10 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 try:
     import fakeredis
     HAS_FAKEREDIS = True
+    _SHARED_FAKE_SERVER = fakeredis.FakeServer()
 except ImportError:
     HAS_FAKEREDIS = False
+    _SHARED_FAKE_SERVER = None
 
 from src.infrastructure.cache.rate_limiter import TokenBucketLimiterMixin
 from src.infrastructure.cache.semantic_cache import SemanticCacheMixin
@@ -62,53 +64,101 @@ __all__ = [
 _HAS_LOGGED_REDIS_CONNECTION = False
 
 
+def _fast_port_open(host: str, port: int, timeout: float = 0.03) -> bool:
+    """Fast loopback TCP probe to eliminate multi-second socket timeout stalls."""
+    try:
+        import socket
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
 def get_redis_client(
     local_url: Optional[str] = None,
     cloud_url: Optional[str] = None,
 ) -> Any:
     """
-    Creates and returns a Redis client following a sequential 3-tier fallback:
-      Tier 1: Localhost Redis (redis://localhost:6379/0)
-      Tier 2: Cloud Redis (CLOUD_REDIS_URL / REDIS_CLOUD_URL)
-      Tier 3: Python In-Memory Redis (fakeredis)
+    Creates and returns a Redis client following the 3-tier storage architecture:
+      Tier 1: Localhost Redis (redis://localhost:6379/0) - probed via 30ms TCP check
+      Tier 2: Cloud Redis (CLOUD_REDIS_URL / REDIS_CLOUD_URL) - TLS ready (rediss://)
+      Tier 3: Python In-Memory Redis (fakeredis with module-level _SHARED_FAKE_SERVER)
     """
     global _HAS_LOGGED_REDIS_CONNECTION
+
+    storage_mode = os.getenv("RAISE_STORAGE_MODE", "auto").lower()
+    is_testing = os.getenv("TESTING", "").lower() in ("true", "1")
+
+    # Fast / In-Memory Tier: Zero socket probing, instant return
+    if storage_mode in ("fast", "memory", "test") or is_testing:
+        if HAS_FAKEREDIS and _SHARED_FAKE_SERVER is not None:
+            try:
+                client = fakeredis.FakeStrictRedis(server=_SHARED_FAKE_SERVER)
+                if not _HAS_LOGGED_REDIS_CONNECTION:
+                    logger.info("Connected to FakeRedis (Python Memory - Shared Server)")
+                    _HAS_LOGGED_REDIS_CONNECTION = True
+                return client
+            except Exception as exc:
+                logger.debug("FakeStrictRedis init failed: %s", exc)
+        return None
 
     local_url = local_url or os.getenv("LOCAL_REDIS_URL") or os.getenv("REDIS_URL") or "redis://localhost:6379/0"
     cloud_url = cloud_url or os.getenv("CLOUD_REDIS_URL") or os.getenv("REDIS_CLOUD_URL")
 
-    # 1. Try Local Redis
-    try:
-        client = redis.Redis.from_url(local_url, socket_timeout=2)
-        client.ping()
-        if not _HAS_LOGGED_REDIS_CONNECTION:
-            logger.info("Connected to Local Redis at %s", local_url)
-            _HAS_LOGGED_REDIS_CONNECTION = True
-        return client
-    except (RedisConnectionError, Exception) as exc:
-        logger.debug("Local Redis failed (%s). Falling back to Cloud...", exc)
-
-    # 2. Try Cloud Redis
-    if cloud_url:
+    # Tier 2: Cloud-only preference
+    if storage_mode == "cloud" and cloud_url:
         try:
-            client = redis.Redis.from_url(cloud_url, socket_timeout=3)
+            client = redis.Redis.from_url(cloud_url, socket_timeout=2.0)
             client.ping()
             if not _HAS_LOGGED_REDIS_CONNECTION:
                 logger.info("Connected to Cloud Redis at %s", cloud_url)
                 _HAS_LOGGED_REDIS_CONNECTION = True
             return client
         except (RedisConnectionError, Exception) as exc:
-            logger.debug("Cloud Redis failed (%s). Falling back to Python Memory...", exc)
-    else:
-        logger.debug("Cloud Redis URL not configured. Falling back to Python Memory...")
+            logger.debug("Cloud Redis connection failed: %s. Falling back to FakeRedis...", exc)
 
-    # 3. Fallback to Python In-Memory Redis (fakeredis)
-    if HAS_FAKEREDIS:
+    # Tier 1: Local Redis (Docker or Host Daemon)
+    # Perform fast 30ms TCP check to eliminate 2-second socket timeout stalls
+    host = "127.0.0.1"
+    port = 6379
+    if local_url and "://" in local_url:
         try:
-            client = fakeredis.FakeRedis()
+            from urllib.parse import urlparse
+            parsed = urlparse(local_url)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or 6379
+        except Exception:
+            pass
+
+    if _fast_port_open(host, port, timeout=0.03):
+        try:
+            client = redis.Redis.from_url(local_url, socket_timeout=1.5)
             client.ping()
             if not _HAS_LOGGED_REDIS_CONNECTION:
-                logger.info("Connected to FakeRedis (Python Memory)")
+                logger.info("Connected to Local Redis at %s", local_url)
+                _HAS_LOGGED_REDIS_CONNECTION = True
+            return client
+        except (RedisConnectionError, Exception) as exc:
+            logger.debug("Local Redis failed (%s). Falling back to Cloud / Memory...", exc)
+
+    # Tier 2: Cloud Redis Fallback (if configured and not already tried)
+    if cloud_url and storage_mode != "cloud":
+        try:
+            client = redis.Redis.from_url(cloud_url, socket_timeout=2.0)
+            client.ping()
+            if not _HAS_LOGGED_REDIS_CONNECTION:
+                logger.info("Connected to Cloud Redis at %s", cloud_url)
+                _HAS_LOGGED_REDIS_CONNECTION = True
+            return client
+        except (RedisConnectionError, Exception) as exc:
+            logger.debug("Cloud Redis failed (%s). Falling back to FakeRedis...", exc)
+
+    # Tier 3: Python In-Memory Redis (fakeredis with shared FakeServer singleton)
+    if HAS_FAKEREDIS and _SHARED_FAKE_SERVER is not None:
+        try:
+            client = fakeredis.FakeStrictRedis(server=_SHARED_FAKE_SERVER)
+            if not _HAS_LOGGED_REDIS_CONNECTION:
+                logger.info("Connected to FakeRedis (Python Memory - Shared Server)")
                 _HAS_LOGGED_REDIS_CONNECTION = True
             return client
         except Exception as exc:
@@ -168,7 +218,15 @@ class RedisCacheManager(SemanticCacheMixin, SessionCacheMixin, TokenBucketLimite
 
         if self._client is not None:
             self.is_connected = True
-            if HAS_FAKEREDIS and isinstance(self._client, fakeredis.FakeRedis):
+            is_fake = False
+            if HAS_FAKEREDIS:
+                fake_classes = tuple(
+                    cls for cls in (getattr(fakeredis, "FakeRedis", None), getattr(fakeredis, "FakeStrictRedis", None))
+                    if cls is not None
+                )
+                if fake_classes and isinstance(self._client, fake_classes):
+                    is_fake = True
+            if is_fake:
                 self.tier = "memory"
             else:
                 self.tier = "local"

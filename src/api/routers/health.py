@@ -1,9 +1,16 @@
+import asyncio
 import os
+import time
 import urllib.request
+from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 router = APIRouter(tags=['Health & System'])
+
+_CACHED_HEALTH_CHECK: Optional[Dict[str, Any]] = None
+_CACHED_HEALTH_TIMESTAMP: float = 0.0
+_HEALTH_CACHE_TTL_SEC: float = 2.0  # Serve cached diagnostics for 2 seconds
 
 @router.get('/api/health/status', response_class=JSONResponse)
 async def root():
@@ -19,6 +26,11 @@ async def root():
 @router.get('/api/health', response_class=JSONResponse)
 @router.get('/health', response_class=JSONResponse)
 async def health_check(request: Request):
+    global _CACHED_HEALTH_CHECK, _CACHED_HEALTH_TIMESTAMP
+    now = time.time()
+    if _CACHED_HEALTH_CHECK is not None and (now - _CACHED_HEALTH_TIMESTAMP) < _HEALTH_CACHE_TTL_SEC:
+        return _CACHED_HEALTH_CHECK
+
     app = request.app
     dev_operator = getattr(app.state, 'dev_operator', None)
     if dev_operator is None:
@@ -36,7 +48,7 @@ async def health_check(request: Request):
 
     if dev_operator:
         try:
-            checkup = dev_operator.run_full_checkup()
+            checkup = await asyncio.to_thread(dev_operator.run_full_checkup)
             dbs = checkup.get("databases", {})
             pg_ready = dbs.get("postgresql", {}).get("status") == "PASS" or dbs.get("postgresql", {}).get("connected") is True
             rd_ready = dbs.get("redis", {}).get("status") == "PASS" or dbs.get("redis", {}).get("connected") is True
@@ -86,11 +98,11 @@ async def health_check(request: Request):
         pass
     port = int(os.getenv("PORT", "8000"))
 
-    # Hardware Telemetry - dynamically detected with zero hardcoding
+    # Hardware Telemetry - dynamically detected in threadpool
     from src.infrastructure.hardware import get_ram_info, get_gpu_info, get_llm_telemetry
-    ram_info = get_ram_info()
-    gpu_info = get_gpu_info()
-    llm_info = get_llm_telemetry()
+    ram_info = await asyncio.to_thread(get_ram_info)
+    gpu_info = await asyncio.to_thread(get_gpu_info)
+    llm_info = await asyncio.to_thread(get_llm_telemetry)
 
     return {
         'status': composite_status,

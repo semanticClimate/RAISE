@@ -82,12 +82,13 @@ def _background_download_worker(repo_ids: List[str]):
     try:
         _IS_DOWNLOADING_ASSETS = True
         _ASSET_DOWNLOAD_SPEED = "~48 MB/s"
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or None
         total = len(repo_ids) or 1
         for idx, repo_id in enumerate(repo_ids):
             try:
                 from huggingface_hub import snapshot_download
-                logger.info(f"Pre-flight downloading {repo_id}...")
-                snapshot_download(repo_id=repo_id, resume_download=True)
+                logger.info(f"Pre-flight downloading {repo_id} with authentication...")
+                snapshot_download(repo_id=repo_id, token=hf_token, resume_download=True)
             except Exception as e:
                 logger.warning(f"Failed to snapshot download {repo_id}: {e}")
             _ASSET_DOWNLOAD_PROGRESS = round(((idx + 1) / total) * 100, 1)
