@@ -479,6 +479,68 @@ export class SystemService {
       }
     );
   }
+
+  /**
+   * Prewarm neural models on demand via POST /api/system/models/load
+   */
+  public async loadModels(
+    payload: {
+      embedding_model?: string;
+      reranker_model?: string;
+      nli_verifier_model?: string;
+      huggingface_token?: string;
+      [key: string]: unknown;
+    },
+    signal?: AbortSignal
+  ): Promise<ApiResponse<{ status: string; message: string; data?: unknown }>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_MODELS_LOAD,
+      undefined,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal,
+        timeoutMs: 15000,
+      }
+    );
+  }
+
+  /**
+   * Verify provider API key directly via POST /api/system/providers/verify
+   */
+  public async verifyProvider(
+    provider: string,
+    key: string,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<{ online: boolean; latency_ms: number; status: string; error?: string }>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_PROVIDERS_VERIFY,
+      undefined,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, key, api_key: key }),
+        signal,
+        timeoutMs: 6000,
+      }
+    );
+  }
+
+  /**
+   * Get preflight assets status via GET /api/system/preflight-assets
+   */
+  public async getPreflightAssets(signal?: AbortSignal): Promise<ApiResponse<unknown>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_PREFLIGHT_ASSETS,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
+  }
 }
 
 export const systemService = new SystemService();

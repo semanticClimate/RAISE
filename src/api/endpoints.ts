@@ -87,6 +87,8 @@ export const ENDPOINTS = {
   SYSTEM_MODELS_PULL: '/api/system/models/pull',
   SYSTEM_PREFLIGHT_ASSETS: '/api/system/preflight-assets',
   SYSTEM_DOWNLOAD_ASSETS: '/api/system/download-assets',
+  SYSTEM_MODELS_LOAD: '/api/system/models/load',
+  SYSTEM_PROVIDERS_VERIFY: '/api/system/providers/verify',
 
   // Future backend abstractions
   FUTURE_CHAT_STREAM: '/api/chat/stream',
