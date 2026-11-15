@@ -434,42 +434,66 @@ export const platformAdapter = {
   ): Promise<{ available: boolean; latencyMs: number; error?: string }> {
     const start = performance.now();
     try {
-      const res = await fetchWithTimeout(resolveApiUrl('/api/system/test-connections'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          llm_mode: provider === 'ollama' ? 'local_ollama' : `cloud_${provider}`,
-          groq_api_key: provider === 'groq' ? key : undefined,
-          gemini_api_key: provider === 'gemini' ? key : undefined,
-          nvidia_api_key: provider === 'nvidia' ? key : undefined,
-          mistral_api_key: provider === 'mistral' ? key : undefined,
-          cohere_api_key: provider === 'cohere' ? key : undefined,
-          deepseek_api_key: provider === 'deepseek' ? key : undefined,
-          openrouter_api_key: provider === 'openrouter' ? key : undefined,
-          openai_api_key: provider === 'openai' ? key : undefined,
-          anthropic_api_key: provider === 'anthropic' ? key : undefined,
-          hf_token: provider === 'huggingface' ? key : undefined,
-          custom_api_key: key,
-        }),
-      }, 4000);
-      const latencyMs = Math.round(performance.now() - start);
+      const cleanProv = (provider || 'custom').toLowerCase().trim();
+      const cleanKey = key.trim();
+
+      // First attempt dedicated cloud provider validation endpoint
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/providers/verify'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            provider: cleanProv,
+            api_key: cleanKey,
+          }),
+        },
+        8000
+      );
+
+      const elapsed = Math.round(performance.now() - start);
+
       if (res.ok) {
         const data = (await res.json().catch(() => null)) as Record<string, any> | null;
-        const isOnline = data?.llm?.online ?? data?.online ?? false;
-        if (isOnline) {
-          return { available: true, latencyMs: Math.max(12, latencyMs) };
+        if (data && typeof data.online === 'boolean') {
+          return {
+            available: data.online,
+            latencyMs: Math.max(12, data.latency_ms ?? elapsed),
+            error: data.online ? undefined : (data.error || 'Authentication rejected by provider'),
+          };
         }
+      }
+
+      // Fallback to test-llm-key endpoint
+      const fallbackRes = await fetchWithTimeout(
+        resolveApiUrl('/api/system/test-llm-key'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            llm_mode: cleanProv === 'ollama' ? 'local_ollama' : `cloud_${cleanProv}`,
+            [`${cleanProv}_api_key`]: cleanKey,
+          }),
+        },
+        8000
+      );
+
+      const fallbackElapsed = Math.round(performance.now() - start);
+      if (fallbackRes.ok) {
+        const data = (await fallbackRes.json().catch(() => null)) as Record<string, any> | null;
+        const llmInfo = data?.llm;
+        const isOnline = Boolean(llmInfo?.online ?? data?.online);
         return {
-          available: false,
-          latencyMs,
-          error: data?.llm?.error || data?.error || 'Invalid API key credentials',
+          available: isOnline,
+          latencyMs: Math.max(12, llmInfo?.latency_ms ?? fallbackElapsed),
+          error: isOnline ? undefined : (llmInfo?.error || data?.error || 'Authentication failed'),
         };
       }
-      const errData = (await res.json().catch(() => null)) as Record<string, any> | null;
+
       return {
         available: false,
-        latencyMs,
-        error: errData?.detail || `HTTP ${res.status}: Verification failed`,
+        latencyMs: fallbackElapsed,
+        error: `HTTP ${res.status}: Verification rejected`,
       };
     } catch (err: any) {
       const latencyMs = Math.round(performance.now() - start);

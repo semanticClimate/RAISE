@@ -171,23 +171,6 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
     persistRouting(updatedChain, updatedDisabled, primaryProvider, `Enabled ${pName}`);
   };
 
-  // 1-Click Routing Presets
-  const applyPreset = (preset: 'local' | 'cloud' | 'offline') => {
-    if (preset === 'local') {
-      const newChain = ['vllm', 'gemini', 'groq', 'ollama', 'local'];
-      const newDisabled = disabledList.filter((p) => !newChain.includes(p));
-      persistRouting(newChain, newDisabled, 'vllm', 'Local GPU (vLLM #1)');
-    } else if (preset === 'cloud') {
-      const newChain = ['groq', 'gemini', 'vllm', 'ollama', 'local'];
-      const newDisabled = disabledList.filter((p) => !newChain.includes(p));
-      persistRouting(newChain, newDisabled, 'groq', 'Cloud First');
-    } else if (preset === 'offline') {
-      const newChain = ['vllm', 'ollama', 'local'];
-      const newDisabled = ['gemini', 'groq', 'mistral', 'nvidia', 'cohere', 'deepseek', 'openrouter'];
-      persistRouting(newChain, newDisabled, 'vllm', 'Pure Offline (GPU Only)');
-    }
-  };
-
   // Drag and drop handlers
   const handleDragStart = (idx: number) => {
     setDraggedIndex(idx);
@@ -228,42 +211,6 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
         >
           <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
           <span>Sync State</span>
-        </button>
-      </div>
-
-      {/* 1-Click Routing Presets */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1">
-          QUICK PRESETS:
-        </span>
-        <button
-          type="button"
-          onClick={() => applyPreset('local')}
-          className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-            primaryProvider === 'vllm'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30 hover:bg-emerald-100'
-          }`}
-        >
-          ⚡ Local GPU (vLLM #1)
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPreset('cloud')}
-          className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-            primaryProvider === 'groq' || primaryProvider === 'gemini'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30 hover:bg-indigo-100'
-          }`}
-        >
-          ☁️ Cloud First
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPreset('offline')}
-          className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-white/15 hover:bg-slate-200 transition-all cursor-pointer"
-        >
-          🔒 Pure Offline (GPU Only)
         </button>
       </div>
 
