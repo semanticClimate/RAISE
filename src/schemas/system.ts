@@ -74,3 +74,33 @@ export const BackendCapabilitiesSchema = z
   .passthrough();
 
 export type BackendCapabilities = z.infer<typeof BackendCapabilitiesSchema>;
+
+export interface ProviderRoutingInfo {
+  configured: boolean;
+  model: string;
+  status: string;
+  tier?: string;
+  cooldown_until?: number | null;
+  cooldown_reason?: string | null;
+  is_primary: boolean;
+  is_disabled: boolean;
+  is_in_fallback_chain: boolean;
+  order_rank: number;
+}
+
+export interface RoutingStatusResponse {
+  status: string;
+  message?: string;
+  primary_provider: string;
+  fallback_order: string[];
+  disabled_providers: string[];
+  routing_policy: string;
+  providers: Record<string, ProviderRoutingInfo>;
+}
+
+export interface RoutingUpdateRequest {
+  fallback_order?: string[];
+  disabled_providers?: string[];
+  primary_provider?: string;
+  routing_policy?: string;
+}

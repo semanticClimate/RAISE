@@ -726,4 +726,45 @@ export const platformAdapter = {
       }, 350);
     });
   },
+
+  async getRouting(): Promise<any | null> {
+    try {
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/routing'),
+        {
+          headers: { Accept: 'application/json' },
+        },
+        3500
+      );
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async updateRouting(payload: {
+    fallback_order?: string[];
+    disabled_providers?: string[];
+    primary_provider?: string;
+    routing_policy?: string;
+  }): Promise<{ success: boolean; message?: string; data?: any }> {
+    try {
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/routing'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        },
+        5000
+      );
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        return { success: true, message: data.message || 'Routing priority updated', data };
+      }
+      const err = ((await res.json().catch(() => ({}))) || {}) as any;
+      return { success: false, message: err.detail || err.message || 'Failed to update routing' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error updating routing' };
+    }
+  },
 };

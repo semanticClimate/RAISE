@@ -78,6 +78,7 @@ export const ENDPOINTS = {
 
   // System Configuration, Hardware & Dynamic Models
   SYSTEM_CONFIG: '/api/system/config',
+  SYSTEM_ROUTING: '/api/system/routing',
   SYSTEM_HARDWARE: '/api/system/hardware',
   SYSTEM_TEST_CONNECTIONS: '/api/system/test-connections',
   SYSTEM_MODELS_CATALOG: '/api/system/models/catalog',

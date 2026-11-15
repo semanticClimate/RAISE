@@ -2021,7 +2021,6 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   });
 
   const userTurns = messages.filter((m) => m.role === 'user').length;
-  const assistantTurns = messages.filter((m) => m.role === 'assistant').length;
 
   // Attached docs metadata
   const docNames: string[] = [];
@@ -2099,7 +2098,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   currentOps.push(`0.96 0.97 0.99 rg 0.88 0.91 0.95 RG 0.5 w`);
   currentOps.push(`${marginX} ${curY - metaBoxHeight} ${contentWidth} ${metaBoxHeight} re b`);
 
-  const metaLeft = `Session: ${escapePdfText(sessionTitle.slice(0, 50))}  •  ${messages.length} messages (${userTurns} inquiries, ${assistantTurns} responses)`;
+  const metaLeft = `Session: ${escapePdfText(sessionTitle.slice(0, 50))}  •  ${userTurns} Inquiries`;
   const metaRight =
     docNames.length > 0
       ? `Corpus: ${escapePdfText(docNames.slice(0, 2).join(', ').slice(0, 28))}`
@@ -2392,7 +2391,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
 
       const timeLabel = ex.userMsg.timestamp ? ` • ${ex.userMsg.timestamp}` : '';
       currentOps.push(
-        `BT /F2 8.5 Tf 0.28 0.38 0.55 rg ${cardInnerX} ${curY - 12} Td (${escapePdfText(`QUESTION #${ex.turnIndex} • Turn ${ex.turnIndex}${timeLabel}`)}) Tj ET`
+        `BT /F2 9.5 Tf 0.08 0.10 0.15 rg ${cardInnerX} ${curY - 12} Td (${escapePdfText(`QUESTION #${ex.turnIndex}${timeLabel}`)}) Tj ET`
       );
       curY -= 16;
 
@@ -2432,7 +2431,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
 
       ensureSpace(20);
       currentOps.push(
-        `BT /F2 9.5 Tf 0.08 0.14 0.28 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(`ANSWER #${ex.turnIndex}${thoughtLabel}`)}) Tj ET`
+        `BT /F2 9.5 Tf 0.15 0.38 0.92 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(`ANSWER #${ex.turnIndex}${thoughtLabel}`)}) Tj ET`
       );
       curY -= 16;
 

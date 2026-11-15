@@ -9,6 +9,8 @@ import {
   Neo4jStatusSchema,
   type AuthHandshakeResponse,
   AuthHandshakeResponseSchema,
+  type RoutingStatusResponse,
+  type RoutingUpdateRequest,
 } from '../types';
 
 export class SystemService {
@@ -442,6 +444,40 @@ export class SystemService {
         message: 'Unable to reach readiness probe',
       };
     }
+  }
+  /**
+   * Fetch runtime LLM fallback routing and per-provider status (GET /api/system/routing)
+   */
+  public async getRouting(signal?: AbortSignal): Promise<ApiResponse<RoutingStatusResponse>> {
+    return apiClient.request<RoutingStatusResponse>(
+      ENDPOINTS.SYSTEM_ROUTING,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
+  }
+
+  /**
+   * Update runtime LLM fallback routing order & primary assignment (POST /api/system/routing)
+   */
+  public async updateRouting(
+    payload: RoutingUpdateRequest,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<RoutingStatusResponse>> {
+    return apiClient.request<RoutingStatusResponse>(
+      ENDPOINTS.SYSTEM_ROUTING,
+      undefined,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal,
+        timeoutMs: 6000,
+      }
+    );
   }
 }
 

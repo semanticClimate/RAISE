@@ -7,6 +7,7 @@ import { useControlCenterStore } from '../store/useControlCenterStore';
 import type { DynamicLLMModel } from '../types';
 import { CloudKeysSection } from './CloudKeysSection';
 import { LocalModelSection } from './LocalModelSection';
+import { LLMRoutingOrchestrator } from '../../../components/settings/LLMRoutingOrchestrator';
 
 export const EngineStep: React.FC = () => {
   const { config, updateConfig, syncEnvCredentials, syncBackendConfig } = useControlCenterStore();
@@ -176,6 +177,11 @@ export const EngineStep: React.FC = () => {
           fetchModels={fetchModels}
         />
       )}
+
+      {/* Interactive LLM Routing Orchestrator & Fallback Priority */}
+      <div className="mt-5 pt-4 border-t border-slate-200/80 dark:border-white/10">
+        <LLMRoutingOrchestrator />
+      </div>
     </div>
   );
 };
