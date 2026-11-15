@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field
 # Base canonical paths inside RAG
 # Canonical backend directory
 _file_path = Path(__file__).resolve()
-BACKEND_DIR = _file_path.parents[2] if len(_file_path.parents) > 2 and _file_path.parents[2].name == "backend" else _file_path.parents[1]
+# config.py is located at <BACKEND_ROOT>/src/core/config.py, so parents[2] is always the backend root
+BACKEND_DIR = _file_path.parents[2]
 PROJECT_ROOT = BACKEND_DIR
 REPO_ROOT = BACKEND_DIR
 

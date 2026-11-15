@@ -173,6 +173,8 @@ class PlanExecutorMixin:
         # 3. Dynamic Grounded Answer Synthesis
         claims: List[str] = []
         answer_parts: List[str] = []
+        doc_ctx = f"in {', '.join(active_doc_list)}" if active_doc_list else "in the uploaded documents"
+        raw_answer = f"The uploaded document(s) ({doc_ctx}) do not contain verified statements or findings answering '{plan.query}'."
 
         if ordered_chunks:
             doc_groups: Dict[str, List[Dict[str, Any]]] = {}

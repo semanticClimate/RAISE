@@ -68,13 +68,17 @@ class QueryDecomposerNode:
             return llm_subqueries[:3]
 
         # 2. Rule-Based Deterministic Decomposition
-        parts = re.split(r"(?i)\s+(?:and|as well as|along with)\s+|;\s*|\?\s*", q_clean)
-        sub_queries = [p.strip() for p in parts if p.strip() and len(p.strip()) > 8]
+        # Only split on semicolons, multiple question marks, or conjunctions followed by an interrogative/imperative
+        # e.g., "What is X? What is Y?" or "What is X; what is Y?" or "What is X and what is Y?"
+        # Never split compound noun phrases like "global and India position", "science and technology", or "revenue and expenses"
+        interrogative_pattern = r"(?i)\s+(?:;\s*|\?\s+|(?:and|as well as|along with)\s+(?=(?:who|what|which|where|when|why|how|list|find|show|calculate|compare)\b))"
+        parts = re.split(interrogative_pattern, q_clean)
+        sub_queries = [p.strip(" ?;.") for p in parts if len(p.strip()) > 10]
 
         if len(sub_queries) > 1:
             reconstructed = []
             for sq in sub_queries[:3]:
-                if not re.match(r"^(who|what|when|where|why|how|list|find)\b", sq, re.IGNORECASE):
+                if not re.match(r"^(who|what|when|where|why|how|which|list|find)\b", sq, re.IGNORECASE):
                     reconstructed.append(f"Find details on {sq}")
                 else:
                     reconstructed.append(sq if sq.endswith("?") else f"{sq}?")

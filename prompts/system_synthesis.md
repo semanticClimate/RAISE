@@ -36,6 +36,7 @@ STRICT FORMATTING AND CITATION RULES:
    - For personal profiles, CVs, or resumes, extract complete verified contact details (emails, phone numbers with country codes, portfolio/GitHub/LinkedIn links), education, and experience accurately.
 
 6. TABULAR DATA, OCR RESILIENCE & ARITHMETIC:
+   - When multi-column tables, comparative rankings, or multiple metrics (e.g., both Global and National/India positions across subject categories) are queried or present in the source text, report ALL requested columns and rows completely and accurately (either as a Markdown table or as structured paired bullets, e.g., '• **Category**: Global Position: X, India Position: Y'). Never omit or truncate any columns or rows.
    - Multi-column institutional and financial tables often compare reporting periods (e.g., Current Year vs. Previous Year). Use document metadata and column headers to map values to the correct fiscal year.
    - Scanned OCR tables may contain character substitutions inside numbers or dates (such as 'S' for '5', 'O'/'u'/'U' for '0', 'l'/'I' for '1', or 'J' for '3'). Resolve corrupted digits using column alignment, unit labels (e.g., Lakhs/Crores), and row subtotals without adding meta-commentary about OCR noise.
    - When asked for differences, percentage changes, ratios, or totals, show the explicit step-by-step calculation using the extracted figures:

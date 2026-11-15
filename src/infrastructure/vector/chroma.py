@@ -208,9 +208,9 @@ class LocalVectorEngine(
         device: Optional[str] = None,
     ):
         if settings:
-            default_dir = settings.vector.persist_directory
-            default_coll = settings.vector.collection_name
-            default_model = settings.vector.embedding_model
+            default_dir = os.getenv("CHROMA_PERSIST_DIRECTORY") or settings.vector.persist_directory
+            default_coll = os.getenv("CHROMA_COLLECTION_NAME") or settings.vector.collection_name
+            default_model = os.getenv("EMBEDDING_MODEL") or settings.vector.embedding_model
         else:
             default_dir = os.getenv("CHROMA_PERSIST_DIRECTORY", str(Path(__file__).resolve().parents[3] / ".chromadb_bge_large"))
             default_coll = os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_bge_large")
