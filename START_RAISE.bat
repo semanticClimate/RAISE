@@ -1,11 +1,11 @@
 @echo off
 chcp 65001 >nul
-title RAISE // Workstation CLI
+title RAISE
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 set "BAT_FILE=%~f0"
 set "BAT_DIR=%~dp0"
-set "RAISE_CLI_ARGS=%*"
+set "RAISE_RUN_ARGS=%*"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 set "PYTHONUNBUFFERED=1"
@@ -26,7 +26,7 @@ $ErrorActionPreference = "Continue"
 [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
 
 # Early arguments extraction
-$rawArgs = if ($env:RAISE_CLI_ARGS) { $env:RAISE_CLI_ARGS } else { [string]::Join(" ", $args) }
+$rawArgs = if ($env:RAISE_RUN_ARGS) { $env:RAISE_RUN_ARGS } else { [string]::Join(" ", $args) }
 if ($rawArgs -match "(?i)--no-browser|--nobrowser|-nobrowser|-no-browser") { $NoBrowser = $true }
 $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONUTF8 = "1"
@@ -82,15 +82,15 @@ function global:Format-SanitizeOutput {
     return $Text
 }
 
-function prompt { "$($C.Purple)╭─$($C.Reset) $($C.Bold)$($C.Cyan)RAISE$($C.Reset) $($C.Dim)›$($C.Reset) " }
+function prompt { "$($C.Purple)╭─$($C.Reset) $($C.Bold)$($C.Cyan)RAISE$($C.Reset) $($C.Dim)>$($C.Reset) " }
 
 function Write-Header {
     Clear-Host
     $ts = (Get-Date).ToString("HH:mm:ss")
     Write-Host ""
     Write-Host "  $($C.Border)╭──────────────────────────────────────────────────────────────────────────╮$($C.Reset)"
-    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Bold)$($C.Cyan)⚡ RAISE$($C.Reset) $($C.Dim)//$($C.Reset) $($C.White)Research Assessment Intelligence & Semantic Extraction$($C.Reset)     $($C.Border)│$($C.Reset)"
-    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Dim)Workstation Supervisor  •  Unbuffered Live Stream  •  Boot: $ts$($C.Reset)    $($C.Border)│$($C.Reset)"
+    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Bold)$($C.Cyan)RAISE$($C.Reset) $($C.Dim)//$($C.Reset) $($C.White)Research Assessment Intelligence & Semantic Extraction$($C.Reset)     $($C.Border)│$($C.Reset)"
+    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Dim)Service Supervisor  •  Unbuffered Live Stream  •  Boot: $ts$($C.Reset)          $($C.Border)│$($C.Reset)"
     Write-Host "  $($C.Border)╰──────────────────────────────────────────────────────────────────────────╯$($C.Reset)"
     Write-Host ""
 }
@@ -100,12 +100,12 @@ function Write-Info {
     $ts = (Get-Date).ToString("HH:mm:ss.fff")
     $sanitized = Format-SanitizeOutput $Text
     $icon = switch ($Color) {
-        "Green"      { "$($C.Green)✓$($C.Reset)" }
-        "Yellow"     { "$($C.Yellow)⚡$($C.Reset)" }
-        "DarkYellow" { "$($C.Yellow)↻$($C.Reset)" }
-        "Red"        { "$($C.Red)✖$($C.Reset)" }
-        "Gray"       { "$($C.Dim)○$($C.Reset)" }
-        default      { "$($C.Cyan)●$($C.Reset)" }
+        "Green"      { "$($C.Green)[OK]$($C.Reset)" }
+        "Yellow"     { "$($C.Yellow)[!]$($C.Reset)" }
+        "DarkYellow" { "$($C.Yellow)[~]$($C.Reset)" }
+        "Red"        { "$($C.Red)[ERR]$($C.Reset)" }
+        "Gray"       { "$($C.Dim)[-]$($C.Reset)" }
+        default      { "$($C.Cyan)*$($C.Reset)" }
     }
     $textColor = switch ($Color) {
         "Green"      { $C.White }
@@ -917,9 +917,9 @@ if (-not (Test-Path -LiteralPath $vitePkg)) {
 }
 
 # 7. Route Execution Mode (Unbuffered Python `-u` for zero-delay live streaming)
-$cliMode = ($rawArgs -match "(?i)--cli|-cli|--dev|-dev")
-if ($cliMode) {
-    Write-Info "Handing over to RAISE Interactive Research Studio CLI (dev_main.py)..." "Green" "╰─"
+$devMode = ($rawArgs -match "(?i)--dev|-dev|--studio|-studio|--interactive|-interactive|--cli|-cli")
+if ($devMode) {
+    Write-Info "Starting RAISE Interactive Research Studio..." "Green" "╰─"
     Write-Host ""
     Push-Location -LiteralPath $backendDir
     $env:PYTHONPATH = "$backendDir;$backendDir\src"
@@ -929,7 +929,7 @@ if ($cliMode) {
     exit $code
 }
 
-Write-Info "Handing over to RAISE Workstation Supervisor (Live Stream + Interactive REPL)..." "Cyan" "╰─"
+Write-Info "Starting RAISE Supervisor (Live Stream + Interactive REPL)..." "Cyan" "╰─"
 Write-Host ""
 Push-Location -LiteralPath $backendDir
 $env:PYTHONPATH = "$backendDir;$backendDir\src"

@@ -152,10 +152,10 @@ def main():
                         target_pages = int(p_val) if p_val.isdigit() else 0
                     except ValueError:
                         target_pages = 0
-            print(f"\n{C.SECTION}📥 [dev_main CLI] Ingesting PDF report:{C.RESET} {C.WHITE}{target_pdf}{C.RESET}")
+            print(f"\n{C.SECTION}📥 [Ingest] Ingesting PDF report:{C.RESET} {C.WHITE}{target_pdf}{C.RESET}")
             new_doc = ingest_pdf_from_path(target_pdf, pipeline, engine=selected_engine, max_pages=target_pages)
             if new_doc:
-                print(f"\n{C.SUCCESS}✨ [dev_main CLI] Successfully ingested and synced to ChromaDB & Neo4j:{C.RESET} {new_doc}\n")
+                print(f"\n{C.SUCCESS}✨ [Ingest] Successfully ingested and synced to ChromaDB & Neo4j:{C.RESET} {new_doc}\n")
             return
 
     # Handle automated benchmark suite CLI flags (--benchmark [raise|frames], --limit N)

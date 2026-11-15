@@ -1,7 +1,7 @@
 """
-RAISE — Dual Workstation Supervisor & Interactive Terminal Console
-===================================================================
-RAISE Workstation CLI:
+RAISE — Service Supervisor & Interactive Console
+=================================================
+Architecture:
 1. Orchestrates FastAPI Backend (:8000) and React/Vite Frontend (:5173).
 2. Zero-delay unbuffered live telemetry stream with timestamped badges.
 3. Non-blocking pinned bottom prompt bar with automatic redraw lock.
@@ -68,7 +68,7 @@ def _now_ts() -> str:
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 
-def format_stream_row(tag: str, message: str, icon: str = "●", tag_color: str = C.CYAN, msg_color: str = C.WHITE) -> str:
+def format_stream_row(tag: str, message: str, icon: str = "*", tag_color: str = C.CYAN, msg_color: str = C.WHITE) -> str:
     """Formats a single live telemetry line in column format."""
     ts = _now_ts()
     tag_padded = f"{tag:<8}"[:8]
@@ -152,9 +152,9 @@ def fetch_json_endpoint(url: str, timeout: float = 3.0) -> Optional[Dict[str, An
 
 
 def print_banner() -> None:
-    """Renders the top-level RAISE workstation banner."""
+    """Renders the top-level RAISE banner."""
     print(f"\n  {B_DIM}╭{'─' * W_WIDTH}╮{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET}  {C.TITLE}⚡ RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} {B_DIM}//{C.RESET} {C.CYAN}MONOREPO WORKSTATION CLI{C.RESET}{' ' * 15}{B_DIM}│{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {C.TITLE}RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} {B_DIM}//{C.RESET} {C.CYAN}MONOREPO PLATFORM{C.RESET}{' ' * 23}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Backend API : http://localhost:8000   •  Swagger Docs : /docs{C.RESET}{' ' * 13}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173   •  Architecture : Hybrid GraphRAG{C.RESET}{' ' * 3}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
@@ -163,7 +163,7 @@ def print_banner() -> None:
 def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     """Renders real-time diagnostic dashboard with Unicode tree geometry."""
     print(f"\n  {B_DIM}╭{'─' * W_WIDTH}╮{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET} {C.TITLE}🩺 RAISE WORKSTATION HEALTH & SUBSYSTEM DIAGNOSTICS{C.RESET}{' ' * 24}{B_DIM}│{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET} {C.TITLE}RAISE SYSTEM HEALTH & SUBSYSTEM DIAGNOSTICS{C.RESET}{' ' * 32}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}├{'─' * W_WIDTH}┤{C.RESET}")
 
     # 1. Hardware Summary
@@ -229,16 +229,17 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
         pass
 
     neo4j_online = is_port_open(7687)
-    neo4j_str = f"{C.SUCCESS}● CONNECTED{C.RESET} (bolt://localhost:7687)" if neo4j_online else f"{C.WARN}○ STANDBY{C.RESET}   (In-memory NetworkX active)"
+    neo4j_str = f"{C.SUCCESS}[OK] CONNECTED{C.RESET} (bolt://localhost:7687)" if neo4j_online else f"{C.WARN}[STANDBY]{C.RESET}   (In-memory NetworkX active)"
 
     redis_online = is_port_open(6379)
-    redis_str = f"{C.SUCCESS}● CONNECTED{C.RESET} (localhost:6379)" if redis_online else f"{C.MUTED}○ STANDBY{C.RESET}   (In-memory LRU active)"
+    redis_str = f"{C.SUCCESS}[OK] CONNECTED{C.RESET} (localhost:6379)" if redis_online else f"{C.MUTED}[STANDBY]{C.RESET}   (In-memory LRU active)"
 
     pg_online = is_port_open(5432)
-    pg_str = f"{C.SUCCESS}● CONNECTED{C.RESET} (localhost:5432)" if pg_online else f"{C.MUTED}○ STANDBY{C.RESET}   (SQLite local persistence)"
+    pg_str = f"{C.SUCCESS}[OK] CONNECTED{C.RESET} (localhost:5432)" if pg_online else f"{C.MUTED}[STANDBY]{C.RESET}   (SQLite local persistence)"
 
-    chroma_str = f"{C.SUCCESS}● ACTIVE{C.RESET}    ({chroma_count} chunks | {chroma_model})" if chroma_online else f"{C.WARN}○ EMPTY / OFFLINE{C.RESET}"
-    synth_str = synth.get("display_string", f"{C.SUCCESS}● ACTIVE{C.RESET}")
+    chroma_str = f"{C.SUCCESS}[OK] ACTIVE{C.RESET}    ({chroma_count} chunks | {chroma_model})" if chroma_online else f"{C.WARN}[STANDBY] EMPTY / OFFLINE{C.RESET}"
+    synth_raw = synth.get("display_string", f"{C.SUCCESS}[OK] ACTIVE{C.RESET}")
+    synth_str = synth_raw.replace("●", "[OK]").replace("✓", "[OK]").replace("✖", "[ERR]")
 
     encoder_name = prov.get("encoder_model") or cfg.get("embedding_model") or chroma_model
     reranker_name = prov.get("reranker_model") or cfg.get("reranker_model") or models.RERANKER_MODEL_NAME
@@ -246,7 +247,7 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
 
     print(f"  {B_DIM}│{C.RESET} {C.SECTION}CONNECTION & NETWORK TOPOLOGY{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Backend API Gateway      {C.WHITE}http://localhost:8000{C.RESET}  {C.MUTED}(Swagger: {C.CYAN}/docs{C.MUTED}){C.RESET}")
-    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Frontend Workstation     {C.WHITE}http://localhost:5173{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Frontend UI              {C.WHITE}http://localhost:5173{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}╰─{C.RESET} Live Telemetry Socket    {C.WHITE}ws://localhost:8000/ws/traffic{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}")
     print(f"  {B_DIM}│{C.RESET} {C.SECTION}STORAGE & DATABASE SUBSTRATES{C.RESET}")
@@ -315,26 +316,26 @@ def run_system_doctor() -> None:
                 status = resp.status
                 latency = round((time.perf_counter() - t0) * 1000, 1)
                 if 200 <= status < 400:
-                    badge = f"{C.SUCCESS}✓ PASS{C.RESET} (HTTP {status} • {latency}ms)"
+                    badge = f"{C.SUCCESS}[OK] PASS{C.RESET} (HTTP {status} • {latency}ms)"
                 else:
-                    badge = f"{C.WARN}⚡ HTTP {status}{C.RESET} ({latency}ms)"
+                    badge = f"{C.WARN}[!] HTTP {status}{C.RESET} ({latency}ms)"
         except urllib.error.HTTPError as e:
-            badge = f"{C.DANGER}✖ HTTP {e.code}{C.RESET} ({e.reason})"
+            badge = f"{C.DANGER}[ERR] HTTP {e.code}{C.RESET} ({e.reason})"
         except Exception as e:
-            badge = f"{C.DANGER}✖ UNREACHABLE{C.RESET} ({type(e).__name__})"
+            badge = f"{C.DANGER}[ERR] UNREACHABLE{C.RESET} ({type(e).__name__})"
 
         print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} {name:<30} {badge}")
 
     neo_ok = is_port_open(7687)
-    neo_badge = f"{C.SUCCESS}✓ ONLINE{C.RESET} (Port 7687 responding)" if neo_ok else f"{C.WARN}○ STANDBY{C.RESET} (In-memory NetworkX active)"
+    neo_badge = f"{C.SUCCESS}[OK] ONLINE{C.RESET} (Port 7687 responding)" if neo_ok else f"{C.WARN}[STANDBY]{C.RESET} (In-memory NetworkX active)"
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} {'Neo4j Database (:7687)':<30} {neo_badge}")
 
     redis_ok = is_port_open(6379)
-    redis_badge = f"{C.SUCCESS}✓ ONLINE{C.RESET} (Port 6379 responding)" if redis_ok else f"{C.MUTED}○ STANDBY{C.RESET} (In-memory LRU active)"
+    redis_badge = f"{C.SUCCESS}[OK] ONLINE{C.RESET} (Port 6379 responding)" if redis_ok else f"{C.MUTED}[STANDBY]{C.RESET} (In-memory LRU active)"
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} {'Redis Cache (:6379)':<30} {redis_badge}")
 
     pg_ok = is_port_open(5432)
-    pg_badge = f"{C.SUCCESS}✓ ONLINE{C.RESET} (Port 5432 responding)" if pg_ok else f"{C.MUTED}○ STANDBY{C.RESET} (SQLite local persistence)"
+    pg_badge = f"{C.SUCCESS}[OK] ONLINE{C.RESET} (Port 5432 responding)" if pg_ok else f"{C.MUTED}[STANDBY]{C.RESET} (SQLite local persistence)"
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}╰─{C.RESET} {'PostgreSQL Database (:5432)':<30} {pg_badge}")
 
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
@@ -435,7 +436,7 @@ class DualProcessSupervisor:
             threading.Thread(target=self._stream_output, args=(self.backend_proc.stderr, "BACKEND-ERR", True), daemon=True).start()
             return True
         except Exception as e:
-            print_supervisor_event(format_stream_row("SUPVR", f"Failed to start backend: {e}", "✖", C.DANGER, C.DANGER))
+            print_supervisor_event(format_stream_row("SUPVR", f"Failed to start backend: {e}", "[ERR]", C.DANGER, C.DANGER))
             return False
 
     def start_frontend(self) -> bool:
@@ -462,7 +463,7 @@ class DualProcessSupervisor:
             threading.Thread(target=self._stream_output, args=(self.frontend_proc.stderr, "FRONTEND-ERR", True), daemon=True).start()
             return True
         except Exception as e:
-            print_supervisor_event(format_stream_row("SUPVR", f"Failed to start frontend: {e}", "✖", C.DANGER, C.DANGER))
+            print_supervisor_event(format_stream_row("SUPVR", f"Failed to start frontend: {e}", "[ERR]", C.DANGER, C.DANGER))
             return False
 
     def _stream_output(self, stream, prefix: str, is_err: bool):
@@ -516,42 +517,42 @@ class DualProcessSupervisor:
                     continue
 
                 if "Successfully mounted all core RAISE GraphRAG routes" in clean_line:
-                    print_supervisor_event(format_stream_row("CORE", "All GraphRAG routers mounted successfully.", "📦", C.SUCCESS, C.WHITE))
+                    print_supervisor_event(format_stream_row("CORE", "All GraphRAG routers mounted successfully.", "[OK]", C.SUCCESS, C.WHITE))
                     continue
 
                 if "[GRAPH-RAG]" in clean_line:
                     clean_rag = clean_line.split("[GRAPH-RAG]")[-1].strip()
-                    print_supervisor_event(format_stream_row("GRAPHRAG", clean_rag, "●", C.CYAN, C.WHITE))
+                    print_supervisor_event(format_stream_row("GRAPHRAG", clean_rag, "*", C.CYAN, C.WHITE))
                     continue
 
                 if "switched to" in clean_line and "Reason" in clean_line:
                     clean_fo = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
-                    print_supervisor_event(format_stream_row("FAILOVER", clean_fo, "🔄", C.WARN, C.WARN))
+                    print_supervisor_event(format_stream_row("FAILOVER", clean_fo, "[!]", C.WARN, C.WARN))
                     continue
 
                 if "[INFERENCE]" in clean_line or "Executing task" in clean_line:
                     clean_inf = clean_line.split("[INFERENCE]")[-1].replace("raise.infrastructure.providers.router:", "").strip()
                     clean_inf = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_inf)
-                    print_supervisor_event(format_stream_row("ROUTER", clean_inf, "⚡", C.ACCENT, C.WHITE))
+                    print_supervisor_event(format_stream_row("ROUTER", clean_inf, "*", C.ACCENT, C.WHITE))
                     continue
 
                 if "Synthesis Success" in clean_line:
                     clean_syn = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
-                    print_supervisor_event(format_stream_row("SYNTH", clean_syn, "✍️", C.SUCCESS, C.SUCCESS))
+                    print_supervisor_event(format_stream_row("SYNTH", clean_syn, "[OK]", C.SUCCESS, C.SUCCESS))
                     continue
 
                 if "POST /api/documents/upload" in clean_line:
-                    print_supervisor_event(format_stream_row("INGEST", "Document upload received from UI Library.", "📄", C.SUCCESS, C.WHITE))
+                    print_supervisor_event(format_stream_row("INGEST", "Document upload received from UI Library.", "[OK]", C.SUCCESS, C.WHITE))
                     continue
 
                 if "GET /api/pdf/" in clean_line and "200 OK" not in clean_line:
                     pdf_match = re.search(r'GET /api/pdf/([^ /]+)', clean_line)
                     pdf_name = urllib.parse.unquote(pdf_match.group(1)) if pdf_match else "PDF"
-                    print_supervisor_event(format_stream_row("VIEWER", f"Streaming PDF: {pdf_name}", "📖", C.MUTED, C.MUTED))
+                    print_supervisor_event(format_stream_row("VIEWER", f"Streaming PDF: {pdf_name}", "*", C.MUTED, C.MUTED))
                     continue
 
                 if "ready in" in clean_line or "Local:" in clean_line:
-                    print_supervisor_event(format_stream_row("FRONTEND", "React / Vite workstation ready on http://localhost:5173", "🚀", C.SUCCESS, C.SUCCESS))
+                    print_supervisor_event(format_stream_row("FRONTEND", "React / Vite UI ready on http://localhost:5173", "[OK]", C.SUCCESS, C.SUCCESS))
                     continue
 
                 # 3. Filter only repetitive heartbeat / CORS noise so real events always show
@@ -616,12 +617,12 @@ class DualProcessSupervisor:
                 ) and not is_error
 
                 if is_error:
-                    print_supervisor_event(format_stream_row("ERROR", log_msg, "❌", C.DANGER, C.DANGER))
+                    print_supervisor_event(format_stream_row("ERROR", log_msg, "[ERR]", C.DANGER, C.DANGER))
                 elif is_warning:
-                    print_supervisor_event(format_stream_row("WARNING", log_msg, "⚠️", C.WARN, C.WARN))
+                    print_supervisor_event(format_stream_row("WARNING", log_msg, "[WARN]", C.WARN, C.WARN))
                 else:
                     if "HTTP/1.1\" 200 OK" not in log_msg:
-                        print_supervisor_event(format_stream_row(logger_tag, log_msg, "●", C.CYAN, B_TXT))
+                        print_supervisor_event(format_stream_row(logger_tag, log_msg, "*", C.CYAN, B_TXT))
 
     def wait_for_backend(self, timeout_sec: int = 180) -> bool:
         """Polls /api/health at high frequency (0.25s) for instant readiness detection."""
@@ -630,7 +631,7 @@ class DualProcessSupervisor:
         while time.time() - t0 < timeout_sec:
             if self.backend_proc and self.backend_proc.poll() is not None:
                 exit_code = self.backend_proc.poll()
-                print_supervisor_event(format_stream_row("FATAL", f"Backend exited unexpectedly (code {exit_code})", "✖", C.DANGER, C.DANGER))
+                print_supervisor_event(format_stream_row("FATAL", f"Backend exited unexpectedly (code {exit_code})", "[ERR]", C.DANGER, C.DANGER))
                 with self.log_lock:
                     for l in self.backend_recent_logs[-12:]:
                         print(f"    {C.MUTED}{l}{C.RESET}")
@@ -646,12 +647,12 @@ class DualProcessSupervisor:
             now = time.time()
             if now - last_heartbeat >= 8.0:
                 elapsed = int(now - t0)
-                print_supervisor_event(format_stream_row("SUPVR", f"Backend initializing neural models... ({elapsed}s / {timeout_sec}s)", "⏳", C.MUTED, C.MUTED))
+                print_supervisor_event(format_stream_row("SUPVR", f"Backend initializing neural models... ({elapsed}s / {timeout_sec}s)", "*", C.MUTED, C.MUTED))
                 last_heartbeat = now
 
             time.sleep(0.25)
 
-        print_supervisor_event(format_stream_row("FATAL", f"Backend timed out after {timeout_sec}s", "✖", C.DANGER, C.DANGER))
+        print_supervisor_event(format_stream_row("FATAL", f"Backend timed out after {timeout_sec}s", "[ERR]", C.DANGER, C.DANGER))
         return False
 
     def wait_for_frontend(self, timeout_sec: int = 30) -> bool:
@@ -682,7 +683,7 @@ class DualProcessSupervisor:
 
         free_port(8000)
         free_port(5173)
-        print(f"  {B_DIM}╰─{C.RESET} {C.SUCCESS}✓ All RAISE services stopped cleanly.{C.RESET}\n")
+        print(f"  {B_DIM}╰─{C.RESET} {C.SUCCESS}[OK] All RAISE services stopped cleanly.{C.RESET}\n")
 
 
 # ==============================================================================
@@ -696,9 +697,9 @@ def execute_terminal_query(query: str, focused_doc: Optional[str] = None) -> Non
         return
 
     print(f"\n  {B_DIM}╭─{C.RESET} {C.CYAN}QUERY EXECUTION{C.RESET} {B_DIM}{'─' * (W_WIDTH - 18)}╮{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET} {C.ACCENT}›{C.RESET} {C.WHITE}{q_clean}{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET} {C.ACCENT}>{C.RESET} {C.WHITE}{q_clean}{C.RESET}")
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}")
-    print_supervisor_event(format_stream_row("PIPELINE", "Executing multi-substrate GraphRAG + NLI verification...", "⚡", C.CYAN, C.MUTED))
+    print_supervisor_event(format_stream_row("PIPELINE", "Executing multi-substrate GraphRAG + NLI verification...", "*", C.CYAN, C.MUTED))
 
     t0 = time.perf_counter()
     active_docs = [focused_doc] if focused_doc else None
@@ -755,9 +756,9 @@ def execute_terminal_query(query: str, focused_doc: Optional[str] = None) -> Non
             print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
     except urllib.error.HTTPError as e:
         err_msg = e.read().decode("utf-8", errors="replace")
-        print_supervisor_event(format_stream_row("HTTP-ERR", f"Query failed (HTTP {e.code}): {err_msg}", "✖", C.DANGER, C.DANGER))
+        print_supervisor_event(format_stream_row("HTTP-ERR", f"Query failed (HTTP {e.code}): {err_msg}", "[ERR]", C.DANGER, C.DANGER))
     except Exception as e:
-        print_supervisor_event(format_stream_row("ERROR", f"Query failed: {e}", "✖", C.DANGER, C.DANGER))
+        print_supervisor_event(format_stream_row("ERROR", f"Query failed: {e}", "[ERR]", C.DANGER, C.DANGER))
 
 
 # ==============================================================================
@@ -765,7 +766,7 @@ def execute_terminal_query(query: str, focused_doc: Optional[str] = None) -> Non
 # ==============================================================================
 
 def main():
-    """Main workstation supervisor loop."""
+    """Main service supervisor loop."""
     repo_root = BASE_DIR.parent if BASE_DIR.name == "backend" else BASE_DIR
     backend_dir = repo_root / "backend"
     frontend_dir = repo_root / "frontend"
@@ -804,32 +805,32 @@ def main():
 
     # 1. Launch Backend
     t_back = time.perf_counter()
-    print_supervisor_event(format_stream_row("SUPVR", "Launching Backend Gateway on http://127.0.0.1:8000...", "●", C.CYAN, C.WHITE))
+    print_supervisor_event(format_stream_row("SUPVR", "Launching Backend Gateway on http://127.0.0.1:8000...", "*", C.CYAN, C.WHITE))
     if not supervisor.start_backend():
-        print_supervisor_event(format_stream_row("FATAL", "Could not launch backend server.", "✖", C.DANGER, C.DANGER))
+        print_supervisor_event(format_stream_row("FATAL", "Could not launch backend server.", "[ERR]", C.DANGER, C.DANGER))
         return
 
     backend_timeout = int(os.getenv("RAISE_BACKEND_TIMEOUT", "180"))
     if not supervisor.wait_for_backend(timeout_sec=backend_timeout):
-        print_supervisor_event(format_stream_row("FATAL", "Backend failed health check. Inspect backend.log.", "✖", C.DANGER, C.DANGER))
+        print_supervisor_event(format_stream_row("FATAL", "Backend failed health check. Inspect backend.log.", "[ERR]", C.DANGER, C.DANGER))
         supervisor.shutdown()
         return
     b_dur = round(time.perf_counter() - t_back, 1)
-    print_supervisor_event(format_stream_row("SUPVR", f"Backend Gateway is LIVE on http://localhost:8000 ({b_dur}s)", "✓", C.SUCCESS, C.SUCCESS))
+    print_supervisor_event(format_stream_row("SUPVR", f"Backend Gateway is LIVE on http://localhost:8000 ({b_dur}s)", "[OK]", C.SUCCESS, C.SUCCESS))
 
     # 2. Launch Frontend
     t_front = time.perf_counter()
-    print_supervisor_event(format_stream_row("SUPVR", "Launching Frontend Workstation on http://localhost:5173...", "●", C.CYAN, C.WHITE))
+    print_supervisor_event(format_stream_row("SUPVR", "Launching Frontend UI on http://localhost:5173...", "*", C.CYAN, C.WHITE))
     if not supervisor.start_frontend():
-        print_supervisor_event(format_stream_row("FATAL", "Could not launch frontend server.", "✖", C.DANGER, C.DANGER))
+        print_supervisor_event(format_stream_row("FATAL", "Could not launch frontend server.", "[ERR]", C.DANGER, C.DANGER))
         supervisor.shutdown()
         return
 
     if not supervisor.wait_for_frontend(timeout_sec=35):
-        print_supervisor_event(format_stream_row("NOTICE", "Frontend still initializing in background...", "⚡", C.WARN, C.WARN))
+        print_supervisor_event(format_stream_row("NOTICE", "Frontend still initializing in background...", "[!]", C.WARN, C.WARN))
     else:
         f_ms = int((time.perf_counter() - t_front) * 1000)
-        print_supervisor_event(format_stream_row("SUPVR", f"Frontend Workstation is LIVE on http://localhost:5173 ({f_ms}ms)", "✓", C.SUCCESS, C.SUCCESS))
+        print_supervisor_event(format_stream_row("SUPVR", f"Frontend UI is LIVE on http://localhost:5173 ({f_ms}ms)", "[OK]", C.SUCCESS, C.SUCCESS))
 
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
 
@@ -864,7 +865,7 @@ def main():
                 try:
                     scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
                     header_str = f"  {B_DIM}╭─{C.RESET} [{C.TITLE}{scope_badge}{C.RESET}] {B_DIM}── Commands: status · doctor · docs · attach <N> · logs · exit ─╮{C.RESET}"
-                    prompt_label = f"  {B_DIM}╰─{C.RESET} {C.ACCENT}RAISE{C.RESET} {B_DIM}›{C.RESET} "
+                    prompt_label = f"  {B_DIM}╰─{C.RESET} {C.ACCENT}RAISE{C.RESET} {B_DIM}>{C.RESET} "
                     full_prompt = f"{header_str}\n{prompt_label}"
 
                     user_input = pt_session.prompt(ANSI(full_prompt)).strip()
@@ -882,7 +883,7 @@ def main():
             try:
                 scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
                 _active_prompt_header = f"  {B_DIM}╭─{C.RESET} [{C.TITLE}{scope_badge}{C.RESET}] {B_DIM}── Commands: status · doctor · docs · attach <N> · logs · exit ─╮{C.RESET}"
-                _active_repl_prompt = f"  {B_DIM}╰─{C.RESET} {C.ACCENT}RAISE{C.RESET} {B_DIM}›{C.RESET} "
+                _active_repl_prompt = f"  {B_DIM}╰─{C.RESET} {C.ACCENT}RAISE{C.RESET} {B_DIM}>{C.RESET} "
 
                 try:
                     print(_active_prompt_header)
@@ -978,14 +979,9 @@ def dispatch_repl_command(
         print(f"  • Model    : {synth.get('model', 'unknown')}")
         print(f"  • Status   : {synth.get('display_string')}\n")
     elif cmd_lower == "bench":
-        print(f"\n{C.TITLE}⚡ Running Quick 3-Query Benchmark Verification...{C.RESET}")
-        sample_queries = [
-            "What is the primary mission or purpose of the institution?",
-            "What are the major academic programmes offered?",
-            "Summarize key research and industry collaboration highlights.",
-        ]
-        for q in sample_queries:
-            execute_terminal_query(q, focused_doc=focused_doc)
+        print(f"\n{C.TITLE}Running Benchmark Verification...{C.RESET}")
+        print(f"  Execute the full scientific evaluation harness via:")
+        print(f"  {C.CYAN}python evaluation/run_ragas_benchmarks.py{C.RESET}\n")
     else:
         execute_terminal_query(user_input, focused_doc=focused_doc)
 
