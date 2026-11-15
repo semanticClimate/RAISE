@@ -475,11 +475,15 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
     # Write safely back to .env in both backend and root locations
     output_lines = [f"{k}={v}" for k, v in env_map.items()]
     content = "\n".join(output_lines) + "\n"
-    ENV_FILE_PATH.write_text(content, encoding="utf-8")
+    try:
+        ENV_FILE_PATH.write_text(content, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Could not persist to backend .env: {e}")
+
     try:
         ROOT_ENV_FILE_PATH.write_text(content, encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not persist to root .env: {e}")
 
     return {
         "status": "success",

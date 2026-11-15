@@ -506,6 +506,15 @@ def probe_cloud_llm_key(provider: str, api_key: str) -> Dict[str, Any]:
     elif prov == "openrouter":
         url = "https://openrouter.ai/api/v1/auth/key"
         headers = {"Authorization": f"Bearer {key}"}
+    elif prov == "mistral":
+        url = "https://api.mistral.ai/v1/models"
+        headers = {"Authorization": f"Bearer {key}"}
+    elif prov in ("nvidia", "nim"):
+        url = "https://integrate.api.nvidia.com/v1/models"
+        headers = {"Authorization": f"Bearer {key}"}
+    elif prov == "cohere":
+        url = "https://api.cohere.com/v1/models"
+        headers = {"Authorization": f"Bearer {key}"}
     else:
         # Default fallback for custom or unprobed providers
         return {"online": True, "status": "READY", "provider": prov, "latency_ms": 20}
