@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .schemas import SystemConfigRequest
-from src.core.config import models
+from src.core.config import models, AVAILABLE_EMBEDDING_MODELS, AVAILABLE_RERANKER_MODELS
+from .preflight_service import check_hf_model_cached
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -126,6 +127,69 @@ def get_current_configuration() -> Dict[str, Any]:
             or (BACKEND_DIR / ".runtime" / "setup_completed").exists()
             or (ROOT_DIR / ".runtime" / "setup_completed").exists()
         ),
+        "neural_registry": {
+            "embedding": [
+                {
+                    "id": repo,
+                    "name": repo.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(repo),
+                    "status": "Cached & Ready" if check_hf_model_cached(repo) else "Requires Download",
+                    "specifications": (
+                        "768-dim • 8,192 tokens context"
+                        if "embeddinggemma" in repo or "nomic-embed" in repo
+                        else (
+                            "1024-dim • 512 tokens max"
+                            if "bge-large" in repo or "bge-m3" in repo
+                            else (
+                                "384-dim • 256 tokens max"
+                                if "MiniLM" in repo
+                                else "768-dim • Dense Embeddings"
+                            )
+                        )
+                    ),
+                }
+                for repo in dict.fromkeys(AVAILABLE_EMBEDDING_MODELS.values())
+            ],
+            "reranker": [
+                {
+                    "id": repo,
+                    "name": repo.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(repo),
+                    "status": "Cached & Ready" if check_hf_model_cached(repo) else "Requires Download",
+                    "specifications": (
+                        "8,192 tokens max • Cross-Attention (matches 8k embedder context)"
+                        if "v2-m3" in repo
+                        else "512 tokens max • Cross-Attention"
+                    ),
+                }
+                for repo in dict.fromkeys(AVAILABLE_RERANKER_MODELS.values())
+            ] + [
+                {
+                    "id": "In-Memory Heuristic Reranker",
+                    "name": "In-Memory Heuristic Reranker",
+                    "cached": True,
+                    "status": "Built-in (Zero-Dependency)",
+                    "specifications": "In-process lexical overlap & contextual co-occurrence fallback",
+                }
+            ],
+            "verifier": [
+                {
+                    "id": models.NLI_MODEL_NAME,
+                    "name": models.NLI_MODEL_NAME.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(models.NLI_MODEL_NAME),
+                    "status": "Cached & Ready" if check_hf_model_cached(models.NLI_MODEL_NAME) else "Requires Download",
+                    "specifications": "RoBERTa / Cross-Attention • Pairwise citation chunk verification",
+                },
+                {
+                    "id": "In-Memory Verifier",
+                    "name": "In-Memory Verifier",
+                    "cached": True,
+                    "status": "Built-in (Zero-Dependency)",
+                    "specifications": "Zero-dependency local verification fallback",
+                }
+            ],
+            "custom_model_supported": True,
+        },
     }
 
 
