@@ -295,7 +295,11 @@ export function useChatStream({
             (typeof res.data.answer === 'string' ? res.data.answer : '') ||
             latestStreamedTextRef.current ||
             '';
-          const resolvedText = sanitizeStreamText(rawAns);
+          let resolvedText = sanitizeStreamText(rawAns);
+          if (!resolvedText.trim()) {
+            resolvedText =
+              'No grounded answer could be synthesized from the active documents. Please verify that your document is attached to your drawer, check your model configuration in the Control Center, or click Retry.';
+          }
           if (res.data) {
             res.data.duration_sec = res.data.duration_sec ?? res.data.latency_sec ?? elapsedSec;
             res.data.latency_sec = res.data.latency_sec ?? elapsedSec;
