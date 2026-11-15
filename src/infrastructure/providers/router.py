@@ -559,15 +559,16 @@ class ProviderRouter:
         """Select primary provider according to execution mode, task policy, and live cooldown state."""
         t = InferenceTask(task) if isinstance(task, str) else task
 
+        fallback_vllm = self.providers.get("vllm") or (next(iter(self.providers.values())) if self.providers else None)
         if self.mode == ExecutionMode.LOCAL:
-            return self.providers["vllm"]
+            return fallback_vllm
 
         target_name = self.task_policy.get(t, "vllm")
 
         # If Cloud mode or Automatic mode, check billing guardrail
         if target_name != "vllm" and not self.cloud_allowed and self.mode != ExecutionMode.CLOUD:
             logger.info(f"Cloud inference confirmation required for {target_name}. Defaulting to Local vLLM.")
-            return self.providers["vllm"]
+            return fallback_vllm
 
         now = time.time()
         cm = get_credential_manager()
@@ -608,7 +609,7 @@ class ProviderRouter:
                         target_name = cand
                         break
             else:
-                if getattr(self, "local_allowed", True) and getattr(self.providers["vllm"], "is_available", lambda: True)():
+                if getattr(self, "local_allowed", True) and "vllm" in self.providers and getattr(self.providers["vllm"], "is_available", lambda: True)():
                     target_name = "vllm"
 
         # Check if preferred provider is on rate-limit cooldown or disabled; if so, pick next healthy fallback
@@ -625,7 +626,18 @@ class ProviderRouter:
                     target_name = cand
                     break
 
-        return self.providers.get(target_name, self.providers["vllm"])
+        if target_name in self.disabled_providers:
+            for eng in ("ollama", "vllm"):
+                if eng in self.providers and eng not in self.disabled_providers:
+                    try:
+                        if getattr(self.providers[eng], "is_available", lambda: False)():
+                            target_name = eng
+                            break
+                    except Exception:
+                        pass
+
+        fallback_prov = self.providers.get("vllm") or (next(iter(self.providers.values())) if self.providers else None)
+        return self.providers.get(target_name, fallback_prov)
 
     def complete(
         self,
@@ -644,6 +656,9 @@ class ProviderRouter:
         logger.info(f"[INFERENCE] Executing task '{t.value}' via Provider: '{primary_provider.name}'")
 
         try:
+            if primary_provider.name in self.disabled_providers:
+                raise RuntimeError(f"Provider '{primary_provider.name}' is disabled due to authentication/billing restriction.")
+
             result = primary_provider.complete(
                 prompt=prompt,
                 system_prompt=system_prompt,
@@ -753,13 +768,51 @@ class ProviderRouter:
                     errors.append(f"{candidate_name}: {fb_err}")
                     logger.warning(f"Fallback candidate '{candidate_name}' failed: {fb_err}")
 
+            # Auto-probe and promote local daemons (Ollama / vLLM) if cloud failed
+            if getattr(self, "local_allowed", True):
+                for local_cand in ("ollama", "vllm"):
+                    if local_cand not in self.providers or local_cand in self.disabled_providers:
+                        continue
+                    try:
+                        cand_prov = self.providers[local_cand]
+                        if cand_prov.is_available():
+                            logger.info(f"[ROUTER] Auto-probing detected responsive local engine '{local_cand}'. Promoting to active provider.")
+                            if local_cand not in self.fallback_chain:
+                                self.fallback_chain.insert(0, local_cand)
+                            fb_event = FallbackEvent(
+                                from_provider=primary_provider.name,
+                                to_provider=local_cand,
+                                task=t.value,
+                                reason="Automated failover to responsive local engine following cloud failure",
+                            )
+                            self.fallback_history.append(fb_event)
+                            res = cand_prov.complete(
+                                prompt=prompt,
+                                system_prompt=system_prompt,
+                                max_tokens=max_tokens,
+                                temperature=temperature,
+                                **kwargs,
+                            )
+                            if res and not any(res.startswith(pfx) for pfx in ("Error executing inference", "Cloud LLM error", "Ollama error", "Inference execution error")):
+                                self.last_used_provider = local_cand
+                                self.last_used_model = getattr(cand_prov, "model_name", "default")
+                                get_token_tracker().record_inference(
+                                    provider=local_cand,
+                                    prompt_text=f"{system_prompt or ''}\n{prompt}",
+                                    completion_text=res,
+                                    model=getattr(cand_prov, "model_name", None),
+                                )
+                                return res
+                    except Exception as probe_err:
+                        errors.append(f"{local_cand}: {probe_err}")
+
             all_errs = "; ".join(errors)
             if "not configured" in all_errs and ("offline" in all_errs or "refused" in all_errs or "10061" in all_errs or "CUDA is unavailable" in all_errs):
                 raise ProviderExhaustedError(
-                    "No functional LLM provider available. Please configure an API key (Groq, Gemini, NVIDIA, Mistral) in Settings or start a local Ollama/vLLM instance.",
+                    f"NO_LLM_AVAILABLE: No functional LLM provider available. Please configure an API key (Groq, Gemini, NVIDIA, Mistral) in Settings or start a local Ollama/vLLM instance. Details: {all_errs}",
                     errors=errors,
                 )
-            raise ProviderExhaustedError(f"All inference providers in fallback chain failed: {all_errs}", errors=errors)
+            raise ProviderExhaustedError(f"NO_LLM_AVAILABLE: All inference providers in fallback chain failed: {all_errs}", errors=errors)
 
     async def complete_stream(
         self,

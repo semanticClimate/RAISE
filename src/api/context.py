@@ -291,6 +291,18 @@ def get_authentic_client_ip(request: Request) -> str:
     return request.client.host if (request and request.client) else "127.0.0.1"
 
 
+_DOCUMENTS_CACHE_TTL: float = 20.0
+_LAST_DOCS_CACHE_TIME: float = 0.0
+_CACHED_DOCS_PAYLOAD: Optional[Dict[str, Any]] = None
+
+
+def invalidate_documents_cache() -> None:
+    """Invalidate document manifest & library metadata cache."""
+    global _LAST_DOCS_CACHE_TIME, _CACHED_DOCS_PAYLOAD
+    _LAST_DOCS_CACHE_TIME = 0.0
+    _CACHED_DOCS_PAYLOAD = None
+
+
 def get_ready_documents_list() -> List[Dict[str, Any]]:
     """Retrieve list of actively confirmed ready documents from authoritative manifest.
     Does NOT auto-scan or auto-register external PDFs without explicit user upload."""
@@ -346,6 +358,7 @@ def record_ready_document(
         })
     manifest["ready_documents"] = docs
     MANIFEST_FILE.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    invalidate_documents_cache()
 
 
 def remove_ready_document(filename: str) -> bool:
@@ -367,6 +380,7 @@ def remove_ready_document(filename: str) -> bool:
     manifest["ready_documents"] = new_docs
     manifest["deleted_documents"] = deleted
     MANIFEST_FILE.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    invalidate_documents_cache()
     return True
 
 
@@ -374,6 +388,7 @@ def purge_all_ready_documents() -> bool:
     MANIFEST_FILE.parent.mkdir(parents=True, exist_ok=True)
     manifest = {"ready_documents": [], "deleted_documents": []}
     MANIFEST_FILE.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    invalidate_documents_cache()
     return True
 
 
@@ -490,7 +505,13 @@ def get_library_documents(postgres_mgr: Any = None, auto_scan: bool = True) -> D
     Consolidated reader for all confirmed ready documents across manifest and PostgreSQL.
     Auto-reconciles real chunk counts from CHUNKS_DIR, page counts from PDFs, and checks
     availability of extracted markdown in LIBRARY_DIR and catalogs in CATALOGS_DIR.
+    Uses pre-indexed directory sets and in-memory TTL caching for instant sub-millisecond responses.
     """
+    global _LAST_DOCS_CACHE_TIME, _CACHED_DOCS_PAYLOAD
+    now = time.time()
+    if _CACHED_DOCS_PAYLOAD is not None and (now - _LAST_DOCS_CACHE_TIME < _DOCUMENTS_CACHE_TTL):
+        return _CACHED_DOCS_PAYLOAD
+
     if auto_scan:
         try:
             auto_scan_and_reconcile_documents()
@@ -499,6 +520,12 @@ def get_library_documents(postgres_mgr: Any = None, auto_scan: bool = True) -> D
 
     ready_docs = get_ready_documents_list()
     pg_docs = postgres_mgr.list_documents() if postgres_mgr and hasattr(postgres_mgr, "list_documents") else []
+
+    # Pre-index derivative files to convert O(N*M) disk sweeps into O(1) set lookups
+    existing_chunks = {f.stem.replace("_chunks", "").lower(): f for f in CHUNKS_DIR.glob("*_chunks.json")} if CHUNKS_DIR.exists() else {}
+    existing_extracted = {f.stem.replace("_extracted", "").lower(): f for f in LIBRARY_DIR.glob("*_extracted.md")} if LIBRARY_DIR.exists() else {}
+    existing_catalogs = {f.name.replace(".okf.md", "").lower(): f for f in CATALOGS_DIR.glob("*.okf.md")} if CATALOGS_DIR.exists() else {}
+    existing_triples = {f.stem.replace("_triples", "").lower(): f for f in GRAPH_DIR.glob("*_triples.json")} if GRAPH_DIR.exists() else {}
 
     result_docs = []
     seen = set()
@@ -509,14 +536,15 @@ def get_library_documents(postgres_mgr: Any = None, auto_scan: bool = True) -> D
             continue
         seen.add(fn)
         stem = Path(fn).stem
+        stem_lower = stem.lower()
         clean_stem = re.sub(r"[^a-zA-Z0-9_-]", "_", stem)[:40]
         is_prot = bool(r.get("is_protected", False))
         can_del = not is_prot
         owner_val = r.get("uploaded_by", "system" if is_prot else "user")
 
-        # Reconcile true chunk count from filesystem
+        # Reconcile true chunk count from pre-indexed chunks
         chunks_cnt = r.get("chunks_count", 0)
-        chunk_file = _find_file_for_stem(CHUNKS_DIR, stem, "_chunks.json")
+        chunk_file = existing_chunks.get(stem_lower) or _find_file_for_stem(CHUNKS_DIR, stem, "_chunks.json")
         if chunk_file and chunk_file.exists():
             try:
                 c_data = json.loads(chunk_file.read_text(encoding="utf-8"))
@@ -525,7 +553,7 @@ def get_library_documents(postgres_mgr: Any = None, auto_scan: bool = True) -> D
             except Exception:
                 pass
 
-        # Reconcile true page count & size from physical PDF
+        # Reconcile true page count & size from physical PDF via mtime cache
         pages_cnt = r.get("pages", 1)
         pdf_path = DOCUMENTS_DIR / fn
         if not pdf_path.exists():
@@ -537,20 +565,20 @@ def get_library_documents(postgres_mgr: Any = None, auto_scan: bool = True) -> D
         if pdf_path.exists():
             pages_cnt, size_mb = get_pdf_metadata(pdf_path, cached_pages=pages_cnt, cached_size_mb=size_mb)
 
-        # Check extracted markdown
-        extracted_md_file = _find_file_for_stem(LIBRARY_DIR, stem, "_extracted.md")
+        # Check extracted markdown via pre-indexed set
+        extracted_md_file = existing_extracted.get(stem_lower) or _find_file_for_stem(LIBRARY_DIR, stem, "_extracted.md")
         has_extracted_md = bool(extracted_md_file and extracted_md_file.exists())
         extracted_md_url = f"/api/documents/{fn}/extracted-markdown" if has_extracted_md else ""
         extracted_md_size_bytes = extracted_md_file.stat().st_size if has_extracted_md else 0
 
-        # Check OKF catalog
-        okf_catalog_file = _find_file_for_stem(CATALOGS_DIR, stem, ".okf.md")
+        # Check OKF catalog via pre-indexed set
+        okf_catalog_file = existing_catalogs.get(stem_lower) or _find_file_for_stem(CATALOGS_DIR, stem, ".okf.md")
         has_okf_catalog = bool(okf_catalog_file and okf_catalog_file.exists())
         okf_catalog_url = f"/api/documents/{fn}/okf-catalog" if has_okf_catalog else ""
         okf_catalog_size_bytes = okf_catalog_file.stat().st_size if has_okf_catalog else 0
 
-        # Check graph entities/triples
-        triples_file = _find_file_for_stem(GRAPH_DIR, stem, "_triples.json")
+        # Check graph entities/triples via pre-indexed set
+        triples_file = existing_triples.get(stem_lower) or _find_file_for_stem(GRAPH_DIR, stem, "_triples.json")
         graph_triples_cnt = 0
         if triples_file and triples_file.exists():
             try:
@@ -636,4 +664,7 @@ def get_library_documents(postgres_mgr: Any = None, auto_scan: bool = True) -> D
             "graph_triples_count": 0,
         })
 
-    return {"documents": result_docs, "total_count": len(result_docs)}
+    payload = {"documents": result_docs, "total_count": len(result_docs)}
+    _CACHED_DOCS_PAYLOAD = payload
+    _LAST_DOCS_CACHE_TIME = now
+    return payload

@@ -24,6 +24,7 @@ from src.api.context import (
     get_ready_documents_list,
     record_ready_document,
     remove_ready_document,
+    invalidate_documents_cache,
 )
 from src.core.config import models
 from src.features.ingestion.pipeline import AcademicPipelineIngestor
@@ -336,6 +337,7 @@ class DocumentService:
         if self.postgres_manager:
             self.postgres_manager.delete_document(document_id)
             self.postgres_manager.delete_document(filename)
+        invalidate_documents_cache()
 
         return True, filename, None
 
