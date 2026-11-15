@@ -1,7 +1,9 @@
+import { useEffect, useRef } from 'react';
 import type React from 'react';
 import type { ChatSession } from '../../../types';
 import { exportSessionAsPdf } from '../../../utils/exportFormats';
 import { formatSessionDate } from '../../../utils/uuid';
+import { useClickOutside } from '../../../hooks';
 
 export interface SearchSessionItemProps {
   session: ChatSession;
@@ -42,6 +44,30 @@ export const SearchSessionItem: React.FC<SearchSessionItemProps> = ({
   onSelectSession,
   onClose,
 }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown menu when clicking outside
+  useClickOutside(
+    menuRef,
+    () => {
+      if (isMenuOpen && setActiveSessionMenuId) {
+        setActiveSessionMenuId(null);
+      }
+    },
+    isMenuOpen
+  );
+
+  // Close dropdown on Escape key
+  useEffect(() => {
+    if (!isMenuOpen || !setActiveSessionMenuId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveSessionMenuId(null);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMenuOpen, setActiveSessionMenuId]);
   return (
     <div
       id={`search-chat-item-${index}`}
@@ -147,7 +173,7 @@ export const SearchSessionItem: React.FC<SearchSessionItemProps> = ({
         </span>
 
         {setActiveSessionMenuId && (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setActiveSessionMenuId(isMenuOpen ? null : session.id)}

@@ -35,6 +35,8 @@ export interface ConnectionTestResult {
   postgres?: {
     online: boolean;
     mode: string;
+    provider?: string;
+    latency_ms?: number;
     error?: string;
   };
   chroma?: {
@@ -131,9 +133,14 @@ export interface SystemConfigPayload {
   redis_url?: string;
   tunnel_url?: string;
   huggingface_token?: string;
+  hf_token?: string;
   embedding_model?: string;
+  embedder_id?: string;
   reranker_model?: string;
+  reranker_id?: string;
   nli_verifier_model?: string;
+  verifier_id?: string;
+  [key: string]: unknown;
 }
 
 const isTauri = (): boolean => {
@@ -429,42 +436,66 @@ export const platformAdapter = {
   ): Promise<{ available: boolean; latencyMs: number; error?: string }> {
     const start = performance.now();
     try {
-      const res = await fetchWithTimeout(resolveApiUrl('/api/system/test-connections'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          llm_mode: provider === 'ollama' ? 'local_ollama' : `cloud_${provider}`,
-          groq_api_key: provider === 'groq' ? key : undefined,
-          gemini_api_key: provider === 'gemini' ? key : undefined,
-          nvidia_api_key: provider === 'nvidia' ? key : undefined,
-          mistral_api_key: provider === 'mistral' ? key : undefined,
-          cohere_api_key: provider === 'cohere' ? key : undefined,
-          deepseek_api_key: provider === 'deepseek' ? key : undefined,
-          openrouter_api_key: provider === 'openrouter' ? key : undefined,
-          openai_api_key: provider === 'openai' ? key : undefined,
-          anthropic_api_key: provider === 'anthropic' ? key : undefined,
-          hf_token: provider === 'huggingface' ? key : undefined,
-          custom_api_key: key,
-        }),
-      }, 4000);
-      const latencyMs = Math.round(performance.now() - start);
+      const cleanProv = (provider || 'custom').toLowerCase().trim();
+      const cleanKey = key.trim();
+
+      // First attempt dedicated cloud provider validation endpoint
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/providers/verify'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            provider: cleanProv,
+            api_key: cleanKey,
+          }),
+        },
+        8000
+      );
+
+      const elapsed = Math.round(performance.now() - start);
+
       if (res.ok) {
         const data = (await res.json().catch(() => null)) as Record<string, any> | null;
-        const isOnline = data?.llm?.online ?? data?.online ?? false;
-        if (isOnline) {
-          return { available: true, latencyMs: Math.max(12, latencyMs) };
+        if (data && typeof data.online === 'boolean') {
+          return {
+            available: data.online,
+            latencyMs: Math.max(12, data.latency_ms ?? elapsed),
+            error: data.online ? undefined : (data.error || 'Authentication rejected by provider'),
+          };
         }
+      }
+
+      // Fallback to test-llm-key endpoint
+      const fallbackRes = await fetchWithTimeout(
+        resolveApiUrl('/api/system/test-llm-key'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            llm_mode: cleanProv === 'ollama' ? 'local_ollama' : `cloud_${cleanProv}`,
+            [`${cleanProv}_api_key`]: cleanKey,
+          }),
+        },
+        8000
+      );
+
+      const fallbackElapsed = Math.round(performance.now() - start);
+      if (fallbackRes.ok) {
+        const data = (await fallbackRes.json().catch(() => null)) as Record<string, any> | null;
+        const llmInfo = data?.llm;
+        const isOnline = Boolean(llmInfo?.online ?? data?.online);
         return {
-          available: false,
-          latencyMs,
-          error: data?.llm?.error || data?.error || 'Invalid API key credentials',
+          available: isOnline,
+          latencyMs: Math.max(12, llmInfo?.latency_ms ?? fallbackElapsed),
+          error: isOnline ? undefined : (llmInfo?.error || data?.error || 'Authentication failed'),
         };
       }
-      const errData = (await res.json().catch(() => null)) as Record<string, any> | null;
+
       return {
         available: false,
-        latencyMs,
-        error: errData?.detail || `HTTP ${res.status}: Verification failed`,
+        latencyMs: fallbackElapsed,
+        error: `HTTP ${res.status}: Verification rejected`,
       };
     } catch (err: any) {
       const latencyMs = Math.round(performance.now() - start);
@@ -591,6 +622,37 @@ export const platformAdapter = {
   },
 
   /**
+   * Triggers model pre-warming or Hugging Face weights download with dual-key aliases
+   */
+  async triggerModelPrewarm(payload: {
+    embedder_id?: string;
+    embedding_model?: string;
+    reranker_id?: string;
+    reranker_model?: string;
+    verifier_id?: string;
+    nli_verifier_model?: string;
+    hf_token?: string;
+    huggingface_token?: string;
+    [key: string]: unknown;
+  }): Promise<{ success: boolean; message?: string }> {
+    if (isTestEnv) return { success: true, message: 'Prewarm skipped in test mode' };
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/models/load'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as any;
+        return { success: true, message: data?.message || 'Models loaded and prewarmed' };
+      }
+      return { success: false, message: `Failed to load models (HTTP ${res.status})` };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  /**
    * Pulls an Ollama model with live progress streaming
    */
   async pullModel(
@@ -689,5 +751,46 @@ export const platformAdapter = {
         }
       }, 350);
     });
+  },
+
+  async getRouting(): Promise<any | null> {
+    try {
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/routing'),
+        {
+          headers: { Accept: 'application/json' },
+        },
+        3500
+      );
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async updateRouting(payload: {
+    fallback_order?: string[];
+    disabled_providers?: string[];
+    primary_provider?: string;
+    routing_policy?: string;
+  }): Promise<{ success: boolean; message?: string; data?: any }> {
+    try {
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/routing'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        },
+        5000
+      );
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        return { success: true, message: data.message || 'Routing priority updated', data };
+      }
+      const err = ((await res.json().catch(() => ({}))) || {}) as any;
+      return { success: false, message: err.detail || err.message || 'Failed to update routing' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error updating routing' };
+    }
   },
 };

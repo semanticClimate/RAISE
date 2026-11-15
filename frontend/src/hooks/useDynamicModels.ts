@@ -31,7 +31,7 @@ export interface UseDynamicModelsResult {
  * Model options update in real time based on active API keys without hardcoding model lists.
  */
 export function useDynamicModels(): UseDynamicModelsResult {
-  const isConnected = useModeStore((s) => s.appMode === 'connected');
+  const isConnected = useModeStore((s) => s.appMode === 'connected' || s.appMode === 'degraded');
   const queryClient = useQueryClient();
 
   // Query 1: Actively configured LLM providers & their preferred models

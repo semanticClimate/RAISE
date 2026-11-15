@@ -55,6 +55,7 @@ export const ChatSessionList: React.FC<ChatSessionListProps> = ({
           onSelect={onSelectSession}
           onTogglePin={onTogglePinSession}
           onToggleMenu={(id) => setActiveSessionMenuId(activeSessionMenuId === id ? null : id)}
+          onCloseMenu={() => setActiveSessionMenuId(null)}
           onStartRename={(sess) => {
             setRenamingSessionId(sess.id);
             setNewSessionTitle(sess.title);

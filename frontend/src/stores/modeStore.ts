@@ -32,6 +32,8 @@ interface ModeState {
   probeError: string | null;
   isNeuralReady: boolean;
   readinessMessage: string | null;
+  consecutiveFailures: number;
+  isDegraded: boolean;
 
   setConfigMode: (mode: ConfigMode) => void;
   setBaseUrl: (url: string) => void;
@@ -91,6 +93,8 @@ export const useModeStore = create<ModeState>((set, get) => ({
   probeError: null,
   isNeuralReady: true,
   readinessMessage: null,
+  consecutiveFailures: 0,
+  isDegraded: false,
 
   setConfigMode: (mode: ConfigMode) => {
     setApiMode(mode);
@@ -135,6 +139,8 @@ export const useModeStore = create<ModeState>((set, get) => ({
       capabilities: null,
       latencyMs: 0,
       probeError: null,
+      consecutiveFailures: 0,
+      isDegraded: false,
     });
   },
 
@@ -171,15 +177,34 @@ export const useModeStore = create<ModeState>((set, get) => ({
         details: `Target was: ${target}`,
       });
     }
-    if (result.success) {
+
+    const isSuccess = result.success;
+    const prevFailures = get().consecutiveFailures || 0;
+    const consecutiveFailures = isSuccess ? 0 : prevFailures + 1;
+
+    let computedMode: AppMode = get().appMode;
+    let isDegraded = false;
+
+    if (isSuccess) {
+      computedMode = 'connected';
       setStoredLastConnectedAt();
+    } else if (consecutiveFailures < 3 && (get().appMode === 'connected' || get().appMode === 'degraded')) {
+      // Keep workstation operational during transient Docling/RAG compute congestion
+      computedMode = 'connected';
+      isDegraded = true;
+    } else {
+      computedMode = 'offline';
+      isDegraded = false;
     }
+
     set({
       isProbing: false,
+      consecutiveFailures,
+      isDegraded,
       latencyMs: result.latencyMs,
-      appMode: result.success ? 'connected' : 'offline',
-      probeError: result.error || null,
-      lastConnectedAt: result.success ? Date.now() : get().lastConnectedAt,
+      appMode: computedMode,
+      probeError: isSuccess ? null : (result.error || null),
+      lastConnectedAt: isSuccess ? Date.now() : get().lastConnectedAt,
     });
     return result;
   },
@@ -323,7 +348,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
         readinessMessage: res.message || 'Warming up AI neural models (embeddings, reranker, NLI)...',
       });
       setTimeout(() => {
-        if (get().appMode === 'connected') {
+        if (get().appMode === 'connected' || get().appMode === 'degraded') {
           get().checkReadiness();
         }
       }, 2500);

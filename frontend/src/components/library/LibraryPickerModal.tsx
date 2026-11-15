@@ -61,6 +61,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   const { data: rawDocuments = [], isLoading } = useQuery({
     ...documentsQueryOptions(),
     enabled: isOpen,
+    placeholderData: (prev) => prev,
   });
 
   // Fast preview hash generation using Web Crypto SHA-256 slice or metadata

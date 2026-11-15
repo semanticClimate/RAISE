@@ -6,6 +6,7 @@ export * from '../schemas/common';
 export * from '../schemas/graph';
 export * from '../schemas/sources';
 export * from '../schemas/system';
+export type { RoutingUpdateRequest, RoutingStatusResponse, ProviderRoutingInfo } from '../schemas/system';
 
 export type AppMode = 'mock' | 'connected' | 'degraded' | 'offline';
 export type ConfigMode = 'mock' | 'remote' | 'auto';

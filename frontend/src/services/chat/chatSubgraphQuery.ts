@@ -100,8 +100,8 @@ export async function executeSubgraphQuery(
       (typeof meta.content === 'string' ? meta.content : '') ||
       (typeof metaParts === 'string' ? metaParts : '');
 
-    // If stream received any text or completed successfully (status 200 or 0 with text)
-    if (resolvedStreamText.trim().length > 0 || (streamRes.status === 200 && !streamRes.error)) {
+    // If stream received text tokens, synthesize and return
+    if (resolvedStreamText.trim().length > 0) {
       const synthesized = synthesizeSubgraphResponse(
         meta,
         resolvedStreamText,
@@ -110,6 +110,34 @@ export async function executeSubgraphQuery(
       );
       return {
         data: synthesized,
+        error: null,
+        isMock: false,
+        status: 200,
+      };
+    }
+
+    // If stream emitted an error payload or terminated abnormally, propagate error
+    if (streamRes.error) {
+      return {
+        data: null,
+        error: streamRes.error,
+        isMock: false,
+        status: streamRes.status || 500,
+      };
+    }
+
+    // If stream completed HTTP 200 but emitted 0 tokens and no error, supply grounded fallback
+    if (streamRes.status === 200) {
+      const fallbackText =
+        'No grounded answer could be synthesized from the active documents. Please verify that your document is attached to your drawer, check your model configuration in the Control Center, or click Retry.';
+      const synthesizedFallback = synthesizeSubgraphResponse(
+        meta,
+        fallbackText,
+        req,
+        startTime
+      );
+      return {
+        data: synthesizedFallback,
         error: null,
         isMock: false,
         status: 200,

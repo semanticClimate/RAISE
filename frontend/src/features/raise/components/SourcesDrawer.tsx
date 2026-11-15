@@ -41,7 +41,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
   onViewPdf,
 }) => {
   const { appMode } = useModeStore();
-  const isOnline = appMode === 'connected';
+  const isOnline = appMode === 'connected' || appMode === 'degraded';
 
   const [artifactModal, setArtifactModal] = useState<{
     isOpen: boolean;

@@ -108,15 +108,16 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
   );
 
   const isStopped = Boolean(activeResp?.isStopped ?? msg.isStopped ?? msg.error?.isAborted);
+  const turnError = activeResp?.error || msg.error;
 
-  if (msg.error && !isCurrentlyActive && !isStopped) {
+  if (turnError && !isCurrentlyActive && !isStopped) {
     return (
       <div key={`assistant-turn-${turnIndex}`} className="content-visibility-auto w-full mb-4">
         <BackendErrorCard
-          error={msg.error}
+          error={turnError}
           targetUrl={apiBaseUrl}
           onRetry={async () => {
-            if (msg.error?.isOffline || appMode !== 'connected') {
+            if (turnError.isOffline || appMode === 'offline') {
               await runCapabilityProbe();
             }
             handleRegenerateResponse(turnIndex);
@@ -167,6 +168,11 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
 
   const resolvedContent = rawTurnContent;
 
+  const isUngroundedFallback = Boolean(
+    !resolvedContent ||
+    resolvedContent.toLowerCase().includes('no grounded answer could be synthesized')
+  );
+
   const rawCitations =
     activeResp?.response?.citations ||
     activeResp?.response?.top_chunks ||
@@ -194,16 +200,18 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
       key={`assistant-turn-${turnIndex}`}
       className="content-visibility-auto flex flex-col items-start w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto"
     >
-      {/* Thought Duration Header OUTSIDE response box */}
-      <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
-        {isCurrentlyActive ? (
+      {/* Thought Duration Header OUTSIDE response box: only show during active generation or on genuine answered responses */}
+      {isCurrentlyActive ? (
+        <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
           <LiveThoughtDuration startTimeMs={msg.startedAtMs || Date.now()} />
-        ) : (
+        </div>
+      ) : Boolean(resolvedContent) && !isUngroundedFallback && executionTimeSec > 0 ? (
+        <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
           <ThoughtDuration executionTimeSec={executionTimeSec} />
-        )}
-      </div>
+        </div>
+      ) : null}
 
-      {Boolean(resolvedContent) && (
+      {Boolean(resolvedContent) ? (
         <div className="ai-response-card w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto bg-white dark:bg-[#131622] border border-slate-200/90 dark:border-white/[0.08] rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-sm dark:shadow-xl transition-all">
           <AnswerMarkdown
             content={resolvedContent}
@@ -212,15 +220,21 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
             onViewPdf={onOpenPdfViewer}
           />
         </div>
-      )}
+      ) : !isCurrentlyActive ? (
+        <div className="ai-response-card w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/10 rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-xs transition-all">
+          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+            No grounded answer could be synthesized from the active documents. Please verify that your document is attached to your drawer, check your model configuration in the Control Center, or click Retry below.
+          </p>
+        </div>
+      ) : null}
 
       {/* Action Toolbar placed OUTSIDE response box */}
-      {Boolean(resolvedContent) && !isCurrentlyActive && (
+      {!isCurrentlyActive && (
         <div className="w-full flex items-center justify-between px-1 mt-1.5">
           <AssistantActionToolbar
             turnIndex={turnIndex}
             msg={msg}
-            resolvedContent={resolvedContent}
+            resolvedContent={resolvedContent || 'No grounded answer could be synthesized from the active documents.'}
             userQuery={resolvedUserQuery}
             isSpeaking={isSpeaking}
             isRegenerating={isRegenerating}

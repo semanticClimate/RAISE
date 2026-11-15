@@ -53,9 +53,13 @@ export function useControlCenterSave(
         ollama_model: config.selectedLocalModel,
         tunnel_url: config.tunnelUrl,
         huggingface_token: sanitizeSecret(config.huggingfaceToken),
+        hf_token: sanitizeSecret(config.huggingfaceToken),
         embedding_model: config.embeddingModel,
+        embedder_id: config.embeddingModel,
         reranker_model: config.rerankerModel,
+        reranker_id: config.rerankerModel,
         nli_verifier_model: config.nliVerifierModel,
+        verifier_id: config.nliVerifierModel,
         neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
         neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
         neo4j_user: config.knowledgeGraph?.user,
@@ -71,6 +75,22 @@ export function useControlCenterSave(
         setTimeout(() => setConnectNotice(null), 6000);
         setIsSaving(false);
         return;
+      }
+
+      // Trigger background pre-warming for neural embedding, reranker, and verifier models
+      if (config.embeddingModel || config.rerankerModel || config.nliVerifierModel || config.huggingfaceToken) {
+        platformAdapter.triggerModelPrewarm({
+          embedder_id: config.embeddingModel,
+          embedding_model: config.embeddingModel,
+          reranker_id: config.rerankerModel,
+          reranker_model: config.rerankerModel,
+          verifier_id: config.nliVerifierModel,
+          nli_verifier_model: config.nliVerifierModel,
+          hf_token: sanitizeSecret(config.huggingfaceToken),
+          huggingface_token: sanitizeSecret(config.huggingfaceToken),
+        }).catch(() => {
+          // Non-blocking prewarm
+        });
       }
 
       try {

@@ -1,7 +1,6 @@
 import React from 'react';
 import { useSlashCommands } from '../../../hooks';
 import type { DynamicSuggestion, SourceDocument } from '../../../types';
-import { AttachedDocChips } from '../query-controls';
 import { QueryBoxFormActions } from './QueryBoxFormActions';
 import { QueryBoxVoiceError } from './QueryBoxVoiceError';
 import { QuerySuggestionsList } from './QuerySuggestionsList';
@@ -157,15 +156,6 @@ const QueryBoxBase: React.FC<QueryBoxProps> = ({
           setShowSuggestions={setShowSuggestions}
           setActiveSuggestionIndex={setActiveSuggestionIndex}
           textareaRef={textareaRef}
-        />
-
-        {/* Mobile Attached Sources: Floating chip strip cleanly placed ABOVE the question box */}
-        <AttachedDocChips
-          selectedDocs={selectedDocs}
-          isDocReady={isDocReady}
-          onRemoveDoc={onRemoveAttachedDoc}
-          onViewPdf={onViewPdf}
-          variant="mobile"
         />
 
         {/* Slash Command Autocomplete Palette */}

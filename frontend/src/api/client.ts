@@ -22,6 +22,7 @@ export interface RequestOptions extends RequestInit {
     [key: string]: unknown;
   }) => void;
   onMetadata?: (metadata: Record<string, unknown>) => void;
+  onKeepalive?: () => void;
 }
 
 export interface ApiResponse<T> {
@@ -204,9 +205,10 @@ class ApiClient {
             endpoint,
             status: response.status,
             durationMs: Date.now() - startTime,
-            error: `Contract Violation: ${normErr.message}`,
+            error: `Contract Warning (Schema Drift): ${normErr.message}`,
           });
-          return { data: null, error: normErr, isMock: false, status: response.status };
+          // Resilient fallback: return raw JSON so valid backend data is NEVER dropped
+          return { data: json as T, error: null, isMock: false, status: response.status };
         }
         logToTerminal({
           type: 'RES',

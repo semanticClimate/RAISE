@@ -1,3 +1,4 @@
+import { useModeStore } from '../stores/modeStore';
 import type { ApiError } from '../types';
 import { sanitizeStreamText } from '../utils/sanitizeStreamText';
 import type { RequestOptions } from './client';
@@ -27,14 +28,34 @@ export function createStreamLineParser(
   const getStringField = (obj: Record<string, unknown> | null, key: string): string | undefined =>
     obj && typeof obj[key] === 'string' ? (obj[key] as string) : undefined;
 
+  const signalLiveGateway = () => {
+    try {
+      const store = useModeStore.getState();
+      if (store.consecutiveFailures > 0 || store.appMode !== 'connected' || store.isDegraded) {
+        useModeStore.setState({
+          consecutiveFailures: 0,
+          isDegraded: false,
+          appMode: 'connected',
+          probeError: null,
+          lastConnectedAt: Date.now(),
+        });
+      }
+    } catch {}
+  };
+
   return (line: string) => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith(':')) {
+      if (trimmed.startsWith(':')) {
+        signalLiveGateway();
+        ctx.options.onKeepalive?.();
+      }
       if (!trimmed) state.currentEvent = '';
       return;
     }
 
     if (trimmed.startsWith('event:')) {
+      signalLiveGateway();
       state.currentEvent = trimmed.slice(6).trim();
       return;
     }
@@ -43,6 +64,7 @@ export function createStreamLineParser(
     let isData = false;
     if (payload.startsWith('data:')) {
       isData = true;
+      signalLiveGateway();
       payload = payload.slice(5).replace(/^[ \t]/, '');
     }
 

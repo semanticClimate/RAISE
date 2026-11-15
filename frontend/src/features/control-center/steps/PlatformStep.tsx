@@ -15,7 +15,7 @@ import type { TargetPlatform } from '../types';
 export const PlatformStep: React.FC = () => {
   const { hardware, config, updateConfig } = useControlCenterStore();
   const { appMode, latencyMs } = useModeStore();
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
 
   const clientOSLabel =

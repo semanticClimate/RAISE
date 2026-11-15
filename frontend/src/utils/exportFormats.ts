@@ -110,11 +110,11 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
   const pInfo = response?.pipeline_info;
   const rawStorage = pInfo?.storage_used || response?.storage_used;
 
-  // Use complete backend multi-substrate descriptor directly without stripping markers
+  // Use authoritative backend multi-substrate descriptor directly when available
   const storageUsed =
     typeof rawStorage === 'string' && rawStorage.trim().length > 0
       ? rawStorage.trim()
-      : 'ChromaDB (Vector) + NetworkX (Graph) + Redis (Cache) + SQLite (Relational)';
+      : 'ChromaDB (Vector) + SQLite (Local)';
 
   const llmModel = pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite';
   const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
@@ -1417,19 +1417,24 @@ function formatPdfDate(date: Date = new Date()): string {
 /**
  * Clean word-wrapping helper for fixed-width text columns.
  */
-function wordWrap(text: string, maxCharsPerLine: number): string[] {
+/**
+ * Typographic word-wrapping helper that wraps text based on points width in Helvetica.
+ * Ensures lines use the full available width of container boxes without premature line breaks.
+ */
+function wrapTextToWidth(text: string, maxWidthPts: number, fontSize: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let cur = '';
 
   for (const w of words) {
     if (!w) continue;
-    if (cur.length === 0) {
-      cur = w;
-    } else if (cur.length + 1 + w.length <= maxCharsPerLine) {
-      cur += ' ' + w;
+    const testLine = cur.length === 0 ? w : cur + ' ' + w;
+    if (estimateHelveticaWidth(testLine, fontSize) <= maxWidthPts) {
+      cur = testLine;
     } else {
-      lines.push(cur);
+      if (cur.length > 0) {
+        lines.push(cur);
+      }
       cur = w;
     }
   }
@@ -1511,7 +1516,7 @@ export function generatePdfBlob(
 
   // --- QUERY BOX ---
   ensureSpace(45);
-  const queryLines = wordWrap(query || 'Research Inquiry', 85);
+  const queryLines = wrapTextToWidth(query || 'Research Inquiry', contentWidth - 20, 9.5);
   const queryBoxHeight = Math.max(34, queryLines.length * 13 + 18);
   currentOps.push(`0.96 0.97 0.99 rg 0.85 0.88 0.92 RG 0.5 w`);
   currentOps.push(`${marginX} ${curY - queryBoxHeight} ${contentWidth} ${queryBoxHeight} re b`);
@@ -1702,8 +1707,8 @@ export function generatePdfBlob(
     const isBullet =
       trimmed.startsWith('* ') || trimmed.startsWith('- ') || trimmed.startsWith('• ');
     const cleanBulletText = trimmed.replace(/^[-*•]\s+/, '').replace(/\*\*/g, '');
-    const wrapped = wordWrap(cleanBulletText, isBullet ? 84 : 90);
     const targetLineWidth = contentWidth - (isBullet ? 12 : 0);
+    const wrapped = wrapTextToWidth(cleanBulletText, targetLineWidth, 9);
 
     for (let idx = 0; idx < wrapped.length; idx++) {
       ensureSpace(14);
@@ -1763,7 +1768,7 @@ export function generatePdfBlob(
       const extra = parts.length > 0 ? ` (${parts.join(', ')})` : '';
       const refStr = `[${cit.citation_index}] ${cit.pdf_filename || 'Audited Document'}${extra}`;
 
-      const wrappedLines = wordWrap(refStr, 95);
+      const wrappedLines = wrapTextToWidth(refStr, contentWidth - 10, 8.5);
       for (let i = 0; i < wrappedLines.length; i++) {
         ensureSpace(13);
         const font = i === 0 ? '/F2 8.5 Tf 0.1 0.16 0.28 rg' : '/F1 8.5 Tf 0.25 0.3 0.38 rg';
@@ -2021,7 +2026,6 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   });
 
   const userTurns = messages.filter((m) => m.role === 'user').length;
-  const assistantTurns = messages.filter((m) => m.role === 'assistant').length;
 
   // Attached docs metadata
   const docNames: string[] = [];
@@ -2041,12 +2045,39 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   let currentOps: string[] = [];
   let curY = topY;
 
+  // Turn card box tracking for rendering Question + Answer in a unified container card
+  let activeBox: { startY: number; startOpIdx: number } | null = null;
+
+  const closeCurrentBoxSlice = () => {
+    if (!activeBox) return;
+    const sliceHeight = Math.max(12, activeBox.startY - curY + 6);
+    const sliceBottomY = curY - 6;
+    currentOps.splice(
+      activeBox.startOpIdx,
+      0,
+      `0.975 0.982 0.992 rg 0.84 0.87 0.92 RG 0.75 w`,
+      `${marginX} ${sliceBottomY.toFixed(2)} ${contentWidth} ${sliceHeight.toFixed(2)} re b`
+    );
+    activeBox = null;
+  };
+
   const startNewPage = () => {
+    const wasInBox = Boolean(activeBox);
+    if (activeBox) {
+      closeCurrentBoxSlice();
+    }
     if (currentOps.length > 0) {
       pages.push(currentOps.join('\n'));
       currentOps = [];
     }
     curY = topY;
+    if (wasInBox) {
+      curY -= 12; // top margin for box continuation on new page
+      activeBox = {
+        startY: curY,
+        startOpIdx: currentOps.length,
+      };
+    }
   };
 
   const ensureSpace = (ptsNeeded: number) => {
@@ -2072,7 +2103,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   currentOps.push(`0.96 0.97 0.99 rg 0.88 0.91 0.95 RG 0.5 w`);
   currentOps.push(`${marginX} ${curY - metaBoxHeight} ${contentWidth} ${metaBoxHeight} re b`);
 
-  const metaLeft = `Session: ${escapePdfText(sessionTitle.slice(0, 50))}  •  ${messages.length} messages (${userTurns} inquiries, ${assistantTurns} responses)`;
+  const metaLeft = `Session: ${escapePdfText(sessionTitle.slice(0, 50))}  •  ${userTurns} Inquiries`;
   const metaRight =
     docNames.length > 0
       ? `Corpus: ${escapePdfText(docNames.slice(0, 2).join(', ').slice(0, 28))}`
@@ -2085,8 +2116,12 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   );
   curY -= metaBoxHeight + 14;
 
-  // Helper to render markdown paragraphs/tables/lists/math
-  const renderMarkdownBlock = (rawText: string) => {
+  // Helper to render markdown paragraphs/tables/lists/math inside turn cards
+  const renderMarkdownBlock = (
+    rawText: string,
+    baseX = marginX + 12,
+    blockWidth = contentWidth - 24
+  ) => {
     const lines = rawText.split('\n');
     for (let pIdx = 0; pIdx < lines.length; pIdx++) {
       const rawLine = lines[pIdx];
@@ -2128,13 +2163,13 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         ensureSpace(34);
         // Clean mathematical formulation card with left accent bar
         currentOps.push(`0.97 0.98 1 rg 0.82 0.87 0.96 RG 0.5 w`);
-        currentOps.push(`${marginX} ${curY - 28} ${contentWidth} 28 re b`);
-        currentOps.push(`0.2 0.42 0.85 RG 2 w ${marginX} ${curY - 28} m ${marginX} ${curY} l S`);
+        currentOps.push(`${baseX} ${curY - 28} ${blockWidth} 28 re b`);
+        currentOps.push(`0.2 0.42 0.85 RG 2 w ${baseX} ${curY - 28} m ${baseX} ${curY} l S`);
         currentOps.push(
-          `BT /F2 7 Tf 0.35 0.45 0.65 rg ${marginX + 12} ${curY - 11} Td (${escapePdfText('FORMULATION')}) Tj ET`
+          `BT /F2 7 Tf 0.35 0.45 0.65 rg ${baseX + 12} ${curY - 11} Td (${escapePdfText('FORMULATION')}) Tj ET`
         );
         const estW = estimateHelveticaWidth(safeFormula, 10);
-        const mathX = Math.max(marginX + 12, marginX + (contentWidth - estW) / 2);
+        const mathX = Math.max(baseX + 12, baseX + (blockWidth - estW) / 2);
         currentOps.push(
           `BT /F2 10 Tf 0.08 0.14 0.32 rg ${mathX} ${curY - 22} Td (${safeFormula}) Tj ET`
         );
@@ -2160,14 +2195,14 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
           pIdx--; // Adjust for loop increment
 
           const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
-          const colWidth = contentWidth / colCount;
+          const colWidth = blockWidth / colCount;
 
           // Render Table Header
           ensureSpace(22);
           currentOps.push(`0.94 0.96 0.98 rg 0.82 0.86 0.9 RG 0.75 w`);
-          currentOps.push(`${marginX} ${curY - 18} ${contentWidth} 18 re b`);
+          currentOps.push(`${baseX} ${curY - 18} ${blockWidth} 18 re b`);
           headers.forEach((h, cIdx) => {
-            const cellX = marginX + cIdx * colWidth + 6;
+            const cellX = baseX + cIdx * colWidth + 6;
             const maxChars = Math.max(4, Math.floor(colWidth / 5.5));
             const truncated = escapePdfText(h).slice(0, maxChars);
             currentOps.push(
@@ -2181,13 +2216,13 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
             ensureSpace(16);
             if (rIdx % 2 === 1) {
               currentOps.push(`0.98 0.99 1 rg`);
-              currentOps.push(`${marginX} ${curY - 16} ${contentWidth} 16 re f`);
+              currentOps.push(`${baseX} ${curY - 16} ${blockWidth} 16 re f`);
             }
             currentOps.push(
-              `0.9 0.92 0.95 RG 0.5 w ${marginX} ${curY - 16} m ${marginX + contentWidth} ${curY - 16} l S`
+              `0.9 0.92 0.95 RG 0.5 w ${baseX} ${curY - 16} m ${baseX + blockWidth} ${curY - 16} l S`
             );
             row.forEach((cell, cIdx) => {
-              const cellX = marginX + cIdx * colWidth + 6;
+              const cellX = baseX + cIdx * colWidth + 6;
               const maxChars = Math.max(4, Math.floor(colWidth / 5.5));
               const truncated = escapePdfText(cell).slice(0, maxChars);
               currentOps.push(
@@ -2207,7 +2242,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         ensureSpace(24);
         const h3Text = cleanHeading.replace(/^###\s+/, '').replace(/\*\*/g, '').trim();
         currentOps.push(
-          `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText(h3Text)}) Tj ET`
+          `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${baseX} ${curY - 12} Td (${escapePdfText(h3Text)}) Tj ET`
         );
         curY -= 18;
         continue;
@@ -2217,7 +2252,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         ensureSpace(28);
         const h2Text = cleanHeading.replace(/^##\s+/, '').replace(/\*\*/g, '').trim();
         currentOps.push(
-          `BT /F2 11.5 Tf 0.06 0.1 0.2 rg ${marginX} ${curY - 14} Td (${escapePdfText(h2Text)}) Tj ET`
+          `BT /F2 11.5 Tf 0.06 0.1 0.2 rg ${baseX} ${curY - 14} Td (${escapePdfText(h2Text)}) Tj ET`
         );
         curY -= 22;
         continue;
@@ -2227,7 +2262,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         ensureSpace(32);
         const h1Text = cleanHeading.replace(/^#\s+/, '').replace(/\*\*/g, '').trim();
         currentOps.push(
-          `BT /F2 13 Tf 0.06 0.1 0.2 rg ${marginX} ${curY - 16} Td (${escapePdfText(h1Text)}) Tj ET`
+          `BT /F2 13 Tf 0.06 0.1 0.2 rg ${baseX} ${curY - 16} Td (${escapePdfText(h1Text)}) Tj ET`
         );
         curY -= 24;
         continue;
@@ -2237,7 +2272,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         ensureSpace(22);
         const boldTitle = trimmed.slice(2, -2).trim();
         currentOps.push(
-          `BT /F2 10 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText(boldTitle)}) Tj ET`
+          `BT /F2 10 Tf 0.08 0.12 0.22 rg ${baseX} ${curY - 12} Td (${escapePdfText(boldTitle)}) Tj ET`
         );
         curY -= 16;
         continue;
@@ -2246,17 +2281,17 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       const isBullet =
         trimmed.startsWith('* ') || trimmed.startsWith('- ') || trimmed.startsWith('• ');
       const cleanBulletText = trimmed.replace(/^[-*•]\s+/, '').replace(/\*\*/g, '');
-      const wrapped = wordWrap(cleanBulletText, isBullet ? 84 : 90);
-      const targetLineWidth = contentWidth - (isBullet ? 12 : 0);
+      const targetLineWidth = blockWidth - (isBullet ? 12 : 0);
+      const wrapped = wrapTextToWidth(cleanBulletText, targetLineWidth, 9);
 
       for (let idx = 0; idx < wrapped.length; idx++) {
         ensureSpace(14);
         const lineStr = wrapped[idx];
-        const indent = isBullet ? marginX + 12 : marginX;
+        const indent = isBullet ? baseX + 12 : baseX;
 
         if (isBullet && idx === 0) {
           currentOps.push(
-            `BT /F1 9 Tf 0.4 0.45 0.55 rg ${marginX + 2} ${curY - 10} Td (${escapePdfText('•')}) Tj ET`
+            `BT /F1 9 Tf 0.4 0.45 0.55 rg ${baseX + 2} ${curY - 10} Td (${escapePdfText('•')}) Tj ET`
           );
         }
 
@@ -2286,88 +2321,159 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
     }
   };
 
-  // --- RENDER TURNS ---
-  let turnCounter = 0;
+  // --- PAIR MESSAGES INTO MONOTONIC CONVERSATIONAL TURNS (EXCHANGES) ---
+  interface TurnExchange {
+    turnIndex: number;
+    userMsg?: (typeof messages)[0];
+    assistantMsg?: (typeof messages)[0];
+  }
+
+  const exchanges: TurnExchange[] = [];
+  let curExchange: TurnExchange | null = null;
+  let turnNumber = 1;
+
   for (let mIdx = 0; mIdx < messages.length; mIdx++) {
     const msg = messages[mIdx];
-    turnCounter++;
-
     if (msg.role === 'user') {
+      if (curExchange) {
+        exchanges.push(curExchange);
+      }
+      curExchange = {
+        turnIndex: turnNumber++,
+        userMsg: msg,
+      };
+    } else if (msg.role === 'assistant') {
+      if (!curExchange) {
+        curExchange = {
+          turnIndex: turnNumber++,
+          assistantMsg: msg,
+        };
+        exchanges.push(curExchange);
+        curExchange = null;
+      } else {
+        curExchange.assistantMsg = msg;
+        exchanges.push(curExchange);
+        curExchange = null;
+      }
+    } else {
+      if (!curExchange) {
+        curExchange = {
+          turnIndex: turnNumber++,
+          userMsg: msg,
+        };
+      }
+    }
+  }
+  if (curExchange) {
+    exchanges.push(curExchange);
+  }
+
+  const cardInnerX = marginX + 12;
+  const cardInnerWidth = contentWidth - 24;
+
+  for (let eIdx = 0; eIdx < exchanges.length; eIdx++) {
+    const ex = exchanges[eIdx];
+    ensureSpace(60);
+
+    // Open unified box container for this turn
+    curY -= 4;
+    activeBox = {
+      startY: curY,
+      startOpIdx: currentOps.length,
+    };
+
+    // 1. QUESTION SECTION (if user message present)
+    if (ex.userMsg) {
       const userText = (
-        (msg.questionVersions &&
-          msg.questionVersions[msg.currentQuestionVersionIndex ?? 0]?.question) ||
-        msg.text ||
-        (msg as any).content ||
-        (msg as any).query ||
+        (ex.userMsg.questionVersions &&
+          ex.userMsg.questionVersions[ex.userMsg.currentQuestionVersionIndex ?? 0]?.question) ||
+        ex.userMsg.text ||
+        (ex.userMsg as any).content ||
+        (ex.userMsg as any).query ||
         ''
       ).trim() || '(Empty inquiry)';
-      const queryLines = wordWrap(userText, 85);
-      const boxHeight = Math.max(32, queryLines.length * 13 + 18);
+      const queryLines = wrapTextToWidth(userText, cardInnerWidth, 9.5);
 
-      ensureSpace(boxHeight + 14);
-      currentOps.push(`0.96 0.97 0.99 rg 0.84 0.87 0.92 RG 0.5 w`);
-      currentOps.push(`${marginX} ${curY - boxHeight} ${contentWidth} ${boxHeight} re b`);
-
-      const timeLabel = msg.timestamp ? ` • ${msg.timestamp}` : ` • Turn ${turnCounter}`;
+      const qTitle = `QUESTION ${ex.turnIndex}`;
+      const qTitleWidth = estimateHelveticaWidth(qTitle, 9.5);
       currentOps.push(
-        `BT /F2 8 Tf 0.3 0.38 0.55 rg ${marginX + 10} ${curY - 13} Td (${escapePdfText(`QUESTION #${Math.ceil(turnCounter / 2)}${timeLabel}`)}) Tj ET`
+        `BT /F2 9.5 Tf 0.08 0.10 0.15 rg ${cardInnerX} ${curY - 12} Td (${escapePdfText(qTitle)}) Tj ET`
       );
-
-      let qY = curY - 25;
-      for (const ql of queryLines) {
+      if (ex.userMsg.timestamp) {
         currentOps.push(
-          `BT /F1 9.5 Tf 0.1 0.15 0.22 rg ${marginX + 10} ${qY} Td (${escapePdfText(ql)}) Tj ET`
+          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + qTitleWidth + 8} ${curY - 12} Td (${escapePdfText(ex.userMsg.timestamp)}) Tj ET`
         );
-        qY -= 13;
       }
-      curY -= boxHeight + 12;
-    } else {
-      // Assistant Turn
+      curY -= 16;
+
+      for (const ql of queryLines) {
+        ensureSpace(14);
+        currentOps.push(
+          `BT /F1 9.5 Tf 0.1 0.15 0.22 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(ql)}) Tj ET`
+        );
+        curY -= 13.5;
+      }
+    }
+
+    // Divider between Question and Answer inside the card
+    if (ex.userMsg && ex.assistantMsg) {
+      curY -= 4;
+      ensureSpace(12);
+      currentOps.push(`0.86 0.89 0.94 RG 0.5 w ${cardInnerX} ${curY} m ${cardInnerX + cardInnerWidth} ${curY} l S`);
+      curY -= 12;
+    }
+
+    // 2. ANSWER SECTION (if assistant message present)
+    if (ex.assistantMsg) {
       const rawAns =
-        msg.text ||
-        (msg as any).content ||
-        msg.response?.grounded_answer ||
-        msg.response?.answer ||
-        msg.response?.reply ||
-        msg.response?.response ||
+        ex.assistantMsg.text ||
+        (ex.assistantMsg as any).content ||
+        ex.assistantMsg.response?.grounded_answer ||
+        ex.assistantMsg.response?.answer ||
+        ex.assistantMsg.response?.reply ||
+        ex.assistantMsg.response?.response ||
         '';
 
-      const citationsList = msg.citations || msg.response?.citations || [];
+      const citationsList = ex.assistantMsg.citations || ex.assistantMsg.response?.citations || [];
       const { cleanText, citations } = cleanRagResponseText(rawAns, citationsList);
 
-      const durationSec = msg.durationSec ?? msg.response?.duration_sec;
-      const durationLabel = durationSec ? ` • Latency: ${Number(durationSec).toFixed(1)}s` : '';
+      const durationSec = ex.assistantMsg.durationSec ?? ex.assistantMsg.response?.duration_sec;
+      const ansTitle = `ANSWER ${ex.turnIndex}`;
+      const ansTitleWidth = estimateHelveticaWidth(ansTitle, 9.5);
 
-      ensureSpace(28);
+      ensureSpace(20);
       currentOps.push(
-        `BT /F2 10.5 Tf 0.08 0.12 0.24 rg ${marginX} ${curY - 12} Td (${escapePdfText(`ANSWER #${Math.ceil(turnCounter / 2)}${durationLabel}`)}) Tj ET`
+        `BT /F2 9.5 Tf 0.15 0.38 0.92 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(ansTitle)}) Tj ET`
       );
-      currentOps.push(
-        `0.08 0.12 0.24 RG 1.25 w ${marginX} ${curY - 16} m ${marginX + 80} ${curY - 16} l S`
-      );
-      curY -= 26;
+      if (durationSec != null && Number(durationSec) > 0) {
+        const thoughtText = `Thought for ${Number(durationSec).toFixed(1)}s`;
+        currentOps.push(
+          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + ansTitleWidth + 8} ${curY - 10} Td (${escapePdfText(thoughtText)}) Tj ET`
+        );
+      }
+      curY -= 16;
 
       if (cleanText) {
-        renderMarkdownBlock(cleanText);
-      } else if (msg.error) {
+        renderMarkdownBlock(cleanText, cardInnerX, cardInnerWidth);
+      } else if (ex.assistantMsg.error) {
         ensureSpace(22);
         currentOps.push(
-          `BT /F3 9 Tf 0.7 0.2 0.2 rg ${marginX} ${curY - 10} Td (${escapePdfText(`[Error: ${msg.error.message || 'Execution error'}]`)}) Tj ET`
+          `BT /F3 9 Tf 0.7 0.2 0.2 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(`[Error: ${ex.assistantMsg.error.message || 'Execution error'}]`)}) Tj ET`
         );
         curY -= 16;
       }
 
       // Render Citations if present
       if (citations && citations.length > 0) {
-        curY -= 8;
-        ensureSpace(26);
+        curY -= 6;
+        ensureSpace(24);
         currentOps.push(
-          `BT /F2 9.5 Tf 0.12 0.2 0.35 rg ${marginX} ${curY - 10} Td (${escapePdfText('References')}) Tj ET`
+          `BT /F2 8.5 Tf 0.15 0.25 0.42 rg ${cardInnerX} ${curY - 8} Td (${escapePdfText('References')}) Tj ET`
         );
         currentOps.push(
-          `0.12 0.35 0.6 RG 1 w ${marginX} ${curY - 13} m ${marginX + 75} ${curY - 13} l S`
+          `0.12 0.35 0.6 RG 0.75 w ${cardInnerX} ${curY - 11} m ${cardInnerX + 65} ${curY - 11} l S`
         );
-        curY -= 20;
+        curY -= 18;
 
         citations.forEach((cit) => {
           ensureSpace(16);
@@ -2378,27 +2484,28 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
           const extra = parts.length > 0 ? ` (${parts.join(', ')})` : '';
           const refStr = `[${cit.citation_index}] ${cit.pdf_filename || 'Audited Document'}${extra}`;
 
-          const wrappedLines = wordWrap(refStr, 95);
+          const wrappedLines = wrapTextToWidth(refStr, cardInnerWidth - 10, 8);
           for (let i = 0; i < wrappedLines.length; i++) {
             ensureSpace(12);
             const font = i === 0 ? '/F2 8 Tf 0.12 0.2 0.3 rg' : '/F1 8 Tf 0.28 0.32 0.4 rg';
             currentOps.push(
-              `BT ${font} ${marginX + (i > 0 ? 10 : 0)} ${curY - 8} Td (${escapePdfText(wrappedLines[i])}) Tj ET`
+              `BT ${font} ${cardInnerX + (i > 0 ? 10 : 0)} ${curY - 8} Td (${escapePdfText(wrappedLines[i])}) Tj ET`
             );
             curY -= 11;
           }
           curY -= 2;
         });
       }
-
-      // Subtle divider between turns
-      ensureSpace(14);
-      currentOps.push(
-        `0.88 0.91 0.95 RG 0.5 w ${marginX} ${curY - 6} m ${marginX + contentWidth} ${curY - 6} l S`
-      );
-      curY -= 16;
     }
+
+    // Close unified box container for this turn
+    curY -= 6;
+    closeCurrentBoxSlice();
+    curY -= 16; // Margin between consecutive turn boxes
   }
+
+  // Ensure any dangling box is safely closed before final provenance architecture card
+  closeCurrentBoxSlice();
 
   // --- AUDITED PIPELINE ARCHITECTURE & PROVENANCE SECTION ---
   const latestAssistantWithPipeline = [...messages]

@@ -18,7 +18,7 @@ export interface UseBackendTelemetryOptions {
  */
 export function useBackendTelemetry(options: UseBackendTelemetryOptions = {}) {
   const { enabled = true, refetchIntervalMs = 20_000 } = options;
-  const isConnected = useModeStore((s) => s.appMode === 'connected');
+  const isConnected = useModeStore((s) => s.appMode === 'connected' || s.appMode === 'degraded');
 
   const shouldFetch = enabled && isConnected;
 

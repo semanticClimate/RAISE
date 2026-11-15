@@ -23,7 +23,7 @@ export function useRaiseController() {
     isNeuralReady,
     readinessMessage,
   } = useModeStore();
-  const isOnline = isTunnelConfigured && appMode === 'connected';
+  const isOnline = isTunnelConfigured && (appMode === 'connected' || appMode === 'degraded');
 
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
     try {
@@ -66,7 +66,7 @@ export function useRaiseController() {
   const setControlCenterTab = useControlCenterStore((s) => s.setActiveTab);
 
   const isLlmConfigured = useMemo(() => {
-    if (appMode === 'connected') return true;
+    if (appMode === 'connected' || appMode === 'degraded') return true;
     if (ccConfig.llmDeployment === 'local') return Boolean(ccConfig.selectedLocalModel);
     const hasConfiguredKey = ccConfig.apiKeys?.some(
       (k) => k.key && k.key.trim().length > 0 && k.provider !== 'unknown'

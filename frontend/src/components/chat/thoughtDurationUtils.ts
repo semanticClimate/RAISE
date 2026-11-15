@@ -129,7 +129,8 @@ export function resolveTurnExecutionTime({
     return Math.min(estimated, 4.8);
   }
 
-  return 0.7;
+  // If there is zero response text and no measured duration, never return a fake 0.7s duration
+  return 0;
 }
 
 /**

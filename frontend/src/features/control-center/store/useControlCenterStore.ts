@@ -79,6 +79,8 @@ export const useControlCenterStore = create<ControlCenterState>()(
         nliVerifierModel: 'dleemiller/finecat-nli-ultra-l',
         neuralDevice: 'auto',
         huggingfaceToken: '',
+        huggingfaceConfigured: false,
+        huggingfaceMasked: '',
         apiKeys: [
           {
             id: 'key-1',
@@ -439,6 +441,11 @@ export const useControlCenterStore = create<ControlCenterState>()(
                   (cfg.embedding_device as any) ||
                   s.config.neuralDevice ||
                   'auto',
+                huggingfaceConfigured: Boolean(cfg.huggingface_configured),
+                huggingfaceMasked: String(cfg.huggingface_masked || ''),
+                huggingfaceToken:
+                  s.config.huggingfaceToken ||
+                  (cfg.huggingface_configured ? String(cfg.huggingface_masked || '') : ''),
                 apiKeys: mergedKeys,
                 knowledgeGraph: {
                   ...s.config.knowledgeGraph,

@@ -13,6 +13,7 @@ import {
   validateTunnelUrl,
 } from '../../utils/urlValidation';
 import { useDynamicModels } from '../../hooks/useDynamicModels';
+import { LLMRoutingOrchestrator } from './LLMRoutingOrchestrator';
 
 export interface SettingsGatewayTabProps {
   onCloseSettings?: () => void;
@@ -33,7 +34,7 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
     isTunnelConfigured,
   } = useModeStore();
 
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
   const isGatewayActive = isConnected && isTunnelConfigured;
 
   const [detectedClient] = useState(getClientSystemAndTime);
@@ -676,6 +677,11 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
               </span>
             </div>
           )}
+
+          {/* Interactive LLM Routing Orchestrator & Fallback Priority */}
+          <div className="pt-3 border-t border-slate-200/80 dark:border-white/10">
+            <LLMRoutingOrchestrator />
+          </div>
         </div>
       )}
 

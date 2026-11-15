@@ -7,6 +7,7 @@ import { useControlCenterStore } from '../store/useControlCenterStore';
 import type { DynamicLLMModel } from '../types';
 import { CloudKeysSection } from './CloudKeysSection';
 import { LocalModelSection } from './LocalModelSection';
+import { LLMRoutingOrchestrator } from '../../../components/settings/LLMRoutingOrchestrator';
 
 export const EngineStep: React.FC = () => {
   const { config, updateConfig, syncEnvCredentials, syncBackendConfig } = useControlCenterStore();
@@ -64,9 +65,9 @@ export const EngineStep: React.FC = () => {
               status: m.status,
               isActive: m.status === 'READY',
               tier: m.tier,
-              sizeGb: m.model.includes('3b') ? 2.0 : m.model.includes('7b') ? 4.7 : 4.9,
-              ramGb: m.model.includes('3b') ? 4.0 : m.model.includes('7b') ? 8.0 : 16.0,
-              isInstalled: false,
+              sizeGb: undefined,
+              ramGb: undefined,
+              isInstalled: m.status === 'READY' && (m.provider === 'ollama' || m.provider === 'local'),
               source: m.provider,
             }));
             setDynamicModels(formatted);
@@ -176,6 +177,11 @@ export const EngineStep: React.FC = () => {
           fetchModels={fetchModels}
         />
       )}
+
+      {/* Interactive LLM Routing Orchestrator & Fallback Priority */}
+      <div className="mt-5 pt-4 border-t border-slate-200/80 dark:border-white/10">
+        <LLMRoutingOrchestrator />
+      </div>
     </div>
   );
 };

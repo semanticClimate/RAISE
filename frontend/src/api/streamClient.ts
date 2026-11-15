@@ -13,6 +13,11 @@ export async function executeStreamRequest(
   const method = options.method || 'POST';
   const startTime = Date.now();
 
+  if (typeof window !== 'undefined') {
+    (window as any).__RAISE_ACTIVE_OPS__ = ((window as any).__RAISE_ACTIVE_OPS__ || 0) + 1;
+    (window as any).__RAISE_ACTIVE_STREAM__ = true;
+  }
+
   let details: string | undefined;
   if (typeof options.body === 'string') {
     const preview = options.body.slice(0, 300);
@@ -187,23 +192,26 @@ export async function executeStreamRequest(
       isStreamComplete: false,
     };
 
+    const resetWatchdog = () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+      watchdogTimer = setTimeout(() => {
+        controller.abort();
+      }, 60000);
+    };
+    resetWatchdog();
+
     const processLine = createStreamLineParser(
       {
-        options,
+        options: {
+          ...options,
+          onKeepalive: resetWatchdog,
+        },
         endpoint,
         responseStatus: response.status,
         onChunk,
       },
       streamState
     );
-
-    const resetWatchdog = () => {
-      if (watchdogTimer) clearTimeout(watchdogTimer);
-      watchdogTimer = setTimeout(() => {
-        controller.abort();
-      }, 45000);
-    };
-    resetWatchdog();
 
     while (!streamState.isStreamComplete) {
       resetWatchdog();
@@ -312,6 +320,13 @@ export async function executeStreamRequest(
 
     return { text: '', error: normErr, status: normErr.status };
   } finally {
+    if (typeof window !== 'undefined') {
+      (window as any).__RAISE_ACTIVE_OPS__ = Math.max(
+        0,
+        ((window as any).__RAISE_ACTIVE_OPS__ || 1) - 1
+      );
+      (window as any).__RAISE_ACTIVE_STREAM__ = (window as any).__RAISE_ACTIVE_OPS__ > 0;
+    }
     clearTimeout(timer);
     if (watchdogTimer) clearTimeout(watchdogTimer);
     if (options.signal && onAbort) {

@@ -71,6 +71,8 @@ export interface ControlCenterConfig {
   nliVerifierModel?: string;
   neuralDevice?: 'auto' | 'mps' | 'cuda' | 'cpu';
   huggingfaceToken?: string;
+  huggingfaceConfigured?: boolean;
+  huggingfaceMasked?: string;
 
   // Architectural Substrates
   knowledgeGraph: SubstrateConfig; // Neo4j Property Graph

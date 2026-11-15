@@ -27,12 +27,20 @@ export const DocumentItemSchema = z
 
 export type DocumentItem = z.infer<typeof DocumentItemSchema>;
 
-export const DocumentListResponseSchema = z
-  .object({
-    documents: z.array(DocumentItemSchema).default([]),
-    total_count: z.number().int().nullish().default(0),
-  })
-  .passthrough();
+export const DocumentListResponseSchema = z.preprocess(
+  (val: any) => {
+    if (Array.isArray(val)) {
+      return { documents: val, total_count: val.length };
+    }
+    return val;
+  },
+  z
+    .object({
+      documents: z.array(DocumentItemSchema).catch([]),
+      total_count: z.number().int().nullish().default(0),
+    })
+    .passthrough()
+);
 
 export type DocumentListResponse = z.infer<typeof DocumentListResponseSchema>;
 
@@ -64,13 +72,15 @@ export const UploadReportItemSchema = z.preprocess(
 
 export type UploadReportItem = z.infer<typeof UploadReportItemSchema>;
 
-export const UploadResponseSchema = z.object({
-  status: z.string(),
-  uploaded_count: z.number().int().default(0),
-  reports: z.array(UploadReportItemSchema).default([]),
-  total_nodes: z.number().int().default(0),
-  total_edges: z.number().int().default(0),
-});
+export const UploadResponseSchema = z
+  .object({
+    status: z.string().catch('success'),
+    uploaded_count: z.number().int().default(0),
+    reports: z.array(UploadReportItemSchema).catch([]),
+    total_nodes: z.number().int().default(0),
+    total_edges: z.number().int().default(0),
+  })
+  .passthrough();
 
 export type UploadResponse = z.infer<typeof UploadResponseSchema>;
 
@@ -80,12 +90,14 @@ export const DeleteDocumentRequestSchema = z.object({
 
 export type DeleteDocumentRequest = z.infer<typeof DeleteDocumentRequestSchema>;
 
-export const DeleteDocumentResponseSchema = z.object({
-  status: z.string(),
-  filename: z.string(),
-  documents: z.array(DocumentItemSchema).default([]),
-  total_count: z.number().int().default(0),
-});
+export const DeleteDocumentResponseSchema = z
+  .object({
+    status: z.string().catch('success'),
+    filename: z.string(),
+    documents: z.array(DocumentItemSchema).catch([]),
+    total_count: z.number().int().default(0),
+  })
+  .passthrough();
 
 export type DeleteDocumentResponse = z.infer<typeof DeleteDocumentResponseSchema>;
 
