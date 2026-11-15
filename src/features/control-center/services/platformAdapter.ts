@@ -35,6 +35,8 @@ export interface ConnectionTestResult {
   postgres?: {
     online: boolean;
     mode: string;
+    provider?: string;
+    latency_ms?: number;
     error?: string;
   };
   chroma?: {

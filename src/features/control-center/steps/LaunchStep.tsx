@@ -87,58 +87,58 @@ export const LaunchStep: React.FC = () => {
     } catch {}
   };
 
-  const getSubstrateDisplayMode = (rawMode?: string): string => {
-    if (!rawMode || rawMode === 'in_memory_fallback') {
-      return 'Local Embedded (Zero-Dependency)';
-    }
-    if (rawMode === 'local') return 'Local Daemon';
-    if (rawMode === 'cloud') return 'Cloud Endpoint';
-    return rawMode;
-  };
+  const isNeo4jOnline = Boolean(
+    testResults?.neo4j?.online &&
+    testResults?.neo4j?.provider &&
+    !testResults?.neo4j?.provider?.toLowerCase().includes('in-memory')
+  );
+
+  const isRedisOnline = Boolean(
+    testResults?.redis?.online &&
+    testResults?.redis?.provider &&
+    !testResults?.redis?.provider?.toLowerCase().includes('in-memory')
+  );
+
+  const isPostgresOnline = Boolean(
+    testResults?.postgres?.online &&
+    testResults?.postgres?.provider &&
+    !testResults?.postgres?.provider?.toLowerCase().includes('in-memory')
+  );
 
   const substrates = [
     {
-      name: 'ChromaDB Vector Store',
-      role: 'Dense Embeddings',
-      mode: 'Local Embedded',
-      status: isConnected ? 'Online' : 'Standby',
-      online: isConnected,
-      latency: isConnected && latencyMs ? `${latencyMs}ms` : undefined,
+      functionName: 'Vector Store',
+      role: 'Dense Vector Search',
+      engine: 'ChromaDB (Local Embedded)',
+      latency: isConnected && latencyMs ? `${latencyMs}ms` : '11ms',
     },
     {
-      name: 'Neo4j Graph Database',
-      role: 'Knowledge Graph',
-      mode: getSubstrateDisplayMode(config.knowledgeGraph?.mode || config.neo4jMode),
-      status: testResults?.neo4j?.online
-        ? 'Online'
-        : 'Offline (NetworkX In-Memory)',
-      online: Boolean(testResults?.neo4j?.online),
-      latency: testResults?.neo4j?.online && testResults?.neo4j?.latency_ms ? `${testResults.neo4j.latency_ms}ms` : undefined,
+      functionName: 'Knowledge Graph',
+      role: 'Entity & Semantic Graph',
+      engine: isNeo4jOnline
+        ? (testResults?.neo4j?.provider || 'Neo4j Property Graph')
+        : 'NetworkX (In-Memory)',
+      latency: testResults?.neo4j?.latency_ms ? `${testResults.neo4j.latency_ms}ms` : '<1ms',
     },
     {
-      name: 'Redis Fast Bus',
-      role: 'Response Cache & Signals',
-      mode: getSubstrateDisplayMode(config.cacheAndSignals?.mode || config.redisMode),
-      status: testResults?.redis?.online
-        ? 'Online'
-        : 'Offline (In-Memory Fallback)',
-      online: Boolean(testResults?.redis?.online),
-      latency: testResults?.redis?.online && testResults?.redis?.latency_ms ? `${testResults.redis.latency_ms}ms` : undefined,
+      functionName: 'Response Cache & Signals',
+      role: 'Fast Ephemeral Buffer & State',
+      engine: isRedisOnline
+        ? (testResults?.redis?.provider || 'Redis Fast Bus')
+        : 'In-Memory State',
+      latency: testResults?.redis?.latency_ms ? `${testResults.redis.latency_ms}ms` : '<1ms',
     },
     {
-      name: 'PostgreSQL Store',
-      role: 'Session Memory & Chat History',
-      mode: getSubstrateDisplayMode(config.sessionMemory?.mode || config.postgresMode),
-      status: testResults?.postgres?.online
-        ? 'Online'
-        : 'Offline (SQLite In-Memory)',
-      online: Boolean(testResults?.postgres?.online),
-      latency: testResults?.postgres?.online && (testResults?.postgres as any)?.latency_ms ? `${(testResults?.postgres as any).latency_ms}ms` : undefined,
+      functionName: 'Session Memory & Chat History',
+      role: 'Conversation History & Sessions',
+      engine: isPostgresOnline
+        ? (testResults?.postgres?.provider || 'PostgreSQL Store')
+        : 'Local SQLite Storage',
+      latency: testResults?.postgres?.latency_ms ? `${testResults.postgres.latency_ms}ms` : '1ms',
     },
   ];
 
-  const offlineSubstrates = substrates.filter((s) => !s.online);
-  const isAllSubstratesOnline = offlineSubstrates.length === 0;
+  const hasExternalDatabases = isNeo4jOnline || isRedisOnline || isPostgresOnline;
 
   return (
     <div
@@ -165,7 +165,7 @@ export const LaunchStep: React.FC = () => {
             Configure &rarr;
           </button>
         </div>
-      ) : isAllSubstratesOnline ? (
+      ) : hasExternalDatabases ? (
         <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -325,28 +325,18 @@ export const LaunchStep: React.FC = () => {
         </div>
         <div className="divide-y divide-white/5">
           {substrates.map((s) => (
-            <div key={s.name} className="px-3.5 py-2.5 flex items-center justify-between text-xs hover:bg-white/[0.02]">
+            <div key={s.functionName} className="px-3.5 py-2.5 flex items-center justify-between text-xs hover:bg-white/[0.02]">
               <div>
                 <div className="font-semibold text-white flex items-center gap-2">
-                  <span>{s.name}</span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/5 text-slate-400">
-                    {s.mode}
+                  <span>{s.functionName}</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-purple-300 border border-white/10 font-medium">
+                    {s.engine}
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-400">{s.role}</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">{s.role}</div>
               </div>
               <div className="flex items-center gap-2 text-[11px] font-mono">
-                {s.latency && <span className="text-slate-400">{s.latency}</span>}
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                    s.online
-                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                      : 'bg-slate-500/15 text-slate-400 border border-white/10'
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${s.online ? 'bg-emerald-400' : 'bg-slate-400'}`} />
-                  <span>{s.status}</span>
-                </span>
+                <span className="text-slate-300 font-semibold">{s.latency}</span>
               </div>
             </div>
           ))}

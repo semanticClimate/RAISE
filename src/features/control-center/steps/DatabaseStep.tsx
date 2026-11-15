@@ -54,31 +54,52 @@ export const DatabaseStep: React.FC = () => {
   const [isConnectingCloud, setIsConnectingCloud] = useState(false);
   const [cloudModalError, setCloudModalError] = useState<string | null>(null);
 
+  const isNeo4jOnline = Boolean(
+    testResults?.neo4j?.online &&
+    testResults?.neo4j?.provider &&
+    !testResults?.neo4j?.provider?.toLowerCase().includes('in-memory')
+  );
+
+  const isRedisOnline = Boolean(
+    testResults?.redis?.online &&
+    testResults?.redis?.provider &&
+    !testResults?.redis?.provider?.toLowerCase().includes('in-memory')
+  );
+
+  const isPostgresOnline = Boolean(
+    testResults?.postgres?.online &&
+    testResults?.postgres?.provider &&
+    !testResults?.postgres?.provider?.toLowerCase().includes('in-memory')
+  );
+
   const substrates = [
     {
       key: 'knowledgeGraph' as const,
       name: 'Knowledge Graph',
-      role: 'Neo4j Graph Engine',
+      getRole: (isOnline: boolean) =>
+        isOnline ? 'Neo4j Graph Database' : 'NetworkX In-Memory Engine',
       icon: Layers,
-      info: 'Neo4j Graph Database for semantic citations, concept nodes, and multi-hop reasoning.',
+      info: 'Property graph database for semantic citations, concept nodes, and multi-hop reasoning.',
       defaultUri: 'neo4j+s://your-instance.databases.neo4j.io',
       presetName: 'Neo4j AuraDB',
     },
     {
       key: 'sessionMemory' as const,
       name: 'Session Memory',
-      role: 'PostgreSQL Store',
+      getRole: (isOnline: boolean) =>
+        isOnline ? 'PostgreSQL Store' : 'Local SQLite Storage',
       icon: Database,
-      info: 'PostgreSQL with pgvector for cross-session chat persistence.',
+      info: 'Relational & vector persistence for cross-session chat persistence.',
       defaultUri: 'postgresql://user:password@ep-cool-fog.neon.tech/neondb',
       presetName: 'Neon Serverless Postgres',
     },
     {
       key: 'cacheAndSignals' as const,
       name: 'Response Cache',
-      role: 'Redis Fast Bus',
+      getRole: (isOnline: boolean) =>
+        isOnline ? 'Redis Fast Bus' : 'In-Memory State & Signals',
       icon: Zap,
-      info: 'Redis for ephemeral streaming state and semantic query caching.',
+      info: 'Sub-millisecond ephemeral streaming state and semantic query caching.',
       defaultUri: 'rediss://default:token@your-cluster.upstash.io:6379',
       presetName: 'Upstash Redis',
     },
@@ -320,6 +341,13 @@ export const DatabaseStep: React.FC = () => {
               const isLocal = currentMode === 'local';
               const isCloud = currentMode === 'cloud';
 
+              const isSubstrateLive =
+                sub.key === 'knowledgeGraph'
+                  ? isNeo4jOnline
+                  : sub.key === 'sessionMemory'
+                    ? isPostgresOnline
+                    : isRedisOnline;
+
               return (
                 <tr key={sub.key} className="hover:bg-white/[0.02] transition-colors">
                   {/* Row Header (Substrate with Tooltip) */}
@@ -334,7 +362,7 @@ export const DatabaseStep: React.FC = () => {
                           <Tooltip size="sm" content={sub.info} />
                         </div>
                         <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          {sub.role}
+                          {sub.getRole(isSubstrateLive)}
                         </div>
                       </div>
                     </div>
@@ -448,9 +476,9 @@ export const DatabaseStep: React.FC = () => {
           </div>
           <div>
             <div className="font-bold text-white flex items-center gap-2">
-              <span>ChromaDB Vector Store</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
-                {testResults?.chroma?.online ? 'Online' : 'Local Embedded'}
+              <span>Vector Store</span>
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/5 text-purple-300 border border-white/10 font-mono">
+                ChromaDB (Local Embedded)
               </span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono mt-0.5">

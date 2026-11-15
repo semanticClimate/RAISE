@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   Cpu,
+  Download,
   Eye,
   EyeOff,
   Key,
@@ -45,8 +46,8 @@ export const NeuralStep: React.FC = () => {
 
   // Hugging Face token state
   const [showHfToken, setShowHfToken] = useState(false);
-  const [isSavingHfToken, setIsSavingHfToken] = useState(false);
-  const [hfSavedNotice, setHfSavedNotice] = useState<string | null>(null);
+  const [isCheckingHfToken, setIsCheckingHfToken] = useState(false);
+  const [hfCheckNotice, setHfCheckNotice] = useState<{ text: string; success: boolean } | null>(null);
 
   // Advanced / Custom model expansion
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -115,6 +116,21 @@ export const NeuralStep: React.FC = () => {
     : [];
   const customModelSupport: boolean = Boolean(neuralRegistry.custom_model_supported);
 
+  // Clean model name resolver for compact cards
+  const getCleanModelName = (modelId: string, category: ModelCategory): string => {
+    if (!modelId) return isLoading ? 'Loading...' : 'Not configured';
+    const list =
+      category === 'embedding'
+        ? availableEmbeddingModels
+        : category === 'reranker'
+          ? availableRerankerModels
+          : availableVerifierModels;
+    const found = list.find((m) => m.id === modelId);
+    if (found && found.name) return found.name;
+    const last = modelId.split('/').pop() || modelId;
+    return last.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
   // Dynamic status evaluation
   const getModelStatus = (modelId: string, category: ModelCategory): { label: string; tone: 'ready' | 'pending' | 'muted' } => {
     if (isLoading) return { label: 'Loading...', tone: 'muted' };
@@ -149,6 +165,34 @@ export const NeuralStep: React.FC = () => {
     }
 
     return { label: 'Configured in Backend', tone: 'ready' };
+  };
+
+  // Compact status sign (icon only, not verbose text paragraphs)
+  const renderStatusSign = (status: { label: string; tone: 'ready' | 'pending' | 'muted' }) => {
+    if (isLoading) {
+      return (
+        <span title="Loading...">
+          <Loader2 className="w-3.5 h-3.5 text-purple-400 animate-spin" />
+        </span>
+      );
+    }
+    if (status.tone === 'ready') {
+      return (
+        <span className="flex items-center justify-center w-5 h-5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400" title="Cached & Ready">
+          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+        </span>
+      );
+    }
+    if (status.tone === 'pending') {
+      return (
+        <span className="flex items-center justify-center w-5 h-5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400" title="Requires Download">
+          <Download className="w-3.5 h-3.5" />
+        </span>
+      );
+    }
+    return (
+      <span className="w-2.5 h-2.5 rounded-full bg-slate-500" title="Not configured" />
+    );
   };
 
   // Helper to extract Hugging Face / SentenceTransformers identifiers
@@ -219,33 +263,54 @@ export const NeuralStep: React.FC = () => {
     setCustomModelInput('');
   };
 
-  // Save Hugging Face Access Token to Backend
-  const handleSaveHfToken = async () => {
+  // Paste from clipboard into Hugging Face input
+  const handlePasteHfToken = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        updateConfig({ huggingfaceToken: text.trim() });
+      }
+    } catch {
+      // ignore clipboard error
+    }
+  };
+
+  // Check and verify Hugging Face Access Token with backend
+  const handleCheckHfToken = async () => {
     const raw = config.huggingfaceToken?.trim();
     if (!raw) return;
-    setIsSavingHfToken(true);
+    setIsCheckingHfToken(true);
     try {
-      const res = await platformAdapter.saveConfig({
-        huggingface_token: raw,
-        hf_token: raw,
-      });
-      if (res.success) {
-        setHfSavedNotice('Token persisted in backend .env');
+      // 1. Verify token with backend provider verification
+      const verifyRes = await platformAdapter.pingApiKey('huggingface', raw);
+      if (verifyRes.available) {
+        // 2. Persist to backend .env and runtime
+        await platformAdapter.saveConfig({
+          huggingface_token: raw,
+          hf_token: raw,
+        });
         updateConfig({
           huggingfaceConfigured: true,
           huggingfaceMasked: raw.length > 8 ? `${raw.slice(0, 4)}...${raw.slice(-4)}` : 'Active',
         });
-        setTimeout(() => setHfSavedNotice(null), 3500);
+        setHfCheckNotice({ text: 'Token verified & saved to backend', success: true });
+        setTimeout(() => setHfCheckNotice(null), 4000);
         await refreshBackendData();
       } else {
-        setHfSavedNotice(res.message || 'Failed to persist token');
-        setTimeout(() => setHfSavedNotice(null), 3500);
+        setHfCheckNotice({
+          text: verifyRes.error || 'Hugging Face authentication rejected',
+          success: false,
+        });
+        setTimeout(() => setHfCheckNotice(null), 4500);
       }
-    } catch {
-      setHfSavedNotice('Failed to communicate with backend');
-      setTimeout(() => setHfSavedNotice(null), 3500);
+    } catch (err: any) {
+      setHfCheckNotice({
+        text: err?.message || 'Connection error checking token',
+        success: false,
+      });
+      setTimeout(() => setHfCheckNotice(null), 4500);
     } finally {
-      setIsSavingHfToken(false);
+      setIsCheckingHfToken(false);
     }
   };
 
@@ -264,11 +329,6 @@ export const NeuralStep: React.FC = () => {
       console.warn('Device update failed:', err);
     }
   };
-
-  // Dynamic context matching between reranker and embedder
-  const isContextMatched =
-    configuredEmbedding.includes('embeddinggemma-2') &&
-    configuredReranker.includes('bge-reranker-v2-m3');
 
   const embeddingStatus = getModelStatus(configuredEmbedding, 'embedding');
   const rerankerStatus = getModelStatus(configuredReranker, 'reranker');
@@ -327,10 +387,14 @@ export const NeuralStep: React.FC = () => {
               )}
             </label>
             <div className="flex items-center gap-2">
-              {hfSavedNotice && (
-                <span className="text-[11px] font-mono text-purple-400 animate-in fade-in flex items-center gap-1">
-                  <Check className="w-3 h-3" />
-                  {hfSavedNotice}
+              {hfCheckNotice && (
+                <span
+                  className={`text-[11px] font-mono animate-in fade-in flex items-center gap-1 ${
+                    hfCheckNotice.success ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {hfCheckNotice.success ? <Check className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                  {hfCheckNotice.text}
                 </span>
               )}
               <span className="text-[10.5px] font-mono text-slate-400">For gated or private repos</span>
@@ -346,7 +410,7 @@ export const NeuralStep: React.FC = () => {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    handleSaveHfToken();
+                    handleCheckHfToken();
                   }
                 }}
                 placeholder={
@@ -354,35 +418,50 @@ export const NeuralStep: React.FC = () => {
                     ? config.huggingfaceMasked
                     : 'hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
                 }
-                className="w-full px-3 py-2 pr-9 rounded-xl bg-black/60 border border-white/15 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-400 transition-colors"
+                className="w-full px-3 py-2 pr-16 rounded-xl bg-black/60 border border-white/15 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-400 transition-colors"
               />
+
+              {/* Paste from clipboard button with exact requested SVG */}
+              <button
+                type="button"
+                onClick={handlePasteHfToken}
+                className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 cursor-pointer transition-colors"
+                title="Paste token from clipboard"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </button>
+
+              {/* Toggle visibility */}
               <button
                 type="button"
                 onClick={() => setShowHfToken(!showHfToken)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 cursor-pointer transition-colors"
                 title={showHfToken ? 'Hide token' : 'Show token'}
               >
                 {showHfToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
-            {config.huggingfaceToken && config.huggingfaceToken !== config.huggingfaceMasked && (
-              <button
-                type="button"
-                onClick={handleSaveHfToken}
-                disabled={isSavingHfToken}
-                className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium shrink-0 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
-              >
-                {isSavingHfToken ? 'Saving...' : 'Save Token'}
-              </button>
-            )}
+
+            {/* Exact Check button as requested */}
+            <button
+              type="button"
+              onClick={handleCheckHfToken}
+              disabled={isCheckingHfToken || !config.huggingfaceToken?.trim()}
+              className="px-3 py-2 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 bg-white/10 hover:bg-white/15 border border-white/20 text-white cursor-pointer disabled:opacity-50"
+            >
+              {isCheckingHfToken ? <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" /> : null}
+              <span>{isCheckingHfToken ? 'Checking...' : 'Check'}</span>
+            </button>
           </div>
           <p className="text-[10.5px] text-slate-400 font-sans leading-tight">
             Required only if using gated models (e.g. Meta-Llama, Mistral gated repos, or private corporate libraries).
           </p>
         </div>
 
-        {/* 2. THREE COMPACT CONFIGURATION CARDS */}
-        <div className="space-y-3 pt-1">
+        {/* 2. THREE COMPACT CARDS (MINIMAL COGNITIVE LOAD: JUST MODEL NAME + STATUS SIGN + CHANGE BUTTON) */}
+        <div className="space-y-2.5 pt-1">
           <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
             Configured Neural Models
           </div>
@@ -396,26 +475,11 @@ export const NeuralStep: React.FC = () => {
                     <Layers className="w-3.5 h-3.5 text-purple-400" />
                     <span>Embedding Model</span>
                   </div>
-                  <span
-                    className={`text-[9.5px] font-mono px-2 py-0.5 rounded-md font-semibold ${
-                      embeddingStatus.tone === 'ready'
-                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-                        : embeddingStatus.tone === 'pending'
-                          ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
-                          : 'bg-white/5 border border-white/10 text-slate-400'
-                    }`}
-                  >
-                    {embeddingStatus.label}
-                  </span>
+                  {renderStatusSign(embeddingStatus)}
                 </div>
 
-                <div className="font-mono text-xs text-purple-300 font-semibold truncate" title={configuredEmbedding}>
-                  {configuredEmbedding || (isLoading ? 'Loading...' : 'Not configured')}
-                </div>
-
-                <div className="text-[10.5px] font-mono text-slate-400 truncate">
-                  {availableEmbeddingModels.find((m) => m.id === configuredEmbedding)?.specifications ||
-                    'Dense Vector Semantic Embeddings'}
+                <div className="font-semibold text-sm text-white truncate" title={configuredEmbedding}>
+                  {getCleanModelName(configuredEmbedding, 'embedding')}
                 </div>
               </div>
 
@@ -437,34 +501,12 @@ export const NeuralStep: React.FC = () => {
                     <Sparkles className="w-3.5 h-3.5 text-purple-400" />
                     <span>Reranker</span>
                   </div>
-                  <span
-                    className={`text-[9.5px] font-mono px-2 py-0.5 rounded-md font-semibold ${
-                      rerankerStatus.tone === 'ready'
-                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-                        : rerankerStatus.tone === 'pending'
-                          ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
-                          : 'bg-white/5 border border-white/10 text-slate-400'
-                    }`}
-                  >
-                    {rerankerStatus.label}
-                  </span>
+                  {renderStatusSign(rerankerStatus)}
                 </div>
 
-                <div className="font-mono text-xs text-purple-300 font-semibold truncate" title={configuredReranker}>
-                  {configuredReranker || (isLoading ? 'Loading...' : 'Not configured')}
+                <div className="font-semibold text-sm text-white truncate" title={configuredReranker}>
+                  {getCleanModelName(configuredReranker, 'reranker')}
                 </div>
-
-                {/* Dynamic Reranker Context Labels */}
-                {isContextMatched ? (
-                  <div className="text-[10px] font-mono text-emerald-400/90 leading-tight">
-                    Context (8,192 tokens) matches google/embeddinggemma-2 for zero-truncation cross-attention
-                  </div>
-                ) : (
-                  <div className="text-[10.5px] font-mono text-slate-400 truncate">
-                    {availableRerankerModels.find((m) => m.id === configuredReranker)?.specifications ||
-                      'Cross-Attention Passage Reranker'}
-                  </div>
-                )}
               </div>
 
               <button
@@ -485,26 +527,11 @@ export const NeuralStep: React.FC = () => {
                     <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
                     <span>Claim Verifier</span>
                   </div>
-                  <span
-                    className={`text-[9.5px] font-mono px-2 py-0.5 rounded-md font-semibold ${
-                      verifierStatus.tone === 'ready'
-                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-                        : verifierStatus.tone === 'pending'
-                          ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
-                          : 'bg-white/5 border border-white/10 text-slate-400'
-                    }`}
-                  >
-                    {verifierStatus.label}
-                  </span>
+                  {renderStatusSign(verifierStatus)}
                 </div>
 
-                <div className="font-mono text-xs text-purple-300 font-semibold truncate" title={configuredVerifier}>
-                  {configuredVerifier || (isLoading ? 'Loading...' : 'Not configured')}
-                </div>
-
-                <div className="text-[10.5px] font-mono text-slate-400 truncate">
-                  {availableVerifierModels.find((m) => m.id === configuredVerifier)?.specifications ||
-                    'Pairwise Citation & Factuality Verification'}
+                <div className="font-semibold text-sm text-white truncate" title={configuredVerifier}>
+                  {getCleanModelName(configuredVerifier, 'verifier')}
                 </div>
               </div>
 
@@ -526,7 +553,7 @@ export const NeuralStep: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="py-1.5 text-xs font-medium text-slate-400 hover:text-purple-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="py-1 text-xs font-medium text-slate-400 hover:text-purple-300 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               {showAdvanced ? (
                 <ChevronDown className="w-3.5 h-3.5 text-purple-400" />
@@ -631,7 +658,7 @@ export const NeuralStep: React.FC = () => {
         </div>
       </div>
 
-      {/* POPUP-BASED MODEL SELECTION MODAL */}
+      {/* POPUP-BASED MODEL SELECTION MODAL (DETAILS, CONTEXT MATCH & SPECS SHOWN HERE) */}
       {activeCategoryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
           <div
@@ -667,7 +694,7 @@ export const NeuralStep: React.FC = () => {
               </button>
             </div>
 
-            {/* MODAL BODY (MODELS LIST) */}
+            {/* MODAL BODY (MODELS LIST WITH FULL SPECIFICATIONS & CONTEXT LABELS) */}
             <div className="p-4 overflow-y-auto space-y-2 flex-1 overscroll-contain">
               {(() => {
                 const list =
@@ -695,6 +722,10 @@ export const NeuralStep: React.FC = () => {
                 return list.map((m) => {
                   const isSelected = currentConfigured === m.id;
                   const isCached = Boolean(m.cached || m.status?.includes('Built-in') || m.status?.includes('Cached'));
+                  const isRerankerMatch =
+                    activeCategoryModal === 'reranker' &&
+                    m.id.includes('v2-m3') &&
+                    configuredEmbedding.includes('embeddinggemma-2');
 
                   return (
                     <button
@@ -725,9 +756,16 @@ export const NeuralStep: React.FC = () => {
                           {m.id}
                         </div>
 
+                        {/* Full specifications and context matching in modal popup */}
                         {m.specifications && (
                           <div className="text-[10px] font-mono text-purple-300/80">
                             {m.specifications}
+                          </div>
+                        )}
+
+                        {isRerankerMatch && (
+                          <div className="text-[9.5px] font-mono text-emerald-400/90 leading-tight">
+                            Context (8,192 tokens) matches google/embeddinggemma-2 for zero-truncation cross-attention
                           </div>
                         )}
                       </div>
