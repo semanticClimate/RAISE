@@ -153,18 +153,20 @@ class ProviderRouter:
 
         local_target = "vllm" if vllm_alive else ("ollama" if ollama_alive else ("vllm" if "vllm" in self.providers else "local"))
 
-        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", "")).upper().strip()
-        local_first = (
+        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", os.getenv("LLM_ROUTING_MODE", ""))).upper().strip()
+        user_chose_local = (
             (routing_policy == "LOCAL_FIRST")
             or (self.mode == ExecutionMode.LOCAL)
             or (env_backend in ("vllm", "ollama", "local"))
-            or (vllm_alive and routing_policy != "CLOUD_FIRST")
         )
+        local_first = user_chose_local
 
-        if local_first and (vllm_alive or ollama_alive):
+        if user_chose_local and (vllm_alive or ollama_alive):
             default_target = local_target
+        elif configured_clouds and self.cloud_allowed and self.mode != ExecutionMode.LOCAL:
+            default_target = primary_cloud
         else:
-            default_target = primary_cloud if (self.cloud_allowed and self.mode != ExecutionMode.LOCAL) else local_target
+            default_target = local_target if (vllm_alive or ollama_alive) else primary_cloud
 
         self.task_policy: Dict[InferenceTask, str] = {
             InferenceTask.CHAT: os.getenv("TASK_POLICY_CHAT", default_target),
@@ -242,13 +244,15 @@ class ProviderRouter:
             if cm.get_credential_status(cand) == "configured":
                 configured_clouds.append(cand)
 
-        # 3. Determine ordering preference
-        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", "")).upper().strip()
-        prefer_local = (
+        # 3. Determine ordering preference: default to cloud-first unless user specifically chose local engines
+        # or if zero cloud API keys exist. This prevents heavy GPU/RAM overload on low-spec hardware.
+        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", os.getenv("LLM_ROUTING_MODE", ""))).upper().strip()
+        user_chose_local = (
             (routing_policy == "LOCAL_FIRST")
             or (self.mode == ExecutionMode.LOCAL)
-            or (len(alive_local) > 0 and routing_policy != "CLOUD_FIRST")
+            or (os.getenv("LLM_BACKEND", "").lower().strip() in ("vllm", "ollama", "local"))
         )
+        prefer_local = user_chose_local or (not configured_clouds and len(alive_local) > 0)
 
         active = []
         if prefer_local:
