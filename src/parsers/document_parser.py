@@ -107,18 +107,17 @@ class SmartDocumentParser:
                 pass
 
         use_docling = False
-        if eng_lower in ("deep", "docling") or full_potential:
-            # If the PDF is large (> 40 pages) and full_potential is not explicitly set,
-            # route to high-speed PyMuPDF to avoid synchronous HTTP gateway timeouts (> 120s)
-            if total_pages > 40 and not full_potential:
-                logger.info(
-                    "Document '%s' has %d pages (> 40). Routing to high-speed PyMuPDF parser to prevent HTTP gateway timeout.",
+        if eng_lower in ("deep", "docling"):
+            if HAS_DOCLING:
+                use_docling = True
+            else:
+                logger.warning(
+                    "Deep Vision (Docling) requested for '%s', but docling is not installed. Falling back to PyMuPDF.",
                     pdf_path.name,
-                    total_pages,
                 )
                 use_docling = False
-            else:
-                use_docling = HAS_DOCLING
+        elif full_potential:
+            use_docling = HAS_DOCLING
         elif eng_lower == "fast":
             use_docling = False
         else:  # auto

@@ -6,13 +6,6 @@
       "size_mb": 32.87,
       "chunks_count": 322,
       "status": "ready"
-    },
-    {
-      "filename": "test_sample.pdf",
-      "pages": 1,
-      "size_mb": 0.0,
-      "chunks_count": 1,
-      "status": "ready"
     }
   ],
   "timestamp": "2026-11-13T19:30:00Z",

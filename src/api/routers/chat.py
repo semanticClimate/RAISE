@@ -299,6 +299,7 @@ async def chat_endpoint(
                 "traceability_score": 0.95,
                 "execution_time": 0.005,
                 "latency_sec": 0.005,
+                "durationSec": 0.005,
                 "mode_used": mode,
                 "thread_id": session_id,
                 "session_id": session_id,
@@ -351,6 +352,7 @@ async def chat_endpoint(
             "traceability_score": cached.get("traceability_score", 0.98),
             "execution_time": 0.005,
             "latency_sec": 0.005,
+            "durationSec": 0.005,
             "mode_used": mode,
         }
         if session_id and postgres_manager:
@@ -441,6 +443,7 @@ async def chat_endpoint(
             "traceability_score": result.get("traceability_score", 0.95),
             "execution_time": elapsed,
             "latency_sec": elapsed,
+            "durationSec": elapsed,
             "mode_used": mode,
             "pipeline_info": pipeline_info,
             "storage_used": storage_desc,

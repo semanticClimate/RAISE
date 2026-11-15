@@ -50,6 +50,35 @@ def is_test_document(filename: str) -> bool:
     return fn_lower in TEST_ARTIFACT_NAMES or fn_lower.startswith("test_")
 
 
+_PDF_METADATA_CACHE: Dict[str, Tuple[float, int, float]] = {}  # str(path) -> (mtime, pages, size_mb)
+
+
+def get_pdf_metadata(pdf_path: Path, cached_pages: int = 1, cached_size_mb: float = 1.0) -> Tuple[int, float]:
+    """Retrieves PDF page count and size in MB, caching results by file modification time (mtime)."""
+    if not pdf_path.exists():
+        return cached_pages, cached_size_mb
+    try:
+        st = pdf_path.stat()
+        mtime = st.st_mtime
+        p_str = str(pdf_path)
+        if p_str in _PDF_METADATA_CACHE:
+            c_mtime, c_pages, c_size = _PDF_METADATA_CACHE[p_str]
+            if c_mtime == mtime:
+                return c_pages, c_size
+        size_mb = round(st.st_size / (1024 * 1024), 2)
+        pages = cached_pages
+        try:
+            import pymupdf
+            with pymupdf.open(str(pdf_path)) as pdoc:
+                pages = max(1, pdoc.page_count)
+        except Exception:
+            pages = max(1, cached_pages)
+        _PDF_METADATA_CACHE[p_str] = (mtime, pages, size_mb)
+        return pages, size_mb
+    except Exception:
+        return cached_pages, cached_size_mb
+
+
 def auto_scan_and_reconcile_documents():
     """
     Auto-scans DOCUMENTS_DIR for PDFs and reconciles with ingested chunks/catalogs.
@@ -77,15 +106,7 @@ def auto_scan_and_reconcile_documents():
             except Exception:
                 pass
 
-        real_pages = 1
-        try:
-            import pymupdf
-            with pymupdf.open(str(pdf_file)) as pdoc:
-                real_pages = max(1, pdoc.page_count)
-        except Exception:
-            pass
-
-        size_mb = round(pdf_file.stat().st_size / (1024 * 1024), 2)
+        real_pages, size_mb = get_pdf_metadata(pdf_file)
 
         if pdf_file.name not in registered_files and (real_chunks_count > 0 or extracted_file.exists()):
             record_ready_document(
@@ -508,19 +529,13 @@ def get_library_documents(postgres_mgr: Any = None, auto_scan: bool = True) -> D
         pages_cnt = r.get("pages", 1)
         pdf_path = DOCUMENTS_DIR / fn
         if not pdf_path.exists():
-            for c in [DOCUMENTS_DIR / fn, REPO_ROOT / "backend" / "data" / "documents" / fn]:
+            for c in [DOCUMENTS_DIR / fn, settings.data_dir / "documents" / fn]:
                 if c.exists():
                     pdf_path = c
                     break
         size_mb = r.get("size_mb", 1.0)
         if pdf_path.exists():
-            try:
-                size_mb = round(pdf_path.stat().st_size / (1024 * 1024), 2)
-                import pymupdf
-                with pymupdf.open(str(pdf_path)) as pdoc:
-                    pages_cnt = max(1, pdoc.page_count)
-            except Exception:
-                pass
+            pages_cnt, size_mb = get_pdf_metadata(pdf_path, cached_pages=pages_cnt, cached_size_mb=size_mb)
 
         # Check extracted markdown
         extracted_md_file = _find_file_for_stem(LIBRARY_DIR, stem, "_extracted.md")

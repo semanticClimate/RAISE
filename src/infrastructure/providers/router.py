@@ -88,7 +88,11 @@ class ProviderRouter:
         mode: Optional[ExecutionMode] = None,
         cloud_allowed: Optional[bool] = None,
     ):
-        env_backend = os.getenv("LLM_BACKEND", "").lower().strip()
+        env_backend = (
+            os.getenv("LLM_BACKEND", "")
+            or os.getenv("RAISE_LLM_PROVIDER", "")
+            or os.getenv("LLM_PROVIDER", "")
+        ).lower().strip()
         env_mode = os.getenv("EXECUTION_MODE", "").upper().strip()
 
         if mode is not None:
@@ -123,7 +127,11 @@ class ProviderRouter:
         _cm = get_credential_manager()
         configured_clouds = [cand for cand in ["groq", "gemini", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if _cm.get_credential_status(cand) == "configured"]
 
-        if env_backend in self.providers and (_cm.get_credential_status(env_backend) == "configured" or not configured_clouds):
+        if env_backend in self.providers and (
+            env_backend in ("vllm", "ollama", "local")
+            or _cm.get_credential_status(env_backend) == "configured"
+            or not configured_clouds
+        ):
             primary_cloud = env_backend
         elif configured_clouds:
             primary_cloud = configured_clouds[0]
@@ -238,10 +246,12 @@ class ProviderRouter:
         for eng in ["vllm", "ollama"]:
             if eng not in active:
                 is_alive = vllm_alive if eng == "vllm" else ollama_alive
-                if is_alive and local_first:
-                    active.insert(0, eng)
-                elif is_alive and not any(cm.get_credential_status(k) == "configured" for k in ordered_candidates):
-                    active.insert(0, eng)
+                if is_alive:
+                    if local_first or not any(cm.get_credential_status(k) == "configured" for k in ordered_candidates):
+                        active.insert(0, eng)
+                    else:
+                        insert_pos = 1 if len(active) > 0 else 0
+                        active.insert(insert_pos, eng)
                 else:
                     active.append(eng)
 
@@ -427,6 +437,124 @@ class ProviderRouter:
         self.local_allowed = allowed
         logger.info(f"Local inference permission changed: {allowed}")
 
+    def get_routing_status(self) -> Dict[str, Any]:
+        """Returns full routing policy, ordered fallback chain, disabled list, and provider states."""
+        cm = get_credential_manager()
+        primary = self.task_policy.get(InferenceTask.RAG_GENERATION, self.fallback_chain[0] if self.fallback_chain else "vllm")
+        providers_info = []
+
+        all_known = ["vllm", "gemini", "groq", "ollama", "local", "nvidia", "mistral", "cohere", "deepseek", "openrouter"]
+        for p_id in all_known:
+            if p_id not in self.providers:
+                continue
+            prov_obj = self.providers[p_id]
+            is_disabled = p_id in self.disabled_providers
+            is_active = (p_id == primary)
+            order_index = self.fallback_chain.index(p_id) if p_id in self.fallback_chain else 99
+
+            if p_id == "vllm":
+                is_avail = False
+                try:
+                    is_avail = prov_obj.is_available()
+                except Exception:
+                    pass
+                status = "READY" if is_avail else "OFFLINE"
+                display_name = "Local vLLM Container (GPU)"
+                tier = "Local High-Throughput (Zero API Cost)"
+            elif p_id == "ollama":
+                is_avail = False
+                try:
+                    is_avail = prov_obj.is_available()
+                except Exception:
+                    pass
+                status = "READY" if is_avail else "OFFLINE"
+                display_name = "Local Ollama Engine"
+                tier = "Local On-Device"
+            elif p_id == "local":
+                is_ready = bool(getattr(prov_obj, "pipeline", None) is not None)
+                status = "READY" if is_ready else "STANDBY"
+                display_name = "Local PyTorch Transformers"
+                tier = "In-Process GPU/CPU"
+            else:
+                cred_status = cm.get_credential_status(p_id)
+                status = "CONFIGURED" if cred_status == "configured" else "NOT_CONFIGURED"
+                cloud_meta = self._get_cloud_meta().get(p_id, {})
+                display_name = cloud_meta.get("name", p_id.capitalize())
+                tier = cloud_meta.get("tier", "Cloud API")
+
+            providers_info.append({
+                "id": p_id,
+                "displayName": display_name,
+                "model": getattr(prov_obj, "model_name", "default"),
+                "status": status,
+                "isActive": is_active,
+                "isDisabled": is_disabled,
+                "order": order_index,
+                "tier": tier,
+                "isLocal": p_id in ("vllm", "ollama", "local"),
+            })
+
+        providers_info.sort(key=lambda x: (x["isDisabled"], x["order"]))
+
+        return {
+            "primary_provider": primary,
+            "fallback_chain": self.fallback_chain,
+            "disabled_providers": list(self.disabled_providers),
+            "routing_policy": os.getenv("ROUTING_POLICY", "LOCAL_FIRST" if self.mode == ExecutionMode.LOCAL else "CLOUD_FIRST"),
+            "execution_mode": self.mode.value,
+            "providers": providers_info,
+        }
+
+    def set_routing(
+        self,
+        fallback_order: Optional[List[str]] = None,
+        disabled_providers: Optional[List[str]] = None,
+        primary_provider: Optional[str] = None,
+        routing_policy: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Applies dynamic user ordering and disabling to the provider router."""
+        if disabled_providers is not None:
+            self.disabled_providers = {p.lower().strip() for p in disabled_providers if p}
+
+        clean_order = []
+        if fallback_order is not None:
+            for p in fallback_order:
+                cp = p.lower().strip()
+                if cp in self.providers and cp not in self.disabled_providers and cp not in clean_order:
+                    clean_order.append(cp)
+            if clean_order:
+                self.fallback_chain = clean_order
+
+        if primary_provider is not None:
+            prim = primary_provider.lower().strip()
+            if prim in self.providers:
+                for t in InferenceTask:
+                    self.task_policy[t] = prim
+                if prim in self.disabled_providers:
+                    self.disabled_providers.remove(prim)
+                if prim in self.fallback_chain:
+                    self.fallback_chain.remove(prim)
+                self.fallback_chain.insert(0, prim)
+        elif clean_order:
+            for t in InferenceTask:
+                self.task_policy[t] = clean_order[0]
+
+        if routing_policy:
+            rp = routing_policy.upper().strip()
+            os.environ["ROUTING_POLICY"] = rp
+            if rp == "LOCAL_FIRST":
+                self.mode = ExecutionMode.LOCAL
+                self.cloud_allowed = True
+            elif rp == "CLOUD_FIRST":
+                self.mode = ExecutionMode.CLOUD
+                self.cloud_allowed = True
+
+        logger.info(
+            f"Router dynamic update applied. Primary: {self.task_policy.get(InferenceTask.RAG_GENERATION)}, "
+            f"Fallback: {self.fallback_chain}, Disabled: {self.disabled_providers}"
+        )
+        return self.get_routing_status()
+
     def get_provider_for_task(self, task: Union[InferenceTask, str]) -> LLMProvider:
         """Select primary provider according to execution mode, task policy, and live cooldown state."""
         t = InferenceTask(task) if isinstance(task, str) else task
@@ -552,7 +680,10 @@ class ProviderRouter:
                 logger.info(f"Activated {int(cooldown_secs)}s cooldown for provider '{primary_provider.name}'.")
             elif "401" in err_msg or "AUTH_FAILED" in err_msg or "invalid_api_key" in err_msg.lower() or "402" in err_msg or "BILLING_RESTRICTED" in err_msg or "credit card" in err_msg.lower() or "403" in err_msg:
                 self.disabled_providers.add(primary_provider.name)
-                logger.warning(f"Permanently disabled billing-restricted provider '{primary_provider.name}'.")
+                logger.warning(f"Permanently disabled billing/auth-restricted provider '{primary_provider.name}'.")
+            elif "404" in err_msg or "MODEL_UNAVAILABLE" in err_msg or "not found" in err_msg.lower() or "timed out" in err_msg.lower() or "timeout" in err_msg.lower() or "connection refused" in err_msg.lower() or "10061" in err_msg:
+                self.provider_cooldowns[primary_provider.name] = time.time() + 60.0
+                logger.warning(f"Activated 60s cooldown for unreachable/unavailable provider '{primary_provider.name}'.")
 
             # Try each provider in the fallback chain
             errors = [f"{primary_provider.name}: {err_msg}"]
@@ -613,9 +744,12 @@ class ProviderRouter:
                     fb_str = str(fb_err)
                     if "429" in fb_str or "RATE_LIMITED" in fb_str or "quota" in fb_str.lower():
                         self.provider_cooldowns[candidate_name] = time.time() + 60.0
-                    elif "402" in fb_str or "BILLING_RESTRICTED" in fb_str or "credit card" in fb_str.lower() or ("403" in fb_str and candidate_name in ("deepseek", "openrouter")):
+                    elif "401" in fb_str or "AUTH_FAILED" in fb_str or "invalid_api_key" in fb_str.lower() or "402" in fb_str or "BILLING_RESTRICTED" in fb_str or "credit card" in fb_str.lower() or "403" in fb_str:
                         self.disabled_providers.add(candidate_name)
-                        logger.warning(f"Permanently disabled billing-restricted fallback '{candidate_name}'.")
+                        logger.warning(f"Permanently disabled invalid/unauthorized fallback '{candidate_name}'.")
+                    elif "404" in fb_str or "MODEL_UNAVAILABLE" in fb_str or "timed out" in fb_str.lower() or "timeout" in fb_str.lower() or "connection refused" in fb_str.lower() or "10061" in fb_str:
+                        self.provider_cooldowns[candidate_name] = time.time() + 60.0
+                        logger.warning(f"Activated 60s cooldown for unreachable fallback '{candidate_name}'.")
                     errors.append(f"{candidate_name}: {fb_err}")
                     logger.warning(f"Fallback candidate '{candidate_name}' failed: {fb_err}")
 

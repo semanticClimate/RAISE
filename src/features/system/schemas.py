@@ -33,6 +33,10 @@ class SystemConfigRequest(BaseModel):
     custom_model_name: Optional[str] = None
     selected_local_model: Optional[str] = "llama3.2:3b"
     ollama_model: Optional[str] = None
+    fallback_order: Optional[List[str]] = None
+    disabled_providers: Optional[List[str]] = None
+    primary_provider: Optional[str] = None
+    routing_policy: Optional[str] = None
 
     # Neural Retrieval Pipeline Substrates
     embedding_model: Optional[str] = Field(default_factory=lambda: models.EMBEDDING_MODEL_NAME)
@@ -73,5 +77,15 @@ class ModelPullRequest(BaseModel):
 class PreflightDownloadRequest(BaseModel):
     """Payload schema for initiating background neural asset downloads."""
     model_config = {"extra": "ignore"}
+
+
+class RoutingUpdateRequest(BaseModel):
+    """Payload schema for dynamic LLM priority reordering and enabling/disabling."""
+    model_config = {"extra": "ignore"}
+
+    fallback_order: Optional[List[str]] = Field(default=None, description="Ordered list of provider keys, e.g. ['vllm', 'gemini', 'groq']")
+    disabled_providers: Optional[List[str]] = Field(default=None, description="List of provider keys to deactivate")
+    primary_provider: Optional[str] = Field(default=None, description="Primary LLM provider to use first")
+    routing_policy: Optional[str] = Field(default=None, description="LOCAL_FIRST, CLOUD_FIRST, etc.")
 
     asset_ids: Optional[List[str]] = None

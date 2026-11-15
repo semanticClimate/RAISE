@@ -116,7 +116,11 @@ def get_database_engine(
     is_testing = os.getenv("TESTING", "").lower() in ("true", "1") or "pytest" in sys.modules
     sqlite_path = os.getenv("SQLITE_DB_PATH")
     if not sqlite_path and not is_testing and memory_url == "sqlite:///:memory:":
-        data_dir = os.path.join(os.getcwd(), "data")
+        try:
+            from src.core.config import DATA_DIR
+            data_dir = str(DATA_DIR)
+        except Exception:
+            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data")
         try:
             os.makedirs(data_dir, exist_ok=True)
             sqlite_path = os.path.join(data_dir, "raise_local.db")

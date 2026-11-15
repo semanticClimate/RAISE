@@ -72,6 +72,7 @@ def get_current_configuration() -> Dict[str, Any]:
         "last_used_provider": last_provider,
         "last_used_model": last_model,
         "available_providers": available_provs,
+        "routing": p_router.get_routing_status(),
         "privacy_mode": privacy_mode,
         "groq_configured": cm.get_credential_status("groq") == "configured",
         "groq_masked": mask_secret(cm.get_credential("groq")),
@@ -299,6 +300,20 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
             router.set_execution_mode(ExecutionMode.AUTOMATIC)
             router.set_cloud_allowed(True)
         router._refresh_fallback_chain(env_map.get("LLM_BACKEND"))
+        if cfg.fallback_order or cfg.disabled_providers is not None or cfg.primary_provider or cfg.routing_policy:
+            router.set_routing(
+                fallback_order=cfg.fallback_order,
+                disabled_providers=cfg.disabled_providers,
+                primary_provider=cfg.primary_provider,
+                routing_policy=cfg.routing_policy,
+            )
+            if cfg.fallback_order:
+                env_map["LLM_FALLBACK_ORDER"] = ",".join(cfg.fallback_order)
+            if cfg.routing_policy:
+                env_map["ROUTING_POLICY"] = cfg.routing_policy
+            if cfg.primary_provider:
+                env_map["RAISE_LLM_PROVIDER"] = cfg.primary_provider
+                env_map["LLM_PROVIDER"] = cfg.primary_provider
     except Exception as e:
         logger.warning(f"Could not refresh provider router: {e}")
 

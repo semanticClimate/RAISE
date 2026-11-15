@@ -286,15 +286,21 @@ class VectorSearchMixin:
     def get_active_workspace_documents(self) -> List[str]:
         """
         Returns the list of active documents registered in the system manifest.
+        Excludes synthetic test artifacts (e.g. test_sample.pdf).
         """
         try:
+            from src.api.context import is_test_document
             from src.core.config import settings
             manifest_file = settings.processed_dir / "ingested_manifest.json"
             if manifest_file.exists():
                 import json
                 data = json.loads(manifest_file.read_text(encoding="utf-8"))
                 docs = data.get("ready_documents", [])
-                return [d.get("filename", "") for d in docs if isinstance(d, dict) and d.get("filename")]
+                return [
+                    d.get("filename", "")
+                    for d in docs
+                    if isinstance(d, dict) and d.get("filename") and not is_test_document(d.get("filename", ""))
+                ]
         except Exception:
             pass
         return []

@@ -16,6 +16,7 @@ from src.features.system import (
     SystemConfigRequest,
     ModelPullRequest,
     PreflightDownloadRequest,
+    RoutingUpdateRequest,
     get_hardware_telemetry as _probe_hardware_telemetry,
     test_all_connections as _probe_all_connections,
     get_preflight_assets as _get_preflight_assets,
@@ -62,6 +63,49 @@ async def get_dynamic_llms() -> List[Dict[str, Any]]:
     from src.infrastructure.providers.router import get_provider_router
     p_router = get_provider_router()
     return p_router.get_dynamic_available_providers()
+
+
+@router.get("/routing", operation_id="get_system_routing")
+async def get_system_routing() -> Dict[str, Any]:
+    """Returns the live LLM routing policy, fallback priority order, disabled providers, and health."""
+    from src.infrastructure.providers.router import get_provider_router
+    return get_provider_router().get_routing_status()
+
+
+@router.post("/routing", operation_id="post_system_routing")
+async def update_system_routing(req: RoutingUpdateRequest) -> Dict[str, Any]:
+    """
+    Applies user drag-and-drop fallback priority ordering, primary selection, and provider deactivation.
+    Updates the live ProviderRouter in memory immediately and persists changes to .env.
+    """
+    from src.infrastructure.providers.router import get_provider_router
+    p_router = get_provider_router()
+    result = p_router.set_routing(
+        fallback_order=req.fallback_order,
+        disabled_providers=req.disabled_providers,
+        primary_provider=req.primary_provider,
+        routing_policy=req.routing_policy,
+    )
+
+    # Persist priority order and provider choice to .env
+    try:
+        from src.features.system.config_service import save_configuration
+        from src.features.system.schemas import SystemConfigRequest
+        save_configuration(SystemConfigRequest(
+            primary_provider=result.get("primary_provider"),
+            fallback_order=result.get("fallback_chain"),
+            disabled_providers=result.get("disabled_providers"),
+            routing_policy=result.get("routing_policy"),
+            llm_backend=result.get("primary_provider"),
+        ))
+    except Exception as e:
+        logger.warning(f"Could not persist routing to .env: {e}")
+
+    return {
+        "success": True,
+        "message": f"LLM Routing Priority applied: '{result.get('primary_provider')}' is now Primary.",
+        "routing": result,
+    }
 
 
 @router.get("/test-connections", operation_id="get_system_test_connections")

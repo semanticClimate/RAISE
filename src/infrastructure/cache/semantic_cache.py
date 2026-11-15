@@ -87,9 +87,18 @@ class SemanticCacheMixin:
         def dot_product(v1, v2):
             return sum(a * b for a, b in zip(v1, v2))
 
+        norm_req_docs = sorted(list(set(active_docs or [])))
+
         for cand in candidates:
             if cand.get("mode") != mode:
                 continue
+            # Scope validation: Enforce exact matching of library and active document scopes
+            if library is not None and cand.get("library") != library:
+                continue
+            cand_docs = sorted(list(set(cand.get("active_docs") or [])))
+            if cand_docs != norm_req_docs:
+                continue
+
             cand_emb = cand.get("embedding")
             if not cand_emb or len(cand_emb) != len(embedding):
                 continue
@@ -146,7 +155,7 @@ class SemanticCacheMixin:
             "embedding": embedding,
             "library": library,
             "active_docs": active_docs or [],
-            "data": result,
+            "data": payload,
             "created_at": time.time(),
         }
 
