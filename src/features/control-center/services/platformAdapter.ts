@@ -653,11 +653,12 @@ export const platformAdapter = {
   },
 
   /**
-   * Pulls an Ollama model with live progress streaming
+   * Pulls an Ollama or Hugging Face model with live progress streaming
    */
   async pullModel(
     modelName: string,
-    onProgress: (percent: number, status: string) => void
+    onProgress: (percent: number, status: string) => void,
+    huggingfaceToken?: string
   ): Promise<void> {
     if (isTauri()) {
       try {
@@ -678,6 +679,8 @@ export const platformAdapter = {
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({
           model_name: modelName,
+          provider: modelName.includes('/') ? 'huggingface' : 'ollama',
+          huggingface_token: huggingfaceToken || undefined,
         }),
       });
       if (res.ok && res.body) {
@@ -706,7 +709,13 @@ export const platformAdapter = {
                 const parsed = JSON.parse(rawData) as {
                   percent?: number;
                   status?: string;
+                  error?: boolean;
                 };
+                if (parsed.error) {
+                  onProgress(0, parsed.status || 'Download failed');
+                  streamFinished = true;
+                  break;
+                }
                 if (typeof parsed.percent === 'number') {
                   onProgress(parsed.percent, parsed.status || 'Downloading...');
                   if (parsed.percent >= 100) {

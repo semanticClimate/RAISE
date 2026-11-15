@@ -44,6 +44,10 @@ export const NeuralStep: React.FC = () => {
     type: 'success' | 'error';
   } | null>(null);
 
+  // Model download states
+  const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, { percent: number; status: string }>>({});
+
   // Hugging Face token state
   const [showHfToken, setShowHfToken] = useState(false);
   const [isCheckingHfToken, setIsCheckingHfToken] = useState(false);
@@ -167,13 +171,69 @@ export const NeuralStep: React.FC = () => {
     return { label: 'Configured in Backend', tone: 'ready' };
   };
 
-  // Compact status sign (icon only, not verbose text paragraphs)
-  const renderStatusSign = (status: { label: string; tone: 'ready' | 'pending' | 'muted' }) => {
+  // Handle model weight download from backend
+  const handleDownloadModel = async (modelId: string) => {
+    if (!modelId || downloadingModelId === modelId) return;
+    setDownloadingModelId(modelId);
+    setStatusMessage({
+      text: `Starting backend download for ${modelId}...`,
+      type: 'success',
+    });
+
+    try {
+      await platformAdapter.pullModel(
+        modelId,
+        (percent, status) => {
+          setDownloadProgress((prev) => ({
+            ...prev,
+            [modelId]: { percent, status },
+          }));
+          if (percent > 0 && percent < 100) {
+            setStatusMessage({
+              text: `${status} (${percent}%)`,
+              type: 'success',
+            });
+          }
+        },
+        config.huggingfaceToken || undefined
+      );
+
+      setStatusMessage({
+        text: `Model ${modelId} successfully downloaded and verified in cache!`,
+        type: 'success',
+      });
+      setTimeout(() => setStatusMessage(null), 5000);
+      await refreshBackendData();
+    } catch (err: any) {
+      setStatusMessage({
+        text: `Download failed for ${modelId}: ${err?.message || 'Network error'}`,
+        type: 'error',
+      });
+      setTimeout(() => setStatusMessage(null), 6000);
+    } finally {
+      setDownloadingModelId(null);
+    }
+  };
+
+  // Compact status sign (icon only, with interactive download button for pending models)
+  const renderStatusSign = (
+    status: { label: string; tone: 'ready' | 'pending' | 'muted' },
+    modelId: string
+  ) => {
     if (isLoading) {
       return (
         <span title="Loading...">
           <Loader2 className="w-3.5 h-3.5 text-purple-400 animate-spin" />
         </span>
+      );
+    }
+    if (downloadingModelId === modelId) {
+      const p = downloadProgress[modelId]?.percent ?? 0;
+      return (
+        <div className="flex items-center gap-1" title={`Downloading ${p}%`}>
+          <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+          <span className="text-[10px] font-mono text-amber-300 font-semibold">{p}%</span>
+        </div>
       );
     }
     if (status.tone === 'ready') {
@@ -185,9 +245,17 @@ export const NeuralStep: React.FC = () => {
     }
     if (status.tone === 'pending') {
       return (
-        <span className="flex items-center justify-center w-5 h-5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400" title="Requires Download">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDownloadModel(modelId);
+          }}
+          className="flex items-center justify-center w-5 h-5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 hover:border-amber-500/50 text-amber-400 hover:text-amber-300 cursor-pointer transition-all shadow-xs"
+          title="Click to Download Model Weights from Backend"
+        >
           <Download className="w-3.5 h-3.5" />
-        </span>
+        </button>
       );
     }
     return (
@@ -475,7 +543,7 @@ export const NeuralStep: React.FC = () => {
                     <Layers className="w-3.5 h-3.5 text-purple-400" />
                     <span>Embedding Model</span>
                   </div>
-                  {renderStatusSign(embeddingStatus)}
+                  {renderStatusSign(embeddingStatus, configuredEmbedding)}
                 </div>
 
                 <div className="font-semibold text-sm text-white truncate" title={configuredEmbedding}>
@@ -501,7 +569,7 @@ export const NeuralStep: React.FC = () => {
                     <Sparkles className="w-3.5 h-3.5 text-purple-400" />
                     <span>Reranker</span>
                   </div>
-                  {renderStatusSign(rerankerStatus)}
+                  {renderStatusSign(rerankerStatus, configuredReranker)}
                 </div>
 
                 <div className="font-semibold text-sm text-white truncate" title={configuredReranker}>
@@ -527,7 +595,7 @@ export const NeuralStep: React.FC = () => {
                     <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
                     <span>Claim Verifier</span>
                   </div>
-                  {renderStatusSign(verifierStatus)}
+                  {renderStatusSign(verifierStatus, configuredVerifier)}
                 </div>
 
                 <div className="font-semibold text-sm text-white truncate" title={configuredVerifier}>
@@ -770,7 +838,25 @@ export const NeuralStep: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="shrink-0 flex items-center">
+                      <div className="shrink-0 flex items-center gap-2">
+                        {!isCached && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadModel(m.id);
+                            }}
+                            disabled={downloadingModelId === m.id}
+                            className="p-1.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 hover:text-amber-300 cursor-pointer transition-all"
+                            title="Download Model Weights from Backend"
+                          >
+                            {downloadingModelId === m.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
                         {isSelected ? (
                           <div className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-xs">
                             <Check className="w-3 h-3 stroke-[3]" />

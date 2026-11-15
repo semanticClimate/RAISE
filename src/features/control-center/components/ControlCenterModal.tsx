@@ -35,7 +35,7 @@ export const ControlCenterModal: React.FC = () => {
     completeFirstRun,
   } = useControlCenterStore();
 
-  const { appMode, readinessMessage } = useModeStore();
+  const { appMode } = useModeStore();
   const isConnected = appMode === 'connected' || appMode === 'degraded';
 
   const { isSaving, connectNotice, setConnectNotice, handleFinalStart } = useControlCenterSave(
@@ -203,12 +203,6 @@ export const ControlCenterModal: React.FC = () => {
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
                     <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
                     Setup
-                  </span>
-                )}
-                {readinessMessage && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
-                    <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-400" />
-                    Neural Loading
                   </span>
                 )}
               </div>
