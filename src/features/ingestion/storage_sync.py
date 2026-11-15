@@ -55,6 +55,15 @@ def sync_and_persist_artifacts(
         }, indent=2), encoding="utf-8"
     )
 
+    # 2a. Save dedicated structured facts export
+    fact_metrics = [e for e in unique_entities.values() if getattr(e, "label", "") in ("MetricFact", "FinancialMetric", "Metric")]
+    facts_dir = output_dir / "facts"
+    facts_dir.mkdir(parents=True, exist_ok=True)
+    (facts_dir / f"{doc_id}_facts.json").write_text(
+        json.dumps([f.to_dict() if hasattr(f, "to_dict") else f for f in fact_metrics], indent=2),
+        encoding="utf-8",
+    )
+
     # 2b. Write structured Enterprise OKF (.md) artifact directly to data/library/
     try:
         lib_dir = output_dir.parent / "library"
@@ -125,6 +134,13 @@ def sync_and_persist_artifacts(
         "node_count": len(unique_entities),
         "edge_count": len(unique_relations),
     }
+
+    # 4a. Save Neo4j Property Knowledge Graph export artifact
+    neo4j_dir = output_dir / "neo4j"
+    neo4j_dir.mkdir(parents=True, exist_ok=True)
+    (neo4j_dir / f"{doc_id}_neo4j_export.json").write_text(
+        json.dumps(gdata, indent=2), encoding="utf-8"
+    )
 
     neo4j_res = neo4j_db.sync_graph_data(gdata)
     elapsed = round(time.time() - t0, 2)
