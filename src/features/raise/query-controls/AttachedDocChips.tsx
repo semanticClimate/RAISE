@@ -31,20 +31,7 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
   }
 
   if (selectedDocs.length === 0) {
-    if (!onOpenDrawer) return null;
-    return (
-      <div className={`hidden sm:flex items-center py-0.5 select-none shrink ${className}`}>
-        <button
-          type="button"
-          onClick={onOpenDrawer}
-          title="Attach document to drawer"
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 border border-dashed border-white/10 hover:border-indigo-500/30 transition-all cursor-pointer animate-pulse"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-          <span>Attach document</span>
-        </button>
-      </div>
-    );
+    return null;
   }
 
   // Desktop horizontal scrolling chips

@@ -72,7 +72,6 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
           </div>
           <span className="font-semibold text-slate-800 dark:text-slate-200">Settings</span>
         </div>
-        <kbd className="text-[10px] font-mono text-slate-400 dark:text-slate-500">Cmd+/</kbd>
       </button>
 
       {/* Tab 2: Usage */}
