@@ -1,5 +1,6 @@
 import type React from 'react';
 import { settingsJunction } from '../../settings/junction';
+import { useControlCenterStore } from '../../control-center/store/useControlCenterStore';
 
 export interface UserProfileMenuProps {
   isOpen: boolean;
@@ -71,6 +72,37 @@ export const UserProfileMenu: React.FC<UserProfileMenuProps> = ({
             </svg>
           </div>
           <span className="font-semibold text-slate-800 dark:text-slate-200">Settings</span>
+        </div>
+      </button>
+
+      {/* Tab 2: Control Center */}
+      <button
+        type="button"
+        id="railControlCenterBtn"
+        data-testid="rail-control-center-btn"
+        role="menuitem"
+        aria-label="Control Center"
+        onClick={() => {
+          onClose();
+          useControlCenterStore.getState().setOpen(true);
+        }}
+        className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-800 dark:text-slate-200 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer group"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-500/25 shrink-0">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              viewBox="0 0 24 24"
+            >
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+          </div>
+          <span className="font-semibold text-slate-800 dark:text-slate-200">Control Center</span>
         </div>
       </button>
 
