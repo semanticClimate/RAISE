@@ -113,6 +113,16 @@ async def upload_document_spec(
         "chunks": first_rep.get("chunks_extracted", 0),
         "library": effective_library,
         "reports": reports,
+        "documents": [
+            {
+                "doc_id": r.get("doc_id"),
+                "document_id": r.get("doc_id"),
+                "filename": r.get("filename"),
+                "status": r.get("status", "ready"),
+                "chunks": r.get("chunks_extracted", 0),
+            }
+            for r in reports
+        ],
         "total_nodes": total_nodes,
         "total_edges": total_edges,
     }
@@ -536,7 +546,7 @@ async def get_document_ingestion_events(
 @router.get("/api/documents/manifest")
 async def get_documents(document_service: Any = Depends(get_document_service)):
     """List only documents whose chunking and embedding are confirmed and ready for Q&A."""
-    return document_service.list_library_documents()
+    return await asyncio.to_thread(document_service.list_library_documents)
 
 
 @router.delete("/api/documents/{document_id}")
@@ -551,7 +561,7 @@ async def delete_document_by_id(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=msg_or_fn)
         raise HTTPException(status_code=500, detail=msg_or_fn)
 
-    updated_docs = document_service.list_library_documents().get("documents", [])
+    updated_docs = (await asyncio.to_thread(document_service.list_library_documents)).get("documents", [])
     logger.info(f"[DELETE] Successfully purged user document '{msg_or_fn}' from Library")
     return {
         "status": "success",
@@ -579,7 +589,7 @@ async def delete_document(
                 return JSONResponse(status_code=403, content={"status": "error", "error": msg_or_fn})
             return JSONResponse(status_code=500, content={"status": "error", "error": msg_or_fn})
 
-        updated_docs = document_service.list_library_documents().get("documents", [])
+        updated_docs = (await asyncio.to_thread(document_service.list_library_documents)).get("documents", [])
         logger.info(f"[DELETE] Successfully purged user document '{msg_or_fn}' from Library")
         return {
             "status": "success",

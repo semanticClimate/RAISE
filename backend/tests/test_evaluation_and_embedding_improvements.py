@@ -14,6 +14,7 @@ import threading
 from unittest.mock import MagicMock, patch
 import pytest
 
+from src.core.config import models
 from src.features.evaluation.models import StructuredEvidence, ClaimVerificationResult, EvaluationReport
 from src.features.evaluation.nli_verifier import FineCatNLIVerifier, _NLI_LOCK
 from src.features.evaluation.numerical_verifier import NumericalClaimVerifier
@@ -30,7 +31,7 @@ from src.infrastructure.vector.mixins.search_mixin import VectorSearchMixin
 # ---------------------------------------------------------------------------
 class DummyVectorEngine(VectorEmbeddingsMixin):
     def __init__(self):
-        self.model_key = "google/embeddinggemma-2"
+        self.model_key = models.EMBEDDING_MODEL_NAME
         self.embed_model = None
 
     @property

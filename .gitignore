@@ -56,4 +56,9 @@ scan_hardcoded_models.py
 backend/scan_hardcoded_models.py
 **/scan_hardcoded_models.py
 
+# Test runtime temporary artifacts
+*test_sample*
+**/test_sample*
+
+
 

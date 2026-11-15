@@ -102,7 +102,7 @@ def purge_document(pipeline: "StandaloneRAGPipeline", doc_identifier: str, postg
 
     # 6. Delete disk JSON artifacts
     removed_files = []
-    for sub in ["chunks", "graph_triples", "facts"]:
+    for sub in ["chunks", "graph_triples", "facts", "neo4j"]:
         sdir = settings.processed_dir / sub
         if sdir.exists():
             for f in sdir.glob(f"{target_doc_id}*"):
@@ -222,7 +222,7 @@ def purge_all_documents(
 
     # 6. Remove processed files
     removed_count = 0
-    for sub in ["chunks", "graph_triples", "facts"]:
+    for sub in ["chunks", "graph_triples", "facts", "neo4j"]:
         sdir = settings.processed_dir / sub
         if sdir.exists():
             for f in sdir.glob("*.json"):

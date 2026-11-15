@@ -16,6 +16,7 @@ from src.features.system import (
     SystemConfigRequest,
     ModelPullRequest,
     PreflightDownloadRequest,
+    RoutingUpdateRequest,
     get_hardware_telemetry as _probe_hardware_telemetry,
     test_all_connections as _probe_all_connections,
     get_preflight_assets as _get_preflight_assets,
@@ -62,6 +63,56 @@ async def get_dynamic_llms() -> List[Dict[str, Any]]:
     from src.infrastructure.providers.router import get_provider_router
     p_router = get_provider_router()
     return p_router.get_dynamic_available_providers()
+
+
+@router.get("/routing", operation_id="get_system_routing")
+async def get_system_routing() -> Dict[str, Any]:
+    """Returns the live LLM routing policy, fallback priority order, disabled providers, and health."""
+    from src.infrastructure.providers.router import get_provider_router
+    return get_provider_router().get_routing_status()
+
+
+@router.post("/routing", operation_id="post_system_routing")
+async def update_system_routing(req: RoutingUpdateRequest) -> Dict[str, Any]:
+    """
+    Applies user drag-and-drop fallback priority ordering, primary selection, and provider deactivation.
+    Updates the live ProviderRouter in memory immediately and persists changes to .env.
+    """
+    from src.infrastructure.providers.router import get_provider_router
+    p_router = get_provider_router()
+    result = p_router.set_routing(
+        fallback_order=req.fallback_order,
+        disabled_providers=req.disabled_providers,
+        primary_provider=req.primary_provider,
+        routing_policy=req.routing_policy,
+    )
+
+    # Persist priority order and provider choice to .env
+    try:
+        from src.features.system.config_service import save_configuration
+        from src.features.system.schemas import SystemConfigRequest
+        save_configuration(SystemConfigRequest(
+            primary_provider=result.get("primary_provider"),
+            fallback_order=result.get("fallback_chain"),
+            disabled_providers=result.get("disabled_providers"),
+            routing_policy=result.get("routing_policy"),
+            llm_backend=result.get("primary_provider"),
+        ))
+    except Exception as e:
+        logger.warning(f"Could not persist routing to .env: {e}")
+
+    return {
+        "status": "success",
+        "success": True,
+        "message": f"LLM Routing Priority applied: '{result.get('primary_provider')}' is now Primary.",
+        "primary_provider": result.get("primary_provider"),
+        "fallback_order": result.get("fallback_order") or result.get("fallback_chain"),
+        "fallback_chain": result.get("fallback_chain"),
+        "disabled_providers": result.get("disabled_providers"),
+        "routing_policy": result.get("routing_policy"),
+        "providers": result.get("providers"),
+        "routing": result,
+    }
 
 
 @router.get("/test-connections", operation_id="get_system_test_connections")
@@ -184,3 +235,31 @@ async def verify_provider_key(payload: Dict[str, Any] = Body(...)) -> Dict[str, 
     key = payload.get("api_key") or payload.get("key") or ""
     from src.features.system.connection_service import probe_cloud_llm_key
     return probe_cloud_llm_key(prov, key)
+
+
+@router.post("/models/load", operation_id="post_system_models_load")
+async def load_and_prewarm_neural_models(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """
+    Dynamically loads and prewarms requested embedding, reranker, and NLI verifier models.
+    """
+    try:
+        from core_registry import ModelConfigRequest, load_and_prewarm_models
+        from src.core.config import models
+        m_cfg = ModelConfigRequest(
+            embedder_id=payload.get("embedding_model") or payload.get("embedder_id") or models.EMBEDDING_MODEL_NAME,
+            reranker_id=payload.get("reranker_model") or payload.get("reranker_id") or models.RERANKER_MODEL_NAME,
+            verifier_id=payload.get("nli_verifier_model") or payload.get("verifier_id") or models.NLI_MODEL_NAME,
+            hf_token=payload.get("huggingface_token") or payload.get("hf_token"),
+        )
+        res = load_and_prewarm_models(m_cfg)
+        return {
+            "status": "success",
+            "message": "Models loaded and prewarmed successfully.",
+            "data": res,
+        }
+    except Exception as e:
+        logger.warning(f"Error loading and prewarming models: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to prewarm neural models: {str(e)}",
+        }

@@ -22,6 +22,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(BACKEND_DIR / "src"))
 
 from app import app
+from src.core.config import models
 from src.features.system.schemas import SystemConfigRequest
 from src.features.system.config_service import save_configuration, get_current_configuration
 from src.features.system.connection_service import test_all_connections as probe_all_connections
@@ -48,9 +49,9 @@ def test_control_center_config_persistence_and_neural_models(tmp_path, monkeypat
         llm_backend="groq",
         llm_mode="cloud_groq",
         groq_api_key="gsk_testdummyapikey1234567890",
-        embedding_model="google/embeddinggemma-2",
-        reranker_model="jinaai/jina-reranker-v3.5",
-        nli_verifier_model="dleemiller/finecat-nli-ultra-l",
+        embedding_model=models.EMBEDDING_MODEL_NAME,
+        reranker_model=models.RERANKER_MODEL_NAME,
+        nli_verifier_model=models.NLI_MODEL_NAME,
         neural_device="auto",
         huggingface_token="hf_testtoken1234567890",
         neo4j_mode="in_memory_fallback",
@@ -62,9 +63,9 @@ def test_control_center_config_persistence_and_neural_models(tmp_path, monkeypat
     assert res["status"] == "success"
 
     # Verify os.environ synchronization
-    assert os.environ.get("EMBEDDING_MODEL") == "google/embeddinggemma-2"
-    assert os.environ.get("RERANKER_MODEL") == "jinaai/jina-reranker-v3.5"
-    assert os.environ.get("NLI_VERIFIER_MODEL") == "dleemiller/finecat-nli-ultra-l"
+    assert os.environ.get("EMBEDDING_MODEL") == models.EMBEDDING_MODEL_NAME
+    assert os.environ.get("RERANKER_MODEL") == models.RERANKER_MODEL_NAME
+    assert os.environ.get("NLI_VERIFIER_MODEL") == models.NLI_MODEL_NAME
     assert os.environ.get("NEURAL_DEVICE") == "auto"
     assert os.environ.get("GROQ_API_KEY") == "gsk_testdummyapikey1234567890"
 
@@ -74,8 +75,8 @@ def test_control_center_config_persistence_and_neural_models(tmp_path, monkeypat
 
     # Verify masked output in get_current_configuration
     curr = get_current_configuration()
-    assert curr["embedding_model"] == "google/embeddinggemma-2"
-    assert curr["reranker_model"] == "jinaai/jina-reranker-v3.5"
+    assert curr["embedding_model"] == models.EMBEDDING_MODEL_NAME
+    assert curr["reranker_model"] == models.RERANKER_MODEL_NAME
     assert curr["groq_configured"] is True
     assert "..." in curr["groq_masked"] or "********" in curr["groq_masked"]
 

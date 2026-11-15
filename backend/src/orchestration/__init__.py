@@ -2,9 +2,10 @@
 RAISE Orchestration Package
 """
 
-from src.orchestration.telemetry import ProofLevelLedger, ProofHopTelemetry
+from .telemetry import ProofHopTelemetry, ProofLevelLedger, ProofStatus
 
 __all__ = [
     "ProofLevelLedger",
     "ProofHopTelemetry",
+    "ProofStatus",
 ]

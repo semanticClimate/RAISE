@@ -100,8 +100,8 @@ class GeminiProvider(LLMProvider):
                 logger.debug(f"Gemini model {cand_m} error: {native_err}. Falling back to next candidate.")
                 continue
 
-        # If quota was exceeded (429) across candidate models, fail fast so router can switch to local vLLM immediately
-        if last_error and getattr(last_error, "status_code", None) == 429:
+        # If candidate models exhausted with error (429 rate limit, 404 deprecated, or timeout), fail fast so router can switch to local vLLM immediately
+        if last_error:
             raise last_error
 
         messages = []

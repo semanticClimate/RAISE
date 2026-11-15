@@ -110,6 +110,11 @@ def hydrate_macro_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                         cur_pages = meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else [])
                         meta["source_pages"] = sorted(list(set(cur_pages + next_pages)))
 
+            child_text = c.get("plain_text") or c.get("text") or ""
+            # If child chunk contains a structured markdown table and parent does not, preserve the structured table
+            if ("|" in child_text and ("| :---" in child_text or "-|-" in child_text or c.get("is_table"))) and ("| :---" not in parent_text and "-|-" not in parent_text):
+                parent_text = f"{parent_text}\n\n{child_text}".strip()
+
             c_copy["text"] = parent_text
             c_copy["plain_text"] = parent_text
             meta["parent_chunk_id"] = parent_id

@@ -71,7 +71,10 @@ class AcademicDomainExtractor:
         """Lazy-load GLiNER model singleton for zero-shot entity extraction."""
         if cls._gliner_model is None and HAS_GLINER:
             try:
+                import torch
                 cls._gliner_model = GLiNER.from_pretrained(cls.GLINER_MODEL_NAME)
+                if torch.cuda.is_available():
+                    cls._gliner_model = cls._gliner_model.to("cuda")
             except Exception:
                 cls._gliner_model = None
         return cls._gliner_model
@@ -99,16 +102,17 @@ class AcademicDomainExtractor:
     def _split_text_for_ner(cls, text: str) -> List[str]:
         """
         Pre-NER sentence & chunk splitting:
-        Ensures chunks passed to GLiNER are split on reasonable punctuation or capped at ~250-300 words (~1200 chars).
+        Ensures chunks passed to GLiNER are split on reasonable punctuation or capped at ~150-180 words (~750 chars).
+        Guarantees spans fit within GLiNER 384 token limits without truncation or entity loss.
         """
         clean_txt = text.strip()
-        if len(clean_txt) <= 1200:
+        if len(clean_txt) <= 750:
             return [clean_txt]
         try:
             from langchain_text_splitters import RecursiveCharacterTextSplitter
             splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1200,
-                chunk_overlap=150,
+                chunk_size=750,
+                chunk_overlap=100,
                 separators=["\n\n", "\n", ". ", "; ", " ", ""],
             )
             return splitter.split_text(clean_txt)
@@ -120,7 +124,7 @@ class AcademicDomainExtractor:
             curr_len = 0
             for p in parts:
                 p_len = len(p)
-                if curr_len + p_len > 1200 and curr:
+                if curr_len + p_len > 750 and curr:
                     chunks.append(" ".join(curr))
                     curr = [p]
                     curr_len = p_len

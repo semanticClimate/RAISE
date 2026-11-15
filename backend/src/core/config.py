@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field
 # Base canonical paths inside RAG
 # Canonical backend directory
 _file_path = Path(__file__).resolve()
-BACKEND_DIR = _file_path.parents[2] if len(_file_path.parents) > 2 and _file_path.parents[2].name == "backend" else _file_path.parents[1]
+# config.py is located at <BACKEND_ROOT>/src/core/config.py, so parents[2] is always the backend root
+BACKEND_DIR = _file_path.parents[2]
 PROJECT_ROOT = BACKEND_DIR
 REPO_ROOT = BACKEND_DIR
 
@@ -130,7 +131,7 @@ class ModelConfig:
     GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
     GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
         "GEMINI_FALLBACK_CANDIDATES",
-        ("gemini-2.5-flash", "gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"),
+        ("gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"),
     )
     OPENAI_MODEL_NAME: str = os.getenv("OPENAI_MODEL_NAME", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
     VLLM_MODEL_NAME: str = os.getenv("VLLM_MODEL_NAME", os.getenv("LOCAL_LLM_MODEL", "auto"))

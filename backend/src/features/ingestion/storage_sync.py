@@ -33,6 +33,8 @@ def sync_and_persist_artifacts(
     neo4j_db: Any,
     postgres: Any,
     t0: float,
+    institution: Optional[str] = None,
+    reporting_period: Optional[str] = None,
 ) -> Tuple[Dict[str, AcademicEntity], Dict[str, AcademicRelation], int, Dict[str, Any], Dict[str, Any]]:
     """
     Deduplicates entities/relations, writes JSON artifacts to disk,
@@ -53,15 +55,26 @@ def sync_and_persist_artifacts(
         }, indent=2), encoding="utf-8"
     )
 
+    # 2a. Save dedicated structured facts export
+    fact_metrics = [e for e in unique_entities.values() if getattr(e, "label", "") in ("MetricFact", "FinancialMetric", "Metric")]
+    facts_dir = output_dir / "facts"
+    facts_dir.mkdir(parents=True, exist_ok=True)
+    (facts_dir / f"{doc_id}_facts.json").write_text(
+        json.dumps([f.to_dict() if hasattr(f, "to_dict") else f for f in fact_metrics], indent=2),
+        encoding="utf-8",
+    )
+
     # 2b. Write structured Enterprise OKF (.md) artifact directly to data/library/
     try:
         lib_dir = output_dir.parent / "library"
         lib_dir.mkdir(parents=True, exist_ok=True)
 
-        inst_candidates = [e.name for e in unique_entities.values() if getattr(e, "label", "") in ("Institution", "University", "Organization")]
-        institution = inst_candidates[0] if inst_candidates else pdf_path.stem.replace("_", " ")
-        year_matches = re.findall(r"\b(20\d\d(?:-\d\d)?)\b", pdf_path.stem)
-        reporting_period = year_matches[0] if year_matches else "Current Period"
+        if not institution:
+            inst_candidates = [e.name for e in unique_entities.values() if getattr(e, "label", "") in ("Institution", "University", "Organization")]
+            institution = inst_candidates[0] if inst_candidates else pdf_path.stem.replace("_", " ")
+        if not reporting_period:
+            year_matches = re.findall(r"\b(20\d\d(?:-\d\d)?)\b", pdf_path.stem)
+            reporting_period = year_matches[0] if year_matches else "Current Period"
         fact_metrics = [e for e in unique_entities.values() if getattr(e, "label", "") in ("MetricFact", "FinancialMetric", "Metric")]
 
         okf_content = generate_enhanced_okf_markdown(
@@ -121,6 +134,13 @@ def sync_and_persist_artifacts(
         "node_count": len(unique_entities),
         "edge_count": len(unique_relations),
     }
+
+    # 4a. Save Neo4j Property Knowledge Graph export artifact
+    neo4j_dir = output_dir / "neo4j"
+    neo4j_dir.mkdir(parents=True, exist_ok=True)
+    (neo4j_dir / f"{doc_id}_neo4j_export.json").write_text(
+        json.dumps(gdata, indent=2), encoding="utf-8"
+    )
 
     neo4j_res = neo4j_db.sync_graph_data(gdata)
     elapsed = round(time.time() - t0, 2)

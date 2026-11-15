@@ -26,7 +26,8 @@ from src.api.context import (
 from src.features.ingestion.pipeline import AcademicPipelineIngestor
 
 logger = logging.getLogger("raise.router.vault_batch")
-BASE_DIR = Path(__file__).resolve().parents[3]
+from src.core.config import BACKEND_DIR
+BASE_DIR = BACKEND_DIR
 
 
 def execute_load_vault_defaults(rag_engine: Any, max_pages_per_doc: Optional[int] = None) -> Dict[str, Any]:

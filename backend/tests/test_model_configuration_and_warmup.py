@@ -42,11 +42,12 @@ def test_typed_configuration_defaults_and_env():
 
 def test_cross_encoder_reranker_dynamic_model_selection(monkeypatch):
     """Verify that CrossEncoderReranker respects custom model names and devices."""
-    monkeypatch.setenv("RERANKER_MODEL", "custom-org/my-custom-reranker")
+    custom_test_model = "custom_test_checkpoint"
+    monkeypatch.setenv("RERANKER_MODEL", custom_test_model)
     monkeypatch.setenv("RERANKER_DEVICE", "cpu")
 
     reranker = CrossEncoderReranker()
-    assert reranker.model_name == "custom-org/my-custom-reranker"
+    assert reranker.model_name == custom_test_model
     assert reranker.device == "cpu"
 
 

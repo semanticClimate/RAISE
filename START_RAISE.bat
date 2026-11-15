@@ -721,6 +721,73 @@ if ($envToCheck) {
 # First-time launch occurs when neither the completion marker nor a configured provider exists
 $isFirstLaunch = (-not $hasMarker -and -not $hasConfiguredProvider)
 
+# ==========================================================================
+# 5.5 Intelligent Storage Tier Orchestration (Docker / Cloud / Fast Local)
+# ==========================================================================
+$fastMode   = ($rawArgs -match "(?i)--fast|-fast|--test|-test|--memory")
+$cloudMode  = ($rawArgs -match "(?i)--cloud|-cloud")
+$dockerFlag = ($rawArgs -match "(?i)--docker|-docker")
+
+$envRaw = if (Test-Path $backendEnv) { Get-Content -Path $backendEnv -Raw -ErrorAction SilentlyContinue } else { "" }
+$hasCloudStorage = ($envRaw -match "(?m)^[ \t]*(?:CLOUD_REDIS_URL|REDIS_CLOUD_URL|CLOUD_DB_URL|POSTGRES_CLOUD_URL|NEO4J_CLOUD_URI)[ \t]*=[ \t]*['""]?(?:rediss?|postgresql|neo4j\+s)://")
+
+function Test-DockerDaemonRunning {
+    if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) { return $false }
+    try {
+        $null = & docker info --format "{{.ServerVersion}}" 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
+}
+
+if ($fastMode) {
+    $env:RAISE_STORAGE_MODE = "fast"
+    Write-Info "Storage Mode: FAST TEST (FakeRedis + SQLite WAL + NetworkX In-Memory)" "Green"
+}
+elseif ($cloudMode -or ($hasCloudStorage -and -not $dockerFlag)) {
+    $env:RAISE_STORAGE_MODE = "cloud"
+    Write-Info "Storage Mode: CLOUD MANAGED (Using Cloud Redis / Postgres / Neo4j Aura endpoints)" "Cyan"
+}
+elseif (Test-DockerDaemonRunning) {
+    $env:RAISE_STORAGE_MODE = "docker"
+    Write-Info "Docker Daemon detected! Provisioning production containers (Redis, Postgres, Neo4j)..." "Cyan"
+
+    # 1. Redis 7.4 Alpine (Sub-millisecond cache & Pub/Sub)
+    if (-not (& docker ps -q -f "name=^raise-redis$" 2>$null)) {
+        & docker start raise-redis 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            & docker run -d --name raise-redis --restart unless-stopped -p 6379:6379 `
+                redis:7.4-alpine redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 100 2>$null | Out-Null
+        }
+    }
+
+    # 2. PostgreSQL 17 Alpine (Relational session & document store)
+    if (-not (& docker ps -q -f "name=^raise-postgres$" 2>$null)) {
+        & docker start raise-postgres 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            & docker run -d --name raise-postgres --restart unless-stopped -p 5432:5432 `
+                -e POSTGRES_USER=raise_user -e POSTGRES_PASSWORD=raise_password -e POSTGRES_DB=raise_db `
+                -v raise_pgdata:/var/lib/postgresql/data postgres:17-alpine 2>$null | Out-Null
+        }
+    }
+
+    # 3. Neo4j 5.26 Community (ACID Property Graph)
+    if (-not (& docker ps -q -f "name=^raise-neo4j$" 2>$null)) {
+        & docker start raise-neo4j 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            & docker run -d --name raise-neo4j --restart unless-stopped -p 7474:7474 -p 7687:7687 `
+                -e NEO4J_AUTH=neo4j/raise_password `
+                -e NEO4J_server_memory_heap_initial__size=512m `
+                -e NEO4J_server_memory_heap_max__size=2G `
+                -v raise_neo4j_data:/data neo4j:5.26-community 2>$null | Out-Null
+        }
+    }
+    Write-Info "Docker production storage stack active on localhost (6379 / 5432 / 7687)." "Green"
+}
+else {
+    $env:RAISE_STORAGE_MODE = "fast"
+    Write-Info "Docker offline & no Cloud URLs set -> Auto-selecting FAST LOCAL mode (FakeRedis + SQLite WAL + NetworkX)." "Yellow"
+}
+
 # 6. Ensure Frontend Dependencies
 $vitePkg = Join-Path $frontendDir "node_modules\vite"
 if (-not (Test-Path -LiteralPath $vitePkg)) {

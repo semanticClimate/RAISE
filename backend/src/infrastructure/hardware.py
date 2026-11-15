@@ -223,12 +223,16 @@ def get_database_telemetry() -> Dict[str, Any]:
     try:
         from src.infrastructure.cache.redis import RedisCacheManager
         rd = RedisCacheManager()
-        if getattr(rd, "is_connected", False) and rd._client:
-            info = rd._client.info()
+        if getattr(rd, "is_connected", False) and rd._client and rd.tier != "memory":
+            try:
+                info = rd._client.info()
+                used_mem = info.get("used_memory_human", "unknown")
+            except Exception:
+                used_mem = "in-memory"
             db_status["redis"] = {
                 "online": True,
                 "keys": rd._client.dbsize(),
-                "used_memory_human": info.get("used_memory_human", "unknown"),
+                "used_memory_human": used_mem,
             }
         else:
             db_status["redis"] = {"online": False, "mode": "in-memory fallback"}
@@ -241,7 +245,7 @@ def get_database_telemetry() -> Dict[str, Any]:
         pg = PostgresManager()
         conn = pg._get_connection()
         if conn:
-            conn.close()
+            pg._release_connection(conn)
             db_status["postgres"] = {"online": True}
         else:
             db_status["postgres"] = {"online": False, "mode": "in-memory fallback"}

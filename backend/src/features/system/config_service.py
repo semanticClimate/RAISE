@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .schemas import SystemConfigRequest
-from src.core.config import models
+from src.core.config import models, AVAILABLE_EMBEDDING_MODELS, AVAILABLE_RERANKER_MODELS
+from .preflight_service import check_hf_model_cached
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -72,6 +73,7 @@ def get_current_configuration() -> Dict[str, Any]:
         "last_used_provider": last_provider,
         "last_used_model": last_model,
         "available_providers": available_provs,
+        "routing": p_router.get_routing_status(),
         "privacy_mode": privacy_mode,
         "groq_configured": cm.get_credential_status("groq") == "configured",
         "groq_masked": mask_secret(cm.get_credential("groq")),
@@ -125,6 +127,69 @@ def get_current_configuration() -> Dict[str, Any]:
             or (BACKEND_DIR / ".runtime" / "setup_completed").exists()
             or (ROOT_DIR / ".runtime" / "setup_completed").exists()
         ),
+        "neural_registry": {
+            "embedding": [
+                {
+                    "id": repo,
+                    "name": repo.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(repo),
+                    "status": "Cached & Ready" if check_hf_model_cached(repo) else "Requires Download",
+                    "specifications": (
+                        "768-dim • 8,192 tokens context"
+                        if any(token in repo.lower() for token in models.EMBEDDING_MODEL_NAME.lower().split("/"))
+                        else (
+                            "1024-dim • 512 tokens max"
+                            if any(token in repo.lower() for token in ("1024", "large", "m3"))
+                            else (
+                                "384-dim • 256 tokens max"
+                                if "minilm" in repo.lower()
+                                else "768-dim • Dense Embeddings"
+                            )
+                        )
+                    ),
+                }
+                for repo in dict.fromkeys(AVAILABLE_EMBEDDING_MODELS.values())
+            ],
+            "reranker": [
+                {
+                    "id": repo,
+                    "name": repo.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(repo),
+                    "status": "Cached & Ready" if check_hf_model_cached(repo) else "Requires Download",
+                    "specifications": (
+                        "8,192 tokens max • Cross-Attention (matches 8k embedder context)"
+                        if "v2-m3" in repo
+                        else "512 tokens max • Cross-Attention"
+                    ),
+                }
+                for repo in dict.fromkeys(AVAILABLE_RERANKER_MODELS.values())
+            ] + [
+                {
+                    "id": "In-Memory Heuristic Reranker",
+                    "name": "In-Memory Heuristic Reranker",
+                    "cached": True,
+                    "status": "Built-in (Zero-Dependency)",
+                    "specifications": "In-process lexical overlap & contextual co-occurrence fallback",
+                }
+            ],
+            "verifier": [
+                {
+                    "id": models.NLI_MODEL_NAME,
+                    "name": models.NLI_MODEL_NAME.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(models.NLI_MODEL_NAME),
+                    "status": "Cached & Ready" if check_hf_model_cached(models.NLI_MODEL_NAME) else "Requires Download",
+                    "specifications": "RoBERTa / Cross-Attention • Pairwise citation chunk verification",
+                },
+                {
+                    "id": "In-Memory Verifier",
+                    "name": "In-Memory Verifier",
+                    "cached": True,
+                    "status": "Built-in (Zero-Dependency)",
+                    "specifications": "Zero-dependency local verification fallback",
+                }
+            ],
+            "custom_model_supported": True,
+        },
     }
 
 
@@ -299,6 +364,20 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
             router.set_execution_mode(ExecutionMode.AUTOMATIC)
             router.set_cloud_allowed(True)
         router._refresh_fallback_chain(env_map.get("LLM_BACKEND"))
+        if cfg.fallback_order or cfg.disabled_providers is not None or cfg.primary_provider or cfg.routing_policy:
+            router.set_routing(
+                fallback_order=cfg.fallback_order,
+                disabled_providers=cfg.disabled_providers,
+                primary_provider=cfg.primary_provider,
+                routing_policy=cfg.routing_policy,
+            )
+            if cfg.fallback_order:
+                env_map["LLM_FALLBACK_ORDER"] = ",".join(cfg.fallback_order)
+            if cfg.routing_policy:
+                env_map["ROUTING_POLICY"] = cfg.routing_policy
+            if cfg.primary_provider:
+                env_map["RAISE_LLM_PROVIDER"] = cfg.primary_provider
+                env_map["LLM_PROVIDER"] = cfg.primary_provider
     except Exception as e:
         logger.warning(f"Could not refresh provider router: {e}")
 
@@ -396,11 +475,15 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
     # Write safely back to .env in both backend and root locations
     output_lines = [f"{k}={v}" for k, v in env_map.items()]
     content = "\n".join(output_lines) + "\n"
-    ENV_FILE_PATH.write_text(content, encoding="utf-8")
+    try:
+        ENV_FILE_PATH.write_text(content, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Could not persist to backend .env: {e}")
+
     try:
         ROOT_ENV_FILE_PATH.write_text(content, encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not persist to root .env: {e}")
 
     return {
         "status": "success",

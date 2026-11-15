@@ -169,115 +169,69 @@ class VectorEmbeddingsMixin:
         with _EMBEDDING_LOCK:
 
             if getattr(self, "embed_model", None) is not None:
-
                 return self.embed_model
 
-
+            # 1. Initialize identifiers outside the try block to avoid UnboundLocalError
+            model_id = getattr(self, "model_path", None) or os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME)
+            raw_id = getattr(self, "AVAILABLE_MODELS", {}).get(model_id, model_id) if hasattr(self, "AVAILABLE_MODELS") else model_id
+            resolved_id = str(raw_id)
+            dev = "cpu"
+            cache_key = None
 
             try:
-
                 import torch
-
                 from sentence_transformers import SentenceTransformer
-
                 from src.core.config import resolve_local_model_path
 
-
-
                 cache_folder = os.getenv("HF_HOME", str(Path.home() / ".cache" / "huggingface" / "hub"))
-
                 if getattr(self, "device_override", None):
-
                     dev = str(self.device_override).lower()
-
                 else:
-
                     env_dev = os.getenv("EMBEDDING_DEVICE") or os.getenv("RAISE_EMBEDDING_DEVICE") or os.getenv("NEURAL_DEVICE")
-
                     dev = env_dev.lower() if env_dev else ("cuda" if torch.cuda.is_available() else "cpu")
-
                 if dev in ("auto", "none", "", "default") or ("cuda" in dev and not torch.cuda.is_available()):
-
                     dev = "cuda" if torch.cuda.is_available() else "cpu"
 
-
-
-                model_id = getattr(self, "model_path", None) or os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME)
-
-                raw_id = self.AVAILABLE_MODELS.get(model_id, model_id)
-
                 resolved_id = resolve_local_model_path(raw_id)
-
-
-
                 cache_key = (str(resolved_id), str(dev))
 
                 if cache_key in _EMBEDDING_MODEL_CACHE:
-
                     self.embed_model = _EMBEDDING_MODEL_CACHE[cache_key]
-
                     return self.embed_model
 
-
-
                 token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
-
                 embed_cfg = {"audio_config": None, "vision_config": None} if models.EMBEDDING_MODEL_KEYWORD in str(raw_id).lower() else None
-
                 dtype_val = (
-
                     torch.bfloat16
-
                     if (torch.cuda.is_available() and torch.cuda.is_bf16_supported())
-
                     else (torch.float16 if torch.cuda.is_available() else torch.float32)
-
                 )
 
-
-
                 for local_only in (True, False):
-
                     try:
-
                         self.embed_model = SentenceTransformer(
-
                             resolved_id,
-
                             cache_folder=cache_folder,
-
                             local_files_only=local_only,
-
                             device=dev,
-
                             token=token,
-
                             trust_remote_code=True,
-
                             config_kwargs=embed_cfg,
-
                             model_kwargs={"dtype": dtype_val},
-
                         )
-
                         break
-
                     except Exception:
-
                         if not local_only:
-
                             raise
 
-
-
                 if self.embed_model is not None:
-
                     _EMBEDDING_MODEL_CACHE[cache_key] = self.embed_model
 
             except Exception as e:
-
-                target_dim = self.dimension
-                if target_dim == 768 or models.GEMMA_KEYWORD in str(raw_id).lower():
+                target_dim = getattr(self, "dimension", 768)
+                raw_id_str = str(raw_id).lower() if raw_id else ""
+                gemma_kw = str(models.GEMMA_KEYWORD).lower()
+                if target_dim == 768 or gemma_kw in raw_id_str:
                     fallback_candidates = list(EMBEDDING_FALLBACKS_768)
                 elif target_dim == 1024:
                     fallback_candidates = list(EMBEDDING_FALLBACKS_1024)
@@ -287,30 +241,58 @@ class VectorEmbeddingsMixin:
                 print(f"SentenceTransformer load error ({raw_id}): {e}. Attempting dimension-compatible fallback ({target_dim}-dim) to {fallback_candidates[0]}.")
 
                 fallback_loaded = False
-
                 for fb_id in fallback_candidates:
-
                     try:
-
+                        from sentence_transformers import SentenceTransformer
                         self.embed_model = SentenceTransformer(fb_id, device=dev)
-
                         _EMBEDDING_MODEL_CACHE[(str(fb_id), str(dev))] = self.embed_model
-                        _EMBEDDING_MODEL_CACHE[cache_key] = self.embed_model
-                        _EMBEDDING_MODEL_CACHE[(str(raw_id), str(dev))] = self.embed_model
-
+                        if cache_key is not None:
+                            _EMBEDDING_MODEL_CACHE[cache_key] = self.embed_model
+                        if raw_id:
+                            _EMBEDDING_MODEL_CACHE[(str(raw_id), str(dev))] = self.embed_model
                         fallback_loaded = True
-
                         print(f"Embedding fallback ({fb_id}) loaded successfully ({target_dim}-dim compatible with ChromaDB).")
-
                         break
-
                     except Exception as fb_err:
-
                         print(f"Fallback {fb_id} failed: {fb_err}")
 
                 if not fallback_loaded:
+                    try:
+                        import torch
+                        from transformers import AutoModel, AutoTokenizer
+                        from src.core.config import resolve_local_model_path
+                        res_model_id = resolve_local_model_path(raw_id)
+                        token_hf = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
 
-                    self.embed_model = None
+                        tok = AutoTokenizer.from_pretrained(res_model_id, token=token_hf)
+                        mod = AutoModel.from_pretrained(res_model_id, token=token_hf).to(dev).eval()
+
+                        class PureTransformersEmbeddingWrapper:
+                            def __init__(self, tokenizer, model, device):
+                                self.tokenizer = tokenizer
+                                self.model = model
+                                self.device = device
+
+                            def encode(self, texts, **kwargs):
+                                if isinstance(texts, str):
+                                    texts = [texts]
+                                inputs = self.tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors="pt").to(self.device)
+                                with torch.inference_mode():
+                                    outputs = self.model(**inputs)
+                                    attention_mask = inputs["attention_mask"].unsqueeze(-1)
+                                    token_embeddings = outputs[0]
+                                    sum_embeddings = torch.sum(token_embeddings * attention_mask, dim=1)
+                                    sum_mask = torch.clamp(attention_mask.sum(dim=1), min=1e-9)
+                                    pooled = sum_embeddings / sum_mask
+                                    normalized = torch.nn.functional.normalize(pooled, p=2, dim=1)
+                                return normalized.cpu().numpy()
+
+                        self.embed_model = PureTransformersEmbeddingWrapper(tok, mod, dev)
+                        fallback_loaded = True
+                        print(f"Embedding fallback: initialized pure transformers mean-pooling model on {dev}.")
+                    except Exception as tf_err:
+                        print(f"Pure transformers fallback failed: {tf_err}")
+                        self.embed_model = None
 
 
 

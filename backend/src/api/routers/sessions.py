@@ -89,6 +89,7 @@ async def save_chat_history_spec(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/api/sessions", tags=["Sessions & History"], include_in_schema=False)
 @router.get("/api/chat/sessions")
 async def get_chat_sessions_spec(session_service: Any = Depends(get_session_service)):
     """

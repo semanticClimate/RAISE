@@ -261,7 +261,12 @@ def ingest_pdf_from_path(
         t0 = time.time()
         from src.features.ingestion.pipeline import AcademicPipelineIngestor
         academic_pipeline = AcademicPipelineIngestor(download_dir=docs_dir)
-        res = academic_pipeline.process_pdf(dest_path, max_pages=pages_to_process, engine=selected_engine)
+        res = academic_pipeline.process_pdf(
+            dest_path,
+            max_pages=pages_to_process,
+            engine=selected_engine,
+            full_potential=(selected_engine == "deep"),
+        )
         elapsed = round(time.time() - t0, 2)
 
         manifest_file = MANIFEST_FILE

@@ -309,9 +309,9 @@ class ModelDiscoveryEngine:
             litellm_model = f"{prov}/{active_model}" if not active_model.startswith(f"{prov}/") else active_model
             cloud_order.append({"model": litellm_model, "api_key": api_key_env})
 
-        # Discover local vLLM if reachable
+        # Discover local vLLM if reachable (with 60s negative cache)
         try:
-            vllm_models = self._discover_vllm()
+            vllm_models = self.discover_provider_models("vllm")
             if vllm_models:
                 vllm_base = os.getenv("VLLM_BASE_URL", getattr(settings.llm, "base_url", "http://localhost:8002/v1"))
                 local_order.append({
@@ -322,9 +322,9 @@ class ModelDiscoveryEngine:
         except Exception:
             pass
 
-        # Discover local Ollama if reachable
+        # Discover local Ollama if reachable (with 60s negative cache)
         try:
-            ollama_models = self._discover_ollama()
+            ollama_models = self.discover_provider_models("ollama")
             if ollama_models:
                 ollama_base = (os.getenv("OLLAMA_BASE_URL") or getattr(settings.llm, "ollama_base_url", "http://localhost:11434")).rstrip("/")
                 local_order.append({
