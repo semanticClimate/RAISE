@@ -38,7 +38,7 @@ export const ControlCenterModal: React.FC = () => {
   const { appMode } = useModeStore();
   const isConnected = appMode === 'connected' || appMode === 'degraded';
 
-  const { isSaving, connectNotice, setConnectNotice, handleFinalStart } = useControlCenterSave(
+  const { isSaving, isWarmingUp, connectNotice, setConnectNotice, handleFinalStart } = useControlCenterSave(
     config,
     completeFirstRun,
     setOpen
@@ -318,12 +318,29 @@ export const ControlCenterModal: React.FC = () => {
             {activeTab !== 'launch' && hasConfiguredKey && (
               <button
                 type="button"
+                disabled={isSaving || isWarmingUp || !isConnected}
                 onClick={handleFinalStart}
-                className="px-3.5 py-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-semibold transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
-                title="Launch directly with current settings"
+                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  isConnected && !isSaving && !isWarmingUp
+                    ? 'border-white/20 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer active:scale-95'
+                    : 'border-white/10 bg-white/[0.02] text-slate-600 cursor-not-allowed opacity-50'
+                }`}
+                title={
+                  !isConnected
+                    ? 'Backend Gateway is offline'
+                    : isWarmingUp
+                      ? 'Warming up neural models...'
+                      : 'Launch directly with current settings'
+                }
               >
-                <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
-                <span className="hidden sm:inline">Save & Launch</span>
+                {isSaving || isWarmingUp ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                )}
+                <span className="hidden sm:inline">
+                  {isWarmingUp ? 'Warming Up...' : isSaving ? 'Saving...' : 'Save & Launch'}
+                </span>
               </button>
             )}
 
@@ -358,20 +375,39 @@ export const ControlCenterModal: React.FC = () => {
             ) : (
               <button
                 type="button"
-                disabled={isSaving || !hasConfiguredKey}
+                disabled={isSaving || isWarmingUp || !hasConfiguredKey || !isConnected}
                 onClick={handleFinalStart}
                 className={`px-6 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
-                  hasConfiguredKey
+                  hasConfiguredKey && isConnected && !isSaving && !isWarmingUp
                     ? 'bg-white hover:bg-slate-200 text-black cursor-pointer'
                     : 'bg-white/10 text-slate-500 cursor-not-allowed opacity-50'
                 }`}
+                title={
+                  !isConnected
+                    ? 'Backend Gateway is offline. Start backend on port 8000.'
+                    : !hasConfiguredKey
+                      ? 'Configure an inference engine or API key before launching.'
+                      : isWarmingUp
+                        ? 'Warming up neural models in backend...'
+                        : isSaving
+                          ? 'Saving configuration...'
+                          : 'Launch App'
+                }
               >
-                {isSaving ? (
+                {isSaving || isWarmingUp ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
                 ) : (
                   <Zap className="w-3.5 h-3.5 fill-black text-black" />
                 )}
-                <span>{isConnected ? 'Launch App' : 'Save & Launch'}</span>
+                <span>
+                  {isWarmingUp
+                    ? 'Warming Up Neural Stack...'
+                    : isSaving
+                      ? 'Saving Settings...'
+                      : isConnected
+                        ? 'Launch App'
+                        : 'Backend Offline'}
+                </span>
               </button>
             )}
           </div>

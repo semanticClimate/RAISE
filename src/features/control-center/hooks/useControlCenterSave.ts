@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { platformAdapter } from '../services/platformAdapter';
 import { isValidSecret } from '../services/envDetector';
 import type { ControlCenterConfig } from '../types';
+import { useModeStore } from '../../../stores/modeStore';
+import { useControlCenterStore } from '../store/useControlCenterStore';
 
 export function useControlCenterSave(
   config: ControlCenterConfig,
@@ -9,12 +11,44 @@ export function useControlCenterSave(
   setOpen: (open: boolean) => void
 ) {
   const [isSaving, setIsSaving] = useState(false);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
 
   const handleFinalStart = async () => {
+    // 1. Verify backend gateway is connected
+    const currentMode = useModeStore.getState().appMode;
+    if (currentMode === 'offline') {
+      await useModeStore.getState().runCapabilityProbe();
+      const freshMode = useModeStore.getState().appMode;
+      if (freshMode === 'offline') {
+        setConnectNotice('Backend Gateway is offline. Start the backend on port 8000 before launching.');
+        setTimeout(() => setConnectNotice(null), 6000);
+        return;
+      }
+    }
+
+    // 2. Verify an inference engine / API key is configured
+    const isCloud = config.llmDeployment === 'cloud';
+    const validKeys = (config.apiKeys || []).filter(
+      (k) => k?.key && k.key.trim().length > 0 && k.provider !== 'unknown'
+    );
+    const hasConfiguredKey = isCloud ? validKeys.length > 0 : Boolean(config.selectedLocalModel);
+    if (!hasConfiguredKey) {
+      setConnectNotice('Please configure an inference engine or API key before launching.');
+      setTimeout(() => setConnectNotice(null), 5000);
+      return;
+    }
+
+    // 3. Verify models are not actively downloading
+    const isDownloading = useControlCenterStore.getState().isDownloading;
+    if (isDownloading) {
+      setConnectNotice('Neural model weights are currently downloading. Please wait for download to finish.');
+      setTimeout(() => setConnectNotice(null), 5000);
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const isCloud = config.llmDeployment === 'cloud';
       const keyMap: Record<string, string> = {};
       for (const entry of config.apiKeys || []) {
         if (entry.key && entry.key.trim()) {
@@ -77,22 +111,43 @@ export function useControlCenterSave(
         return;
       }
 
-      // Trigger background pre-warming for neural embedding, reranker, and verifier models
+      // 4. Prewarm and warm up neural pipeline in backend before launching
+      setIsWarmingUp(true);
+      setConnectNotice('Warming up neural models (Embedding, Reranker, Verifier)...');
+
       if (config.embeddingModel || config.rerankerModel || config.nliVerifierModel || config.huggingfaceToken) {
-        platformAdapter.triggerModelPrewarm({
-          embedder_id: config.embeddingModel,
-          embedding_model: config.embeddingModel,
-          reranker_id: config.rerankerModel,
-          reranker_model: config.rerankerModel,
-          verifier_id: config.nliVerifierModel,
-          nli_verifier_model: config.nliVerifierModel,
-          hf_token: sanitizeSecret(config.huggingfaceToken),
-          huggingface_token: sanitizeSecret(config.huggingfaceToken),
-        }).catch(() => {
-          // Non-blocking prewarm
-        });
+        try {
+          const prewarmRes = await platformAdapter.triggerModelPrewarm({
+            embedder_id: config.embeddingModel,
+            embedding_model: config.embeddingModel,
+            reranker_id: config.rerankerModel,
+            reranker_model: config.rerankerModel,
+            verifier_id: config.nliVerifierModel,
+            nli_verifier_model: config.nliVerifierModel,
+            hf_token: sanitizeSecret(config.huggingfaceToken),
+            huggingface_token: sanitizeSecret(config.huggingfaceToken),
+          });
+
+          if (!prewarmRes.success && prewarmRes.message) {
+            console.warn('Prewarm notice from backend:', prewarmRes.message);
+          }
+        } catch (err) {
+          console.warn('Model prewarming non-fatal error:', err);
+        }
       }
 
+      // 5. Verify backend is live and ready to answer queries
+      await useModeStore.getState().runCapabilityProbe();
+      const readyMode = useModeStore.getState().appMode;
+      if (readyMode === 'offline') {
+        setConnectNotice('Backend Gateway unreachable. Check backend terminal before launching.');
+        setTimeout(() => setConnectNotice(null), 6000);
+        setIsSaving(false);
+        setIsWarmingUp(false);
+        return;
+      }
+
+      // 6. Successful Launch: Mark onboarding completed & close modal
       try {
         localStorage.setItem('raise_onboarding_completed', 'true');
         if (typeof window !== 'undefined' && window.history?.replaceState) {
@@ -100,6 +155,7 @@ export function useControlCenterSave(
           window.history.replaceState({}, document.title, cleanUrl);
         }
       } catch {}
+
       completeFirstRun();
       setOpen(false);
     } catch (err) {
@@ -107,11 +163,13 @@ export function useControlCenterSave(
       setTimeout(() => setConnectNotice(null), 6000);
     } finally {
       setIsSaving(false);
+      setIsWarmingUp(false);
     }
   };
 
   return {
     isSaving,
+    isWarmingUp,
     connectNotice,
     setConnectNotice,
     handleFinalStart,
