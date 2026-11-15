@@ -162,7 +162,15 @@ export const NeuralStep: React.FC = () => {
           : availableVerifierModels;
     const regItem = modelsList.find((m) => m.id === modelId);
     if (regItem) {
-      if (regItem.cached || regItem.status?.includes('Built-in') || regItem.status?.includes('Cached')) {
+      const isAlreadyCached = Boolean(
+        regItem.cached ||
+        regItem.isInstalled ||
+        regItem.status?.toLowerCase().includes('cached') ||
+        regItem.status?.toLowerCase().includes('ready') ||
+        regItem.status?.toLowerCase().includes('installed') ||
+        regItem.status?.includes('Built-in')
+      );
+      if (isAlreadyCached) {
         return { label: regItem.status || 'Cached & Ready', tone: 'ready' };
       }
       return { label: regItem.status || 'Requires Download', tone: 'pending' };
@@ -789,7 +797,14 @@ export const NeuralStep: React.FC = () => {
 
                 return list.map((m) => {
                   const isSelected = currentConfigured === m.id;
-                  const isCached = Boolean(m.cached || m.status?.includes('Built-in') || m.status?.includes('Cached'));
+                  const isCached = Boolean(
+                    m.cached ||
+                    m.isInstalled ||
+                    m.status?.toLowerCase().includes('cached') ||
+                    m.status?.toLowerCase().includes('ready') ||
+                    m.status?.toLowerCase().includes('installed') ||
+                    m.status?.includes('Built-in')
+                  );
                   const isRerankerMatch =
                     activeCategoryModal === 'reranker' &&
                     m.id.includes('v2-m3') &&
