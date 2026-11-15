@@ -70,6 +70,7 @@ def test_rate_limit_429_triggers_cooldown_and_fallback():
         mock_cred.side_effect = lambda prov: "configured" if prov in ("groq", "gemini") else "missing"
 
         router = ProviderRouter(mode=ExecutionMode.CLOUD)
+        router.fallback_chain = ["groq", "gemini"]
         router.set_task_provider(InferenceTask.RAG_GENERATION, "groq")
 
         # Primary groq raises 429
@@ -110,6 +111,7 @@ def test_billing_or_auth_error_permanently_disables_provider():
         mock_cred.side_effect = lambda prov: "configured" if prov in ("groq", "gemini") else "missing"
 
         router = ProviderRouter(mode=ExecutionMode.CLOUD)
+        router.fallback_chain = ["groq", "gemini"]
         router.set_task_provider(InferenceTask.RAG_GENERATION, "groq")
 
         # Groq raises 402 Payment Required

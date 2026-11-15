@@ -109,6 +109,15 @@ def test_dynamic_routing_orchestrator_endpoints(client):
     assert post_route.status_code == 200
     assert post_route.json().get("status") == "success"
 
+    # 4. Restore standard cloud routing configuration for test suite isolation
+    restore_payload = {
+        "fallback_order": ["gemini", "groq", "mistral", "nvidia", "cohere", "vllm", "ollama", "local"],
+        "disabled_providers": [],
+        "primary_provider": "gemini",
+        "routing_policy": "CLOUD_FIRST",
+    }
+    client.post("/api/system/routing", json=restore_payload)
+
 
 def test_models_catalog_and_preflight_endpoints(client):
     """Verify /api/system/models/catalog and /api/system/preflight-assets called by ControlCenter."""
