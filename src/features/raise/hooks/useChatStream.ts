@@ -257,8 +257,8 @@ export function useChatStream({
           {
             request_id: reqId,
             query: trimmed,
-            hops: isConversational ? 0 : (filterHops ?? (parseMode === 'expert' ? 3 : 1)),
-            top_k: isConversational ? 0 : (filterTopK ?? (parseMode === 'expert' ? 8 : 4)),
+            hops: isConversational ? 0 : (parseMode === 'fast' ? 1 : (filterHops ?? 3)),
+            top_k: isConversational ? 0 : (parseMode === 'fast' ? 4 : (filterTopK ?? 8)),
             mode: isConversational ? 'conversational' : parseMode,
             thread_id: threadId,
             chat_history: recentHistory,
