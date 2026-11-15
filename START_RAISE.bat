@@ -57,23 +57,84 @@ public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
     }
 } catch {}
 
-$Esc = [char]27
-$Dim = "$Esc[38;5;240m"
-$Reset = "$Esc[0m"
-$Bold = "$Esc[1m"
-$Cyan = "$Esc[38;5;39m"
-$Green = "$Esc[38;5;48m"
-$Yellow = "$Esc[38;5;220m"
-$Red = "$Esc[38;5;196m"
-$Magenta = "$Esc[38;5;141m"
-$White = "$Esc[38;5;255m"
+$esc = [char]27
+$C = @{
+    Reset   = "$esc[0m"
+    Bold    = "$esc[1m"
+    Dim     = "$esc[38;5;242m"
+    Border  = "$esc[38;5;240m"
+    Cyan    = "$esc[38;5;81m"
+    Green   = "$esc[38;5;114m"
+    Yellow  = "$esc[38;5;221m"
+    Red     = "$esc[38;5;203m"
+    Purple  = "$esc[38;5;141m"
+    White   = "$esc[38;5;255m"
+    Gray    = "$esc[38;5;246m"
+}
+
+function global:Format-SanitizeOutput {
+    param([string]$Text)
+    if (-not $Text) { return $Text }
+    $userHome = $env:USERPROFILE
+    if ($userHome) {
+        $Text = $Text.Replace($userHome, "~").Replace($userHome.Replace('\', '/'), '~')
+    }
+    return $Text
+}
+
+function prompt { "$($C.Purple)╭─$($C.Reset) $($C.Bold)$($C.Cyan)RAISE$($C.Reset) $($C.Dim)›$($C.Reset) " }
+
+function Write-Header {
+    Clear-Host
+    $ts = (Get-Date).ToString("HH:mm:ss")
+    Write-Host ""
+    Write-Host "  $($C.Border)╭──────────────────────────────────────────────────────────────────────────╮$($C.Reset)"
+    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Bold)$($C.Cyan)⚡ RAISE$($C.Reset) $($C.Dim)//$($C.Reset) $($C.White)Research Assessment Intelligence & Semantic Extraction$($C.Reset)     $($C.Border)│$($C.Reset)"
+    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Dim)Workstation Supervisor  •  Unbuffered Live Stream  •  Boot: $ts$($C.Reset)    $($C.Border)│$($C.Reset)"
+    Write-Host "  $($C.Border)╰──────────────────────────────────────────────────────────────────────────╯$($C.Reset)"
+    Write-Host ""
+}
+
+function Write-Info {
+    param([string]$Text, [string]$Color = "Cyan", [string]$Branch = "├─")
+    $ts = (Get-Date).ToString("HH:mm:ss.fff")
+    $sanitized = Format-SanitizeOutput $Text
+    $icon = switch ($Color) {
+        "Green"      { "$($C.Green)✓$($C.Reset)" }
+        "Yellow"     { "$($C.Yellow)⚡$($C.Reset)" }
+        "DarkYellow" { "$($C.Yellow)↻$($C.Reset)" }
+        "Red"        { "$($C.Red)✖$($C.Reset)" }
+        "Gray"       { "$($C.Dim)○$($C.Reset)" }
+        default      { "$($C.Cyan)●$($C.Reset)" }
+    }
+    $textColor = switch ($Color) {
+        "Green"      { $C.White }
+        "Yellow"     { $C.Yellow }
+        "DarkYellow" { $C.Yellow }
+        "Red"        { $C.Red }
+        "Gray"       { $C.Dim }
+        default      { $C.Gray }
+    }
+    Write-Host "  $($C.Border)$Branch$($C.Reset) $($C.Dim)[$ts]$($C.Reset) $icon $textColor$sanitized$($C.Reset)"
+}
+
+function Write-CardHeader {
+    param([string]$Step, [string]$Title, [string]$Tone = "Cyan")
+    $toneCode = if ($Tone -eq "Red") { $C.Red } elseif ($Tone -eq "Yellow") { $C.Yellow } else { $C.Cyan }
+    Write-Host ""
+    Write-Host "  $($C.Border)╭──────────────────────────────────────────────────────────────────────────╮$($C.Reset)"
+    Write-Host "  $($C.Border)│$($C.Reset) $toneCode$($C.Bold)$Step$($C.Reset) $($C.White)$($C.Bold)$Title$($C.Reset)"
+    Write-Host "  $($C.Border)╰──────────────────────────────────────────────────────────────────────────╯$($C.Reset)"
+}
+
+Write-Header
 
 $repoRoot = if ($env:BAT_DIR -and (Test-Path -LiteralPath $env:BAT_DIR)) { (Resolve-Path -LiteralPath $env:BAT_DIR).Path } else { (Get-Location).Path }
 Set-Location -LiteralPath $repoRoot
 
 $backendDir = Join-Path $repoRoot "backend"; $frontendDir = Join-Path $repoRoot "frontend"
-if (-not (Test-Path (Join-Path $backendDir "server.py"))) { Write-Host "$Dim[${Reset}${Red}✕ FATAL${Reset}${Dim}]${Reset} Backend folder not found at: $backendDir" -ForegroundColor Red; exit 1 }
-if (-not (Test-Path (Join-Path $frontendDir "package.json"))) { Write-Host "$Dim[${Reset}${Red}✕ FATAL${Reset}${Dim}]${Reset} Frontend folder not found at: $frontendDir" -ForegroundColor Red; exit 1 }
+if (-not (Test-Path (Join-Path $backendDir "server.py"))) { Write-Info "Backend folder not found at: $backendDir" "Red" "╰─"; exit 1 }
+if (-not (Test-Path (Join-Path $frontendDir "package.json"))) { Write-Info "Frontend folder not found at: $frontendDir" "Red" "╰─"; exit 1 }
 
 $logsDir = Join-Path $backendDir "logs"
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
@@ -91,30 +152,7 @@ if (-not (Test-Path $manifestFile)) {
     Set-Content -Path $manifestFile -Value "{`"ready_documents`": [], `"timestamp`": `"`"}" -Encoding utf8
 }
 
-function global:Format-SanitizeOutput {
-    param([string]$Text)
-    if (-not $Text) { return $Text }
-    $userHome = $env:USERPROFILE
-    if ($userHome) {
-        $Text = $Text.Replace($userHome, "~").Replace($userHome.Replace('\', '/'), '~')
-    }
-    return $Text
-}
-function prompt { "RAISE > " }
-
-function Write-Info {
-    param([string]$Text, [string]$Color = "Cyan")
-    $sanitized = Format-SanitizeOutput $Text
-    switch ($Color.ToLower()) {
-        "green"      { Write-Host "$Dim[${Reset}${Green}● READY${Reset}${Dim}]${Reset} $sanitized" }
-        "yellow"     { Write-Host "$Dim[${Reset}${Yellow}↻ SYNC${Reset}${Dim}]${Reset} $sanitized" }
-        "darkyellow" { Write-Host "$Dim[${Reset}${Yellow}↻ SYNC${Reset}${Dim}]${Reset} $sanitized" }
-        "red"        { Write-Host "$Dim[${Reset}${Red}✕ ERROR${Reset}${Dim}]${Reset} $sanitized" }
-        "magenta"    { Write-Host "$Dim[${Reset}${Magenta}◆ NEURAL${Reset}${Dim}]${Reset} $sanitized" }
-        default      { Write-Host "$Dim[${Reset}${Cyan}RAISE${Reset}${Dim}]${Reset} $sanitized" }
-    }
-}
-Write-Info "Starting application..." "Cyan"
+Write-Info "Workspace topology & canonical data directories verified" "Cyan"
 
 # 1. Backend and Frontend directories verified
 
@@ -874,13 +912,15 @@ if (-not (Test-Path -LiteralPath $vitePkg)) {
     Write-Info "Installing frontend packages (npm install)..." "Yellow"
     Push-Location -LiteralPath $frontendDir
     try { & $npmCmd install --no-fund --no-audit } finally { Pop-Location }
+} else {
+    Write-Info "Frontend Vite bundle verified (node_modules\vite)" "Green"
 }
 
-# 7. Route Execution Mode
-# CLI / Dev Mode: Launch interactive Research Studio CLI directly (dev_main.py)
+# 7. Route Execution Mode (Unbuffered Python `-u` for zero-delay live streaming)
 $cliMode = ($rawArgs -match "(?i)--cli|-cli|--dev|-dev")
 if ($cliMode) {
-    Write-Info "Launching RAISE Interactive Research Studio CLI (dev_main.py)..." "Green"
+    Write-Info "Handing over to RAISE Interactive Research Studio CLI (dev_main.py)..." "Green" "╰─"
+    Write-Host ""
     Push-Location -LiteralPath $backendDir
     $env:PYTHONPATH = "$backendDir;$backendDir\src"
     & $pythonExe -u (Join-Path $backendDir "dev_main.py")
@@ -889,8 +929,8 @@ if ($cliMode) {
     exit $code
 }
 
-# Workstation Supervisor Mode: Launch Python Dual-Process Supervisor & Interactive REPL
-Write-Info "Starting RAISE Workstation Supervisor (Backend + Frontend + Interactive Console)..." "Cyan"
+Write-Info "Handing over to RAISE Workstation Supervisor (Live Stream + Interactive REPL)..." "Cyan" "╰─"
+Write-Host ""
 Push-Location -LiteralPath $backendDir
 $env:PYTHONPATH = "$backendDir;$backendDir\src"
 $forwardArgs = @()
