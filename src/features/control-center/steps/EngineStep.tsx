@@ -65,9 +65,9 @@ export const EngineStep: React.FC = () => {
               status: m.status,
               isActive: m.status === 'READY',
               tier: m.tier,
-              sizeGb: m.model.includes('3b') ? 2.0 : m.model.includes('7b') ? 4.7 : 4.9,
-              ramGb: m.model.includes('3b') ? 4.0 : m.model.includes('7b') ? 8.0 : 16.0,
-              isInstalled: false,
+              sizeGb: undefined,
+              ramGb: undefined,
+              isInstalled: m.status === 'READY' && (m.provider === 'ollama' || m.provider === 'local'),
               source: m.provider,
             }));
             setDynamicModels(formatted);

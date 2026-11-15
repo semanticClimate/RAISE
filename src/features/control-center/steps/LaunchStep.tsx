@@ -103,7 +103,7 @@ export const LaunchStep: React.FC = () => {
       mode: 'Local Embedded',
       status: isConnected ? 'Online' : 'Standby',
       online: isConnected,
-      latency: isConnected ? `${latencyMs || 8}ms` : undefined,
+      latency: isConnected && latencyMs ? `${latencyMs}ms` : undefined,
     },
     {
       name: 'Neo4j Graph Database',
@@ -111,13 +111,9 @@ export const LaunchStep: React.FC = () => {
       mode: getSubstrateDisplayMode(config.knowledgeGraph?.mode || config.neo4jMode),
       status: testResults?.neo4j?.online
         ? 'Online'
-        : testResults
-          ? 'Offline'
-          : (!config.knowledgeGraph?.mode || config.knowledgeGraph?.mode === 'in_memory_fallback'
-            ? 'Local Embedded (Zero-Dependency)'
-            : 'Configured'),
-      online: testResults?.neo4j?.online ?? (!config.knowledgeGraph?.mode || config.knowledgeGraph?.mode === 'in_memory_fallback'),
-      latency: testResults?.neo4j?.latency_ms ? `${testResults.neo4j.latency_ms}ms` : undefined,
+        : 'Offline (NetworkX In-Memory)',
+      online: Boolean(testResults?.neo4j?.online),
+      latency: testResults?.neo4j?.online && testResults?.neo4j?.latency_ms ? `${testResults.neo4j.latency_ms}ms` : undefined,
     },
     {
       name: 'Redis Fast Bus',
@@ -125,13 +121,9 @@ export const LaunchStep: React.FC = () => {
       mode: getSubstrateDisplayMode(config.cacheAndSignals?.mode || config.redisMode),
       status: testResults?.redis?.online
         ? 'Online'
-        : testResults
-          ? 'Offline'
-          : (!config.cacheAndSignals?.mode || config.cacheAndSignals?.mode === 'in_memory_fallback'
-            ? 'Local Embedded (Zero-Dependency)'
-            : 'Configured'),
-      online: testResults?.redis?.online ?? (!config.cacheAndSignals?.mode || config.cacheAndSignals?.mode === 'in_memory_fallback'),
-      latency: testResults?.redis?.latency_ms ? `${testResults.redis.latency_ms}ms` : undefined,
+        : 'Offline (In-Memory Fallback)',
+      online: Boolean(testResults?.redis?.online),
+      latency: testResults?.redis?.online && testResults?.redis?.latency_ms ? `${testResults.redis.latency_ms}ms` : undefined,
     },
     {
       name: 'PostgreSQL Store',
@@ -139,12 +131,9 @@ export const LaunchStep: React.FC = () => {
       mode: getSubstrateDisplayMode(config.sessionMemory?.mode || config.postgresMode),
       status: testResults?.postgres?.online
         ? 'Online'
-        : testResults
-          ? 'Offline'
-          : (!config.sessionMemory?.mode || config.sessionMemory?.mode === 'in_memory_fallback'
-            ? 'Local Embedded (Zero-Dependency)'
-            : 'Configured'),
-      online: testResults?.postgres?.online ?? (!config.sessionMemory?.mode || config.sessionMemory?.mode === 'in_memory_fallback'),
+        : 'Offline (SQLite In-Memory)',
+      online: Boolean(testResults?.postgres?.online),
+      latency: testResults?.postgres?.online && (testResults?.postgres as any)?.latency_ms ? `${(testResults?.postgres as any).latency_ms}ms` : undefined,
     },
   ];
 

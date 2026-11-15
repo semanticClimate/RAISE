@@ -10,8 +10,9 @@ import {
   Zap,
 } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useControlCenterStore } from '../store/useControlCenterStore';
+import { platformAdapter, type PreflightAsset } from '../services/platformAdapter';
 
 interface ModelOption {
   id: string;
@@ -208,6 +209,30 @@ export const NeuralStep: React.FC = () => {
     }
   };
 
+  const [preflightAssets, setPreflightAssets] = useState<PreflightAsset[]>([]);
+
+  useEffect(() => {
+    platformAdapter
+      .getPreflightAssets()
+      .then((res) => {
+        if (res && Array.isArray(res.assets)) {
+          setPreflightAssets(res.assets);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const isAssetCached = (modelId: string) => {
+    return preflightAssets.some(
+      (a) =>
+        a.verified &&
+        (a.name === modelId ||
+          a.id === modelId ||
+          (a.name && a.name.includes(modelId)) ||
+          (a.desc && a.desc.includes(modelId)))
+    );
+  };
+
   const selectedEmbeddingObj = EMBEDDING_PRESETS.find((p) => p.id === currentEmbedding);
   const selectedRerankerObj = RERANKER_PRESETS.find((p) => p.id === currentReranker);
   const selectedNliObj = NLI_PRESETS.find((p) => p.id === currentNli);
@@ -240,20 +265,15 @@ export const NeuralStep: React.FC = () => {
                 {selectedEmbeddingObj ? selectedEmbeddingObj.dimOrType : 'Custom Embedder'}
               </span>
             </label>
-            <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">
-              <span className="text-indigo-300 font-medium">
-                {selectedEmbeddingObj ? selectedEmbeddingObj.tokens : 'SentenceTransformers supported'}
-              </span>
-              <span>•</span>
-              <span className="text-slate-400">
-                Chunk: {selectedEmbeddingObj ? selectedEmbeddingObj.chunkSize : '512 tokens'}
-              </span>
+            <div className="text-[11px] font-mono text-slate-400">
+              {selectedEmbeddingObj?.desc || 'Dense semantic document embeddings'}
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {EMBEDDING_PRESETS.map((m) => {
               const isSelected = !showCustomEmbedding && currentEmbedding === m.id;
+              const cached = isAssetCached(m.id);
               return (
                 <button
                   key={m.id}
@@ -269,16 +289,27 @@ export const NeuralStep: React.FC = () => {
                   }`}
                 >
                   <div className="min-w-0 pr-1">
-                    <div className="text-xs font-bold truncate">{m.name}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold truncate">{m.name}</span>
+                      {cached ? (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
+                          Cached On-Device
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/5 text-slate-400 border border-white/10">
+                          Download on Setup
+                        </span>
+                      )}
+                    </div>
                     <div
-                      className={`text-[10px] font-mono mt-0.5 ${
+                      className={`text-[10px] font-mono mt-0.5 truncate ${
                         isSelected ? 'text-slate-800' : 'text-slate-400'
                       }`}
                     >
-                      {m.dimOrType} • {m.tokens} • Chunk: {m.chunkSize}
+                      {m.dimOrType} • {m.tokens}
                     </div>
                   </div>
-                  {isSelected && <Check className="w-4 h-4 text-black stroke-[3] shrink-0" />}
+                  {isSelected && <Check className="w-4 h-4 text-black stroke-[3] shrink-0 ml-1" />}
                 </button>
               );
             })}
@@ -336,20 +367,15 @@ export const NeuralStep: React.FC = () => {
                 {selectedRerankerObj ? selectedRerankerObj.dimOrType : 'Cross-Encoder'}
               </span>
             </label>
-            <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">
-              <span className="text-amber-300 font-medium">
-                {selectedRerankerObj ? selectedRerankerObj.tokens : '512 tokens max'}
-              </span>
-              <span>•</span>
-              <span className="text-slate-400">
-                {selectedRerankerObj ? selectedRerankerObj.chunkSize : 'Reranks candidate chunks -> top 4'}
-              </span>
+            <div className="text-[11px] font-mono text-slate-400">
+              {selectedRerankerObj?.desc || 'Deep cross-attention scoring on passage chunks'}
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {RERANKER_PRESETS.map((m) => {
               const isSelected = !showCustomReranker && currentReranker === m.id;
+              const cached = isAssetCached(m.id);
               return (
                 <button
                   key={m.id}
@@ -365,16 +391,27 @@ export const NeuralStep: React.FC = () => {
                   }`}
                 >
                   <div className="min-w-0 pr-1">
-                    <div className="text-xs font-bold truncate">{m.name}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold truncate">{m.name}</span>
+                      {cached ? (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
+                          Cached On-Device
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/5 text-slate-400 border border-white/10">
+                          Download on Setup
+                        </span>
+                      )}
+                    </div>
                     <div
-                      className={`text-[10px] font-mono mt-0.5 ${
+                      className={`text-[10px] font-mono mt-0.5 truncate ${
                         isSelected ? 'text-slate-800' : 'text-slate-400'
                       }`}
                     >
                       {m.dimOrType} • {m.tokens}
                     </div>
                   </div>
-                  {isSelected && <Check className="w-4 h-4 text-black stroke-[3] shrink-0" />}
+                  {isSelected && <Check className="w-4 h-4 text-black stroke-[3] shrink-0 ml-1" />}
                 </button>
               );
             })}
@@ -432,20 +469,16 @@ export const NeuralStep: React.FC = () => {
                 {selectedNliObj ? selectedNliObj.dimOrType : 'Claim Verifier'}
               </span>
             </label>
-            <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">
-              <span className="text-emerald-300 font-medium">
-                {selectedNliObj ? selectedNliObj.tokens : '512 tokens max'}
-              </span>
-              <span>•</span>
-              <span className="text-slate-400">
-                {selectedNliObj ? selectedNliObj.chunkSize : 'Pairwise Chunk vs. Claim'}
-              </span>
+            <div className="text-[11px] font-mono text-slate-400">
+              {selectedNliObj?.desc || 'Pairwise claim verification & hallucination guard'}
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {NLI_PRESETS.map((m) => {
               const isSelected = !showCustomNli && currentNli === m.id;
+              const isZeroDep = m.id === 'In-Memory Verifier';
+              const cached = isAssetCached(m.id);
               return (
                 <button
                   key={m.id}
@@ -461,16 +494,31 @@ export const NeuralStep: React.FC = () => {
                   }`}
                 >
                   <div className="min-w-0 pr-1">
-                    <div className="text-xs font-bold truncate">{m.name}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold truncate">{m.name}</span>
+                      {isZeroDep ? (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          Zero-Dependency
+                        </span>
+                      ) : cached ? (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">
+                          Cached On-Device
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/5 text-slate-400 border border-white/10">
+                          Download on Setup
+                        </span>
+                      )}
+                    </div>
                     <div
-                      className={`text-[10px] font-mono mt-0.5 ${
+                      className={`text-[10px] font-mono mt-0.5 truncate ${
                         isSelected ? 'text-slate-800' : 'text-slate-400'
                       }`}
                     >
                       {m.dimOrType} • {m.tokens}
                     </div>
                   </div>
-                  {isSelected && <Check className="w-4 h-4 text-black stroke-[3] shrink-0" />}
+                  {isSelected && <Check className="w-4 h-4 text-black stroke-[3] shrink-0 ml-1" />}
                 </button>
               );
             })}
