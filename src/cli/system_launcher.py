@@ -145,7 +145,8 @@ def get_synthesizer_status() -> Dict[str, Any]:
     vllm_info = check_vllm_health()
     vllm_connected = bool(vllm_info.get("connected"))
 
-    env_backend = (os.getenv("LLM_BACKEND") or "").lower().strip()
+    env_backend = (os.getenv("LLM_BACKEND") or os.getenv("LLM_PROVIDER") or "").lower().strip()
+    routing_policy = (os.getenv("ROUTING_POLICY") or "").upper().strip()
 
     # Cloud providers map: key_env_vars, display_name, default_model
     cloud_candidates = {
@@ -197,8 +198,13 @@ def get_synthesizer_status() -> Dict[str, Any]:
     model_name = None
     display_name = None
 
-    # Priority 1: User explicitly specified LLM_BACKEND
-    if env_backend:
+    # Priority 1: User explicitly specified local-first policy or local LLM_BACKEND
+    if (routing_policy == "LOCAL_FIRST" or env_backend in ("vllm", "local")) and vllm_connected:
+        active_provider = "vllm"
+        active_type = "local"
+        model_name = vllm_info["model_id"]
+        display_name = "Local vLLM"
+    elif env_backend:
         if env_backend == "vllm":
             if vllm_connected:
                 active_provider = "vllm"

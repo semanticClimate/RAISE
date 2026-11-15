@@ -9,6 +9,7 @@ Zero hardcoded model catalogs.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 import logging
@@ -26,6 +27,42 @@ logger = logging.getLogger("raise.features.system.model_catalog")
 _CATALOG_CACHE: List[Dict[str, Any]] = []
 _CATALOG_CACHE_TIME: float = 0.0
 _CATALOG_CACHE_TTL: float = 900.0  # 15 minutes
+
+
+def _fetch_from_local_vllm() -> List[Dict[str, Any]]:
+    """Probes local vLLM OpenAI-compatible endpoint for currently loaded/downloaded models."""
+    local_models = []
+    vllm_base = os.getenv("VLLM_BASE_URL", os.getenv("VLLM_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
+    if vllm_base.endswith("/v1"):
+        endpoint = f"{vllm_base}/models"
+    else:
+        endpoint = f"{vllm_base}/v1/models"
+    try:
+        r = requests.get(endpoint, timeout=0.8)
+        if r.status_code == 200:
+            data = r.json()
+            for m in data.get("data", []):
+                m_id = m.get("id", "local-vllm-model")
+                max_len = m.get("max_model_len", 8192)
+                param_match = re.search(r"(\d+(?:\.\d+)?)[bB]", m_id)
+                param_val = float(param_match.group(1)) if param_match else 14.0
+                size_gb = round(param_val * 0.6, 1) if any(k in m_id.lower() for k in ("gptq", "int4", "awq", "int8")) else round(param_val * 1.5, 1)
+                min_ram = 16 if size_gb <= 12 else 32
+
+                local_models.append({
+                    "id": m_id,
+                    "name": f"{m_id} ({int(param_val)}B - {max_len} ctx)",
+                    "download_size_gb": size_gb,
+                    "min_ram_gb": min_ram,
+                    "tier": "Installed (Local Engine)",
+                    "status": "READY",
+                    "downloads": "On-Device (vLLM GPU)",
+                    "source": "vllm_local",
+                    "isInstalled": True,
+                })
+    except Exception:
+        pass
+    return local_models
 
 
 def _fetch_from_local_ollama() -> List[Dict[str, Any]]:
@@ -196,7 +233,13 @@ def get_dynamic_model_catalog(total_ram_gb: float = 16.0) -> List[Dict[str, Any]
     aggregated: List[Dict[str, Any]] = []
     seen_ids = set()
 
-    # 1. Prioritize locally installed models if Ollama or local engine is running
+    # 1. Prioritize locally installed models if vLLM or Ollama is running
+    vllm_installed = _fetch_from_local_vllm()
+    for m in vllm_installed:
+        if m["id"] not in seen_ids:
+            seen_ids.add(m["id"])
+            aggregated.append(m)
+
     local_installed = _fetch_from_local_ollama()
     for m in local_installed:
         if m["id"] not in seen_ids:
