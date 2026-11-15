@@ -254,8 +254,29 @@ class ProviderRouter:
         )
         prefer_local = user_chose_local or (not configured_clouds and len(alive_local) > 0)
 
+        # Check for user-defined explicit fallback sequence from .env or UI orchestrator
+        env_order_str = os.getenv("LLM_FALLBACK_ORDER", "").strip()
+        user_order = [p.strip().lower() for p in env_order_str.split(",") if p.strip()] if env_order_str else []
+
         active = []
-        if prefer_local:
+        if user_order:
+            for p in user_order:
+                if p in self.disabled_providers:
+                    continue
+                if p == "vllm" and vllm_alive and "vllm" not in active:
+                    active.append("vllm")
+                elif p == "ollama" and ollama_alive and "ollama" not in active:
+                    active.append("ollama")
+                elif p in configured_clouds and p not in active:
+                    active.append(p)
+                elif p == "local" and "local" in self.providers and "local" not in active:
+                    active.append("local")
+            # Append any remaining alive local or configured cloud engines not mentioned in user_order
+            remaining_pool = (alive_local + configured_clouds) if prefer_local else (configured_clouds + alive_local)
+            for rem in remaining_pool:
+                if rem not in active and rem not in self.disabled_providers:
+                    active.append(rem)
+        elif prefer_local:
             # Local first: vllm (and/or ollama if running)
             for eng in alive_local:
                 if eng not in active:
@@ -390,7 +411,8 @@ class ProviderRouter:
         # Prevent self-loop if vllm_port is 8000 (FastAPI server port)
         if vllm_port != 8000:
             try:
-                req = urllib.request.Request(f"{vllm_base}/v1/models", headers={"User-Agent": "RAISE"})
+                models_endpoint = f"{vllm_base}/models" if vllm_base.endswith("/v1") else f"{vllm_base}/v1/models"
+                req = urllib.request.Request(models_endpoint, headers={"User-Agent": "RAISE"})
                 with urllib.request.urlopen(req, timeout=0.5) as resp:
                     if resp.status == 200:
                         vllm_alive = True

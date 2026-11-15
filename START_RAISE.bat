@@ -487,9 +487,18 @@ function Request-RaiseKeysInteractive {
         $configuredLlm = "mistral"; $configuredLlmKey = $Matches[1].Trim()
     }
 
+    $isLocalFirst = ($envContent -match '(?m)^[ \t]*ROUTING_POLICY=[ \t]*[''"]?LOCAL_FIRST') -or `
+                    ($envContent -match '(?m)^[ \t]*LLM_PROVIDER=[ \t]*[''"]?(?:vllm|ollama)') -or `
+                    ($envContent -match '(?m)^[ \t]*LLM_BACKEND=[ \t]*[''"]?(?:vllm|ollama)')
+
     $llmStatus = if ($configuredLlmKey) { Test-LlmKeyStatus -Provider $configuredLlm -Key $configuredLlmKey } else { @{ Status = "Missing" } }
 
-    if ($llmStatus.Status -eq "Valid" -and -not $forceSetup) {
+    if ($isLocalFirst) {
+        Write-Info "Active LLM synthesis policy: LOCAL_FIRST (Local vLLM / Ollama Engine prioritized)." "Green"
+        if ($configuredLlmKey) {
+            Write-Info "Cloud fallback standby credentials configured: $configuredLlm ($(Mask-ApiKey $configuredLlmKey))." "Cyan"
+        }
+    } elseif ($llmStatus.Status -eq "Valid" -and -not $forceSetup) {
         Write-Info "Active LLM synthesis credentials verified in environment: $configuredLlm ($(Mask-ApiKey $configuredLlmKey))." "Green"
     } elseif ($llmStatus.Status -eq "UnverifiedOffline" -and -not $forceSetup) {
         Write-Info "LLM synthesis credentials configured in environment: $configuredLlm ($(Mask-ApiKey $configuredLlmKey))." "Green"

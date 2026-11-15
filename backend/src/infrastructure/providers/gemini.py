@@ -79,7 +79,7 @@ class GeminiProvider(LLMProvider):
                     native_url,
                     payload=payload,
                     headers={"x-goog-api-key": key},
-                    timeout=kwargs.get("timeout", 15.0),
+                    timeout=kwargs.get("timeout", 8.0),
                     max_retries=1,
                 )
                 parts = resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
@@ -92,11 +92,16 @@ class GeminiProvider(LLMProvider):
                 if pe.status_code in (401, 403):
                     # Hard auth failure: don't loop on invalid credentials
                     raise pe
+                if pe.classification == "ENDPOINT_UNREACHABLE" or "timed out" in str(pe).lower():
+                    # Network unreachable or connection timed out: fail fast so router falls back to local vLLM instantly
+                    raise pe
                 # For 404 (deprecated), 503 (high demand), 429 (rate limited on that model): try next model
                 logger.debug(f"Gemini model {cand_m} failed (HTTP {pe.status_code}): {pe}. Falling back to next candidate.")
                 continue
             except Exception as native_err:
                 last_error = native_err
+                if "timed out" in str(native_err).lower() or isinstance(native_err, TimeoutError):
+                    raise native_err
                 logger.debug(f"Gemini model {cand_m} error: {native_err}. Falling back to next candidate.")
                 continue
 
