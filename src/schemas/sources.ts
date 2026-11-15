@@ -12,6 +12,12 @@ export const DocumentItemSchema = z
     chunks: z.number().int().optional(),
     status: z.string().default('ready'),
     phase: z.string().optional(),
+    percent: z.number().optional(),
+    progress_percent: z.number().optional(),
+    progress_stage: z.string().optional(),
+    progress_detail: z.string().optional(),
+    status_breadcrumb: z.string().optional(),
+    is_ingesting: z.boolean().optional(),
     is_protected: z.boolean().optional(),
     can_delete: z.boolean().optional(),
     deletable: z.boolean().optional(),
@@ -110,8 +116,12 @@ export const DocumentIngestionPhaseSchema = z.enum([
   'parsing',
   'chunking',
   'embedding',
+  'vectorizing',
+  'graph_extraction',
+  'completed',
   'ready',
   'error',
+  'failed',
 ]);
 
 export type DocumentIngestionPhase = z.infer<typeof DocumentIngestionPhaseSchema>;

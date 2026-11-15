@@ -61,6 +61,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   const { data: rawDocuments = [], isLoading } = useQuery({
     ...documentsQueryOptions(),
     enabled: isOpen,
+    refetchOnMount: 'always',
     placeholderData: (prev) => prev,
   });
 
@@ -556,7 +557,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                           ) : (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0 flex items-center gap-1.5">
                               <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin" />
-                              <span>{getDocumentStageLabel(progress)}</span>
+                              <span>{getDocumentStageLabel(progress, item.phase)}</span>
                             </span>
                           )
                         )}

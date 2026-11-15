@@ -156,7 +156,7 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
             {/* Simple tooltip with doc name on hover */}
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none">
               <div className="bg-slate-900 text-white dark:bg-[#1a1c23] dark:border dark:border-white/10 dark:text-slate-200 text-[11px] font-medium py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap max-w-[240px] truncate">
-                {isProcessing ? `${getDocumentStageLabel(progress)}: ${file.name} (${Math.round(progress)}%)` : file.name}
+                {isProcessing ? `${getDocumentStageLabel(progress, (file as any).phase)}: ${file.name} (${Math.round(progress)}%)` : file.name}
               </div>
               <div className="w-1.5 h-1.5 -mt-0.5 rotate-45 bg-slate-900 dark:bg-[#1a1c23] border-r border-b border-slate-900 dark:border-white/10" />
             </div>

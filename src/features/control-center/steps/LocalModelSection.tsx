@@ -25,10 +25,10 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
     localDiscoveredLLMs.some((m) => m.provider === 'ollama' && m.status === 'READY');
 
   const installedModels = dynamicModels.filter(
-    (m) => m.isInstalled || m.source === 'ollama_local'
+    (m) => m.isInstalled || m.source === 'ollama_local' || m.source === 'vllm_local' || m.tier?.includes('Installed')
   );
   const catalogModels = dynamicModels.filter(
-    (m) => !m.isInstalled && m.source !== 'ollama_local'
+    (m) => !m.isInstalled && m.source !== 'ollama_local' && m.source !== 'vllm_local' && !m.tier?.includes('Installed')
   );
 
   const activeLocalEngines = localDiscoveredLLMs.filter(

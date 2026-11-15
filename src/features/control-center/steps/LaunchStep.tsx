@@ -68,6 +68,7 @@ export const LaunchStep: React.FC = () => {
   };
 
   useEffect(() => {
+    runCapabilityProbe();
     handleTestAllSubstrates();
   }, []);
 

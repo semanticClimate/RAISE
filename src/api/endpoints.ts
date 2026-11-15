@@ -81,6 +81,7 @@ export const ENDPOINTS = {
   SYSTEM_ROUTING: '/api/system/routing',
   SYSTEM_HARDWARE: '/api/system/hardware',
   SYSTEM_TEST_CONNECTIONS: '/api/system/test-connections',
+  SYSTEM_MODELS: '/api/system/models',
   SYSTEM_MODELS_CATALOG: '/api/system/models/catalog',
   SYSTEM_DYNAMIC_LLMS: '/api/system/dynamic-llms',
   SYSTEM_MODELS_DISCOVERED: '/api/system/models/discovered',

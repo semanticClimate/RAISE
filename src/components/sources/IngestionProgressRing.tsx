@@ -38,14 +38,38 @@ const PHASE_META: Record<DocumentIngestionPhase, PhaseMeta> = {
     spinClass: 'animate-[spin_0.8s_linear_infinite]', // Fastest spin
     blurred: false,
   },
+  vectorizing: {
+    label: 'Vectorizing',
+    color: '#a855f7', // purple-500
+    spinClass: 'animate-[spin_1.5s_linear_infinite]',
+    blurred: false,
+  },
+  graph_extraction: {
+    label: 'Knowledge Graph',
+    color: '#06b6d4', // cyan-500
+    spinClass: 'animate-[spin_1.8s_linear_infinite]',
+    blurred: false,
+  },
   ready: {
     label: 'Ready',
     color: '#4ade80', // green-400
     spinClass: '', // None (static)
     blurred: false,
   },
+  completed: {
+    label: 'Completed',
+    color: '#4ade80', // green-400
+    spinClass: '', // None (static)
+    blurred: false,
+  },
   error: {
     label: 'Error',
+    color: '#f87171', // red-400
+    spinClass: '', // None (static)
+    blurred: false,
+  },
+  failed: {
+    label: 'Failed',
     color: '#f87171', // red-400
     spinClass: '', // None (static)
     blurred: false,

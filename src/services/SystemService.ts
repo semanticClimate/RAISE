@@ -63,6 +63,25 @@ export class SystemService {
   }
 
   /**
+   * Dynamic Model Registry: GET /api/system/models
+   * Live model registry consumed dynamically from backend without hardcoding.
+   */
+  public async getSystemModels(includeCatalog = false, signal?: AbortSignal): Promise<ApiResponse<unknown>> {
+    const url = includeCatalog
+      ? `${ENDPOINTS.SYSTEM_MODELS}?include_catalog=true`
+      : ENDPOINTS.SYSTEM_MODELS;
+    return apiClient.request(
+      url,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
+  }
+
+  /**
    * Dynamically discovered LLMs from live backend provider APIs
    */
   public async getDynamicLLMs(signal?: AbortSignal): Promise<ApiResponse<unknown>> {

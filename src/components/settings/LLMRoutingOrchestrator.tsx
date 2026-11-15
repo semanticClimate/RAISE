@@ -140,8 +140,11 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
 
     try {
       await systemService.updateRouting(payload);
-    } catch {
-      // Standalone mode: UI state persists locally
+    } catch (err) {
+      setFeedbackBanner({
+        message: 'Backend unreachable: Failed to persist routing priority. Check port 8000.',
+        timestamp: new Date().toLocaleTimeString(),
+      });
     }
   };
 
