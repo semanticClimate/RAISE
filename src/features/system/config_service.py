@@ -136,13 +136,13 @@ def get_current_configuration() -> Dict[str, Any]:
                     "status": "Cached & Ready" if check_hf_model_cached(repo) else "Requires Download",
                     "specifications": (
                         "768-dim • 8,192 tokens context"
-                        if "embeddinggemma" in repo or "nomic-embed" in repo
+                        if any(token in repo.lower() for token in models.EMBEDDING_MODEL_NAME.lower().split("/"))
                         else (
                             "1024-dim • 512 tokens max"
-                            if "bge-large" in repo or "bge-m3" in repo
+                            if any(token in repo.lower() for token in ("1024", "large", "m3"))
                             else (
                                 "384-dim • 256 tokens max"
-                                if "MiniLM" in repo
+                                if "minilm" in repo.lower()
                                 else "768-dim • Dense Embeddings"
                             )
                         )

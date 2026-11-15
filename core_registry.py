@@ -417,8 +417,16 @@ def resolve_local_model_path(repo_or_path: str) -> str:
 @router.post("/api/system/models/load", operation_id="core_load_neural_model_system", include_in_schema=False)
 @router.post("/models/load", operation_id="core_load_neural_model")
 def load_and_prewarm_models(cfg: ModelConfigRequest):
-    from sentence_transformers import CrossEncoder, SentenceTransformer
-    from transformers import AutoModel
+    try:
+        from sentence_transformers import CrossEncoder, SentenceTransformer
+        from transformers import AutoModel
+    except ImportError as imp_err:
+        logger.warning(f"sentence_transformers or transformers not available for pre-warming: {imp_err}")
+        return {
+            "status": "degraded",
+            "message": f"Neural libraries not installed in active environment: {imp_err}. Lexical fallback active.",
+            "active_models": {"embedder": cfg.embedder_id, "reranker": cfg.reranker_id}
+        }
 
     hf_token = state.sanitize_key(cfg.hf_token) or state.keys.get("huggingface") or None
     if hf_token:
@@ -518,13 +526,29 @@ def load_and_prewarm_models(cfg: ModelConfigRequest):
 
     # 4. Pre-Warm All 3 Models Immediately
     with torch.inference_mode():
-        _ = state.embedder.encode(["warmup query"], normalize_embeddings=True)
-        if state.reranker_type == "listwise" and hasattr(state.reranker, "rerank"):
-            _ = state.reranker.rerank("warmup", ["warmup doc"])
-        elif hasattr(state.reranker, "predict"):
-            _ = state.reranker.predict([("warmup", "warmup doc")])
-        if hasattr(state.verifier, "predict"):
-            _ = state.verifier.predict([("warmup premise", "warmup claim")])
+        try:
+            if state.embedder is not None:
+                if state.device == "cuda" and state.dtype == torch.bfloat16:
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                        _ = state.embedder.encode(["warmup query"], normalize_embeddings=True)
+                else:
+                    _ = state.embedder.encode(["warmup query"], normalize_embeddings=True)
+        except Exception as _enc_err:
+            logger.warning(f"Embedder warmup notice: {_enc_err}")
+
+        try:
+            if state.reranker_type == "listwise" and hasattr(state.reranker, "rerank"):
+                _ = state.reranker.rerank("warmup", ["warmup doc"])
+            elif hasattr(state.reranker, "predict"):
+                _ = state.reranker.predict([("warmup", "warmup doc")])
+        except Exception as _rr_err:
+            logger.warning(f"Reranker warmup notice: {_rr_err}")
+
+        try:
+            if hasattr(state.verifier, "predict"):
+                _ = state.verifier.predict([("warmup premise", "warmup claim")])
+        except Exception as _ver_err:
+            logger.warning(f"Verifier warmup notice: {_ver_err}")
 
     # 5. Direct Singleton Sync with Shared RAG Engine & NLI Verifier
     try:

@@ -235,3 +235,31 @@ async def verify_provider_key(payload: Dict[str, Any] = Body(...)) -> Dict[str, 
     key = payload.get("api_key") or payload.get("key") or ""
     from src.features.system.connection_service import probe_cloud_llm_key
     return probe_cloud_llm_key(prov, key)
+
+
+@router.post("/models/load", operation_id="post_system_models_load")
+async def load_and_prewarm_neural_models(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """
+    Dynamically loads and prewarms requested embedding, reranker, and NLI verifier models.
+    """
+    try:
+        from core_registry import ModelConfigRequest, load_and_prewarm_models
+        from src.core.config import models
+        m_cfg = ModelConfigRequest(
+            embedder_id=payload.get("embedding_model") or payload.get("embedder_id") or models.EMBEDDING_MODEL_NAME,
+            reranker_id=payload.get("reranker_model") or payload.get("reranker_id") or models.RERANKER_MODEL_NAME,
+            verifier_id=payload.get("nli_verifier_model") or payload.get("verifier_id") or models.NLI_MODEL_NAME,
+            hf_token=payload.get("huggingface_token") or payload.get("hf_token"),
+        )
+        res = load_and_prewarm_models(m_cfg)
+        return {
+            "status": "success",
+            "message": "Models loaded and prewarmed successfully.",
+            "data": res,
+        }
+    except Exception as e:
+        logger.warning(f"Error loading and prewarming models: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to prewarm neural models: {str(e)}",
+        }
