@@ -33,6 +33,8 @@ def sync_and_persist_artifacts(
     neo4j_db: Any,
     postgres: Any,
     t0: float,
+    institution: Optional[str] = None,
+    reporting_period: Optional[str] = None,
 ) -> Tuple[Dict[str, AcademicEntity], Dict[str, AcademicRelation], int, Dict[str, Any], Dict[str, Any]]:
     """
     Deduplicates entities/relations, writes JSON artifacts to disk,
@@ -58,10 +60,12 @@ def sync_and_persist_artifacts(
         lib_dir = output_dir.parent / "library"
         lib_dir.mkdir(parents=True, exist_ok=True)
 
-        inst_candidates = [e.name for e in unique_entities.values() if getattr(e, "label", "") in ("Institution", "University", "Organization")]
-        institution = inst_candidates[0] if inst_candidates else pdf_path.stem.replace("_", " ")
-        year_matches = re.findall(r"\b(20\d\d(?:-\d\d)?)\b", pdf_path.stem)
-        reporting_period = year_matches[0] if year_matches else "Current Period"
+        if not institution:
+            inst_candidates = [e.name for e in unique_entities.values() if getattr(e, "label", "") in ("Institution", "University", "Organization")]
+            institution = inst_candidates[0] if inst_candidates else pdf_path.stem.replace("_", " ")
+        if not reporting_period:
+            year_matches = re.findall(r"\b(20\d\d(?:-\d\d)?)\b", pdf_path.stem)
+            reporting_period = year_matches[0] if year_matches else "Current Period"
         fact_metrics = [e for e in unique_entities.values() if getattr(e, "label", "") in ("MetricFact", "FinancialMetric", "Metric")]
 
         okf_content = generate_enhanced_okf_markdown(

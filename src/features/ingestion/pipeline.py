@@ -312,6 +312,8 @@ class AcademicPipelineIngestor:
             neo4j_db=self.neo4j_db,
             postgres=self.postgres,
             t0=t0,
+            institution=institution_name,
+            reporting_period=reporting_period,
         )
         facts_count = len([e for e in unique_entities.values() if e.label == "MetricFact"])
 

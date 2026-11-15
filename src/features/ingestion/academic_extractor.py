@@ -71,7 +71,10 @@ class AcademicDomainExtractor:
         """Lazy-load GLiNER model singleton for zero-shot entity extraction."""
         if cls._gliner_model is None and HAS_GLINER:
             try:
+                import torch
                 cls._gliner_model = GLiNER.from_pretrained(cls.GLINER_MODEL_NAME)
+                if torch.cuda.is_available():
+                    cls._gliner_model = cls._gliner_model.to("cuda")
             except Exception:
                 cls._gliner_model = None
         return cls._gliner_model
