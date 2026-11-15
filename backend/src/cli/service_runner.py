@@ -48,6 +48,7 @@ from src.cli.renderer import C
 from src.cli.document_manager import get_active_documents_list
 from src.cli.system_launcher import get_synthesizer_status
 from src.core.config import models
+from src.core.substrate_router import get_substrate_telemetry_summary, get_active_substrate_mode, SubstrateMode
 
 logger = logging.getLogger("RAISE_ServiceRunner")
 
@@ -198,6 +199,12 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
         except Exception:
             hw_line = "Hardware telemetry active"
 
+    sub_info = get_substrate_telemetry_summary(
+        neo4j_open=is_port_open(7687),
+        redis_open=is_port_open(6379),
+        pg_open=is_port_open(5432),
+    )
+    print(f"  {B_DIM}│{C.RESET} {C.SECTION}SUBSTRATE{C.RESET}  {C.ACCENT}{sub_info['mode_badge']}{C.RESET}")
     print(f"  {B_DIM}│{C.RESET} {C.SECTION}HARDWARE{C.RESET}   {C.WHITE}{hw_line}{C.RESET}")
     print(f"  {B_DIM}├{'─' * W_WIDTH}┤{C.RESET}")
 
@@ -252,9 +259,10 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     print(f"  {B_DIM}│{C.RESET}")
     print(f"  {B_DIM}│{C.RESET} {C.SECTION}STORAGE & DATABASE SUBSTRATES{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Vector Store (ChromaDB)  {chroma_str}")
-    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Knowledge Graph (Neo4j)  {neo4j_str}")
-    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Semantic Cache (Redis)   {redis_str}")
-    print(f"  {B_DIM}│{C.RESET}  {B_DIM}╰─{C.RESET} Relational DB (Postgres) {pg_str}")
+    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Knowledge Graph Engine   {C.SUCCESS}{sub_info['neo4j']}{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Semantic Cache           {C.SUCCESS}{sub_info['redis']}{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Relational Database      {C.SUCCESS}{sub_info['postgres']}{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {B_DIM}╰─{C.RESET} Document Vault Storage   {C.CYAN}{sub_info['storage']}{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}")
     print(f"  {B_DIM}│{C.RESET} {C.SECTION}AI NEURAL MODEL PIPELINE{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Synthesis LLM Engine     {synth_str}")
@@ -982,6 +990,20 @@ def dispatch_repl_command(
         print(f"\n{C.TITLE}Running Benchmark Verification...{C.RESET}")
         print(f"  Execute the full scientific evaluation harness via:")
         print(f"  {C.CYAN}python evaluation/run_ragas_benchmarks.py{C.RESET}\n")
+    elif cmd_lower.startswith("substrate ") or cmd_lower.startswith("profile "):
+        parts = cmd_lower.split(None, 1)
+        if len(parts) > 1 and parts[1].strip() in ("fast", "docker", "cloud"):
+            target_mode = parts[1].strip()
+            os.environ["RAISE_SUBSTRATE_MODE"] = target_mode
+            os.environ["USE_FAKEREDIS"] = "true" if target_mode == "fast" else "false"
+            print_supervisor_event(
+                format_stream_row("SUBSTRATE", f"Switched runtime profile to {target_mode.upper()} MODE", "*", C.SUCCESS, C.SUCCESS)
+            )
+            _render_status_dashboard(focused_doc=focused_doc)
+        else:
+            print_supervisor_event(
+                format_stream_row("SUBSTRATE", "Usage: 'substrate fast' | 'substrate docker' | 'substrate cloud'", "[WARN]", C.WARN, C.WARN)
+            )
     else:
         execute_terminal_query(user_input, focused_doc=focused_doc)
 

@@ -401,6 +401,32 @@ if (-not (Test-PythonHasCoreDeps $pythonExe)) {
     }
 }
 
+# 3.5 GLiNER Zero-Shot NER Engine Verification & Fast-Path
+function Test-GlinerInstalled {
+    param([string]$PyPath)
+    try {
+        $chk = & $PyPath -c "import sys, gliner; sys.stdout.write('OK')" 2>$null
+        return ($chk -match "OK")
+    } catch { return $false }
+}
+
+$glinerModelName = "urchade/gliner_medium-v2.1"
+if (Test-GlinerInstalled $pythonExe) {
+    Write-Info "GLiNER Zero-Shot NER engine verified ($glinerModelName)" "Green"
+} else {
+    Write-Info "GLiNER Zero-Shot NER not detected. Auto-provisioning gliner..." "Yellow"
+    if ($activeUv) {
+        & $activeUv pip install gliner --python $pythonExe --index-strategy unsafe-best-match
+    } else {
+        & $pythonExe -m pip install gliner --quiet
+    }
+    if (Test-GlinerInstalled $pythonExe) {
+        Write-Info "GLiNER Zero-Shot NER engine online ($glinerModelName)" "Green"
+    } else {
+        Write-Info "GLiNER auto-provisioning deferred to background warmup." "Yellow"
+    }
+}
+
 # Native Rust acceleration engine check & self-provisioning
 $rustDll = Join-Path $backendDir "rust\raise_engine\target\release\raise_engine.dll"
 $cargoToml = Join-Path $backendDir "rust\raise_engine\Cargo.toml"
@@ -839,72 +865,112 @@ if ($envToCheck) {
 # First-time launch occurs when neither the completion marker nor a configured provider exists
 $isFirstLaunch = (-not $hasMarker -and -not $hasConfiguredProvider)
 
-# ==========================================================================
-# 5.5 Intelligent Storage Tier Orchestration (Docker / Cloud / Fast Local)
-# ==========================================================================
-$fastMode   = ($rawArgs -match "(?i)--fast|-fast|--test|-test|--memory")
-$cloudMode  = ($rawArgs -match "(?i)--cloud|-cloud")
-$dockerFlag = ($rawArgs -match "(?i)--docker|-docker")
+# ==============================================================================
+# 5.5 Infrastructure Substrate Mode Selector (FAST / DOCKER / CLOUD)
+# ==============================================================================
+function Select-RaiseSubstrateMode {
+    param([string]$EnvPath, [string]$PythonPath, [string]$UvPath)
 
-$envRaw = if (Test-Path $backendEnv) { Get-Content -Path $backendEnv -Raw -ErrorAction SilentlyContinue } else { "" }
-$hasCloudStorage = ($envRaw -match "(?m)^[ \t]*(?:CLOUD_REDIS_URL|REDIS_CLOUD_URL|CLOUD_DB_URL|POSTGRES_CLOUD_URL|NEO4J_CLOUD_URI)[ \t]*=[ \t]*['""]?(?:rediss?|postgresql|neo4j\+s)://")
-
-function Test-DockerDaemonRunning {
-    if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) { return $false }
-    try {
-        $null = & docker info --format "{{.ServerVersion}}" 2>$null
-        return ($LASTEXITCODE -eq 0)
-    } catch { return $false }
-}
-
-if ($fastMode) {
-    $env:RAISE_STORAGE_MODE = "fast"
-    Write-Info "Storage Mode: FAST TEST (FakeRedis + SQLite WAL + NetworkX In-Memory)" "Green"
-}
-elseif ($cloudMode -or ($hasCloudStorage -and -not $dockerFlag)) {
-    $env:RAISE_STORAGE_MODE = "cloud"
-    Write-Info "Storage Mode: CLOUD MANAGED (Using Cloud Redis / Postgres / Neo4j Aura endpoints)" "Cyan"
-}
-elseif (Test-DockerDaemonRunning) {
-    $env:RAISE_STORAGE_MODE = "docker"
-    Write-Info "Docker Daemon detected! Provisioning production containers (Redis, Postgres, Neo4j)..." "Cyan"
-
-    # 1. Redis 7.4 Alpine (Sub-millisecond cache & Pub/Sub)
-    if (-not (& docker ps -q -f "name=^raise-redis$" 2>$null)) {
-        & docker start raise-redis 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            & docker run -d --name raise-redis --restart unless-stopped -p 6379:6379 `
-                redis:7.4-alpine redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 100 2>$null | Out-Null
-        }
+    $envContent = if (Test-Path $EnvPath) { Get-Content -Path $EnvPath -Raw -Encoding utf8 } else { "" }
+    $savedMode = "fast"
+    if ($envContent -match '(?m)^[ \t]*RAISE_SUBSTRATE_MODE=[ \t]*[''"]?([a-zA-Z]+)') {
+        $savedMode = $Matches[1].Trim().ToLower()
     }
 
-    # 2. PostgreSQL 17 Alpine (Relational session & document store)
-    if (-not (& docker ps -q -f "name=^raise-postgres$" 2>$null)) {
-        & docker start raise-postgres 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            & docker run -d --name raise-postgres --restart unless-stopped -p 5432:5432 `
-                -e POSTGRES_USER=raise_user -e POSTGRES_PASSWORD=raise_password -e POSTGRES_DB=raise_db `
-                -v raise_pgdata:/var/lib/postgresql/data postgres:17-alpine 2>$null | Out-Null
+    $selectedMode = $null
+    if ($rawArgs -match "(?i)--fast|-fast") { $selectedMode = "fast" }
+    elseif ($rawArgs -match "(?i)--docker|-docker|--prod|-prod") { $selectedMode = "docker" }
+    elseif ($rawArgs -match "(?i)--cloud|-cloud") { $selectedMode = "cloud" }
+
+    if (-not $selectedMode -and -not [System.Console]::IsInputRedirected) {
+        Write-Host ""
+        Write-Host "  $($C.Border)╭─$($C.Reset) $($C.Yellow)$($C.Bold)[SUBSTRATE ARCHITECTURE MODE]$($C.Reset) $($C.White)$($C.Bold)SELECT RUNTIME PROFILE$($C.Reset) $($C.Border)─────────────────────╮$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)                                                                            $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)  $($C.Cyan)$($C.Bold)[1] FAST MODE$($C.Reset)     $($C.Dim)(Local Lightweight — Zero Docker)$($C.Reset)                      $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)      $($C.Border)├─$($C.Reset) Cache       : $($C.White)FakeRedis$($C.Reset) $($C.Dim)(In-memory zero-latency emulation)$($C.Reset)         $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)      $($C.Border)├─$($C.Reset) Graph       : $($C.White)NetworkX$($C.Reset) $($C.Dim)(In-memory multi-hop graph engine)$($C.Reset)          $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)      $($C.Border)╰─$($C.Reset) Storage     : $($C.White)SQLite + Local ChromaDB$($C.Reset)                              $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)                                                                            $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)  $($C.Green)$($C.Bold)[2] DOCKER MODE$($C.Reset)   $($C.Dim)(Production Enterprise Stack)$($C.Reset)                          $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)      $($C.Border)├─$($C.Reset) Containers  : $($C.White)Neo4j (:7687) · Redis (:6379) · PostgreSQL (:5432)$($C.Reset)   $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)      $($C.Border)╰─$($C.Reset) Best For    : $($C.Dim)Full production persistence & Cypher graph auditing$($C.Reset)  $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)                                                                            $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)  $($C.Purple)$($C.Bold)[3] CLOUD MODE$($C.Reset)    $($C.Dim)(Managed Cloud Storage & Remote Clusters)$($C.Reset)              $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)      $($C.Border)├─$($C.Reset) Substrates  : $($C.White)Neo4j AuraDB · Upstash/Cloud Redis · Supabase/PG$($C.Reset)     $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)      $($C.Border)╰─$($C.Reset) Storage     : $($C.Dim)Cloud Object Storage (S3 / GCS / R2) + Cloud Vector$($C.Reset)  $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)│$($C.Reset)                                                                            $($C.Border)│$($C.Reset)"
+        Write-Host "  $($C.Border)╰────────────────────────────────────────────────────────────────────────────╯$($C.Reset)"
+
+        $choice = (Read-Host "  ╭─ Select Mode [1] Fast  [2] Docker  [3] Cloud  (Enter for saved: $($savedMode.ToUpper()))`n  ╰─>").Trim()
+        switch -Regex ($choice) {
+            "^1|(?i)^f|^fast"   { $selectedMode = "fast" }
+            "^2|(?i)^d|^docker" { $selectedMode = "docker" }
+            "^3|(?i)^c|^cloud"  { $selectedMode = "cloud" }
+            default             { $selectedMode = $savedMode }
         }
+    } elseif (-not $selectedMode) {
+        $selectedMode = $savedMode
     }
 
-    # 3. Neo4j 5.26 Community (ACID Property Graph)
-    if (-not (& docker ps -q -f "name=^raise-neo4j$" 2>$null)) {
-        & docker start raise-neo4j 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            & docker run -d --name raise-neo4j --restart unless-stopped -p 7474:7474 -p 7687:7687 `
-                -e NEO4J_AUTH=neo4j/raise_password `
-                -e NEO4J_server_memory_heap_initial__size=512m `
-                -e NEO4J_server_memory_heap_max__size=2G `
-                -v raise_neo4j_data:/data neo4j:5.26-community 2>$null | Out-Null
+    $env:RAISE_SUBSTRATE_MODE = $selectedMode
+    $env:RAISE_STORAGE_MODE = $selectedMode
+
+    if ($selectedMode -eq "fast") {
+        Write-Info "Profile Selected: FAST MODE (FakeRedis + NetworkX + SQLite + Local Chroma)" "Yellow"
+        $env:USE_FAKEREDIS = "true"
+        $env:USE_LOCAL_FALLBACKS = "true"
+        $hasFakeRedis = (& $PythonPath -c "import fakeredis, networkx; sys.stdout.write('OK')" 2>$null)
+        if ($hasFakeRedis -notmatch "OK") {
+            Write-Info "Auto-provisioning FakeRedis & NetworkX for Fast Mode..." "Cyan"
+            if ($UvPath) {
+                & $UvPath pip install fakeredis networkx --python $PythonPath --index-strategy unsafe-best-match
+            } else {
+                & $PythonPath -m pip install fakeredis networkx --quiet
+            }
+        }
+        Write-Info "FakeRedis & NetworkX in-memory substrates verified" "Green"
+    }
+    elseif ($selectedMode -eq "docker") {
+        Write-Info "Profile Selected: DOCKER PRODUCTION MODE (Redis + PostgreSQL + Neo4j)" "Green"
+        $env:USE_FAKEREDIS = "false"
+        $env:USE_LOCAL_FALLBACKS = "false"
+        if (Get-Command "docker" -ErrorAction SilentlyContinue) {
+            $composeFile = Join-Path $repoRoot "docker-compose.yml"
+            if (Test-Path $composeFile) {
+                Write-Info "Starting production Docker containers (Neo4j, Redis, Postgres)..." "Cyan"
+                & docker compose -f $composeFile up -d 2>$null
+            } else {
+                foreach ($cName in @("raise-redis", "raise-postgres", "raise-neo4j")) {
+                    if (& docker ps -a -q -f "name=^$cName$" 2>$null) {
+                        & docker start $cName 2>$null | Out-Null
+                    }
+                }
+            }
+            Write-Info "Docker production storage stack active on localhost (6379 / 5432 / 7687)" "Green"
+        } else {
+            Write-Info "Docker not found in PATH. Services will gracefully fall back if ports :7687/:6379/:5432 are closed." "Yellow"
         }
     }
-    Write-Info "Docker production storage stack active on localhost (6379 / 5432 / 7687)." "Green"
+    elseif ($selectedMode -eq "cloud") {
+        Write-Info "Profile Selected: CLOUD MODE (Cloud Object Storage + Managed DBs)" "Cyan"
+        $env:USE_FAKEREDIS = "false"
+        $env:USE_CLOUD_STORAGE = "true"
+    }
+
+    # Persist selection in .env
+    if ($envContent -match '(?m)^[ \t]*RAISE_SUBSTRATE_MODE=.*$') {
+        $envContent = $envContent -replace '(?m)^[ \t]*RAISE_SUBSTRATE_MODE=.*$', "RAISE_SUBSTRATE_MODE=$selectedMode"
+    } else {
+        $envContent += "`nRAISE_SUBSTRATE_MODE=$selectedMode"
+    }
+    [System.IO.File]::WriteAllText($EnvPath, $envContent, [System.Text.Encoding]::UTF8)
+    if (Test-Path (Join-Path $backendDir ".env")) {
+        [System.IO.File]::WriteAllText((Join-Path $backendDir ".env"), $envContent, [System.Text.Encoding]::UTF8)
+    }
 }
-else {
-    $env:RAISE_STORAGE_MODE = "fast"
-    Write-Info "Docker offline & no Cloud URLs set -> Auto-selecting FAST LOCAL mode (FakeRedis + SQLite WAL + NetworkX)." "Yellow"
-}
+
+$envFileForMode = if (Test-Path $backendEnv) { $backendEnv } else { $rootEnv }
+Select-RaiseSubstrateMode -EnvPath $envFileForMode -PythonPath $pythonExe -UvPath $activeUv
 
 # 6. Ensure Frontend Dependencies
 $vitePkg = Join-Path $frontendDir "node_modules\vite"
