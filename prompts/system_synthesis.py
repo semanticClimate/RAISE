@@ -5,7 +5,7 @@ with clear semantic boundaries, citation formatting, and anti-hallucination guar
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 
 def clean_repetitive_citations(text: str) -> str:
@@ -22,7 +22,6 @@ def clean_repetitive_citations(text: str) -> str:
         return ""
 
     lines = text.split("\n")
-    # Match trailing citation e.g. [1], [1, 2], [1]., etc.
     cit_pattern = r"\s*(\[(\d+(?:,\s*\d+)*)\])\s*\.?\s*$"
 
     # Pass 1: Collapse duplicate identical citations within any single line
@@ -70,18 +69,22 @@ def clean_repetitive_citations(text: str) -> str:
                     while prev_idx >= 0 and not lines[prev_idx].strip():
                         prev_idx -= 1
 
-                    has_intro = (prev_idx >= 0 and lines[prev_idx].strip().endswith(":"))
+                    has_intro = prev_idx >= 0 and lines[prev_idx].strip().endswith(":")
 
                     if has_intro:
                         intro_line = lines[prev_idx]
                         if common_cit in intro_line:
                             for b_idx in bullet_indices:
-                                lines[b_idx] = re.sub(rf"\s*{re.escape(common_cit)}\s*(\.?)\s*$", r"\1", lines[b_idx])
+                                lines[b_idx] = re.sub(
+                                    rf"\s*{re.escape(common_cit)}\s*(\.?)\s*$", r"\1", lines[b_idx]
+                                )
                         else:
                             colon_idx = intro_line.rfind(":")
                             lines[prev_idx] = f"{intro_line[:colon_idx].rstrip()} {common_cit}:"
                             for b_idx in bullet_indices:
-                                lines[b_idx] = re.sub(rf"\s*{re.escape(common_cit)}\s*(\.?)\s*$", r"\1", lines[b_idx])
+                                lines[b_idx] = re.sub(
+                                    rf"\s*{re.escape(common_cit)}\s*(\.?)\s*$", r"\1", lines[b_idx]
+                                )
                     else:
                         first_kept = False
                         for b_idx in bullet_indices:
@@ -89,7 +92,9 @@ def clean_repetitive_citations(text: str) -> str:
                                 if not first_kept:
                                     first_kept = True
                                 else:
-                                    lines[b_idx] = re.sub(rf"\s*{re.escape(common_cit)}\s*(\.?)\s*$", r"\1", lines[b_idx])
+                                    lines[b_idx] = re.sub(
+                                        rf"\s*{re.escape(common_cit)}\s*(\.?)\s*$", r"\1", lines[b_idx]
+                                    )
             continue
         i += 1
 
@@ -100,209 +105,92 @@ def sanitize_rag_text(text: str) -> str:
     """
     Sanitizes RAG text, stripping control characters, normalizing newlines,
     and ensuring bullet points, lists, and paragraphs are formatted cleanly for
-    both terminal and web frontends. Automatically attributes entity roles and
-    structures bullet points with blank line spacing to prevent paragraph collapsing.
+    both terminal and web frontends without mutating grounded prose.
     """
     if not text:
         return ""
+
     # Strip non-printable control characters (ASCII 0-8, 11, 12, 14-31, 127)
-    cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
-    cleaned = re.sub(r'\r\n|\r', '\n', cleaned)
-    # Strip raw Docling scaffolding like [Section Context: ...]
-    cleaned = re.sub(r'\[Section Context:[^\]]*\]', '', cleaned, flags=re.IGNORECASE)
-    # Strip accidental inlined (Filename.pdf, Page X) or (Doc: ..., Page X) prose artifacts
-    cleaned = re.sub(r'\s*\([^)]*?\.pdf,\s*(?:PDF\s*)?Page\s*\d+[^)]*?\)', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\s*\[Doc:\s*[^\]]+?\.pdf,\s*(?:PDF\s*)?Page\s*\d+[^\]]*?\]', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\s*\((?:p\.|page)\s*\d+\)', '', cleaned, flags=re.IGNORECASE)
-    # Strip negative enumeration or omission explanations (e.g. "Excerpts [4] and [5] were omitted...")
+    cleaned = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text)
+    cleaned = re.sub(r"\r\n|\r", "\n", cleaned)
+
+    # Strip internal scaffolding tags and leaked inline filename/page references
     cleaned = re.sub(
-        r'(?:(?:Excerpts?|Passages?|Sources?|References?)\s*(?:\[\d+\][,\s&and–-]*)+[^.\n]*(?:omitted|excluded|not\s+(?:used|relevant)|do\s+not\s+pertain|pertain\s+to|refer\s+to|irrelevant)[^.\n]*[.\n]?)',
-        '',
+        r"\[(?:Section Context|Verified Knowledge Graph|Knowledge Graph)[^\]]*\]",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\s*\([^)]*?\.pdf,\s*(?:PDF\s*)?Page\s*\d+[^)]*?\)", "", cleaned, flags=re.IGNORECASE
+    )
+    cleaned = re.sub(
+        r"\s*\[Doc:\s*[^\]]+?\.pdf,\s*(?:PDF\s*)?Page\s*\d+[^\]]*?\]",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s*\((?:p\.|page)\s*\d+\)", "", cleaned, flags=re.IGNORECASE)
+
+    # Strip negative enumeration or omission explanations
+    cleaned = re.sub(
+        r"(?:(?:Excerpts?|Passages?|Sources?|References?)\s*(?:\[\d+\][,\s&and–-]*)+[^.\n]*(?:omitted|excluded|not\s+(?:used|relevant)|do\s+not\s+pertain|pertain\s+to|refer\s+to|irrelevant)[^.\n]*[.\n]?)",
+        "",
         cleaned,
         flags=re.IGNORECASE,
     )
 
-        # Normalize colon followed immediately by text or newline
-
-    cleaned = re.sub(r':\s*\n+', ':\n\n', cleaned)
-
-
+    # Normalize colon followed immediately by newline
+    cleaned = re.sub(r":\s*\n+", ":\n\n", cleaned)
 
     # Clean delimiter artifacts like ---:### or ---:#### or ---:
+    cleaned = re.sub(r"^[ \t]*---:+\s*(#{1,4})\s*", r"\n\n\1 ", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^[ \t]*---:+\s*", r"\n\n---\n\n", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\n---:+#*", r"\n\n### ", cleaned)
 
-    cleaned = re.sub(r'^[ \t]*---:+\s*(#{1,4})\s*', r'\n\n\1 ', cleaned, flags=re.MULTILINE)
+    # Clean floating period on its own line
+    cleaned = re.sub(r"([A-Za-z0-9\)\"])[ \t]*\n+[ \t]*\.", r"\1.", cleaned)
+    cleaned = re.sub(r"[ \t]*\n+[ \t]*\.", r".", cleaned)
+    cleaned = re.sub(r"\s+\.", ".", cleaned)
 
-    cleaned = re.sub(r'^[ \t]*---:+\s*', r'\n\n---\n\n', cleaned, flags=re.MULTILINE)
+    # Ensure space after colon in Key:Value pairs (ignoring URLs/timestamps)
+    cleaned = re.sub(r"([A-Za-z\)])\:([A-Z])", r"\1: \2", cleaned)
 
-    cleaned = re.sub(r'\n---:+#*', r'\n\n### ', cleaned)
+    # Normalize standalone section markers like "A. Section Title" into H4 markdown
+    cleaned = re.sub(
+        r"^[ \t]*([A-Z]\.\s+[A-Za-z0-9\s,–—\-]+)$", r"#### \1", cleaned, flags=re.MULTILINE
+    )
 
+    # Convert standard markdown bullets to unicode bullet '• ' for frontend rich card renderer
+    cleaned = re.sub(r"(^|\n)\s*[\-\*\+]\s+", r"\1• ", cleaned)
 
+    # Deduplicate consecutive identical non-empty lines and format standalone Key: Value lines
+    lines = [l.strip() for l in cleaned.split("\n")]
+    processed: List[str] = []
 
-    # Clean floating period on its own line (e.g. "alleles \n.")
-
-    cleaned = re.sub(r'([A-Za-z0-9\)\"])[ \t]*\n+[ \t]*\.', r'\1.', cleaned)
-
-    cleaned = re.sub(r'[ \t]*\n+[ \t]*\.', r'.', cleaned)
-
-    cleaned = re.sub(r'\s+\.', '.', cleaned)
-
-
-
-    # Clean Key:Value without space after colon (e.g. cultivars:Deciphered -> cultivars: Deciphered)
-
-    cleaned = re.sub(r'([A-Za-z0-9\)])\:([A-Z])', r'\1: \2', cleaned)
-
-
-
-    # Clean [Verified Knowledge Graph Facts] and other non-standard bracket tags
-
-    cleaned = re.sub(r'\s*\[Verified Knowledge Graph[^\]]*\]', '', cleaned)
-
-    cleaned = re.sub(r'\s*\[Knowledge Graph[^\]]*\]', '', cleaned)
-
-
-
-    # Clean noisy OCR conference quotes like "inSTITUTE AFU L"
-
-    cleaned = re.sub(r'\s*\(\s*e\.g\.,\s*["\']inSTITUTE AFU L["\']\s*\)', '', cleaned, flags=re.IGNORECASE)
-
-
-
-    # Normalize standalone section markers like "A. Genome Analysis" into clean H4 markdown
-
-    cleaned = re.sub(r'^[ \t]*([A-Z]\.\s+[A-Za-z0-9\s,–—\-]+)$', r'#### \1', cleaned, flags=re.MULTILINE)
-
-
-
-    # Convert existing bullets to unicode bullet '• ' which triggers frontend rich card renderer
-
-    cleaned = re.sub(r'(^|\n)\s*[\-\*\+]\s+', r'\1• ', cleaned)
-
-
-
-    lines = [l.strip() for l in cleaned.split('\n')]
-    processed = []
-    i = 0
-    in_entity_list = False
-    entity_bullets = []
-
-    under_intro = False
-    while i < len(lines):
-        line = lines[i]
+    for line in lines:
         if not line:
-            under_intro = False
-            processed.append('')
-            i += 1
+            processed.append("")
             continue
 
-        if line.startswith(('#', '---', '```', '>')):
-            under_intro = False
-            in_entity_list = False
-            processed.append(line)
-            i += 1
-            continue
-
-        if line.endswith(':') and not line.startswith(('•', '*', '-', '#')):
-            under_intro = True
-            in_entity_list = True
-            processed.append(line)
-            i += 1
-            continue
-
-        # Format "Key: Value" items into clean bullet points
-        m_kv = re.match(r'^([A-Z][A-Za-z0-9\s/–—\-]+?):\s+([A-Z][\s\S]+)$', line)
-        if m_kv and not line.startswith(('•', '*', '-', '#', '>')) and len(m_kv.group(1)) < 60:
+        # Format unbulleted "Key: Value" lines into clean bullets (skipping headings/quotes)
+        m_kv = re.match(r"^([A-Z][A-Za-z0-9\s/–—\-]{1,55}?):\s+([A-Z0-9₹$€£~][\s\S]+)$", line)
+        if m_kv and not line.startswith(("•", "*", "-", "#", ">", "http")):
             line = f"• **{m_kv.group(1)}**: {m_kv.group(2)}"
-            under_intro = False
-            in_entity_list = True
-            processed.append(line)
-            i += 1
-            continue
-        elif under_intro and not line.startswith(('•', '*', '-', '#', '>')) and len(line) > 10:
-            line = f"• {line}"
-            processed.append(line)
-            i += 1
-            continue
 
-        # Check if line already has a bullet or number
-        is_bullet = bool(re.match(r'^(?:•|\d+\.)\s+', line))
-
-        # Check if previous line ended with a colon indicating an introductory list header
-        prev_was_intro = bool(processed and any(processed[-j].endswith(':') for j in range(1, min(4, len(processed)+1)) if processed[-j]))
-
-        # Detect standalone entity/name lines (do NOT match headings)
-        is_entity_line = (
-            not is_bullet and 
-            not line.startswith('#') and
-            (prev_was_intro or in_entity_list) and 
-            len(line) < 80 and 
-            (not line.endswith('.') or any(line.startswith(h) for h in ["Dr.", "Prof.", "Mr.", "Ms.", "Mrs.", "Shri", "Thiru."]))
-        )
-
-        if is_entity_line:
-            raw_entity = line.strip('* ')
-            line = f"• **{raw_entity}**"
-            is_bullet = True
-            in_entity_list = True
-            entity_bullets.append(raw_entity)
-        elif is_bullet:
-            in_entity_list = True
-        else:
-            in_entity_list = False
-
-        # Deduplicate consecutive identical lines or bullets (ignoring intermediate blank lines)
         last_non_empty = next((pl for pl in reversed(processed) if pl.strip()), None)
-        if last_non_empty and line.strip() and line.strip() == last_non_empty.strip():
-            i += 1
+        if last_non_empty and line == last_non_empty:
             continue
+
         processed.append(line)
-        i += 1
 
-    # Check if trailing paragraphs contain descriptive roles for the detected entity bullets
-    if entity_bullets:
-        final_lines = []
-        for p_idx, pl in enumerate(processed):
-            if any(pl == f"• **{ent}**" for ent in entity_bullets):
-                ent_name = pl.replace("• **", "").replace("**", "").strip()
-                core_name = re.sub(r"^(?:Dr\.|Prof\.|Thiru\.|Mr\.|Ms\.|Mrs\.|Shri)\s*", "", ent_name).split(",")[0].strip()
-                matched_role = None
-                for search_idx in range(len(processed)):
-                    cand = processed[search_idx]
-                    if cand and not cand.startswith("•") and core_name.lower() in cand.lower():
-                        sents = re.split(r'(?<=[.!?])\s+', cand)
-                        ent_sents = [s for s in sents if core_name.lower() in s.lower()]
-                        if ent_sents:
-                            matched_role = " ".join(ent_sents)
-                            break
-                if matched_role:
-                    desc = re.sub(rf"^(?:.*?\b)?{re.escape(core_name)}\b(?:\s*,\s*IAS)?\s*(?:is\s+also|is\s+the|is)?\s*", "", matched_role, flags=re.IGNORECASE).strip()
-                    desc = desc[0].upper() + desc[1:] if desc else matched_role
-                    cits_in_role = re.findall(r"\[\d+\]", matched_role)
-                    cit_str = f" {cits_in_role[0]}" if (cits_in_role and not re.search(r"\[\d+\]", desc)) else ""
-                    final_lines.append(f"• **{ent_name}**: {desc}{cit_str}")
-                else:
-                    final_lines.append(pl)
-            elif not pl.startswith("•") and any(re.sub(r"^(?:Dr\.|Prof\.|Thiru\.|Mr\.|Ms\.|Mrs\.|Shri)\s*", "", ent).split(",")[0].strip().lower() in pl.lower() for ent in entity_bullets):
-                sents = re.split(r'(?<=[.!?])\s+', pl)
-                remaining_sents = []
-                for s in sents:
-                    s_clean = re.sub(r"^(?:Dr\.|Prof\.|Thiru\.|Mr\.|Ms\.|Mrs\.|Shri|\s+|\[\d+\])+$", "", s).strip()
-                    if s_clean and not any(re.sub(r"^(?:Dr\.|Prof\.|Thiru\.|Mr\.|Ms\.|Mrs\.|Shri)\s*", "", ent).split(",")[0].strip().lower() in s.lower() for ent in entity_bullets):
-                        remaining_sents.append(s)
-                if remaining_sents:
-                    final_lines.append(" ".join(remaining_sents))
-            else:
-                final_lines.append(pl)
-        processed = final_lines
+    result = "\n".join(processed)
+    # Ensure double newlines around bullets for frontend card rendering
+    result = re.sub(r"\n(•\s+)", r"\n\n\1", result)
+    result = re.sub(r"(:\s*\n+)(•\s+)", r":\n\n\2", result)
+    result = re.sub(r"\n{3,}", "\n\n", result)
 
-    result = '\n'.join(processed)
-    # Ensure double newlines around bullets
-    result = re.sub(r'\n(•\s+)', r'\n\n\1', result)
-    result = re.sub(r'(:\s*\n+)(•\s+)', r':\n\n\2', result)
-    result = re.sub(r'\n{3,}', '\n\n', result)
-    # Clean repetitive identical citations across bullet lists
-    result = clean_repetitive_citations(result)
-    return result.strip()
+    return clean_repetitive_citations(result).strip()
 
 
 SYSTEM_SYNTHESIS_PROMPT = """You are an expert academic and institutional research intelligence assistant.
@@ -310,88 +198,52 @@ Answer the user's inquiry accurately, professionally, and concisely using ONLY t
 
 STRICT FORMATTING AND CITATION RULES:
 1. CITATIONS & ANTI-REPETITION:
-   - CRITICAL CITATION RULE: You MUST ground every factual claim, metric, or entity with an inline citation bracket referencing the source chunk index, e.g., "The institute established 4 new Centres of Excellence [1]."
-   - Cite sources using simple numeric ASCII bracket markers ONLY: [1], [2], or multi-citation [1, 2].
-   - NEVER cite '[Verified Knowledge Graph Facts]' or any non-numeric citation tag. Use ONLY numeric ASCII brackets: [1], [2].
-   - Do NOT use bold unicode numbers (e.g. do NOT use [𝟏]). Use only standard ASCII brackets: [1], [2].
-   - ANTI-REPETITION RULE: If an entire bullet list or series of points originates from the same source excerpt, cite the introductory statement or section header ONCE (e.g., "Key initiatives established [1]:"). Do NOT append identical citation tags (e.g., [1]) to every single bullet point in the list.
-   - Attach citations to individual bullet points ONLY if different points cite different excerpts (e.g., Point A [1], Point B [2]).
-   - NEVER write out the PDF filename, page number, or document title inside the answer text (e.g. NEVER write "(Report.pdf, Page 8) [1]" or "(Annual Report, p. 12)"). All document metadata will be rendered automatically by the UI via citation badges.
-   - Do not add standalone citation summaries or bibliography blocks.
+   - CRITICAL CITATION RULE: Ground every positive factual claim, metric, or entity with an inline citation bracket referencing the source chunk index, e.g., "The institute established 4 new Centres of Excellence [1]."
+   - Use standard ASCII numeric brackets ONLY: [1], [2], or [1, 2]. Never use bold unicode brackets or non-numeric tags like '[Verified Knowledge Graph Facts]'.
+   - ANTI-REPETITION RULE: If an entire bullet list originates from the same source excerpt, cite the introductory header ONCE (e.g., "Key initiatives established [1]:") and omit repetitive citation tags on individual child bullets.
+   - Attach citations to individual bullet points ONLY when different bullets cite different source excerpts (e.g., Point A [1], Point B [2]).
+   - NEVER write out PDF filenames, page numbers, or document titles in the answer prose. Do not append bibliography blocks.
 
 2. STRUCTURE & READABILITY:
-   - CRITICAL SYNTAX RULE: NEVER output delimiter prefixes like '---:###' or '---:####' or '---:'. Headings MUST start strictly with markdown hashes e.g. '### Heading Name'. Never prepend dashes or colons to headings.
-   - Always put a space after colons when introducing descriptions (e.g. '• **Topic**: Description', never 'Topic:Description').
-   - NEVER leave a period on its own line. Concluding punctuation must directly follow the last word or citation.
-   - Provide a natural, synthesized response. Do NOT simply dump raw context chunks.
-   - Group related findings into clear thematic headings (### Heading) or formatted bullet points (`• `).
-   - When listing persons, organizations, roles, recommendations, or key facts, ALWAYS format each entry as a bullet point starting with `• **Name/Title**: Description [citation]` on its own line.
-   - ALWAYS leave a blank line before starting any list and after every bullet item.
-   - Never output lists as unbulleted lines or inline comma-separated blocks.
-   - If quoting an excerpt, present it as a clean blockquote (> "quote") or an indented excerpt.
+   - Headings MUST start strictly with markdown hashes (e.g., '### Heading Name'). Never prepend dashes or colons (such as '---:###') to headings.
+   - Always place a space after colons when introducing descriptions (e.g., '• **Topic**: Description').
+   - Group related findings under clear thematic headings (`### Heading`) or bullet points (`• `).
+   - When listing entities, roles, metrics, or key facts, format each entry on its own line as `• **Name/Category**: Description [citation]` with a blank line between items.
+   - Match the structure of your response directly to the query intent. Do not output boilerplate sections unrelated to the user's question.
 
-3. DIRECT FACTUAL ANSWER:
-   - State the direct, factual answer immediately in your first sentence.
-   - If the user asks for a specific numeric metric, date, name, or total, provide that exact data upfront.
+3. DIRECT FACTUAL ANSWER & BREVITY:
+   - State the direct, factual answer immediately in your very first sentence without introductory filler (never start with "Based on the provided excerpts..." or "According to the documents...").
+   - If the query asks for a specific metric, name, date, contact detail, or count, provide that exact value upfront.
 
-4. UNGROUNDED CLAIMS & STRICT BOUNDARIES:
-   - Absolute negative constraint: NEVER extrapolate, speculate, or introduce external facts not present in the provided excerpts.
-   - If the uploaded documents do not contain sufficient evidence to answer the query, state clearly what is missing rather than speculating.
+4. STRICT GROUNDING & NEGATIVE STATEMENTS:
+   - NEVER extrapolate, speculate, or introduce external facts not present in the provided excerpts.
+   - Before concluding information is absent, scan ALL provided excerpts [1] through [N].
+   - When stating that an entity, metric, or event is NOT mentioned in the excerpts, DO NOT attach any citation brackets [N]. Only cite positive facts present in the text.
+   - Do NOT explain or enumerate why irrelevant excerpts were omitted.
 
-5. NEGATIVE STATEMENTS & ABSENCE OF INFORMATION:
-   - When stating that an event, entity, award, or fact is NOT mentioned, NOT won, or NOT present in the document (e.g. "did not win any Nobel Prizes", "no information is provided regarding..."), DO NOT attach any bracket citations [N].
-   - Numeric bracket citations [1], [2] must ONLY be attached to sentences asserting positive facts directly quoted or extracted from the evidence.
+5. ENTITY BINDING & TERMINOLOGY INTEGRITY:
+   - Focus strictly on the specific entity, gene, protein, investigator, committee, or metric queried. Do NOT conflate attributes or counts from adjacent paragraphs, unrelated appendices, or neighboring table rows.
+   - Preserve scientific, technical, financial, and legal terminology, units, identifiers, and qualifying language verbatim from the source text.
+   - For personal profiles, CVs, or resumes, extract complete verified contact details (emails, phone numbers with country codes, portfolio/GitHub/LinkedIn links), education, and experience accurately.
 
-6. RELEVANT PASSAGES & ANTI-ENUMERATION:
-   - Only synthesize facts directly supported by the relevant context.
-   - Do NOT enumerate, list, or explain why irrelevant passages or excerpts were omitted.
-   - Use citations ([1], [2]) ONLY for the relevant excerpts that directly support your substantive claims.
+6. TABULAR DATA, OCR RESILIENCE & ARITHMETIC:
+   - Multi-column institutional and financial tables often compare reporting periods (e.g., Current Year vs. Previous Year). Use document metadata and column headers to map values to the correct fiscal year.
+   - Scanned OCR tables may contain character substitutions inside numbers or dates (such as 'S' for '5', 'O'/'u'/'U' for '0', 'l'/'I' for '1', or 'J' for '3'). Resolve corrupted digits using column alignment, unit labels (e.g., Lakhs/Crores), and row subtotals without adding meta-commentary about OCR noise.
+   - When asked for differences, percentage changes, ratios, or totals, show the explicit step-by-step calculation using the extracted figures:
+     * Difference: Current Period Value - Previous Period Value
+     * Percentage Change: ((New Value - Baseline Value) / Baseline Value) * 100%
+     * Share of Total: (Subset / Total) * 100%
 
-7. TABULAR DATA & FINANCIAL COMPARISONS:
-   - Institutional annual reports and academic documents frequently present longitudinal metrics in multi-column tables (e.g., statements organized by reporting periods like 'Current Year' and 'Previous Year').
-   - In scanned OCR text, numbers and years may contain OCR noise: e.g., '31st March 2023' may appear in headers as 'Slst MARCH 2025' or 'Slst MARCH 2u2J', '53,55.00,000' as '53,55.00,Uuu', '48,50,00,000' as '48.S0_C)_(JL' or '48.50.0u.Uuu' (where 'S' is 5, representing 48,50,00,000 / 48.50 crore, NOT 48.80 crore). The source document metadata defines the true fiscal year. Extract figures from the relevant columns accordingly.
-   - When asked to compare figures across years or calculate the difference/change, provide the reported figures for each year and accurately compute the arithmetic difference (Current Year minus Previous Year) without guessing.
-   - Present the direct factual figures with bullet points and clear calculations. Do NOT append speculative meta-notes or trailing paragraphs discussing OCR transcription or artifact noise.
+7. TABLE ALIGNMENT, NULL SYMBOLS & SUMMARY COUNTS VS. ROSTERS:
+   - In tables and schedules, symbols such as '~', '-', 'Nil', 'N/A', or blank cells indicate zero or not applicable.
+   - Maintain strict 1-to-1 horizontal and vertical alignment between column/row headers and cell values. Never skip a '~' or '-' symbol or shift subsequent numbers into preceding categories.
+     * Example: For headers [Category A, Category B, Category C] and row values [76, ~, 279], report Category A: 76, Category B: ~ (Nil / Not Applicable), Category C: 279.
+   - When a query asks for quantitative statistics (e.g., "Number of..."), report the numerical breakdown and totals from the summary statistics table rather than listing individual names from a roster.
+   - Conversely, when a query asks for members of a specific governance body or nominee category (e.g., Senate nominees on a Board), extract only the individuals listed under that exact heading rather than general institution-wide rosters.
 
-8. ENTITY BINDING & EXACT TERMINOLOGY INTEGRITY:
-   - When answering about a specific named entity, gene, molecule, protein, investigator, organization, or metric:
-     * Focus strictly and exclusively on the specific entity queried. Do NOT conflate traits, mechanisms, investigators, or outcomes from adjacent paragraphs or neighboring table rows.
-     * Retain specific scientific, technical, numerical, and legal terminology verbatim from the text (including units, mutations, chemical formulas, dosages, identifiers, codes, and exact phrasing).
-     * Report quantitative counts, statistics, and legal/patent statuses using the exact qualifying language stated in the verified source excerpts.
-
-9. DETERMINISTIC STEP-BY-STEP ARITHMETIC:
-   - When the user asks for differences, percentage changes, ratios, multiples, or combined totals:
-     * Perform and show the exact step-by-step calculation using the verified figures extracted from the text:
-       - Percentage change: ((New Value - Baseline Value) / Baseline Value) * 100%
-       - Ratio / Multiple: Numerator / Denominator
-       - Percentage of total: (Subset / Total) * 100%
-       - Net Difference / Remainder: Total - Subsets
-       - Combined Sum: Sum of all specified component metrics
-     * State the exact resulting numerical value clearly in the answer.
-
-10. DIRECT BREVITY & TOKEN CONCISENESS (HIGH TOKEN F1):
-   - Never output generic introductory boilerplate such as "Based on the verified excerpts provided above...", "According to the uploaded documents...", or "Here is the information you requested:".
-   - Start immediately with the direct, substantive answer in the very first sentence.
-   - For multi-item queries (e.g., counts (a) through (i)), list each requested metric concisely on its own bullet point with its exact number.
-
-11. FORMS, APPLICATION DOCUMENTS & INVERTED KEY-VALUE FIELDS:
-   - In application forms, government certificates, examination forms, and OCR documents, field values frequently appear directly ABOVE the parenthesized label (e.g. 'SIDDHARTH TRIPATHI' directly above '(Full Name of the Applicant)').
-   - When asked for a person's name, candidate name, or applicant name, extract and state the actual person's name ("Siddharth Tripathi") explicitly and upfront. Never state that the form merely "confirms the name" or treat the field as empty.
-   - Accurately extract associated form fields (e.g., Enrollment ID, Date of Birth, Application Fee, Paper Code) directly alongside the name.
-
-12. TABLE COLUMN & ROW ALIGNMENT WITH NIL/TILDE SYMBOLS:
-   - In tables and schedules, symbols such as '~', '-', 'Nil', 'N/A', or blank indicate zero or not applicable.
-   - Always maintain exact 1-to-1 horizontal and vertical alignment between headers and their corresponding values.
-   - Example: If headers/labels are [Faculty Members, Visiting Faculty, Group A Officers, Scientific Officers, Technical Staff, Administrative Staff] and the row values are [662, 17, 76, ~, 279, 307]:
-     * Faculty Members: 662
-     * Visiting Faculty: 17
-     * Group A Officers: 76
-     * Scientific Officers: ~ (Nil / Not Applicable)
-     * Technical Staff: 279
-     * Administrative Staff: 307
-   - NEVER skip '~' or shift subsequent values to preceding categories.
-   - If the user asks for "Number of Faculty and Employees Appointed", provide the numerical counts and breakdown from the specific table titled "Number of Faculty and Employees Appointed" (Professors: ~, Associate Professors: ~, Assistant Professors: 42, Visiting Faculty and Other Faculty: 111, Administrative and Technical: 51, Total: 204). Do NOT replace the numbers with a long roster list of individual names of appointed persons; the user explicitly requested the quantitative "Number of" statistics.
-   - When asked for "SENATE NOMINEES", answer strictly with the individuals listed under the "SENATE NOMINEES" section of the Board of Governors (Prof. Sethupathi K, Prof. Nandita DasGupta), NOT the general Senate faculty membership roster in the appendices."""
+8. FORMS & INVERTED KEY-VALUE FIELDS:
+   - In scanned application forms, certificates, and official receipts, field values frequently appear on the line directly ABOVE their parenthesized field label (e.g., `<Applicant Name>` printed directly above `(Full Name of the Applicant)`).
+   - Extract and state the actual filled value upfront along with any requested companion fields (such as Enrollment/Application ID, Date of Birth, Fee, or Paper Code)."""
 
 
 def get_synthesis_system_prompt() -> str:
@@ -426,7 +278,6 @@ def build_synthesis_chat_messages(
         {"role": "system", "content": get_synthesis_system_prompt()}
     ]
 
-    # Append past conversation history if present
     if chat_history:
         for msg in chat_history:
             role = msg.get("role", "user")
@@ -434,7 +285,6 @@ def build_synthesis_chat_messages(
             if content and role in ("user", "assistant"):
                 messages.append({"role": role, "content": content})
 
-    # Append current turn with query and evidence
     user_content = format_synthesis_user_prompt(query, evidence)
     messages.append({"role": "user", "content": user_content})
 

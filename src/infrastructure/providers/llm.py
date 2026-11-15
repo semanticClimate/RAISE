@@ -98,6 +98,7 @@ class LocalVLLMProvider(BaseLLMProvider):
                                 if discovered_id and (
                                     self.model_name == models.LLM_MODEL_NAME
                                     or self.model_name == models.VLLM_MODEL_NAME
+                                    or self.model_name == os.getenv("VLLM_MODEL_NAME")
                                     or self.model_name == "default"
                                     or not self.model_name
                                 ):
