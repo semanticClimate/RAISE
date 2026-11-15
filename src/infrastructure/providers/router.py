@@ -496,13 +496,33 @@ class ProviderRouter:
 
         providers_info.sort(key=lambda x: (x["isDisabled"], x["order"]))
 
+        providers_dict = {}
+        for p in providers_info:
+            pid = p["id"]
+            providers_dict[pid] = {
+                "configured": p["status"] in ("READY", "CONFIGURED"),
+                "model": p["model"],
+                "status": p["status"],
+                "tier": p["tier"],
+                "cooldown_until": self.provider_cooldowns.get(pid),
+                "cooldown_reason": None,
+                "is_primary": p["isActive"],
+                "is_disabled": p["isDisabled"],
+                "is_in_fallback_chain": not p["isDisabled"] and pid in self.fallback_chain,
+                "order_rank": p["order"],
+            }
+
         return {
+            "status": "success",
+            "message": "Dynamic routing status loaded.",
             "primary_provider": primary,
+            "fallback_order": self.fallback_chain,
             "fallback_chain": self.fallback_chain,
             "disabled_providers": list(self.disabled_providers),
             "routing_policy": os.getenv("ROUTING_POLICY", "LOCAL_FIRST" if self.mode == ExecutionMode.LOCAL else "CLOUD_FIRST"),
             "execution_mode": self.mode.value,
-            "providers": providers_info,
+            "providers": providers_dict,
+            "providers_list": providers_info,
         }
 
     def set_routing(

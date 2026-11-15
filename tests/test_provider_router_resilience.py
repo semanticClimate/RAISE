@@ -25,6 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from src.core.config import models
 from src.infrastructure.providers.router import (
     ProviderRouter,
     ProviderExhaustedError,
@@ -55,10 +56,9 @@ def test_router_no_hardcoded_blacklists_on_init():
     # Ollama provider must be instance of LocalOllamaProvider
     assert isinstance(router.providers["ollama"], LocalOllamaProvider)
 
-    # Groq default model must not be invalid qwen
+    # Groq default model matches config
     cloud_meta = router._get_cloud_meta()
-    assert cloud_meta["groq"]["default_model"] != "qwen/qwen3.8-27b"
-    assert any(m in cloud_meta["groq"]["default_model"].lower() for m in ("llama-3", "llama", "gpt-oss"))
+    assert cloud_meta["groq"]["default_model"] == models.GROQ_MODEL_NAME
 
 
 def test_rate_limit_429_triggers_cooldown_and_fallback():
@@ -81,7 +81,7 @@ def test_rate_limit_429_triggers_cooldown_and_fallback():
         # Fallback gemini succeeds
         mock_gemini = MagicMock()
         mock_gemini.name = "gemini"
-        mock_gemini.model_name = "gemini-3.5-flash-lite"
+        mock_gemini.model_name = models.GEMINI_MODEL_NAME
         mock_gemini.complete.return_value = "Grounded scientific answer from Gemini."
         router.providers["gemini"] = mock_gemini
 
@@ -120,7 +120,7 @@ def test_billing_or_auth_error_permanently_disables_provider():
 
         mock_gemini = MagicMock()
         mock_gemini.name = "gemini"
-        mock_gemini.model_name = "gemini-3.5-flash-lite"
+        mock_gemini.model_name = models.GEMINI_MODEL_NAME
         mock_gemini.complete.return_value = "Gemini fallback result."
         router.providers["gemini"] = mock_gemini
 
