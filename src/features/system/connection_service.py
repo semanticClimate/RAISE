@@ -515,6 +515,9 @@ def probe_cloud_llm_key(provider: str, api_key: str) -> Dict[str, Any]:
     elif prov == "cohere":
         url = "https://api.cohere.com/v1/models"
         headers = {"Authorization": f"Bearer {key}"}
+    elif prov in ("huggingface", "hf"):
+        url = "https://huggingface.co/api/whoami-v2"
+        headers = {"Authorization": f"Bearer {key}"}
     else:
         # Default fallback for custom or unprobed providers
         return {"online": True, "status": "READY", "provider": prov, "latency_ms": 20}
