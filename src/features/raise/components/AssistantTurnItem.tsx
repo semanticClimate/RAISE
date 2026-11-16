@@ -176,8 +176,12 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
   const rawCitations =
     activeResp?.response?.citations ||
     activeResp?.response?.top_chunks ||
+    (activeResp as any)?.citations ||
+    (activeResp as any)?.sources ||
     msg.response?.citations ||
     msg.response?.top_chunks ||
+    (msg as any)?.citations ||
+    (msg as any)?.sources ||
     [];
 
   // Stable citations reference
