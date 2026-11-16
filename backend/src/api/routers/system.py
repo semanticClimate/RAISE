@@ -137,8 +137,8 @@ async def test_llm_key_endpoint(req: Optional[SystemConfigRequest] = None) -> Di
 @router.get("/preflight-assets")
 async def get_preflight_assets() -> Dict[str, Any]:
     """
-    Returns live verification status and disk footprint for all 6 required
-    neural assets and runtime engines (~4.6 GB Total Footprint).
+    Returns live verification status and dynamically calculated disk footprint
+    for all required neural assets and runtime engines.
     """
     return _get_preflight_assets()
 
