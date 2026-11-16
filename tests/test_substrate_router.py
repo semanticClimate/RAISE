@@ -40,6 +40,11 @@ def test_get_redis_client_in_fast_mode(monkeypatch):
     """Verifies FakeStrictRedis client creation and caching in FAST mode."""
     monkeypatch.setenv("RAISE_SUBSTRATE_MODE", "fast")
     client = get_redis_client()
+    if client is None:
+        try:
+            import fakeredis  # noqa: F401
+        except ImportError:
+            pytest.skip("fakeredis is not installed in the testing environment")
     assert client is not None
     # Basic get/set roundtrip
     client.set("raise_test_key", "substrate_ok")
