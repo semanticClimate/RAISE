@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import json
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -78,6 +79,8 @@ class StandaloneRAGPipeline:
             reasoning_memory=self.reasoning_memory,
         )
 
+        self._indexing_thread: Optional[threading.Thread] = None
+
         # Load processed artifacts into memory on startup
         self._load_processed_data()
 
@@ -86,7 +89,7 @@ class StandaloneRAGPipeline:
         self.reranker = self.agent_router.reranker
         self.parallel_retriever = AsyncParallelRetriever(self, reranker=self.reranker)
 
-    def _load_processed_data(self, force_reload: bool = False):
+    def _load_processed_data(self, force_reload: bool = False, background: bool = True):
         """Auto-load all processed academic chunks and triples into memory if not already indexed."""
         processed_chunks_dir = settings.processed_dir / "chunks"
         processed_triples_dir = settings.processed_dir / "graph_triples"
@@ -98,7 +101,7 @@ class StandaloneRAGPipeline:
         except Exception:
             pass
 
-        if force_reload or not already_indexed:
+        def _ingest_chunks_worker():
             if processed_chunks_dir.exists():
                 for f in processed_chunks_dir.glob("*_chunks.json"):
                     try:
@@ -108,6 +111,17 @@ class StandaloneRAGPipeline:
                             self.vector_engine.ingest_chunks(chunks, doc_id=clean_doc_id)
                     except Exception:
                         pass
+
+        if force_reload or not already_indexed:
+            if background:
+                self._indexing_thread = threading.Thread(
+                    target=_ingest_chunks_worker,
+                    daemon=True,
+                    name="ChromaAutoIndexer",
+                )
+                self._indexing_thread.start()
+            else:
+                _ingest_chunks_worker()
 
         if processed_triples_dir.exists():
             triples_list = []
@@ -124,6 +138,12 @@ class StandaloneRAGPipeline:
                         self.sync_to_neo4j()
                     except Exception:
                         pass
+
+    def ensure_data_indexed(self, timeout: float = 300.0) -> None:
+        """Wait for background chunk ingestion thread to complete if running."""
+        thread = getattr(self, "_indexing_thread", None)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=timeout)
 
     def set_evaluation_namespace(self, collection_name: str) -> None:
         """Dynamically routes vector search to an isolated evaluation collection."""
@@ -208,6 +228,7 @@ class StandaloneRAGPipeline:
         - Fast Mode: hops=1, top_k=4, sub-second to ~1.5s latency
         - Expert Mode: hops=3, top_k=8, deep graph traversal, table boosting
         """
+        self.ensure_data_indexed()
         if mode == "expert":
             effective_hops = max(hops, 3)
             effective_top_k = max(top_k, 12)
@@ -242,6 +263,7 @@ class StandaloneRAGPipeline:
 
     def run(self, query: str, active_docs: Optional[List[str]] = None, mode: Optional[str] = "fast") -> Dict[str, Any]:
         """Convenience execution method for automated test scripts and benchmarks."""
+        self.ensure_data_indexed()
         if active_docs is None:
             try:
                 from src.api.context import get_ready_documents_list

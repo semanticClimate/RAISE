@@ -32,6 +32,7 @@ How to Update or Tune:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 from src.core.config import models
@@ -136,7 +137,12 @@ class VectorIngestionMixin:
 
         return total_inserted
 
-    def ingest_chunks(self, chunks: List[Dict[str, Any]], doc_id: str = "default") -> int:
+    def ingest_chunks(
+        self,
+        chunks: List[Dict[str, Any]],
+        doc_id: str = "default",
+        index_propositions: bool = False,
+    ) -> int:
         """
         Add context-enriched document chunks into ChromaDB collection with full provenance metadata.
         Strictly rejects evaluation / benchmark files to prevent test contamination.
@@ -151,6 +157,7 @@ class VectorIngestionMixin:
         ids = []
         documents = []
         metadatas = []
+        index_props = index_propositions or os.getenv("RAISE_INDEX_PROPOSITIONS", "0").lower() in ("1", "true")
 
         for idx, chunk in enumerate(chunks):
             pdf_fname = str(chunk.get("pdf_filename", doc_id))
@@ -183,9 +190,9 @@ class VectorIngestionMixin:
                 "recommended_task": str(chunk.get("recommended_task", "general")),
             })
 
-            # Optional fine-grained proposition/atomic fact indexing with parent backlinks (applied for compact reports <= 400 chunks)
+            # Optional fine-grained proposition/atomic fact indexing with parent backlinks (applied when enabled for compact reports <= 400 chunks)
             props = chunk.get("propositions") or chunk.get("atomic_facts") or []
-            if isinstance(props, list) and len(chunks) <= 400:
+            if index_props and isinstance(props, list) and len(chunks) <= 400:
                 for p_idx, p_item in enumerate(props):
                     p_str = (p_item.get("text") or p_item.get("plain_text") or "") if isinstance(p_item, dict) else str(p_item)
                     p_str = p_str.strip()
