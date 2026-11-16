@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Zap, Sparkles, MessageSquare } from 'lucide-react';
 import { AnswerMarkdown } from '../../../components/chat/AnswerMarkdown';
 import {
   BackendErrorCard,
@@ -195,19 +196,61 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
     (msg as any)?.query ||
     '';
 
+  const effectiveMode =
+    msg.mode ||
+    (activeResp?.response as any)?.mode_used ||
+    (activeResp?.response as any)?.pipeline_info?.mode_used ||
+    (msg.response as any)?.mode_used ||
+    (msg.response as any)?.pipeline_info?.mode_used ||
+    'fast';
+
   return (
     <div
       key={`assistant-turn-${turnIndex}`}
       className="content-visibility-auto flex flex-col items-start w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto"
     >
-      {/* Thought Duration Header OUTSIDE response box: only show during active generation or on genuine answered responses */}
+      {/* Thought Duration & Research Mode Header OUTSIDE response box */}
       {isCurrentlyActive ? (
         <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
           <LiveThoughtDuration startTimeMs={msg.startedAtMs || Date.now()} />
         </div>
-      ) : Boolean(resolvedContent) && !isUngroundedFallback && executionTimeSec > 0 ? (
+      ) : Boolean(resolvedContent) && !isUngroundedFallback ? (
         <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
-          <ThoughtDuration executionTimeSec={executionTimeSec} />
+          {executionTimeSec > 0 ? (
+            <ThoughtDuration executionTimeSec={executionTimeSec} />
+          ) : (
+            <div />
+          )}
+          <div className="mb-2 mr-0.5 select-none">
+            {effectiveMode === 'expert' ? (
+              <span
+                data-testid="turn-mode-badge"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20 shadow-2xs"
+                title="Expert Mode: Cyclic Multi-Hop GraphRAG Reasoning"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+                <span>Expert Mode · GraphRAG</span>
+              </span>
+            ) : effectiveMode === 'conversational' ? (
+              <span
+                data-testid="turn-mode-badge"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 shadow-2xs"
+                title="Conversational Mode: Direct Context Dialogue"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+                <span>Conversational Mode</span>
+              </span>
+            ) : (
+              <span
+                data-testid="turn-mode-badge"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-sky-500/10 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-500/20 shadow-2xs"
+                title="Fast Mode: Dense Vector & BM25 Reciprocal Rank Fusion"
+              >
+                <Zap className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
+                <span>Fast Mode · Vector Search</span>
+              </span>
+            )}
+          </div>
         </div>
       ) : null}
 

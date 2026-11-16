@@ -305,6 +305,13 @@ export function useChatStream({
             res.data.latency_sec = res.data.latency_sec ?? elapsedSec;
             res.data.execution_time = res.data.execution_time ?? elapsedSec;
           }
+          const effectiveModeUsed =
+            (res.data as any)?.mode_used ||
+            (res.data?.pipeline_info as any)?.mode ||
+            (isConversational ? 'conversational' : parseMode);
+          if (res.data) {
+            (res.data as any).mode_used = effectiveModeUsed;
+          }
           assistantMsg = {
             role: 'assistant',
             text: resolvedText,
@@ -314,6 +321,7 @@ export function useChatStream({
             created_at: new Date().toISOString(),
             persistenceFailed: !persisted,
             isThinking: false,
+            mode: effectiveModeUsed,
           };
         } else {
           const isManualAbort =

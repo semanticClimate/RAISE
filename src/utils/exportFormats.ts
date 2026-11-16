@@ -122,6 +122,31 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
   const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'BAAI/bge-reranker-v2-m3';
   const nliVerifierModel = pInfo?.nli_verifier_model || response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l';
 
+  const rawMode =
+    (response as any)?.mode_used ||
+    (response as any)?.mode ||
+    (pInfo as any)?.mode ||
+    'fast';
+  const mode = String(rawMode).toLowerCase().includes('expert')
+    ? 'expert'
+    : String(rawMode).toLowerCase().includes('conversational')
+      ? 'conversational'
+      : 'fast';
+
+  const modeDisplay =
+    mode === 'expert'
+      ? 'Expert Mode (Multi-Hop GraphRAG · TableFormer · NLI Grounding)'
+      : mode === 'conversational'
+        ? 'Conversational Mode (Dual-Tier Persona Memory)'
+        : 'Fast Mode (Dense Vector & BM25 · Sub-Second Synthesis)';
+
+  const synthesisMethod =
+    mode === 'expert'
+      ? 'Deep Multi-Hop Cyclical Knowledge Graph Traversal & Entailment Verification'
+      : mode === 'conversational'
+        ? 'Direct Persona Reasoning with Contextual Memory'
+        : 'Single-Pass Vector Similarity Search & Grounded Citation Extraction';
+
   return {
     storageUsed,
     llmModel,
@@ -129,6 +154,9 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
     encoderModel,
     rerankerModel,
     nliVerifierModel,
+    mode,
+    modeDisplay,
+    synthesisMethod,
   };
 }
 
@@ -151,7 +179,10 @@ export function formatMarkdownReport(
   // Title Header
   lines.push(`# RAISE: Research Assessment Intelligence & Semantic Extraction`);
   lines.push('');
+  const prov = resolveAuditedProvenance(response);
   lines.push(`**Date:** ${now}`);
+  lines.push(`**Research Mode:** ${prov.modeDisplay}`);
+  lines.push(`**Synthesis Architecture:** ${prov.synthesisMethod}`);
   lines.push('');
   lines.push('---');
   lines.push('');
@@ -202,8 +233,6 @@ export function formatMarkdownReport(
   }
 
   // Architecture Running Section
-  const prov = resolveAuditedProvenance(response);
-
   lines.push('---');
   lines.push('');
   lines.push('### 🔬 Architecture Running');
@@ -853,6 +882,8 @@ export function generateReportHtml(
     timeStyle: 'short',
   });
 
+  const prov = resolveAuditedProvenance(response);
+
   const { cleanText, citations: enrichedCitations } = cleanRagResponseText(
     answerText,
     response?.citations || []
@@ -1056,8 +1087,18 @@ export function generateReportHtml(
       <span class="meta-value">ISO A4 Portrait (Justified)</span>
     </div>
     <div class="meta-item">
+      <span class="meta-label">Research Engine Mode</span>
+      <span class="meta-value" style="color: ${prov.mode === 'expert' ? '#7c3aed' : '#0284c7'}; font-weight: 700;">
+        ${escapeHtml(prov.modeDisplay)}
+      </span>
+    </div>
+    <div class="meta-item">
       <span class="meta-label">Audited References</span>
       <span class="meta-value">${citationsCount > 0 ? `${citationsCount} Sources Grounded` : 'Direct Synthesis'}</span>
+    </div>
+    <div class="meta-item" style="grid-column: span 2;">
+      <span class="meta-label">Synthesis Architecture</span>
+      <span class="meta-value">${escapeHtml(prov.synthesisMethod)}</span>
     </div>
     ${
       uniqueDocs.length > 0
@@ -1087,9 +1128,14 @@ export function generateReportHtml(
   </div>
 
   <main>
-    <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; border-bottom: 2px solid #0f172a; padding-bottom: 6px; margin-bottom: 16px;">
-      Answer
-    </h2>
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 6px; margin-bottom: 16px;">
+      <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin: 0;">
+        Answer
+      </h2>
+      <span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: ${prov.mode === 'expert' ? '#f5f3ff' : '#f0f9ff'}; color: ${prov.mode === 'expert' ? '#7c3aed' : '#0284c7'}; border: 1px solid ${prov.mode === 'expert' ? '#ddd6fe' : '#bae6fd'};">
+        ${escapeHtml(prov.modeDisplay)}
+      </span>
+    </div>
     <div style="font-size: 14.5px;">
       ${formattedAnswerHtml}
     </div>
@@ -1101,21 +1147,13 @@ export function generateReportHtml(
         🔬 Architecture Running
       </h3>
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; font-size: 12px; margin-top: 8px;">
-        <div><strong style="color: #475569;">Storage Substrates:</strong> <span style="color: #0f172a;">${escapeHtml(
-          resolveAuditedProvenance(response).storageUsed
-        )}</span></div>
-        <div><strong style="color: #475569;">Synthesis LLM:</strong> <span style="color: #0f172a;">${escapeHtml(
-          `${resolveAuditedProvenance(response).llmModel} (${resolveAuditedProvenance(response).llmProvider})`
-        )}</span></div>
-        <div><strong style="color: #475569;">Dense Embedding Encoder:</strong> <span style="color: #0f172a;">${escapeHtml(
-          resolveAuditedProvenance(response).encoderModel
-        )}</span></div>
-        <div><strong style="color: #475569;">Cross-Attention Reranker:</strong> <span style="color: #0f172a;">${escapeHtml(
-          resolveAuditedProvenance(response).rerankerModel
-        )}</span></div>
-        <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(
-          resolveAuditedProvenance(response).nliVerifierModel
-        )}</span></div>
+        <div><strong style="color: #475569;">Research Engine Mode:</strong> <span style="color: ${prov.mode === 'expert' ? '#7c3aed' : '#0284c7'}; font-weight: 600;">${escapeHtml(prov.modeDisplay)}</span></div>
+        <div><strong style="color: #475569;">Reasoning Pipeline:</strong> <span style="color: #0f172a;">${escapeHtml(prov.synthesisMethod)}</span></div>
+        <div><strong style="color: #475569;">Storage Substrates:</strong> <span style="color: #0f172a;">${escapeHtml(prov.storageUsed)}</span></div>
+        <div><strong style="color: #475569;">Synthesis LLM:</strong> <span style="color: #0f172a;">${escapeHtml(`${prov.llmModel} (${prov.llmProvider})`)}</span></div>
+        <div><strong style="color: #475569;">Dense Embedding Encoder:</strong> <span style="color: #0f172a;">${escapeHtml(prov.encoderModel)}</span></div>
+        <div><strong style="color: #475569;">Cross-Attention Reranker:</strong> <span style="color: #0f172a;">${escapeHtml(prov.rerankerModel)}</span></div>
+        <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(prov.nliVerifierModel)}</span></div>
         <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE</span></div>
       </div>
     </section>
@@ -1484,6 +1522,9 @@ export function generatePdfBlob(
   const dateStr = now.toISOString().split('T')[0];
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
+  // Resolve provenance early to display mode badge and pipeline architecture
+  const prov = resolveAuditedProvenance(response);
+
   // Collection of page streams
   const pages: string[] = [];
   let currentOps: string[] = [];
@@ -1539,6 +1580,17 @@ export function generatePdfBlob(
   );
   currentOps.push(
     `0.08 0.12 0.22 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 55} ${curY - 16} l S`
+  );
+  // Prominently render the active research mode badge next to the ANSWER header
+  const modeHeaderBadge = `[${prov.mode === 'expert' ? 'EXPERT MODE · MULTI-HOP GRAPHRAG' : prov.mode === 'conversational' ? 'CONVERSATIONAL MODE' : 'FAST MODE · DENSE VECTOR & BM25'}]`;
+  const badgeRgb =
+    prov.mode === 'expert'
+      ? '0.45 0.2 0.75'
+      : prov.mode === 'conversational'
+        ? '0.2 0.5 0.35'
+        : '0.12 0.42 0.85';
+  currentOps.push(
+    `BT /F2 8 Tf ${badgeRgb} rg ${marginX + 65} ${curY - 12} Td (${escapePdfText(modeHeaderBadge)}) Tj ET`
   );
   curY -= 28;
 
@@ -1782,10 +1834,8 @@ export function generatePdfBlob(
   }
 
   // --- AUDITED PIPELINE ARCHITECTURE & PROVENANCE SECTION ---
-  const prov = resolveAuditedProvenance(response);
-
   curY -= 12;
-  ensureSpace(110);
+  ensureSpace(130);
 
   currentOps.push(
     `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Architecture Running')}) Tj ET`
@@ -1795,13 +1845,15 @@ export function generatePdfBlob(
   );
   curY -= 24;
 
-  const cardHeight = 78;
+  const cardHeight = 102;
   currentOps.push(`0.97 0.98 0.99 rg`);
   currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re f`);
   currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
   currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re s`);
 
   const specRows = [
+    { label: 'Research Mode:', val: prov.modeDisplay },
+    { label: 'Synthesis Architecture:', val: prov.synthesisMethod },
     { label: 'Storage Substrates:', val: prov.storageUsed },
     { label: 'Synthesis LLM:', val: `${prov.llmModel} (${prov.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
@@ -2441,14 +2493,37 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       const ansTitle = `ANSWER ${ex.turnIndex}`;
       const ansTitleWidth = estimateHelveticaWidth(ansTitle, 9.5);
 
+      const msgMode =
+        ex.assistantMsg.mode ||
+        (ex.assistantMsg.response as any)?.mode_used ||
+        (ex.assistantMsg.response as any)?.pipeline_info?.mode_used ||
+        'fast';
+      const modeLabel =
+        msgMode === 'expert'
+          ? 'Expert Mode (GraphRAG)'
+          : msgMode === 'conversational'
+            ? 'Conversational Mode'
+            : 'Fast Mode (Vector Search)';
+      const modeBadge = `[${modeLabel}]`;
+      const modeBadgeWidth = estimateHelveticaWidth(modeBadge, 7.5);
+      const modeColor =
+        msgMode === 'expert'
+          ? '0.45 0.2 0.75'
+          : msgMode === 'conversational'
+            ? '0.2 0.5 0.35'
+            : '0.12 0.42 0.85';
+
       ensureSpace(20);
       currentOps.push(
         `BT /F2 9.5 Tf 0.15 0.38 0.92 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(ansTitle)}) Tj ET`
       );
+      currentOps.push(
+        `BT /F2 7.5 Tf ${modeColor} rg ${cardInnerX + ansTitleWidth + 8} ${curY - 10} Td (${escapePdfText(modeBadge)}) Tj ET`
+      );
       if (durationSec != null && Number(durationSec) > 0) {
         const thoughtText = `Thought for ${Number(durationSec).toFixed(1)}s`;
         currentOps.push(
-          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + ansTitleWidth + 8} ${curY - 10} Td (${escapePdfText(thoughtText)}) Tj ET`
+          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + ansTitleWidth + 8 + modeBadgeWidth + 6} ${curY - 10} Td (${escapePdfText(thoughtText)}) Tj ET`
         );
       }
       curY -= 16;
@@ -2510,13 +2585,25 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   // --- AUDITED PIPELINE ARCHITECTURE & PROVENANCE SECTION ---
   const latestAssistantWithPipeline = [...messages]
     .reverse()
-    .find((m) => m.role === 'assistant' && (m.response?.pipeline_info || m.pipeline_info));
+    .find(
+      (m) =>
+        m.role === 'assistant' &&
+        (m.response?.pipeline_info ||
+          m.pipeline_info ||
+          m.mode ||
+          (m.response as any)?.mode_used)
+    );
   const sProv = resolveAuditedProvenance(
-    latestAssistantWithPipeline?.response || { pipeline_info: latestAssistantWithPipeline?.pipeline_info }
+    latestAssistantWithPipeline?.response || {
+      pipeline_info: latestAssistantWithPipeline?.pipeline_info,
+      mode_used:
+        latestAssistantWithPipeline?.mode ||
+        (latestAssistantWithPipeline?.response as any)?.mode_used,
+    }
   );
 
   curY -= 12;
-  ensureSpace(110);
+  ensureSpace(130);
 
   currentOps.push(
     `BT /F2 10.5 Tf 0.08 0.12 0.22 rg ${marginX} ${curY - 12} Td (${escapePdfText('Architecture Running')}) Tj ET`
@@ -2526,13 +2613,15 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   );
   curY -= 24;
 
-  const sessionCardHeight = 78;
+  const sessionCardHeight = 102;
   currentOps.push(`0.97 0.98 0.99 rg`);
   currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re f`);
   currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
   currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re s`);
 
   const sessionSpecRows = [
+    { label: 'Research Mode:', val: sProv.modeDisplay },
+    { label: 'Synthesis Architecture:', val: sProv.synthesisMethod },
     { label: 'Storage Substrates:', val: sProv.storageUsed },
     { label: 'Synthesis LLM:', val: `${sProv.llmModel} (${sProv.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },

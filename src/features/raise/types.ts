@@ -49,6 +49,7 @@ export interface ChatMessage {
   created_at?: string;
   startedAtMs?: number;
   feedback?: 'thumbs_up' | 'thumbs_down' | null;
+  mode?: 'fast' | 'expert' | 'conversational';
   id?: string;
 }
 
