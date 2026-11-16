@@ -173,12 +173,12 @@ export const ControlCenterModal: React.FC = () => {
     if (!el) return;
 
     const updateHeight = () => {
-      // Natural content height + fixed chrome (64px header + 48px tabs + 64px footer = 176px)
+      // Natural content height + fixed chrome (56px header + 44px tabs + 56px footer = 156px)
       const contentH = el.scrollHeight;
-      const chromeH = 176;
+      const chromeH = 156;
       const totalH = contentH + chromeH;
-      const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.90 : 720;
-      const minH = 460;
+      const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.92 : 780;
+      const minH = 440;
       const finalH = Math.min(maxH, Math.max(minH, totalH));
       setModalHeight(Math.round(finalH));
     };
@@ -209,14 +209,14 @@ export const ControlCenterModal: React.FC = () => {
         style={modalHeight ? { height: `${modalHeight}px` } : undefined}
         className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0A0A0A] border border-[#292929] shadow-2xl overflow-hidden text-[#FFFFFF] font-sans shrink-0 transition-[height] duration-300 ease-out"
       >
-        {/* Top Header - Strict Monochrome, Page Heading 28-32px */}
-        <div className="h-16 px-6 border-b border-[#292929] bg-[#0A0A0A] shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center text-[#FFFFFF] shrink-0">
-              <Zap className="w-4 h-4 text-[#FFFFFF]" />
+        {/* Top Header - Strict Monochrome */}
+        <div className="h-14 px-5 sm:px-6 border-b border-[#292929] bg-[#0A0A0A] shrink-0 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center text-[#FFFFFF] shrink-0">
+              <Zap className="w-3.5 h-3.5 text-[#FFFFFF]" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-[#FFFFFF] leading-tight">
+              <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-[#FFFFFF] leading-tight">
                 Control Center
               </h1>
             </div>
@@ -253,7 +253,7 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Segmented Navigation Tab Bar - Strict Monochrome */}
-        <div className="h-12 border-b border-[#292929] bg-[#0A0A0A] px-4 sm:px-6 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+        <div className="h-11 border-b border-[#292929] bg-[#0A0A0A] px-4 sm:px-6 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -263,7 +263,7 @@ export const ControlCenterModal: React.FC = () => {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`h-8 flex items-center gap-2 px-3 rounded-lg transition-all shrink-0 cursor-pointer text-xs ${
+                className={`h-7.5 flex items-center gap-2 px-3 rounded-lg transition-all shrink-0 cursor-pointer text-xs ${
                   isActive
                     ? 'bg-[#FFFFFF] text-[#000000] font-semibold shadow-sm'
                     : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717]'
@@ -278,9 +278,9 @@ export const ControlCenterModal: React.FC = () => {
           })}
         </div>
 
-        {/* Scrollable Step Content Body */}
+        {/* Step Content Body (Compact, minimum scroll) */}
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 bg-[#0A0A0A] min-h-0">
-          <div ref={contentWrapperRef} className="py-5 sm:py-6 space-y-5">
+          <div ref={contentWrapperRef} className="py-3.5 sm:py-4 space-y-3.5">
             {activeTab === 'overview' && <OverviewStep />}
             {activeTab === 'models' && <EngineStep />}
             {activeTab === 'neural' && <NeuralStep />}
@@ -290,7 +290,7 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Refined Navigation Footer - Strict Monochrome */}
-        <div className="h-16 flex items-center justify-between px-5 sm:px-6 border-t border-[#292929] bg-[#0A0A0A] shrink-0">
+        <div className="h-14 flex items-center justify-between px-5 sm:px-6 border-t border-[#292929] bg-[#0A0A0A] shrink-0">
           <div>
             {currentTabIdx > 0 && (
               <button

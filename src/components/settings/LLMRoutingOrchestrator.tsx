@@ -339,26 +339,26 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
   };
 
   return (
-    <div className={`llm-routing-orchestrator flex flex-col gap-3.5 ${className}`} data-testid="llm-routing-orchestrator">
+    <div className={`llm-routing-orchestrator flex flex-col gap-2.5 ${className}`} data-testid="llm-routing-orchestrator">
       {/* Header and Live Status */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/10">
+      <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-white/10">
         <div>
-          <h3 className="text-sm font-semibold text-white">
-            Interactive LLM Routing Orchestrator & Fallback Priority
+          <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+            Fallback Priority
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Only verified, connected LLMs are shown in the active execution chain. Sub-second queries failover sequentially down the chain.
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Active LLMs fail over sequentially.
           </p>
         </div>
         <button
           type="button"
           onClick={fetchLiveRouting}
           disabled={isLoading}
-          className="self-start sm:self-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-white/20 text-white bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-lg border border-white/20 text-white bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
           title="Refresh runtime routing state"
         >
           <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>Sync State</span>
+          <span>Sync</span>
         </button>
       </div>
 

@@ -57,9 +57,9 @@ export const PlatformStep: React.FC = () => {
   const CurrentIcon = currentPlatform.icon;
 
   return (
-    <div className="space-y-4 animate-in fade-in-50 duration-150">
+    <div className="space-y-2.5 animate-in fade-in-50 duration-150">
       <div>
-        <h3 className="text-base font-bold text-white tracking-tight">Device & Platform</h3>
+        <h3 className="text-sm font-bold text-white tracking-tight">Device & Platform</h3>
       </div>
 
       {/* Target Operating System Selector */}
@@ -73,11 +73,11 @@ export const PlatformStep: React.FC = () => {
               setIsSelectorOpen(!isSelectorOpen);
             }
           }}
-          className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-[#171717] transition-colors"
+          className="p-2.5 sm:p-3 flex items-center justify-between cursor-pointer hover:bg-[#171717] transition-colors"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center text-[#FFFFFF] shrink-0">
-              <CurrentIcon className="w-4 h-4 text-[#FFFFFF]" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center text-[#FFFFFF] shrink-0">
+              <CurrentIcon className="w-3.5 h-3.5 text-[#FFFFFF]" />
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-[#FFFFFF]">{currentPlatform.label}</span>
@@ -88,21 +88,21 @@ export const PlatformStep: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="text-xs font-semibold px-2.5 py-1 rounded-md border border-[#292929] bg-[#171717] hover:bg-[#292929] text-[#FFFFFF] transition-all cursor-pointer"
+              className="text-xs font-semibold px-2 py-0.5 rounded-md border border-[#292929] bg-[#171717] hover:bg-[#292929] text-[#FFFFFF] transition-all cursor-pointer"
             >
               {isSelectorOpen ? 'Close' : 'Switch'}
             </button>
             {isSelectorOpen ? (
-              <ChevronUp className="w-4 h-4 text-[#A3A3A3]" />
+              <ChevronUp className="w-3.5 h-3.5 text-[#A3A3A3]" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-[#A3A3A3]" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#A3A3A3]" />
             )}
           </div>
         </div>
 
         {isSelectorOpen && (
-          <div className="border-t border-[#292929] bg-[#0A0A0A] p-2.5 space-y-1.5 animate-in slide-in-from-top-2 duration-150">
-            <div className="text-[11px] font-mono text-[#A3A3A3] px-2 pb-1">
+          <div className="border-t border-[#292929] bg-[#0A0A0A] p-2 space-y-1 animate-in slide-in-from-top-2 duration-150">
+            <div className="text-[11px] font-mono text-[#A3A3A3] px-2 pb-0.5">
               Select deployment environment:
             </div>
             {platforms.map((p) => {
@@ -123,14 +123,14 @@ export const PlatformStep: React.FC = () => {
                       setIsSelectorOpen(false);
                     }
                   }}
-                  className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
+                  className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
                     isSelected
                       ? 'bg-[#FFFFFF] text-[#000000] border-[#FFFFFF] font-bold'
                       : 'bg-[#171717] border-[#292929] text-[#A3A3A3] hover:border-[#FFFFFF]/20 hover:text-[#FFFFFF]'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`w-4 h-4 ${isSelected ? 'text-[#000000]' : 'text-[#A3A3A3]'}`} />
+                  <div className="flex items-center gap-2">
+                    <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-[#000000]' : 'text-[#A3A3A3]'}`} />
                     <div>
                       <div className="text-xs font-bold">{p.label}</div>
                       <div
@@ -141,7 +141,7 @@ export const PlatformStep: React.FC = () => {
                     </div>
                   </div>
 
-                  {isSelected && <Check className="w-4 h-4 text-[#000000] stroke-[3]" />}
+                  {isSelected && <Check className="w-3.5 h-3.5 text-[#000000] stroke-[3]" />}
                 </div>
               );
             })}
@@ -150,8 +150,8 @@ export const PlatformStep: React.FC = () => {
       </div>
 
       {/* Hardware Telemetry Specs: Clean 2-Card Layout (Platform & Acceleration) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] space-y-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-0.5">
           <div className="flex items-center gap-1.5 text-[11px] text-[#A3A3A3]">
             <Laptop className="w-3.5 h-3.5 text-[#FFFFFF]" />
             <span>Platform</span>
@@ -161,7 +161,7 @@ export const PlatformStep: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] space-y-1">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-0.5">
           <div className="flex items-center gap-1.5 text-[11px] text-[#A3A3A3]">
             <Zap className="w-3.5 h-3.5 text-[#FFFFFF]" />
             <span>Acceleration</span>
@@ -172,12 +172,12 @@ export const PlatformStep: React.FC = () => {
         </div>
       </div>
 
-      {/* Local Backend Engine Service Card: Clean live status display */}
-      <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between">
+      {/* Local Backend Engine Service Card */}
+      <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <span
             data-testid="connection-status-dot"
-            className={`relative inline-flex rounded-full h-2.5 w-2.5 shrink-0 transition-colors ${
+            className={`relative inline-flex rounded-full h-2 w-2 shrink-0 transition-colors ${
               isConnected
                 ? 'bg-[#FFFFFF] shadow-[0_0_8px_rgba(255,255,255,0.8)]'
                 : 'bg-[#292929] ring-1 ring-[#FFFFFF]/10'
@@ -187,7 +187,7 @@ export const PlatformStep: React.FC = () => {
             <div className="text-xs font-bold text-[#FFFFFF] flex items-center gap-2">
               <span>Backend Gateway</span>
               <span className="text-[11px] font-mono text-[#A3A3A3] font-normal">
-                {isConnected ? '127.0.0.1:8000' : 'Offline (Port 8000)'}
+                {isConnected ? '127.0.0.1:8000' : 'Offline (:8000)'}
               </span>
               {isConnected && latencyMs ? (
                 <span className="text-[10px] font-mono text-[#A3A3A3]">({latencyMs}ms)</span>

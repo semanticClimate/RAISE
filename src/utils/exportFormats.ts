@@ -1148,10 +1148,9 @@ export function generateReportHtml(
         🔬 Architecture Running
       </h3>
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; font-size: 12px; margin-top: 8px;">
-        <div><strong style="color: #475569;">Research Engine Mode:</strong> <span style="color: ${prov.mode === 'expert' ? '#7c3aed' : '#0284c7'}; font-weight: 600;">${escapeHtml(prov.modeDisplay)}</span></div>
         <div><strong style="color: #475569;">Reasoning Pipeline:</strong> <span style="color: #0f172a;">${escapeHtml(prov.synthesisMethod)}</span></div>
         <div><strong style="color: #475569;">Storage Substrates:</strong> <span style="color: #0f172a;">${escapeHtml(prov.storageUsed)}</span></div>
-        <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE</span></div>
+        <div style="grid-column: span 2;"><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE</span></div>
       </div>
     </section>
   </main>
@@ -1811,9 +1810,6 @@ export function generatePdfBlob(
   curY -= 24;
 
   const specRows = [
-    ...(prov.mode !== 'conversational' && !String(prov.modeDisplay).toLowerCase().includes('conversational')
-      ? [{ label: 'Research Mode:', val: prov.modeDisplay }]
-      : []),
     { label: 'Reasoning Pipeline:', val: prov.synthesisMethod },
     { label: 'Storage Substrates:', val: prov.storageUsed },
     { label: 'Platform Attribution:', val: 'RAISE' },
@@ -2553,9 +2549,6 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   curY -= 24;
 
   const sessionSpecRows = [
-    ...(sProv.mode !== 'conversational' && !String(sProv.modeDisplay).toLowerCase().includes('conversational')
-      ? [{ label: 'Research Mode:', val: sProv.modeDisplay }]
-      : []),
     { label: 'Reasoning Pipeline:', val: sProv.synthesisMethod },
     { label: 'Storage Substrates:', val: sProv.storageUsed },
     { label: 'Platform Attribution:', val: 'RAISE' },

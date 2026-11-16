@@ -204,20 +204,20 @@ export const OverviewStep: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-150 text-[#FFFFFF]">
+    <div className="space-y-3 animate-in fade-in duration-150 text-[#FFFFFF]">
       {/* 2-Column Overview Grid (Answers 5 questions under 5 seconds) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
         {/* Card 1: Infrastructure & Backend Gateway */}
-        <div className="p-4 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
-          <div className="flex items-start justify-between gap-3">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
+          <div className="flex items-start justify-between gap-2.5">
             <div>
-              <span className="text-sm font-medium text-[#A3A3A3] block">Infrastructure</span>
-              <span className="text-base sm:text-lg font-semibold text-[#FFFFFF] mt-0.5 block">
+              <span className="text-xs font-medium text-[#A3A3A3] block">Infrastructure</span>
+              <span className="text-sm sm:text-base font-semibold text-[#FFFFFF] mt-0.5 block">
                 Backend Gateway
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#171717] border border-[#292929] text-xs font-mono">
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#171717] border border-[#292929] text-xs font-mono">
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
                     isConnected ? 'bg-[#FFFFFF]' : 'border border-[#FFFFFF]/40'
@@ -230,7 +230,7 @@ export const OverviewStep: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveTab('platform')}
-                className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2 py-0.5 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
                 title="Configure platform & device hardware"
               >
                 <span>Device</span>
@@ -239,32 +239,32 @@ export const OverviewStep: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
-            <div className="flex items-center gap-2">
-              <Laptop className="w-3.5 h-3.5 text-[#FFFFFF]" />
-              <span className="text-[#FFFFFF]">{clientOSLabel}</span>
+          <div className="mt-2.5 pt-2 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
+            <div className="flex items-center gap-1.5 truncate">
+              <Laptop className="w-3.5 h-3.5 text-[#FFFFFF] shrink-0" />
+              <span className="text-[#FFFFFF] truncate">{clientOSLabel}</span>
               <span>•</span>
-              <span>{acceleratorLabel}</span>
+              <span className="truncate">{acceleratorLabel}</span>
             </div>
             {isConnected && latencyMs ? (
-              <span className="font-mono text-[#FFFFFF]">{latencyMs}ms</span>
+              <span className="font-mono text-[#FFFFFF] shrink-0 ml-1.5">{latencyMs}ms</span>
             ) : null}
           </div>
         </div>
 
         {/* Card 2: Inference Provider (Sourced dynamically from API, zero hardcoding) */}
-        <div className="p-4 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="text-sm font-medium text-[#A3A3A3] block">{engineTitle}</span>
-              <span className="text-base sm:text-lg font-semibold text-[#FFFFFF] mt-0.5 block truncate max-w-[200px] sm:max-w-[240px]">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0">
+              <span className="text-xs font-medium text-[#A3A3A3] block">{engineTitle}</span>
+              <span className="text-sm sm:text-base font-semibold text-[#FFFFFF] mt-0.5 block truncate max-w-[200px] sm:max-w-[240px]">
                 {activeModelName}
               </span>
             </div>
             <button
               type="button"
               onClick={() => setActiveTab('models')}
-              className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
+              className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2 py-0.5 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
               title="Configure inference providers and keys"
             >
               <span>Configure</span>
@@ -272,7 +272,7 @@ export const OverviewStep: React.FC = () => {
             </button>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
+          <div className="mt-2.5 pt-2 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
             <div className="flex items-center gap-1.5 font-mono text-[#FFFFFF]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FFFFFF]" />
               <span>{primaryProviderObj?.status === 'READY' || isConnected ? 'Operational' : 'Standby'}</span>
@@ -282,18 +282,18 @@ export const OverviewStep: React.FC = () => {
         </div>
 
         {/* Card 3: Neural Pipeline */}
-        <div className="p-4 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="text-sm font-medium text-[#A3A3A3] block">Neural Pipeline</span>
-              <span className="text-base sm:text-lg font-semibold text-[#FFFFFF] mt-0.5 block truncate max-w-[220px]">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0">
+              <span className="text-xs font-medium text-[#A3A3A3] block">Neural Pipeline</span>
+              <span className="text-sm sm:text-base font-semibold text-[#FFFFFF] mt-0.5 block truncate max-w-[220px]">
                 {config.embeddingModel || 'google/embeddinggemma-2'}
               </span>
             </div>
             <button
               type="button"
               onClick={() => setActiveTab('neural')}
-              className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
+              className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2 py-0.5 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
               title="Configure neural models & rerankers"
             >
               <span>Neural</span>
@@ -301,7 +301,7 @@ export const OverviewStep: React.FC = () => {
             </button>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
+          <div className="mt-2.5 pt-2 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FFFFFF]" />
               <span className="text-[#FFFFFF]">Reranker & NLI Ready</span>
@@ -311,11 +311,11 @@ export const OverviewStep: React.FC = () => {
         </div>
 
         {/* Card 4: Runtime Storage Profile */}
-        <div className="p-4 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
-          <div className="flex items-start justify-between gap-3">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
+          <div className="flex items-start justify-between gap-2.5">
             <div>
-              <span className="text-sm font-medium text-[#A3A3A3] block">Storage Profile</span>
-              <span className="text-base sm:text-lg font-semibold text-[#FFFFFF] mt-0.5 block capitalize">
+              <span className="text-xs font-medium text-[#A3A3A3] block">Storage Profile</span>
+              <span className="text-sm sm:text-base font-semibold text-[#FFFFFF] mt-0.5 block capitalize">
                 {currentStorageMode === 'docker'
                   ? 'Docker Local (Stack)'
                   : currentStorageMode === 'cloud'
@@ -326,7 +326,7 @@ export const OverviewStep: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveTab('databases')}
-              className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
+              className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2 py-0.5 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
               title="Configure storage substrates"
             >
               <span>Storage</span>
@@ -334,7 +334,7 @@ export const OverviewStep: React.FC = () => {
             </button>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
+          <div className="mt-2.5 pt-2 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
             <div className="flex items-center gap-1.5 font-mono text-[#FFFFFF]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FFFFFF]" />
               <span>4 Substrates Active</span>
@@ -345,9 +345,9 @@ export const OverviewStep: React.FC = () => {
       </div>
 
       {/* Full-Width Substrate List */}
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-medium text-[#FFFFFF]">Storage Systems</h3>
+          <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">Storage Systems</h3>
           <button
             type="button"
             onClick={handleRetest}
@@ -364,22 +364,22 @@ export const OverviewStep: React.FC = () => {
           {substrates.map((sub) => (
             <div
               key={sub.id}
-              className="p-3.5 flex items-center justify-between gap-3 hover:bg-[#171717]/50 transition-colors"
+              className="py-2 px-3 flex items-center justify-between gap-3 hover:bg-[#171717]/50 transition-colors"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center shrink-0">
-                  <Database className="w-4 h-4 text-[#FFFFFF]" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-md bg-[#171717] border border-[#292929] flex items-center justify-center shrink-0">
+                  <Database className="w-3.5 h-3.5 text-[#FFFFFF]" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-[#FFFFFF] truncate">
+                    <span className="text-xs font-semibold text-[#FFFFFF] truncate">
                       {sub.name}
                     </span>
-                    <span className="text-xs text-[#A3A3A3] font-mono hidden sm:inline">
+                    <span className="text-[11px] text-[#A3A3A3] font-mono hidden sm:inline">
                       • {sub.role}
                     </span>
                   </div>
-                  <p className="text-xs text-[#A3A3A3] truncate mt-0.5">
+                  <p className="text-[10.5px] text-[#A3A3A3] truncate mt-0.5">
                     {sub.spec}
                   </p>
                 </div>
@@ -393,7 +393,7 @@ export const OverviewStep: React.FC = () => {
                       {sub.status}
                     </span>
                   </div>
-                  <span className="text-[11px] font-mono text-[#A3A3A3] block mt-0.5">
+                  <span className="text-[10px] font-mono text-[#A3A3A3] block mt-0.5">
                     {sub.latency}
                   </span>
                 </div>

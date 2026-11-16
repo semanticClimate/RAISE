@@ -500,20 +500,18 @@ export const NeuralStep: React.FC = () => {
       {/* HEADER */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <span>AI Retrieval & Embedding Models</span>
+          <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+            <span>Neural Retrieval Models</span>
             {isLoading && <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />}
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Dynamically configured via live backend model registry with real-time on-disk cache verification.
-          </p>
         </div>
+        <span className="text-xs text-slate-400">Embedding, reranking & verifier</span>
       </div>
 
       {/* STATUS NOTIFICATION BANNER */}
       {statusMessage && (
         <div
-          className={`p-3 rounded-xl border text-xs font-mono animate-in fade-in flex items-center gap-2.5 ${
+          className={`p-2.5 rounded-xl border text-xs font-mono animate-in fade-in flex items-center gap-2 ${
             statusMessage.type === 'success'
               ? 'bg-white/10 border-white/25 text-white'
               : 'bg-white/5 border-white/15 text-zinc-300'
@@ -528,21 +526,21 @@ export const NeuralStep: React.FC = () => {
         </div>
       )}
 
-      {/* UNIFIED FLAT CARDS (No nested box-in-box) */}
-      <div className="space-y-3.5">
+      {/* UNIFIED FLAT CARDS */}
+      <div className="space-y-2.5">
         {/* PREFLIGHT ASSETS & ON-DISK FOOTPRINT BANNER */}
-        <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] space-y-2.5">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-2 flex-wrap">
-                <span>Neural & Substrate Preflight Verification</span>
+                <span>Preflight Verification</span>
                 {allPreflightVerified ? (
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-white/10 text-white border border-white/20">
-                    [OK] All 6 Neural & Substrate Assets Verified
+                    [OK] All 6 Assets Verified
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-white/5 text-zinc-300 border border-white/15">
-                    {verifiedAssetsCount} of {preflightAssets.length || 6} Assets Verified
+                    {verifiedAssetsCount} of {preflightAssets.length || 6} Verified
                   </span>
                 )}
               </div>
@@ -554,20 +552,20 @@ export const NeuralStep: React.FC = () => {
                   type="button"
                   onClick={handleDownloadAllMissing}
                   disabled={Boolean(downloadingModelId)}
-                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-black text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-zinc-200 text-black text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download Missing Weights ({missingNeuralCount})</span>
+                  <span>Download Weights ({missingNeuralCount})</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setShowPreflightDetails(!showPreflightDetails)}
-                className="p-1.5 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-white/5 border border-white/10 transition-colors flex items-center justify-center cursor-pointer"
+                className="p-1 rounded-lg text-xs text-slate-300 hover:text-white hover:bg-white/5 border border-white/10 transition-colors flex items-center justify-center cursor-pointer"
                 title={showPreflightDetails ? 'Hide Diagnostics' : 'View Diagnostics'}
                 aria-label="Toggle diagnostics"
               >
-                {showPreflightDetails ? <ChevronUp className="w-4 h-4 text-white" /> : <ChevronDown className="w-4 h-4 text-white" />}
+                {showPreflightDetails ? <ChevronUp className="w-3.5 h-3.5 text-white" /> : <ChevronDown className="w-3.5 h-3.5 text-white" />}
               </button>
             </div>
           </div>
@@ -626,18 +624,18 @@ export const NeuralStep: React.FC = () => {
         </div>
 
         {/* 1. HUGGING FACE ACCESS TOKEN */}
-        <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] space-y-2.5">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <label className="text-xs font-bold text-white flex items-center gap-2 flex-wrap">
               <Key className="w-3.5 h-3.5 text-white" />
               <span>Hugging Face Access Token</span>
               {config.huggingfaceConfigured ? (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/10 border border-white/20 text-white font-semibold">
-                  Configured in Backend ({config.huggingfaceMasked || 'Active'})
+                  Configured ({config.huggingfaceMasked || 'Active'})
                 </span>
               ) : (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-400">
-                  Unconfigured
+                  Optional
                 </span>
               )}
             </label>
@@ -652,7 +650,7 @@ export const NeuralStep: React.FC = () => {
                   {hfCheckNotice.text}
                 </span>
               )}
-              <span className="text-[10.5px] font-mono text-slate-400">For gated or private repos</span>
+              <span className="text-[10.5px] font-mono text-slate-400">For gated repos</span>
             </div>
           </div>
 
@@ -673,7 +671,7 @@ export const NeuralStep: React.FC = () => {
                     ? config.huggingfaceMasked
                     : 'hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
                 }
-                className="w-full px-3 py-2 pr-16 rounded-xl bg-black/60 border border-white/15 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-white transition-colors"
+                className="w-full px-3 py-1.5 pr-16 rounded-xl bg-black/60 border border-white/15 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-white transition-colors"
               />
 
               {/* Paste from clipboard button with exact requested SVG */}
@@ -705,37 +703,34 @@ export const NeuralStep: React.FC = () => {
                 type="button"
                 onClick={handleCheckHfToken}
                 disabled={isCheckingHfToken}
-                className="px-3 py-2 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 bg-white/10 hover:bg-white/15 border border-white/20 text-white cursor-pointer disabled:opacity-50 animate-in fade-in zoom-in-95 duration-150"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 bg-white/10 hover:bg-white/15 border border-white/20 text-white cursor-pointer disabled:opacity-50 animate-in fade-in zoom-in-95 duration-150"
               >
                 {isCheckingHfToken ? <Loader2 className="w-3.5 h-3.5 animate-spin text-white" /> : null}
                 <span>{isCheckingHfToken ? 'Checking...' : 'Check'}</span>
               </button>
             )}
           </div>
-          <p className="text-[10.5px] text-slate-400 font-sans leading-tight">
-            Required only if using gated models (e.g. Meta-Llama, Mistral gated repos, or private corporate libraries).
-          </p>
         </div>
 
-        {/* 2. THREE COMPACT CARDS (MINIMAL COGNITIVE LOAD: JUST MODEL NAME + STATUS SIGN + CHANGE BUTTON) */}
-        <div className="space-y-2">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-[#A3A3A3] font-semibold">
-            Configured Neural Models
+        {/* 2. THREE COMPACT CARDS */}
+        <div className="space-y-1.5">
+          <div className="text-[10.5px] font-mono uppercase tracking-wider text-[#A3A3A3] font-semibold">
+            Configured Models
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
             {/* CARD 1: EMBEDDING MODEL */}
-            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-3">
-              <div className="space-y-1.5">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-2">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-white">
                     <Layers className="w-3.5 h-3.5 text-white" />
-                    <span>Embedding Model</span>
+                    <span>Embedding</span>
                   </div>
                   {renderStatusSign(embeddingStatus, configuredEmbedding)}
                 </div>
 
-                <div className="font-semibold text-sm text-white truncate" title={configuredEmbedding}>
+                <div className="font-semibold text-xs text-white truncate" title={configuredEmbedding}>
                   {getCleanModelName(configuredEmbedding, 'embedding')}
                 </div>
               </div>
@@ -743,16 +738,16 @@ export const NeuralStep: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveCategoryModal('embedding')}
-                className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/30 text-xs font-medium text-slate-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
+                className="w-full py-1 px-2.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/30 text-[11px] font-medium text-slate-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
               >
-                <span>Change Model</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <span>Change</span>
+                <ChevronRight className="w-3 h-3 text-slate-400" />
               </button>
             </div>
 
             {/* CARD 2: RERANKER */}
-            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-3">
-              <div className="space-y-1.5">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-2">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-white">
                     <Layers className="w-3.5 h-3.5 text-white" />
@@ -761,7 +756,7 @@ export const NeuralStep: React.FC = () => {
                   {renderStatusSign(rerankerStatus, configuredReranker)}
                 </div>
 
-                <div className="font-semibold text-sm text-white truncate" title={configuredReranker}>
+                <div className="font-semibold text-xs text-white truncate" title={configuredReranker}>
                   {getCleanModelName(configuredReranker, 'reranker')}
                 </div>
               </div>
@@ -769,25 +764,25 @@ export const NeuralStep: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveCategoryModal('reranker')}
-                className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/30 text-xs font-medium text-slate-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
+                className="w-full py-1 px-2.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/30 text-[11px] font-medium text-slate-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
               >
-                <span>Change Model</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <span>Change</span>
+                <ChevronRight className="w-3 h-3 text-slate-400" />
               </button>
             </div>
 
             {/* CARD 3: CLAIM VERIFIER */}
-            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-3">
-              <div className="space-y-1.5">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-2">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-white">
                     <ShieldCheck className="w-3.5 h-3.5 text-white" />
-                    <span>Claim Verifier</span>
+                    <span>Verifier</span>
                   </div>
                   {renderStatusSign(verifierStatus, configuredVerifier)}
                 </div>
 
-                <div className="font-semibold text-sm text-white truncate" title={configuredVerifier}>
+                <div className="font-semibold text-xs text-white truncate" title={configuredVerifier}>
                   {getCleanModelName(configuredVerifier, 'verifier')}
                 </div>
               </div>
@@ -795,10 +790,10 @@ export const NeuralStep: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveCategoryModal('verifier')}
-                className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/30 text-xs font-medium text-slate-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
+                className="w-full py-1 px-2.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/30 text-[11px] font-medium text-slate-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
               >
-                <span>Change Model</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <span>Change</span>
+                <ChevronRight className="w-3 h-3 text-slate-400" />
               </button>
             </div>
           </div>
