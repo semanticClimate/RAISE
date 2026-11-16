@@ -1,93 +1,80 @@
 {
-  "timestamp": "2026-11-11 20:33:24",
-  "overall_ragas_score": 0.9764,
+  "timestamp": "2026-11-16 19:33:56",
+  "overall_ragas_score": 0.9703,
   "metrics": {
     "faithfulness": 1.0,
-    "answer_relevancy": 0.9056,
+    "answer_relevancy": 0.881,
     "context_precision": 1.0,
     "context_recall": 1.0,
     "noise_resilience": 1.0,
-    "accuracy_pct": 83.3,
-    "average_latency_ms": 12918.4
+    "accuracy_pct": 100.0,
+    "average_latency_ms": 2038.3
   },
   "queries": [
     {
       "id": "RAGAS-01",
-      "query": "Who is the applicant and what is their full name?",
+      "query": "Who is the Director General of Biotechnology Research and Innovation Council (BRIC)?",
       "faithfulness": 1.0,
-      "answer_relevancy": 0.7167,
+      "answer_relevancy": 1.0,
       "context_precision": 1.0,
       "context_recall": 1.0,
       "noise_sensitivity": 1.0,
       "factual_accuracy": 1.0,
-      "latency_ms": 9919.3,
-      "citations": 1,
-      "generated_preview": "The applicant is **Siddharth Tripathi** [1].  \u2022 **Full Name**: Siddharth Tripathi [1]  \u2022 **Enro..."
+      "latency_ms": 9902.5,
+      "citations": 3,
+      "generated_preview": "Based on the attached documentation, **RAJESH SUDHIR GOKHALE  Director General, Biotechnology R..."
     },
     {
       "id": "RAGAS-02",
-      "query": "What is the enrollment ID of the candidate?",
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "context_precision": 1.0,
-      "context_recall": 1.0,
-      "noise_sensitivity": 1.0,
-      "factual_accuracy": 1.0,
-      "latency_ms": 3827.2,
-      "citations": 1,
-      "generated_preview": "The enrollment ID of the candidate is M356S48 [1]...."
-    },
-    {
-      "id": "RAGAS-03",
-      "query": "What is the date of birth and gender of the applicant?",
+      "query": "Who is the Executive Director of BRIC-NABI mentioned in the acknowledgements?",
       "faithfulness": 1.0,
       "answer_relevancy": 0.7167,
       "context_precision": 1.0,
       "context_recall": 1.0,
       "noise_sensitivity": 1.0,
-      "factual_accuracy": 0.5,
-      "latency_ms": 50380.8,
+      "factual_accuracy": 1.0,
+      "latency_ms": 88.8,
       "citations": 1,
-      "generated_preview": "The date of birth (D.O.B) of the applicant is **09/02/2004** [1]...."
+      "generated_preview": "Based on the attached documentation, **Ashwani Pareek, Executive Director BRIC-NABI Dr.** [1]...."
+    },
+    {
+      "id": "RAGAS-03",
+      "query": "Who serves as the DBT & Nodal Officer of BRIC?",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8583,
+      "context_precision": 1.0,
+      "context_recall": 1.0,
+      "noise_sensitivity": 1.0,
+      "factual_accuracy": 1.0,
+      "latency_ms": 68.5,
+      "citations": 1,
+      "generated_preview": "Based on the attached documentation, **Kalaivani Ganesan, DBT & Nodal Officer BRIC Dr.** [1].  ..."
     },
     {
       "id": "RAGAS-04",
-      "query": "Which qualifying degree, academic course, and university is recorded?",
+      "query": "What centralized dashboard management platform was established for BRIC institutional monitoring?",
       "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
+      "answer_relevancy": 0.83,
       "context_precision": 1.0,
       "context_recall": 1.0,
       "noise_sensitivity": 1.0,
-      "factual_accuracy": 0.5,
-      "latency_ms": 3976.7,
-      "citations": 1,
-      "generated_preview": "The recorded qualifying degree is M. Sc., the academic course is Biotechnology, and the univers..."
+      "factual_accuracy": 1.0,
+      "latency_ms": 57.5,
+      "citations": 2,
+      "generated_preview": "Based on the attached documentation, **BRIC including Virtual Units of Excellence (vUoEs), BRIC..."
     },
     {
       "id": "RAGAS-05",
-      "query": "What is the GATE Paper Code and examination fee paid?",
+      "query": "Which institution represents India's cornerstone institution for cell biology in BRIC?",
       "faithfulness": 1.0,
       "answer_relevancy": 1.0,
       "context_precision": 1.0,
       "context_recall": 1.0,
       "noise_sensitivity": 1.0,
       "factual_accuracy": 1.0,
-      "latency_ms": 5718.9,
-      "citations": 1,
-      "generated_preview": "The GATE Paper Code is Biotechnology, and the examination fee paid was 2000.0 [1].  \u2022 **GATE Pa..."
-    },
-    {
-      "id": "RAGAS-06",
-      "query": "What is the communication address and postal pin code of the applicant?",
-      "faithfulness": 1.0,
-      "answer_relevancy": 1.0,
-      "context_precision": 1.0,
-      "context_recall": 1.0,
-      "noise_sensitivity": 1.0,
-      "factual_accuracy": 1.0,
-      "latency_ms": 3687.4,
-      "citations": 1,
-      "generated_preview": "The applicant's communication address is 00 Devlakh, Po Chopra, Chopra, Rudraprayag, Rudrapraya..."
+      "latency_ms": 74.1,
+      "citations": 2,
+      "generated_preview": "Based on the attached documentation, **BRIC-National Centre for Cell Science represents India's..."
     }
   ]
 }

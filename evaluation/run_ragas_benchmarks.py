@@ -41,6 +41,49 @@ from src.features.agent.router_executor import PlanExecutorMixin
 from src.features.evaluation.ragas_evaluator import StandardRAGASEvaluator
 from src.retrieval.reranker import CrossEncoderReranker
 
+NIPGR_RAGAS_BENCHMARK_CASES = [
+    {
+        "id": "RAGAS-01",
+        "query": "Who is the Director General of Biotechnology Research and Innovation Council (BRIC)?",
+        "ground_truth": "Dr. Rajesh Sudhir Gokhale is the Director General of the Biotechnology Research and Innovation Council (BRIC).",
+        "expected_entities": ["Rajesh Sudhir Gokhale", "Rajesh S Gokhale", "Gokhale"],
+        "expected_numbers": [],
+        "document": "NIPGR_BRIC_Annual_Report_2025.pdf",
+    },
+    {
+        "id": "RAGAS-02",
+        "query": "Who is the Executive Director of BRIC-NABI mentioned in the acknowledgements?",
+        "ground_truth": "Dr. Ashwani Pareek is the Executive Director of BRIC-NABI.",
+        "expected_entities": ["Ashwani Pareek", "Pareek"],
+        "expected_numbers": [],
+        "document": "NIPGR_BRIC_Annual_Report_2025.pdf",
+    },
+    {
+        "id": "RAGAS-03",
+        "query": "Who serves as the DBT & Nodal Officer of BRIC?",
+        "ground_truth": "Dr. Kalaivani Ganesan serves as DBT & Nodal Officer of BRIC.",
+        "expected_entities": ["Kalaivani Ganesan", "Kalaivani"],
+        "expected_numbers": [],
+        "document": "NIPGR_BRIC_Annual_Report_2025.pdf",
+    },
+    {
+        "id": "RAGAS-04",
+        "query": "What centralized dashboard management platform was established for BRIC institutional monitoring?",
+        "ground_truth": "The iBRIC+ Integrated Dashboard was established as a centralized management platform for BRIC.",
+        "expected_entities": ["iBRIC+", "Integrated Dashboard"],
+        "expected_numbers": [],
+        "document": "NIPGR_BRIC_Annual_Report_2025.pdf",
+    },
+    {
+        "id": "RAGAS-05",
+        "query": "Which institution represents India's cornerstone institution for cell biology in BRIC?",
+        "ground_truth": "BRIC-National Centre for Cell Science represents India's cornerstone institution for cell biology research.",
+        "expected_entities": ["National Centre for Cell Science", "NCCS"],
+        "expected_numbers": [],
+        "document": "NIPGR_BRIC_Annual_Report_2025.pdf",
+    },
+]
+
 # Real evaluation benchmark queries with ground truth facts
 RAGAS_BENCHMARK_CASES = [
     {
@@ -99,6 +142,7 @@ def load_chunks_for_document(doc_name: str) -> List[Dict[str, Any]]:
     candidates = [
         REPO_ROOT / "data" / "processed" / "chunks" / f"{clean_name}_chunks.json",
         BACKEND_DIR / "data" / "processed" / "chunks" / f"{clean_name}_chunks.json",
+        REPO_ROOT / "backend" / "data" / "processed" / "chunks" / f"{clean_name}_chunks.json",
         REPO_ROOT / "data" / "processed" / "chunks" / "ApplicationForm_chunks.json",
         BACKEND_DIR / "data" / "processed" / "chunks" / "ApplicationForm_chunks.json",
     ]
@@ -120,18 +164,29 @@ def run_ragas_evaluation():
 
     executor = PlanExecutorMixin()
     if not hasattr(executor, "reranker") or executor.reranker is None:
+        from src.retrieval.reranker import CrossEncoderReranker
         executor.reranker = CrossEncoderReranker()
 
-    chunks = load_chunks_for_document("ApplicationForm.pdf")
-    if not chunks:
+    nipgr_chunks = load_chunks_for_document("NIPGR_BRIC_Annual_Report_2025.pdf")
+    app_chunks = load_chunks_for_document("ApplicationForm.pdf")
+
+    if nipgr_chunks:
+        chunks = nipgr_chunks
+        active_cases = NIPGR_RAGAS_BENCHMARK_CASES
+        doc_label = "NIPGR_BRIC_Annual_Report_2025.pdf"
+    elif app_chunks:
+        chunks = app_chunks
+        active_cases = RAGAS_BENCHMARK_CASES
+        doc_label = "ApplicationForm.pdf"
+    else:
         print("[ERROR] No chunks found in data/processed/chunks/. Run ingestion first.")
         return
 
-    print(f"Loaded {len(chunks)} ground-truth production chunks from storage.")
+    print(f"Loaded {len(chunks)} ground-truth production chunks from {doc_label}.")
 
     scorecard: List[Dict[str, Any]] = []
 
-    for item in RAGAS_BENCHMARK_CASES:
+    for item in active_cases:
         qid = item["id"]
         query = item["query"]
         gold_answer = item["ground_truth"]
@@ -154,11 +209,11 @@ def run_ragas_evaluation():
                 if ent.lower() in t_lower:
                     relevance += 0.3
             for num in exp_numbers:
-                if num in txt:
+                if str(num) in txt:
                     relevance += 0.3
 
             # General query token overlap
-            q_words = [w for w in re.findall(r"\b\w{3,}\b", q_lower) if w not in {"what", "which", "where", "applicant"}]
+            q_words = [w for w in re.findall(r"\b\w{3,}\b", q_lower) if w not in {"what", "which", "where", "applicant", "who", "the", "for", "and", "mentioned"}]
             if q_words:
                 overlap = sum(1 for w in q_words if w in t_lower) / len(q_words)
                 relevance += 0.3 * overlap

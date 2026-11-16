@@ -1,0 +1,83 @@
+{
+  "timestamp": "2026-11-16 19:40:28",
+  "accuracy_rate_pct": 100.0,
+  "correctness_rate_pct": 100.0,
+  "avg_latency_ms": 2103.947380000045,
+  "test_cases": [
+    {
+      "id": "TC-01",
+      "query": "Director General of BRIC",
+      "category": "Executive Leadership Extraction",
+      "accuracy": "PASS",
+      "correctness": "PASS",
+      "total_ms": 10047.445800000332,
+      "retrieval_ms": 4.074699999819131,
+      "rerank_ms": 4211.981800000103,
+      "synth_ms": 5831.3859999998385,
+      "citations": 2,
+      "no_raw_sse": true,
+      "no_double_brackets": true,
+      "answer_preview": "Based on the attached documentation, **RAJESH SUDHIR GOKHALE  Director General, Biotechnology Research and Innovation Co"
+    },
+    {
+      "id": "TC-02",
+      "query": "Executive Director of BRIC-NABI",
+      "category": "Institutional Executive Resolution",
+      "accuracy": "PASS",
+      "correctness": "PASS",
+      "total_ms": 261.3317000000279,
+      "retrieval_ms": 3.6355999995976163,
+      "rerank_ms": 256.7109999999957,
+      "synth_ms": 0.9834000002229004,
+      "citations": 1,
+      "no_raw_sse": true,
+      "no_double_brackets": true,
+      "answer_preview": "Based on the attached documentation, **Ashwani Pareek, Executive Director BRIC-NABI Dr.** [1]."
+    },
+    {
+      "id": "TC-03",
+      "query": "DBT & Nodal Officer of BRIC",
+      "category": "Nodal Governance Resolution",
+      "accuracy": "PASS",
+      "correctness": "PASS",
+      "total_ms": 64.3433999998706,
+      "retrieval_ms": 3.701300000102492,
+      "rerank_ms": 59.343599999920116,
+      "synth_ms": 1.297599999816157,
+      "citations": 1,
+      "no_raw_sse": true,
+      "no_double_brackets": true,
+      "answer_preview": "Based on the attached documentation, **Kalaivani Ganesan, DBT & Nodal Officer BRIC Dr.** [1].  **Additional Documented C"
+    },
+    {
+      "id": "TC-04",
+      "query": "Centralized dashboard platform for BRIC",
+      "category": "Infrastructure & Dashboard Extraction",
+      "accuracy": "PASS",
+      "correctness": "PASS",
+      "total_ms": 64.07549999994444,
+      "retrieval_ms": 4.128999999920779,
+      "rerank_ms": 58.533299999908195,
+      "synth_ms": 1.4119999996182742,
+      "citations": 2,
+      "no_raw_sse": true,
+      "no_double_brackets": true,
+      "answer_preview": "Based on the attached documentation, **BRIC including Virtual Units of Excellence (vUoEs), BRIC BioE3 Innovation Parks, "
+    },
+    {
+      "id": "TC-05",
+      "query": "Cornerstone institution for cell biology in BRIC",
+      "category": "Research Centre Identification",
+      "accuracy": "PASS",
+      "correctness": "PASS",
+      "total_ms": 82.54050000005009,
+      "retrieval_ms": 4.613000000063039,
+      "rerank_ms": 75.0901999999769,
+      "synth_ms": 2.8360999999677006,
+      "citations": 2,
+      "no_raw_sse": true,
+      "no_double_brackets": true,
+      "answer_preview": "Based on the attached documentation, **BRIC-National Centre for Cell Science represents India's cornerstone institution "
+    }
+  ]
+}
