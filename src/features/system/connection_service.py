@@ -493,7 +493,34 @@ def probe_cloud_llm_key(provider: str, api_key: str) -> Dict[str, Any]:
         url = "https://api.groq.com/openai/v1/models"
         headers = {"Authorization": f"Bearer {key}"}
     elif prov == "gemini":
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
+        try:
+            from src.infrastructure.providers.gemini import GeminiProvider
+            gp = GeminiProvider(api_key=key)
+            h = gp.health_check(timeout=5.0)
+            if h.status == "READY" and h.functional_test:
+                lat = max(1, int(h.latency_ms or (time.perf_counter() - t0) * 1000))
+                return {
+                    "online": True,
+                    "status": "VERIFIED_ACTIVE",
+                    "provider": "gemini",
+                    "latency_ms": lat,
+                    "message": "Successfully authenticated with Google Gemini API.",
+                }
+            else:
+                return {
+                    "online": False,
+                    "status": h.status if h.status != "READY" else "AUTH_FAILED",
+                    "provider": "gemini",
+                    "error": h.error_message or "Gemini API authentication rejected. Please verify your key.",
+                }
+        except Exception as ge:
+            logger.debug(f"GeminiProvider health check fallback: {ge}")
+            return {
+                "online": False,
+                "status": "AUTH_FAILED",
+                "provider": "gemini",
+                "error": f"Gemini API authentication failed: {str(ge)}",
+            }
     elif prov in ("openai", "gpt"):
         url = "https://api.openai.com/v1/models"
         headers = {"Authorization": f"Bearer {key}"}
