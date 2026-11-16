@@ -208,15 +208,23 @@ class LocalVectorEngine(
         device: Optional[str] = None,
     ):
         if settings:
-            default_dir = os.getenv("CHROMA_PERSIST_DIRECTORY") or settings.vector.persist_directory
+            default_dir = settings.vector.persist_directory
             default_coll = os.getenv("CHROMA_COLLECTION_NAME") or settings.vector.collection_name
             default_model = os.getenv("EMBEDDING_MODEL") or settings.vector.embedding_model
         else:
-            default_dir = os.getenv("CHROMA_PERSIST_DIRECTORY", str(Path(__file__).resolve().parents[3] / ".chromadb_bge_large"))
-            default_coll = os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_bge_large")
+            from src.core.config import BACKEND_DIR
+            default_dir = BACKEND_DIR / f".chromadb_{models.EMBEDDING_MODEL_KEYWORD}"
+            default_coll = os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_embeddinggemma_2")
             default_model = os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME)
 
-        self.persist_dir = Path(persist_directory or default_dir).resolve()
+        raw_dir = persist_directory or default_dir
+        if raw_dir:
+            p = Path(raw_dir)
+            if not p.is_absolute():
+                from src.core.config import BACKEND_DIR
+                clean_parts = [part for part in p.parts if part != "backend"]
+                raw_dir = BACKEND_DIR / Path(*clean_parts) if clean_parts else BACKEND_DIR / ".chromadb_embeddinggemma_2"
+        self.persist_dir = Path(raw_dir).resolve()
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         resolved_model = model_name or default_model
         self.model_key = resolved_model
