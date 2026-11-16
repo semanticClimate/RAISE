@@ -188,15 +188,33 @@ class ModelDiscoveryEngine:
         if not key:
             return []
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
-        resp, _ = safe_http_request(url, timeout=3.0, max_retries=0)
-        models = resp.get("models", [])
-        results = []
-        for m in models:
-            name = m.get("name", "").replace("models/", "")
-            methods = m.get("supportedGenerationMethods", [])
-            if "generateContent" in methods:
-                results.append(name)
-        return results
+        try:
+            resp, _ = safe_http_request(url, timeout=3.0, max_retries=0)
+            models_list = resp.get("models", [])
+            results = []
+            for m in models_list:
+                name = m.get("name", "").replace("models/", "")
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    results.append(name)
+            if results:
+                return results
+        except Exception as e:
+            logger.debug(f"Gemini catalog probe skipped: {e}")
+
+        # Fallback when /v1beta/models catalog is blocked (HTTP 403 on standard AI Studio key):
+        # Verify the key using generateContent health check and return supported models
+        try:
+            from src.infrastructure.providers.gemini import GeminiProvider
+            gp = GeminiProvider(api_key=key)
+            h = gp.health_check(timeout=3.0)
+            if h.status == "READY" and h.functional_test:
+                from src.core.config import models
+                return [models.GEMINI_MODEL_NAME, *models.GEMINI_FALLBACK_CANDIDATES]
+        except Exception:
+            pass
+
+        return []
 
     def _discover_mistral(self) -> List[str]:
         key = self._cm.get_credential("mistral")
