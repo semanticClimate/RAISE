@@ -14,9 +14,11 @@ from __future__ import annotations
 import logging
 import os
 import re
+import sys
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from src.core.config import models
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ class FineCatNLIVerifier:
     specifically fine-tuned on curated multi-source NLI benchmarks.
     """
 
-    MODEL_ID = "dleemiller/finecat-nli-ultra-l"
+    MODEL_ID = models.NLI_MODEL_NAME
     LABEL_MAPPING = {0: "ENTAILMENT", 1: "NEUTRAL", 2: "CONTRADICTION"}
 
     def __init__(self, model_id: Optional[str] = None, max_length: int = 4096, device: Optional[str] = None):
@@ -53,6 +55,71 @@ class FineCatNLIVerifier:
                 return True
         if _LOAD_FAILED:
             return False
+
+        with _NLI_LOCK:
+            if _CACHED_MODEL is not None and _CACHED_TOKENIZER is not None:
+                if getattr(_CACHED_MODEL, "_loaded_model_id", None) == target_model:
+                    return True
+            try:
+                import torch
+                from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+                target_device = device or os.getenv("NLI_DEVICE")
+                if not target_device:
+                    target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+                hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or None
+                torch_dtype = torch.float16 if "cuda" in str(target_device).lower() else torch.float32
+
+                # Fast path: attempt loading from local cache first (zero network latency)
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        target_model,
+                        local_files_only=True,
+                        trust_remote_code=True,
+                    )
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        target_model,
+                        local_files_only=True,
+                        torch_dtype=torch_dtype,
+                        trust_remote_code=True,
+                    ).to(target_device)
+                except Exception:
+                    # In test suites or CI, avoid downloading multi-gigabyte models over network
+                    is_testing = (
+                        "pytest" in sys.modules
+                        or os.getenv("TESTING", "").lower() in ("true", "1")
+                        or os.getenv("CI", "").lower() in ("true", "1")
+                    )
+                    if is_testing:
+                        logger.info("FineCat-NLI model (%s) not in local cache; skipping network download during test/CI.", target_model)
+                        return False
+
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        target_model,
+                        token=hf_token,
+                        trust_remote_code=True,
+                    )
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        target_model,
+                        token=hf_token,
+                        torch_dtype=torch_dtype,
+                        trust_remote_code=True,
+                    ).to(target_device)
+
+                model.eval()
+                model._loaded_model_id = target_model
+
+                _CACHED_MODEL = model
+                _CACHED_TOKENIZER = tokenizer
+                _CACHED_DEVICE = target_device
+                _LOAD_FAILED = False
+                logger.info("FineCat-NLI model (%s) loaded onto %s.", target_model, target_device)
+                return True
+            except Exception as exc:
+                logger.warning("Could not load FineCat-NLI model (%s): %s. Falling back to heuristic.", target_model, exc)
+                _LOAD_FAILED = True
+                return False
 
 
 

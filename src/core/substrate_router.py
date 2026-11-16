@@ -62,7 +62,7 @@ def get_substrate_telemetry_summary(neo4j_open: bool, redis_open: bool, pg_open:
             "mode_badge": "[FAST MODE] Zero-Docker Local Engine (FakeRedis · NetworkX · SQLite)",
             "neo4j": "[FAST-MEM]  In-memory NetworkX MultiDiGraph active",
             "redis": "[FAKEREDIS] In-process FakeStrictRedis zero-latency cache",
-            "postgres": "[SQLITE]    Local persistence: backend/data/raise.db",
+            "postgres": "[SQLITE]    Local persistence: backend/data/raise_local.db",
             "storage": "[LOCAL-FS]  backend/data/documents + Local ChromaDB",
         }
     if mode == SubstrateMode.CLOUD:
