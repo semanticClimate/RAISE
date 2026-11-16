@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 from .types import CommandContext, CommandResult
 from .browser_command import handle_browser_command
+from src.core.config import models
 
 logger = logging.getLogger("raise.commands.core")
 
@@ -99,7 +100,7 @@ def handle_boost_command(ctx: CommandContext) -> CommandResult:
     if "fast" in subaction:
         action_note = "⚡ **Execution Preset: FAST MODE**\n- Low-latency streaming (<1.5s)\n- BM25 + Vector dual retrieval with 1-hop subgraph\n- Deep cross-encoder reranking bypassed for maximum speed."
     elif "expert" in subaction:
-        action_note = "🧠 **Execution Preset: EXPERT MODE**\n- Full 3-hop Neo4j Knowledge Graph traversal active\n- Cross-Encoder (BAAI/bge-reranker-large) max-pooling enabled\n- Strict multi-hop NLI claim verification gate enabled."
+        action_note = f"🧠 **Execution Preset: EXPERT MODE**\n- Full 3-hop Neo4j Knowledge Graph traversal active\n- Cross-Encoder ({models.RERANKER_MODEL_NAME}) max-pooling enabled\n- Strict multi-hop NLI claim verification gate enabled."
     elif "clear" in subaction or "cache" in subaction:
         action_note = "🧹 **Cache Optimizer**\n- Ephemeral LLM model discovery and query cache recycled\n- Buffer memory reclaimed for high-throughput reasoning."
     else:
@@ -111,8 +112,8 @@ def handle_boost_command(ctx: CommandContext) -> CommandResult:
         f"| Subsystem / Layer | Engine / Model | Hardware Tier | Status |\n"
         f"|---|---|---|---|\n"
         f"| **Chunking Engine** | Graph-Guided Adaptive (GGAHC) | `{rust_tier}` | `{rust_status}` |\n"
-        f"| **Dense Vectors** | BAAI/bge-large-en-v1.5 (1024-dim) | PyTorch / Cosine HNSW | `OPTIMIZED` |\n"
-        f"| **Reranker** | BAAI/bge-reranker-large | Cross-Encoder Max-Pool | `READY` |\n"
+        f"| **Dense Vectors** | {models.EMBEDDING_MODEL_NAME} | PyTorch / Cosine HNSW | `OPTIMIZED` |\n"
+        f"| **Reranker** | {models.RERANKER_MODEL_NAME} | Cross-Encoder Max-Pool | `READY` |\n"
         f"| **Dedicated GPU** | {gpu_info} | CUDA Acceleration | `{gpu_status}` |\n"
         f"| **Host CPU & RAM** | {cpu_info} | {ram_info} | `HEALTHY` |\n"
         f"| **Inference Chain** | `{chain}` | Dynamic Fallback | `ONLINE` |\n\n"

@@ -961,15 +961,34 @@ function Test-HfFolderReady {
 }
 
 $configPath = Join-Path $backendDir "src\core\config.py"
-$embRepo = "google/embeddinggemma-2"
-$rerankRepo = "BAAI/bge-reranker-v2-m3"
-$nliRepo = "dleemiller/finecat-nli-ultra-l"
+$embRepo = $null
+$rerankRepo = $null
+$nliRepo = $null
+
+$activeEnv = if (Test-Path $backendEnv) { $backendEnv } elseif (Test-Path $rootEnv) { $rootEnv } else { $null }
+if ($activeEnv) {
+    $envRaw = Get-Content -Path $activeEnv -Raw -ErrorAction SilentlyContinue
+    if ($envRaw -match '(?m)^[ \t]*(?:RAISE_RERANKER_MODEL|RERANKER_MODEL)[ \t]*=[ \t]*[''"]?([^''"\r\n#]+)') {
+        $rerankRepo = $Matches[1].Trim()
+    }
+    if ($envRaw -match '(?m)^[ \t]*(?:RAISE_EMBEDDING_MODEL|EMBEDDING_MODEL)[ \t]*=[ \t]*[''"]?([^''"\r\n#]+)') {
+        $embRepo = $Matches[1].Trim()
+    }
+    if ($envRaw -match '(?m)^[ \t]*(?:RAISE_NLI_MODEL|NLI_MODEL)[ \t]*=[ \t]*[''"]?([^''"\r\n#]+)') {
+        $nliRepo = $Matches[1].Trim()
+    }
+}
+
 if (Test-Path $configPath) {
     $cfgRaw = Get-Content -Path $configPath -Raw -ErrorAction SilentlyContinue
-    if ($cfgRaw -match 'EMBEDDING_MODEL_NAME:\s*str\s*=\s*["'']([^"'']+)["'']') { $embRepo = $Matches[1] }
-    if ($cfgRaw -match 'RERANKER_MODEL_NAME:\s*str\s*=\s*["'']([^"'']+)["'']') { $rerankRepo = $Matches[1] }
-    if ($cfgRaw -match 'NLI_MODEL_NAME:\s*str\s*=\s*["'']([^"'']+)["'']') { $nliRepo = $Matches[1] }
+    if (-not $embRepo -and $cfgRaw -match 'EMBEDDING_MODEL_NAME:\s*str\s*=(?:[^\r\n]*?,)?\s*["'']([^"'']+)["'']') { $embRepo = $Matches[1].Trim() }
+    if (-not $rerankRepo -and $cfgRaw -match 'RERANKER_MODEL_NAME:\s*str\s*=(?:[^\r\n]*?,)?\s*["'']([^"'']+)["'']') { $rerankRepo = $Matches[1].Trim() }
+    if (-not $nliRepo -and $cfgRaw -match 'NLI_MODEL_NAME:\s*str\s*=(?:[^\r\n]*?,)?\s*["'']([^"'']+)["'']') { $nliRepo = $Matches[1].Trim() }
 }
+
+if (-not $embRepo) { $embRepo = "google/embeddinggemma-2" }
+if (-not $rerankRepo) { $rerankRepo = "BAAI/bge-reranker-v2-m3" }
+if (-not $nliRepo) { $nliRepo = "dleemiller/finecat-nli-ultra-l" }
 
 $embCached = Test-HfFolderReady $embRepo
 $rerankCached = Test-HfFolderReady $rerankRepo

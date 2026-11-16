@@ -215,16 +215,16 @@ EMBEDDING_FALLBACKS_1024: list[str] = [
 AVAILABLE_RERANKER_MODELS: Dict[str, str] = {
     "bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
     "BAAI/bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
-    "bge-reranker-large": "BAAI/bge-reranker-v2-m3",
-    "BAAI/bge-reranker-large": "BAAI/bge-reranker-v2-m3",
+    "bge-reranker-large": "BAAI/bge-reranker-large",
+    "BAAI/bge-reranker-large": "BAAI/bge-reranker-large",
     "bge-reranker-base": "BAAI/bge-reranker-base",
     "BAAI/bge-reranker-base": "BAAI/bge-reranker-base",
     "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "cross-encoder/ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    "jina-reranker-v3.5": "BAAI/bge-reranker-v2-m3",
-    "jinaai/jina-reranker-v3.5": "BAAI/bge-reranker-v2-m3",
-    "jina-reranker": "BAAI/bge-reranker-v2-m3",
-    "default": "BAAI/bge-reranker-v2-m3",
+    "jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
+    "jinaai/jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
+    "jina-reranker": "jinaai/jina-reranker-v3.5",
+    "default": models.RERANKER_MODEL_NAME,
 }
 
 SUPPORTED_FAMILY_KEYWORDS: tuple[str, ...] = ("llama", "qwen", "mistral", "phi", "gemma", "deepseek")
