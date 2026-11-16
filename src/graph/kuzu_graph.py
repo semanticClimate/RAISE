@@ -129,10 +129,12 @@ class KuzuGraphEngine:
             return []
 
         try:
+            # Normalize openCypher function differences for Kùzu engine (e.g. type(r) -> label(r))
+            normalized_query = re.sub(r"\btype\(", "label(", cypher_query, flags=re.IGNORECASE)
             if parameters:
-                res = self.conn.execute(cypher_query, parameters)
+                res = self.conn.execute(normalized_query, parameters)
             else:
-                res = self.conn.execute(cypher_query)
+                res = self.conn.execute(normalized_query)
             
             df = res.get_as_df()
             return df.to_dict(orient="records")
