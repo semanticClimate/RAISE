@@ -127,12 +127,14 @@ export function synthesizeSubgraphResponse(
         ? meta.llm_provider
         : 'gemini';
 
-  const llmModel =
+  const llmModel: string =
     typeof rawPipelineInfo.llm_model === 'string' && rawPipelineInfo.llm_model
       ? rawPipelineInfo.llm_model
       : typeof meta.llm_model === 'string' && meta.llm_model
         ? meta.llm_model
-        : 'gemini-3.5-flash-lite';
+        : typeof meta.llm_backend === 'string' && meta.llm_backend
+          ? meta.llm_backend
+          : 'gemini-2.5-flash';
 
   const encoderModel =
     typeof rawPipelineInfo.encoder_model === 'string' && rawPipelineInfo.encoder_model
