@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Zap, Sparkles, MessageSquare } from 'lucide-react';
+import { Zap, Sparkles } from 'lucide-react';
 import { AnswerMarkdown } from '../../../components/chat/AnswerMarkdown';
 import {
   BackendErrorCard,
@@ -231,16 +231,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
                 <span>Expert Mode</span>
               </span>
-            ) : effectiveMode === 'conversational' ? (
-              <span
-                data-testid="turn-mode-badge"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 shadow-2xs"
-                title="Conversational Mode: Direct Context Dialogue"
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
-                <span>Conversational Mode</span>
-              </span>
-            ) : (
+            ) : effectiveMode === 'conversational' ? null : (
               <span
                 data-testid="turn-mode-badge"
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-sky-500/10 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-500/20 shadow-2xs"

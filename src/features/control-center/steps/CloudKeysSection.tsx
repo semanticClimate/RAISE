@@ -1,24 +1,20 @@
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type React from 'react';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import type { DynamicModelItem } from '../../../hooks/useDynamicModels';
 import { platformAdapter } from '../services/platformAdapter';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 
 export interface CloudKeysSectionProps {
-  cloudDiscoveredLLMs: DynamicModelItem[];
+  cloudDiscoveredLLMs?: DynamicModelItem[];
   liveActiveModel?: string | null;
-  isLoadingLiveModels: boolean;
+  isLoadingLiveModels?: boolean;
   refetchLiveModels: () => void;
-  isLocalProvider: (provider: string) => boolean;
+  isLocalProvider?: (provider: string) => boolean;
 }
 
 export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
-  cloudDiscoveredLLMs,
-  liveActiveModel,
-  isLoadingLiveModels,
   refetchLiveModels,
-  isLocalProvider,
 }) => {
   const { config, addApiKey, updateApiKey, removeApiKey, setKeyVerification } =
     useControlCenterStore();
@@ -59,49 +55,6 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
       setTestingKeyId(null);
     }
   };
-
-  // Filter keys present in config.apiKeys
-  const configuredKeys = useMemo(() => {
-    return (config.apiKeys || []).filter(
-      (k) => (k?.key && k.key.trim().length > 0 && k.provider !== 'unknown') || k?.verified === true
-    );
-  }, [config.apiKeys]);
-
-  // Only models approved by the backend (either discovered in dynamic LLMs or verified with positive latency) are active
-  const activeCloudModels = useMemo<DynamicModelItem[]>(() => {
-    const list: DynamicModelItem[] = [...cloudDiscoveredLLMs];
-
-    // For any configured key in the store, ONLY include if backend approved (k.verified === true)
-    configuredKeys.forEach((k) => {
-      const pId = k.provider.toLowerCase();
-      const alreadyIncluded = list.some((m) => m.provider.toLowerCase() === pId);
-      if (!alreadyIncluded) {
-        // Backend approval requirement: key must be verified by backend API
-        const isBackendApproved = k.verified === true && (typeof k.latencyMs === 'number' && k.latencyMs > 0);
-        if (isBackendApproved) {
-          const modelName =
-            pId === 'gemini'
-              ? 'gemini-2.5-flash'
-              : pId === 'groq'
-                ? 'openai/gpt-oss-120b'
-                : pId === 'custom' || pId === 'universal'
-                  ? 'Universal Custom LLM'
-                  : `${k.providerName || pId} Model`;
-
-          list.push({
-            provider: k.provider,
-            displayName: k.providerName || k.provider.toUpperCase(),
-            model: modelName,
-            status: 'READY',
-            isActive: true,
-            tier: `Connected (${k.latencyMs}ms)`,
-          });
-        }
-      }
-    });
-
-    return list;
-  }, [cloudDiscoveredLLMs, configuredKeys]);
 
   return (
     <div className="space-y-4">
@@ -284,75 +237,6 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
               Add Key
             </button>
           )}
-
-          {/* Live Dynamically Discovered Models (Cloud only) */}
-          <div className="pt-3 border-t border-white/10 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 flex-wrap">
-                <span>Cloud Models:</span>
-                <span className="text-[11px] font-mono text-white font-bold">
-                  {activeCloudModels.length} active
-                </span>
-                {liveActiveModel && !isLocalProvider(liveActiveModel) && (
-                  <span className="text-[10px] font-mono text-slate-400">
-                    • {liveActiveModel}
-                  </span>
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={() => refetchLiveModels()}
-                disabled={isLoadingLiveModels}
-                className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                title="Rescan active providers"
-              >
-                <RefreshCw className={`w-3 h-3 ${isLoadingLiveModels ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-
-            {activeCloudModels.length === 0 ? (
-              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 flex items-center gap-2">
-                <span>Add a valid API key above to activate cloud models.</span>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {activeCloudModels.map((m) => (
-                  <div
-                    key={`${m.provider}-${m.model}`}
-                    className={`p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
-                      m.isActive
-                        ? 'bg-white/10 border-white/30 text-white shadow-sm'
-                        : 'bg-[#131622] border-white/10 text-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${
-                          m.isActive ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
-                        }`}
-                      />
-                      <span className="font-semibold truncate">{m.displayName}</span>
-                      <code className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-300">
-                        {m.model}
-                      </code>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {m.tier && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
-                          {m.tier}
-                        </span>
-                      )}
-                      {m.isActive && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white text-black">
-                          Active
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>

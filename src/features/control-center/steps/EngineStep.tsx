@@ -179,7 +179,7 @@ export const EngineStep: React.FC = () => {
       )}
 
       {/* Interactive LLM Routing Orchestrator & Fallback Priority */}
-      <div className="mt-5 pt-4 border-t border-slate-200/80 dark:border-white/10">
+      <div className="mt-5 pt-4 border-t border-white/10">
         <LLMRoutingOrchestrator />
       </div>
     </div>
