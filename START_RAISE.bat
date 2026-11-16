@@ -24,7 +24,7 @@ if %EXIT_CODE% neq 0 (
 exit /b %EXIT_CODE%
 
 <#PS_CODE#>
-param([switch]$NoBrowser)
+$NoBrowser = $false
 
 $ErrorActionPreference = "Continue"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
