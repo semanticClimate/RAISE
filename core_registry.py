@@ -8,7 +8,7 @@ Implements:
 4. Hardware-aware dynamic loading (CUDA bfloat16/float16, Apple Silicon MPS float16, or CPU float32).
 5. Default Substrates:
    - Embedder: google/embeddinggemma-2 (+Vision toggle)
-   - Reranker: jinaai/jina-reranker-v3.5 (Listwise AutoModel / CrossEncoder)
+   - Reranker: BAAI/bge-reranker-v2-m3 (Contextual Cross-Attention / 8,192 Context)
    - NLI Verifier: dleemiller/finecat-nli-ultra-l (SDPA Attention)
 """
 
