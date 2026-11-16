@@ -246,7 +246,7 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
 
     chroma_str = f"{C.SUCCESS}[OK] ACTIVE{C.RESET}    ({chroma_count} chunks | {chroma_model})" if chroma_online else f"{C.WARN}[STANDBY] EMPTY / OFFLINE{C.RESET}"
     synth_raw = synth.get("display_string", f"{C.SUCCESS}[OK] ACTIVE{C.RESET}")
-    synth_str = synth_raw.replace("●", "[OK]").replace("✓", "[OK]").replace("✖", "[ERR]")
+    synth_str = synth_raw.replace("\u25cf", "[OK]").replace("\u2713", "[OK]").replace("\u2714", "[OK]").replace("\u2716", "[ERR]")
 
     encoder_name = prov.get("encoder_model") or cfg.get("embedding_model") or chroma_model
     reranker_name = prov.get("reranker_model") or cfg.get("reranker_model") or models.RERANKER_MODEL_NAME
@@ -816,13 +816,13 @@ def main():
     print_supervisor_event(format_stream_row("SUPVR", "Launching Backend Gateway on http://127.0.0.1:8000...", "*", C.CYAN, C.WHITE))
     if not supervisor.start_backend():
         print_supervisor_event(format_stream_row("FATAL", "Could not launch backend server.", "[ERR]", C.DANGER, C.DANGER))
-        return
+        sys.exit(1)
 
     backend_timeout = int(os.getenv("RAISE_BACKEND_TIMEOUT", "180"))
     if not supervisor.wait_for_backend(timeout_sec=backend_timeout):
         print_supervisor_event(format_stream_row("FATAL", "Backend failed health check. Inspect backend.log.", "[ERR]", C.DANGER, C.DANGER))
         supervisor.shutdown()
-        return
+        sys.exit(1)
     b_dur = round(time.perf_counter() - t_back, 1)
     print_supervisor_event(format_stream_row("SUPVR", f"Backend Gateway is LIVE on http://localhost:8000 ({b_dur}s)", "[OK]", C.SUCCESS, C.SUCCESS))
 
@@ -832,7 +832,7 @@ def main():
     if not supervisor.start_frontend():
         print_supervisor_event(format_stream_row("FATAL", "Could not launch frontend server.", "[ERR]", C.DANGER, C.DANGER))
         supervisor.shutdown()
-        return
+        sys.exit(1)
 
     if not supervisor.wait_for_frontend(timeout_sec=35):
         print_supervisor_event(format_stream_row("NOTICE", "Frontend still initializing in background...", "[!]", C.WARN, C.WARN))
@@ -858,35 +858,46 @@ def main():
 
     global _active_repl_prompt, _active_prompt_header
 
+    has_pt = False
+    pt_session = None
     try:
         from prompt_toolkit import PromptSession
         from prompt_toolkit.patch_stdout import patch_stdout
         from prompt_toolkit.formatted_text import ANSI
-        has_pt = True
-    except ImportError:
-        has_pt = False
-
-    if has_pt:
         pt_session = PromptSession()
-        with patch_stdout(raw=True):
-            while True:
-                try:
-                    scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
-                    header_str = f"  {B_DIM}╭─{C.RESET} [{C.TITLE}{scope_badge}{C.RESET}] {B_DIM}── Commands: status · doctor · docs · attach <N> · logs · exit ─╮{C.RESET}"
-                    prompt_label = f"  {B_DIM}╰─{C.RESET} {C.ACCENT}RAISE{C.RESET} {B_DIM}>{C.RESET} "
-                    full_prompt = f"{header_str}\n{prompt_label}"
+        has_pt = True
+    except Exception:
+        has_pt = False
+        pt_session = None
 
-                    user_input = pt_session.prompt(ANSI(full_prompt)).strip()
-                    if not user_input:
-                        continue
-                    should_exit, focused_doc = dispatch_repl_command(user_input, focused_doc, supervisor)
-                    if should_exit:
+    if has_pt and pt_session is not None:
+        try:
+            with patch_stdout(raw=True):
+                while True:
+                    try:
+                        scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
+                        header_str = f"  {B_DIM}╭─{C.RESET} [{C.TITLE}{scope_badge}{C.RESET}] {B_DIM}── Commands: status · doctor · docs · attach <N> · logs · exit ─╮{C.RESET}"
+                        prompt_label = f"  {B_DIM}╰─{C.RESET} {C.ACCENT}RAISE{C.RESET} {B_DIM}>{C.RESET} "
+                        full_prompt = f"{header_str}\n{prompt_label}"
+
+                        user_input = pt_session.prompt(ANSI(full_prompt)).strip()
+                        if not user_input:
+                            continue
+                        should_exit, focused_doc = dispatch_repl_command(user_input, focused_doc, supervisor)
+                        if should_exit:
+                            break
+                    except KeyboardInterrupt:
                         break
-                except (KeyboardInterrupt, EOFError):
-                    break
-                except Exception as err:
-                    print(f"{C.DANGER}[ERROR] Console error: {err}{C.RESET}")
-    else:
+                    except EOFError:
+                        time.sleep(1.0)
+                    except Exception as err:
+                        print(f"{C.DANGER}[ERROR] Console error: {err}{C.RESET}")
+                        time.sleep(0.5)
+        except Exception:
+            # Fallback to standard REPL if prompt_toolkit or patch_stdout encounters an issue
+            has_pt = False
+
+    if not has_pt:
         while True:
             try:
                 scope_badge = f"{focused_doc}" if focused_doc else "ALL DOCS"
@@ -906,10 +917,14 @@ def main():
                 should_exit, focused_doc = dispatch_repl_command(user_input, focused_doc, supervisor)
                 if should_exit:
                     break
-            except (KeyboardInterrupt, EOFError):
+            except KeyboardInterrupt:
                 break
+            except EOFError:
+                # Keep background server processes running in headless or piped modes
+                time.sleep(1.0)
             except Exception as err:
                 print(f"{C.DANGER}[ERROR] Console error: {err}{C.RESET}")
+                time.sleep(0.5)
 
     supervisor.shutdown()
 

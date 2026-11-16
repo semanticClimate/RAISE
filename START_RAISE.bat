@@ -10,12 +10,17 @@ set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 set "PYTHONUNBUFFERED=1"
 set "FORCE_COLOR=1"
-set "TERM=xterm-256color"
+set "TERM="
 set "HF_HUB_DISABLE_PROGRESS_BARS=0"
 set "TRANSFORMERS_VERBOSITY=error"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$raw = [System.IO.File]::ReadAllText($env:BAT_FILE, [System.Text.Encoding]::UTF8); $tag = '<' + '#PS_CODE#>'; $idx = $raw.LastIndexOf($tag); if ($idx -ge 0) { Invoke-Expression $raw.Substring($idx + $tag.Length) }"
 set "EXIT_CODE=%ERRORLEVEL%"
-if %EXIT_CODE% neq 0 (if "%~1"=="" (echo. & echo  [x] Process exited with code %EXIT_CODE%. & pause))
+if %EXIT_CODE% neq 0 (
+    echo.
+    echo  [!] Process exited with code %EXIT_CODE%.
+    echo  [!] Press any key to close this window...
+    pause >nul
+)
 exit /b %EXIT_CODE%
 
 <#PS_CODE#>
@@ -32,7 +37,7 @@ $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONUTF8 = "1"
 $env:PYTHONUNBUFFERED = "1"
 $env:FORCE_COLOR = "1"
-$env:TERM = "xterm-256color"
+$env:TERM = ""
 $env:HF_HUB_DISABLE_PROGRESS_BARS = "0"
 $env:TRANSFORMERS_VERBOSITY = "error"
 
@@ -270,7 +275,7 @@ function Test-PythonHasCoreDeps {
     param([string]$Path)
     if (-not (Test-ValidPython $Path)) { return $false }
     try {
-        $chk = & $Path -c "import sys, fastapi, uvicorn, pydantic; sys.stdout.write('OK')" 2>$null
+        $chk = & $Path -c "import sys, fastapi, uvicorn, pydantic, rich, prompt_toolkit; sys.stdout.write('OK')" 2>$null
         return ($chk -match "OK")
     } catch { return $false }
 }
@@ -977,9 +982,18 @@ $vitePkg = Join-Path $frontendDir "node_modules\vite"
 if (-not (Test-Path -LiteralPath $vitePkg)) {
     Write-Info "Installing frontend packages (npm install)..." "Yellow"
     Push-Location -LiteralPath $frontendDir
-    try { & $npmCmd install --no-fund --no-audit } finally { Pop-Location }
-} else {
+    try {
+        & $npmCmd install --no-fund --no-audit
+    } catch {
+        Write-Info "Frontend package installation notification: $($_.Exception.Message)" "Yellow"
+    } finally {
+        Pop-Location
+    }
+}
+if (Test-Path -LiteralPath $vitePkg) {
     Write-Info "Frontend Vite bundle verified (node_modules\vite)" "Green"
+} else {
+    Write-Info "Frontend Vite package not detected; dev fallback mode will be used." "Yellow"
 }
 
 # 7. Route Execution Mode (Unbuffered Python `-u` for zero-delay live streaming)
