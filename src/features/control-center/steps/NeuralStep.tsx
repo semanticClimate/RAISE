@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Cpu,
   Download,
   Eye,
   EyeOff,
@@ -107,8 +106,6 @@ export const NeuralStep: React.FC = () => {
     (backendConfig?.nli_model as string) ||
     config.nliVerifierModel ||
     '';
-  const configuredDevice =
-    (backendConfig?.neural_device as string) || config.neuralDevice || 'auto';
 
   // Dynamic models returned from backend registry
   const neuralRegistry = (backendConfig?.neural_registry as Record<string, any>) || {};
@@ -429,6 +426,18 @@ export const NeuralStep: React.FC = () => {
     }
   };
 
+  // Paste from clipboard into Custom Model input
+  const handlePasteCustomModel = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setCustomModelInput(text.trim());
+      }
+    } catch {
+      // ignore clipboard error
+    }
+  };
+
   // Check and verify Hugging Face Access Token with backend
   const handleCheckHfToken = async () => {
     const raw = config.huggingfaceToken?.trim();
@@ -466,16 +475,6 @@ export const NeuralStep: React.FC = () => {
     } finally {
       setIsCheckingHfToken(false);
     }
-  };
-
-  // Change Execution Device (staged in store, applied on Start)
-  const handleSelectDevice = (device: 'auto' | 'mps' | 'cuda' | 'cpu') => {
-    updateConfig({ neuralDevice: device });
-    setStatusMessage({
-      text: `Selected ${device.toUpperCase()} acceleration device. Click Next and Start to apply.`,
-      type: 'success',
-    });
-    setTimeout(() => setStatusMessage(null), 3000);
   };
 
   const embeddingStatus = getModelStatus(configuredEmbedding, 'embedding');
@@ -700,16 +699,18 @@ export const NeuralStep: React.FC = () => {
               </button>
             </div>
 
-            {/* Exact Check button as requested */}
-            <button
-              type="button"
-              onClick={handleCheckHfToken}
-              disabled={isCheckingHfToken || !config.huggingfaceToken?.trim()}
-              className="px-3 py-2 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 bg-white/10 hover:bg-white/15 border border-white/20 text-white cursor-pointer disabled:opacity-50"
-            >
-              {isCheckingHfToken ? <Loader2 className="w-3.5 h-3.5 animate-spin text-white" /> : null}
-              <span>{isCheckingHfToken ? 'Checking...' : 'Check'}</span>
-            </button>
+            {/* Check button shown only when user has typed or pasted something */}
+            {Boolean(config.huggingfaceToken?.trim()) && (
+              <button
+                type="button"
+                onClick={handleCheckHfToken}
+                disabled={isCheckingHfToken}
+                className="px-3 py-2 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 bg-white/10 hover:bg-white/15 border border-white/20 text-white cursor-pointer disabled:opacity-50 animate-in fade-in zoom-in-95 duration-150"
+              >
+                {isCheckingHfToken ? <Loader2 className="w-3.5 h-3.5 animate-spin text-white" /> : null}
+                <span>{isCheckingHfToken ? 'Checking...' : 'Check'}</span>
+              </button>
+            )}
           </div>
           <p className="text-[10.5px] text-slate-400 font-sans leading-tight">
             Required only if using gated models (e.g. Meta-Llama, Mistral gated repos, or private corporate libraries).
@@ -842,33 +843,54 @@ export const NeuralStep: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={customModelInput}
-                    onChange={(e) => setCustomModelInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleApplyCustomModel();
-                      }
-                    }}
-                    placeholder={`e.g. ${
-                      customModelCategory === 'embedding'
-                        ? 'BAAI/bge-m3 or sentence-transformers/all-MiniLM-L6-v2'
-                        : customModelCategory === 'reranker'
-                          ? 'BAAI/bge-reranker-v2-m3'
-                          : 'MoritzLaurer/DeBERTa-v3-base-mnli'
-                    }`}
-                    className="flex-1 px-3 py-1.5 rounded-lg bg-black/60 border border-white/15 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyCustomModel}
-                    disabled={isApplyingCustom || !customModelInput.trim()}
-                    className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-200 disabled:opacity-50 text-black text-xs font-bold shrink-0 transition-colors cursor-pointer"
-                  >
-                    {isApplyingCustom ? 'Applying...' : 'Apply Custom Model'}
-                  </button>
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={customModelInput}
+                      onChange={(e) => setCustomModelInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleApplyCustomModel();
+                        }
+                      }}
+                      placeholder={`e.g. ${
+                        customModelCategory === 'embedding'
+                          ? 'BAAI/bge-m3 or sentence-transformers/all-MiniLM-L6-v2'
+                          : customModelCategory === 'reranker'
+                            ? 'BAAI/bge-reranker-v2-m3'
+                            : 'MoritzLaurer/DeBERTa-v3-base-mnli'
+                      }`}
+                      className="w-full px-3 py-1.5 pr-8 rounded-lg bg-black/60 border border-white/15 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-white transition-colors"
+                    />
+                    {/* Paste from clipboard button with exact requested SVG */}
+                    <button
+                      type="button"
+                      onClick={handlePasteCustomModel}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 cursor-pointer transition-colors"
+                      title="Paste from clipboard"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {Boolean(customModelInput.trim()) && (
+                    <button
+                      type="button"
+                      onClick={handleApplyCustomModel}
+                      disabled={isApplyingCustom}
+                      className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-200 disabled:opacity-50 text-black text-xs font-bold shrink-0 transition-all cursor-pointer animate-in fade-in zoom-in-95 duration-150"
+                    >
+                      {isApplyingCustom ? 'Applying...' : 'Apply Custom Model'}
+                    </button>
+                  )}
                 </div>
                 <p className="text-[10px] text-slate-400 font-sans">
                   Accepts Hugging Face repo IDs or Python snippets like <code className="text-white font-mono">SentenceTransformer("...")</code>. Automatically verified against backend runtime rules.
@@ -877,41 +899,6 @@ export const NeuralStep: React.FC = () => {
             )}
           </div>
         )}
-
-        {/* 4. HARDWARE DEVICE SELECTION */}
-        <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-            <Cpu className="w-3.5 h-3.5 text-white" />
-            <span>Execution Device:</span>
-            <span className="text-[11px] font-mono text-slate-400 font-normal">
-              {config.targetPlatform === 'macos' ? 'Apple Silicon (Metal / MPS)' : 'Host Acceleration'}
-            </span>
-          </div>
-
-          <div className="flex gap-1.5">
-            {(
-              [
-                { id: 'auto', label: 'Auto' },
-                { id: 'mps', label: 'Metal (MPS)' },
-                { id: 'cuda', label: 'CUDA' },
-                { id: 'cpu', label: 'CPU' },
-              ] as const
-            ).map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => handleSelectDevice(d.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-colors cursor-pointer ${
-                  configuredDevice === d.id
-                    ? 'bg-white text-black font-bold shadow-xs'
-                    : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-white/10'
-                }`}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* POPUP-BASED MODEL SELECTION MODAL (DETAILS, CONTEXT MATCH & SPECS SHOWN HERE) */}
