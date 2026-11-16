@@ -478,6 +478,23 @@ export const useControlCenterStore = create<ControlCenterState>()(
               },
             };
           });
+
+          // Also keep preflight assets and live disk footprint synchronized
+          try {
+            const preflightRes = await platformAdapter.getPreflightAssets();
+            if (preflightRes && Array.isArray(preflightRes.assets)) {
+              set((s) => ({
+                preflightAssets: preflightRes.assets,
+                preflightFootprint: preflightRes.total_footprint || s.preflightFootprint,
+                downloadProgress:
+                  typeof preflightRes.download_progress === 'number'
+                    ? preflightRes.download_progress
+                    : s.downloadProgress,
+              }));
+            }
+          } catch {
+            // ignore
+          }
         } catch (err) {
           console.warn('Failed to sync backend configuration into Control Center:', err);
         }

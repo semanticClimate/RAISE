@@ -36,6 +36,8 @@ export const NeuralStep: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [backendConfig, setBackendConfig] = useState<Record<string, unknown> | null>(null);
   const [preflightAssets, setPreflightAssets] = useState<PreflightAsset[]>([]);
+  const [preflightFootprint, setPreflightFootprint] = useState<string>('~4.6 GB Total Footprint');
+  const [showPreflightDetails, setShowPreflightDetails] = useState(false);
   const [activeCategoryModal, setActiveCategoryModal] = useState<ModelCategory | null>(null);
 
   // Status and notification banners
@@ -82,6 +84,10 @@ export const NeuralStep: React.FC = () => {
       }
       if (assetsRes && Array.isArray(assetsRes.assets)) {
         setPreflightAssets(assetsRes.assets);
+        if (assetsRes.total_footprint) {
+          setPreflightFootprint(assetsRes.total_footprint);
+        }
+        useControlCenterStore.getState().setPreflightAssets(assetsRes.assets, assetsRes.total_footprint);
       }
     } catch (err) {
       console.warn('Failed to fetch backend neural configuration:', err);
@@ -135,19 +141,59 @@ export const NeuralStep: React.FC = () => {
     return last.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
+  // Resolve preflight asset from backend preflight service
+  const getPreflightAssetForCategory = (
+    category: ModelCategory,
+    currentModelId: string
+  ): PreflightAsset | undefined => {
+    return preflightAssets.find((a) => {
+      if (category === 'embedding') {
+        return (
+          a.id === 'dense_embedding' ||
+          a.id === 'bge_large' ||
+          a.name === currentModelId ||
+          a.model_name === currentModelId
+        );
+      }
+      if (category === 'reranker') {
+        return (
+          a.id === 'cross_encoder_reranker' ||
+          a.id === 'bge_reranker' ||
+          a.name === currentModelId ||
+          a.model_name === currentModelId
+        );
+      }
+      if (category === 'verifier') {
+        return (
+          a.id === 'nli_verifier' ||
+          a.id === 'finecat_nli' ||
+          a.name === currentModelId ||
+          a.model_name === currentModelId
+        );
+      }
+      return false;
+    });
+  };
+
   // Dynamic status evaluation
-  const getModelStatus = (modelId: string, category: ModelCategory): { label: string; tone: 'ready' | 'pending' | 'muted' } => {
+  const getModelStatus = (
+    modelId: string,
+    category: ModelCategory
+  ): { label: string; tone: 'ready' | 'pending' | 'muted' } => {
     if (isLoading) return { label: 'Loading...', tone: 'muted' };
     if (!modelId) return { label: 'Not configured', tone: 'muted' };
 
-    // Check preflight asset matching
-    const asset = preflightAssets.find(
-      (a) =>
-        a.name === modelId ||
-        a.id === modelId ||
-        (a.name && a.name.includes(modelId)) ||
-        (a.desc && a.desc.includes(modelId))
-    );
+    // Check preflight asset matching with category awareness
+    const asset =
+      getPreflightAssetForCategory(category, modelId) ||
+      preflightAssets.find(
+        (a) =>
+          a.name === modelId ||
+          a.id === modelId ||
+          a.model_name === modelId ||
+          (a.name && a.name.includes(modelId)) ||
+          (a.desc && a.desc.includes(modelId))
+      );
     if (asset) {
       if (asset.verified) return { label: 'Cached & Verified', tone: 'ready' };
       return { label: asset.status || 'Requires Download', tone: 'pending' };
@@ -177,6 +223,35 @@ export const NeuralStep: React.FC = () => {
     }
 
     return { label: 'Configured in Backend', tone: 'ready' };
+  };
+
+  // Handle batch download of all missing model weights
+  const handleDownloadAllMissing = async () => {
+    const missingAssets = preflightAssets.filter(
+      (a) =>
+        !a.verified &&
+        (a.id === 'dense_embedding' ||
+          a.id === 'bge_large' ||
+          a.id === 'cross_encoder_reranker' ||
+          a.id === 'bge_reranker' ||
+          a.id === 'nli_verifier' ||
+          a.id === 'finecat_nli')
+    );
+
+    if (missingAssets.length === 0) {
+      setStatusMessage({
+        text: 'All neural model weights are already cached & verified on disk.',
+        type: 'success',
+      });
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+
+    for (const asset of missingAssets) {
+      const modelRepo = asset.model_name || asset.name;
+      await handleDownloadModel(modelRepo);
+    }
+    await refreshBackendData();
   };
 
   // Handle model weight download from backend
@@ -214,6 +289,7 @@ export const NeuralStep: React.FC = () => {
         (freshAssets?.assets || []).some(
           (a: any) =>
             (a.id === modelId ||
+              a.model_name === modelId ||
               a.name?.toLowerCase().includes(modelId.toLowerCase()) ||
               modelId.toLowerCase().includes(a.name?.toLowerCase())) &&
             a.verified
@@ -432,6 +508,24 @@ export const NeuralStep: React.FC = () => {
   const rerankerStatus = getModelStatus(configuredReranker, 'reranker');
   const verifierStatus = getModelStatus(configuredVerifier, 'verifier');
 
+  const embAsset = getPreflightAssetForCategory('embedding', configuredEmbedding);
+  const rerankAsset = getPreflightAssetForCategory('reranker', configuredReranker);
+  const verifierAsset = getPreflightAssetForCategory('verifier', configuredVerifier);
+
+  const allPreflightVerified =
+    preflightAssets.length > 0 && preflightAssets.every((a) => a.verified);
+  const verifiedAssetsCount = preflightAssets.filter((a) => a.verified).length;
+  const missingNeuralCount = preflightAssets.filter(
+    (a) =>
+      !a.verified &&
+      (a.id === 'dense_embedding' ||
+        a.id === 'bge_large' ||
+        a.id === 'cross_encoder_reranker' ||
+        a.id === 'bge_reranker' ||
+        a.id === 'nli_verifier' ||
+        a.id === 'finecat_nli')
+  ).length;
+
   return (
     <div className="space-y-4 animate-in fade-in-50 duration-150">
       {/* HEADER */}
@@ -442,7 +536,7 @@ export const NeuralStep: React.FC = () => {
             {isLoading && <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Dynamically configured via live backend model registry. Zero hardcoded model options.
+            Dynamically configured via live backend model registry with real-time on-disk cache verification.
           </p>
         </div>
       </div>
@@ -467,6 +561,108 @@ export const NeuralStep: React.FC = () => {
 
       {/* SINGLE UNIFIED FORM CONTAINER */}
       <div className="p-4 sm:p-5 rounded-2xl bg-[#131622] border border-white/10 space-y-4 shadow-lg">
+        {/* PREFLIGHT ASSETS & ON-DISK FOOTPRINT BANNER */}
+        <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center text-white shrink-0">
+                <ShieldCheck className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-2 flex-wrap">
+                  <span>Neural & Substrate Preflight Verification</span>
+                  {allPreflightVerified ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-white/10 text-white border border-white/20">
+                      [OK] All 6 Neural & Substrate Assets Verified
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-white/5 text-zinc-300 border border-white/15">
+                      {verifiedAssetsCount} of {preflightAssets.length || 6} Assets Verified
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10.5px] font-mono text-slate-400 mt-0.5">
+                  {preflightFootprint} &bull; Sourced directly from local HuggingFace cache and on-disk substrates
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!allPreflightVerified && missingNeuralCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDownloadAllMissing}
+                  disabled={Boolean(downloadingModelId)}
+                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-black text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Missing Weights ({missingNeuralCount})</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowPreflightDetails(!showPreflightDetails)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white hover:bg-white/5 border border-white/10 transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <span>{showPreflightDetails ? 'Hide Diagnostics' : 'View Diagnostics'}</span>
+                {showPreflightDetails ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Expandable Diagnostics Table of all 6 Assets */}
+          {showPreflightDetails && (
+            <div className="rounded-lg bg-black/40 border border-white/10 overflow-hidden divide-y divide-white/5 mt-2 animate-in fade-in duration-150">
+              {preflightAssets.map((asset) => (
+                <div
+                  key={asset.id || asset.name}
+                  className="p-2.5 flex items-center justify-between text-xs hover:bg-white/[0.02] gap-2"
+                >
+                  <div className="space-y-0.5 min-w-0 flex-1 pr-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-white truncate">{asset.name}</span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        ({asset.size || 'In-Process'})
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">{asset.desc}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                        asset.verified
+                          ? 'bg-white/10 text-white border border-white/20'
+                          : 'bg-white/5 text-zinc-400 border border-white/10'
+                      }`}
+                    >
+                      {asset.status}
+                    </span>
+                    {asset.verified ? (
+                      <span className="w-5 h-5 rounded-md bg-white/10 border border-white/20 text-white flex items-center justify-center">
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadModel(asset.model_name || asset.name)}
+                        disabled={downloadingModelId === (asset.model_name || asset.name)}
+                        className="w-5 h-5 rounded-md bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center cursor-pointer transition-colors"
+                        title={`Download ${asset.name}`}
+                      >
+                        {downloadingModelId === (asset.model_name || asset.name) ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Download className="w-3 h-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* 1. HUGGING FACE ACCESS TOKEN (TOP POSITION) */}
         <div className="space-y-2 pb-4 border-b border-white/10">
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -578,6 +774,14 @@ export const NeuralStep: React.FC = () => {
                 <div className="font-semibold text-sm text-white truncate" title={configuredEmbedding}>
                   {getCleanModelName(configuredEmbedding, 'embedding')}
                 </div>
+
+                <div className="flex items-center gap-1.5 text-[10.5px] font-mono text-slate-400">
+                  <span>{embAsset?.size || 'In-Process'}</span>
+                  <span>&bull;</span>
+                  <span className={embeddingStatus.tone === 'ready' ? 'text-zinc-300' : 'text-slate-400'}>
+                    {embeddingStatus.label}
+                  </span>
+                </div>
               </div>
 
               <button
@@ -604,6 +808,14 @@ export const NeuralStep: React.FC = () => {
                 <div className="font-semibold text-sm text-white truncate" title={configuredReranker}>
                   {getCleanModelName(configuredReranker, 'reranker')}
                 </div>
+
+                <div className="flex items-center gap-1.5 text-[10.5px] font-mono text-slate-400">
+                  <span>{rerankAsset?.size || 'Requires Download'}</span>
+                  <span>&bull;</span>
+                  <span className={rerankerStatus.tone === 'ready' ? 'text-zinc-300' : 'text-slate-400'}>
+                    {rerankerStatus.label}
+                  </span>
+                </div>
               </div>
 
               <button
@@ -629,6 +841,14 @@ export const NeuralStep: React.FC = () => {
 
                 <div className="font-semibold text-sm text-white truncate" title={configuredVerifier}>
                   {getCleanModelName(configuredVerifier, 'verifier')}
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[10.5px] font-mono text-slate-400">
+                  <span>{verifierAsset?.size || 'Requires Download'}</span>
+                  <span>&bull;</span>
+                  <span className={verifierStatus.tone === 'ready' ? 'text-zinc-300' : 'text-slate-400'}>
+                    {verifierStatus.label}
+                  </span>
                 </div>
               </div>
 
