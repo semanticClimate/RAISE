@@ -597,8 +597,27 @@ function Test-LlmKeyStatus {
     $Key = $Key.Trim()
     try {
         if ($Provider -eq "gemini" -or $Provider -eq "google") {
-            $resp = Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models?key=$Key" -TimeoutSec 4 -ErrorAction Stop
-            return @{ Status = "Valid"; Message = "Active Gemini key" }
+            $body = '{"contents":[{"parts":[{"text":"ping"}]}],"generationConfig":{"maxOutputTokens":1}}'
+            $cands = @("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest")
+            $verified = $false
+            foreach ($m in $cands) {
+                try {
+                    $resp = Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models/$($m):generateContent" -Headers @{"x-goog-api-key" = $Key; "Content-Type" = "application/json"} -Method Post -Body $body -TimeoutSec 4 -ErrorAction Stop
+                    $verified = $true
+                    break
+                } catch {
+                    if ($_.Exception.Response) {
+                        $code = [int]$_.Exception.Response.StatusCode
+                        if ($code -eq 401 -or $code -eq 403) {
+                            return @{ Status = "Expired"; Message = "Key is expired or unauthorized (HTTP $code)" }
+                        }
+                    }
+                }
+            }
+            if ($verified) {
+                return @{ Status = "Valid"; Message = "Active Gemini key" }
+            }
+            return @{ Status = "UnverifiedOffline"; Message = "Offline / unverified" }
         }
         elseif ($Provider -eq "groq") {
             $headers = @{ "Authorization" = "Bearer $Key"; "User-Agent" = "RAISE/1.0" }

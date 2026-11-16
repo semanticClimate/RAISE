@@ -27,6 +27,8 @@ from fastapi import APIRouter, HTTPException
 from huggingface_hub import HfApi, snapshot_download
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from src.core.config import models
+
 logger = logging.getLogger("raise.core_registry")
 
 # 1. Enable Rust-accelerated parallel downloads (5x-10x faster) if hf_transfer is installed
@@ -65,15 +67,15 @@ class ModelConfigRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     embedder_id: str = Field(
-        "google/embeddinggemma-2",
+        default_factory=lambda: models.EMBEDDING_MODEL_NAME,
         validation_alias=AliasChoices("embedder_id", "embedderId", "encoder", "embedding_model"),
     )
     reranker_id: str = Field(
-        "jinaai/jina-reranker-v3.5",
+        default_factory=lambda: models.RERANKER_MODEL_NAME,
         validation_alias=AliasChoices("reranker_id", "rerankerId", "reranker", "reranker_model"),
     )
     verifier_id: str = Field(
-        "dleemiller/finecat-nli-ultra-l",
+        default_factory=lambda: models.NLI_MODEL_NAME,
         validation_alias=AliasChoices(
             "verifier_id", "verifierId", "nli", "verifier", "nli_verifier_model", "nli_model"
         ),
@@ -125,9 +127,9 @@ class RuntimeState:
         self.reranker_type: str = "cross_encoder"  # "listwise" or "cross_encoder"
         self.verifier: Any = None
         self.active_config: Dict[str, Any] = {
-            "embedder_id": "google/embeddinggemma-2",
-            "reranker_id": "jinaai/jina-reranker-v3.5",
-            "verifier_id": "dleemiller/finecat-nli-ultra-l",
+            "embedder_id": models.EMBEDDING_MODEL_NAME,
+            "reranker_id": models.RERANKER_MODEL_NAME,
+            "verifier_id": models.NLI_MODEL_NAME,
             "use_vision": False,
         }
 
@@ -279,11 +281,14 @@ async def verify_and_save_key(req: KeyVerificationRequest):
                 _persist_key_to_env("LLM_BACKEND", "openai")
 
             elif provider in ("gemini", "google"):
-                r = await client.get(
-                    "https://generativelanguage.googleapis.com/v1beta/models",
-                    headers={"x-goog-api-key": clean_key},
-                )
-                r.raise_for_status()
+                from src.infrastructure.providers.gemini import GeminiProvider
+                gp = GeminiProvider(api_key=clean_key)
+                h = gp.health_check(timeout=5.0)
+                if h.status != "READY" or not h.functional_test:
+                    raise HTTPException(
+                        status_code=401,
+                        detail=h.error_message or "Gemini API authentication rejected. Please verify your Google AI Studio API key.",
+                    )
                 state.keys["gemini"] = clean_key
                 os.environ["GEMINI_API_KEY"] = clean_key
                 os.environ["GOOGLE_API_KEY"] = clean_key
@@ -474,11 +479,11 @@ def load_and_prewarm_models(cfg: ModelConfigRequest):
     except Exception as e:
         logger.warning(
             f"Could not load primary embedder '{embed_path}' (likely gated repo without HF_TOKEN: {e}). "
-            "Falling back to BAAI/bge-base-en-v1.5 (ungated zero-config)."
+            f"Falling back to {models.EMBEDDING_FALLBACK_MODEL_NAME}."
         )
-        cfg.embedder_id = "BAAI/bge-base-en-v1.5"
+        cfg.embedder_id = models.EMBEDDING_FALLBACK_MODEL_NAME
         state.embedder = SentenceTransformer(
-            "BAAI/bge-base-en-v1.5",
+            models.EMBEDDING_FALLBACK_MODEL_NAME,
             device=state.device,
             model_kwargs={"torch_dtype": state.dtype},
         )
@@ -504,10 +509,10 @@ def load_and_prewarm_models(cfg: ModelConfigRequest):
                 automodel_args={"torch_dtype": state.dtype, "attn_implementation": attn_impl},
             )
     except Exception as e:
-        logger.warning(f"Could not load primary reranker '{rerank_path}': {e}. Falling back to ms-marco-MiniLM-L-6-v2.")
+        logger.warning(f"Could not load primary reranker '{rerank_path}': {e}. Falling back to {models.RERANKER_FALLBACK_MODEL_NAME}.")
         state.reranker_type = "cross_encoder"
         state.reranker = CrossEncoder(
-            "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            models.RERANKER_FALLBACK_MODEL_NAME,
             device=state.device,
         )
 
@@ -609,9 +614,9 @@ def get_system_status():
         "system_ram_used_mb": mem_info.get("system_ram_used_mb"),
         "system_ram_total_mb": mem_info.get("system_ram_total_mb"),
         "active_models": {
-            "embedder_id": state.active_config.get("embedder_id", "google/embeddinggemma-2"),
-            "reranker_id": state.active_config.get("reranker_id", "jinaai/jina-reranker-v3.5"),
-            "verifier_id": state.active_config.get("verifier_id", "dleemiller/finecat-nli-ultra-l"),
+            "embedder_id": state.active_config.get("embedder_id", models.EMBEDDING_MODEL_NAME),
+            "reranker_id": state.active_config.get("reranker_id", models.RERANKER_MODEL_NAME),
+            "verifier_id": state.active_config.get("verifier_id", models.NLI_MODEL_NAME),
             "use_vision": state.active_config.get("use_vision", False),
         },
         "configured_providers": state.get_configured_providers(),
