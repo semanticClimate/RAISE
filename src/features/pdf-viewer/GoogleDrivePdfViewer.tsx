@@ -80,6 +80,9 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
   const handleOpenStandaloneTab = () => {
     if (!targetPdfUrl) return;
     window.open(targetPdfUrl, '_blank', 'noopener,noreferrer');
+    if (!isStandalone && onClose) {
+      onClose();
+    }
   };
 
   return (
@@ -103,7 +106,7 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
             </button>
           )}
 
-          <div className="w-7 h-7 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-white/10 text-white border border-white/20 flex items-center justify-center shrink-0">
             <FileText className="w-4 h-4" />
           </div>
 
@@ -161,7 +164,7 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
           />
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center max-w-md animate-in fade-in duration-200">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-white/10 text-slate-300 border border-white/20 flex items-center justify-center mb-4">
               <FileText className="w-6 h-6" />
             </div>
             <h2 className="text-base font-semibold text-white mb-2">
@@ -184,7 +187,7 @@ export const GoogleDrivePdfViewer: React.FC<GoogleDrivePdfViewerProps> = ({
               <button
                 type="button"
                 onClick={handleOpenStandaloneTab}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white transition-colors cursor-pointer flex items-center gap-2 shadow-lg shadow-indigo-600/30"
+                className="px-4 py-2 rounded-xl bg-white text-black hover:bg-slate-200 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 Open Direct PDF
