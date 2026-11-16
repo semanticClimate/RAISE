@@ -72,7 +72,7 @@ class LocalVLLMProvider(BaseLLMProvider):
     def is_available(self) -> bool:
         """Fast non-blocking check to determine if the local vLLM server is alive across common ports and Docker networks."""
         now = time.time()
-        if hasattr(self, "_last_check_time") and (now - self._last_check_time) < 3.0:
+        if hasattr(self, "_last_check_time") and (now - self._last_check_time) < 10.0:
             return bool(getattr(self, "_last_available", False))
 
         candidate_urls = [self.base_url]
@@ -80,10 +80,8 @@ class LocalVLLMProvider(BaseLLMProvider):
             if candidate and candidate not in candidate_urls:
                 candidate_urls.append(candidate)
         for fallback in [
-            "http://localhost:8002/v1",
             "http://127.0.0.1:8002/v1",
-            "http://localhost:8080/v1",
-            "http://localhost:1234/v1",
+            "http://localhost:8002/v1",
         ]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
@@ -91,12 +89,13 @@ class LocalVLLMProvider(BaseLLMProvider):
             for container_host in ["http://raise-vllm-prod:8000/v1", "http://host.docker.internal:8002/v1"]:
                 if container_host not in candidate_urls:
                     candidate_urls.append(container_host)
-        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.35))
+        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.15))
         for u in candidate_urls:
             try:
                 # Fast TCP pre-flight to prevent slow DNS connect timeouts
                 parsed = urllib.parse.urlparse(u)
-                host = parsed.hostname or "127.0.0.1"
+                raw_host = parsed.hostname or "127.0.0.1"
+                host = "127.0.0.1" if raw_host in ("localhost", "127.0.0.1") else raw_host
                 port = parsed.port or 8002
                 with socket.create_connection((host, port), timeout=probe_timeout):
                     pass
@@ -495,24 +494,25 @@ class LocalOllamaProvider(BaseLLMProvider):
     def is_available(self) -> bool:
         """Fast non-blocking check to determine if local Ollama server is alive and has models."""
         now = time.time()
-        if hasattr(self, "_last_check_time") and (now - self._last_check_time) < 3.0:
+        if hasattr(self, "_last_check_time") and (now - self._last_check_time) < 10.0:
             return bool(getattr(self, "_last_available", False))
 
         candidate_urls = [self.base_url]
-        ollama_cfg_url = getattr(settings.llm, "ollama_base_url", "http://localhost:11434")
+        ollama_cfg_url = getattr(settings.llm, "ollama_base_url", "http://127.0.0.1:11434")
         if ollama_cfg_url not in candidate_urls:
             candidate_urls.append(ollama_cfg_url)
-        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434"]:
+        for fallback in ["http://127.0.0.1:11434", "http://localhost:11434"]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
         if os.path.exists("/.dockerenv") and "http://host.docker.internal:11434" not in candidate_urls:
             candidate_urls.append("http://host.docker.internal:11434")
-        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.2))
+        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.15))
         for u in candidate_urls:
             try:
                 # Fast TCP pre-flight to avoid HTTP connect timeouts
                 parsed = urllib.parse.urlparse(u)
-                host = parsed.hostname or "127.0.0.1"
+                raw_host = parsed.hostname or "127.0.0.1"
+                host = "127.0.0.1" if raw_host in ("localhost", "127.0.0.1") else raw_host
                 port = parsed.port or 11434
                 with socket.create_connection((host, port), timeout=probe_timeout):
                     pass

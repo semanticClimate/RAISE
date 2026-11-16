@@ -23,6 +23,7 @@ from .model_catalog_service import get_dynamic_model_catalog
 from .config_service import (
     get_current_configuration,
     save_configuration,
+    persist_routing_env,
     mask_secret,
 )
 

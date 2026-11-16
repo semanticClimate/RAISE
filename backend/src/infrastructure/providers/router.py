@@ -121,11 +121,12 @@ class ProviderRouter:
             "deepseek": DeepSeekProvider(),
             "openrouter": OpenRouterProvider(),
             "universal": UniversalCloudProvider(),
+            "openai": UniversalCloudProvider(custom_name="openai"),
         }
 
         # Active primary provider selection (Requirement 1: No hardcoded blacklists)
         _cm = get_credential_manager()
-        configured_clouds = [cand for cand in ["groq", "gemini", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if _cm.get_credential_status(cand) == "configured"]
+        configured_clouds = [cand for cand in ["groq", "gemini", "openai", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if _cm.get_credential_status(cand) == "configured"]
 
         # Probe local engines (vLLM and Ollama)
         vllm_alive = False
@@ -246,7 +247,7 @@ class ProviderRouter:
             alive_local.append("ollama")
 
         # 2. Collect verified configured cloud candidates in priority sequence
-        ordered_candidates = ["groq", "gemini", "nvidia", "mistral", "cohere", "deepseek", "openrouter", "universal"]
+        ordered_candidates = ["groq", "gemini", "openai", "nvidia", "mistral", "cohere", "deepseek", "openrouter", "universal"]
         configured_clouds = []
         for cand in ordered_candidates:
             if cand in self.disabled_providers:
@@ -355,10 +356,12 @@ class ProviderRouter:
         deepseek_model = os.getenv("DEEPSEEK_MODEL_NAME") or getattr(self.providers.get("deepseek"), "model_name", None) or models.DEEPSEEK_MODEL_NAME
         openrouter_model = os.getenv("OPENROUTER_MODEL_NAME") or getattr(self.providers.get("openrouter"), "model_name", None) or models.OPENROUTER_MODEL_NAME
         universal_model = os.getenv("UNIVERSAL_MODEL_NAME") or getattr(self.providers.get("universal"), "model_name", None) or models.OPENAI_MODEL_NAME
+        openai_model = os.getenv("OPENAI_MODEL_NAME") or getattr(self.providers.get("openai"), "model_name", None) or models.OPENAI_MODEL_NAME
 
         return {
             "groq": {"name": "Groq LPU (High-Throughput)", "tier": "Free Tier", "default_model": groq_model},
             "gemini": {"name": "Google Gemini", "tier": "Free Tier (Rate-Limited Quota)", "default_model": gemini_model},
+            "openai": {"name": "OpenAI", "tier": "Cloud API", "default_model": openai_model},
             "mistral": {"name": "Mistral AI", "tier": "Free / Developer Tier", "default_model": mistral_model},
             "nvidia": {"name": "NVIDIA NIM", "tier": "Developer Free Tier (1,000 Credits)", "default_model": nvidia_model},
             "cohere": {"name": "Cohere Command", "tier": "Evaluation Free Tier", "default_model": cohere_model},
@@ -534,7 +537,7 @@ class ProviderRouter:
 
         providers_info = []
 
-        all_known = ["vllm", "gemini", "groq", "ollama", "local", "nvidia", "mistral", "cohere", "deepseek", "openrouter"]
+        all_known = ["vllm", "gemini", "groq", "openai", "universal", "ollama", "local", "nvidia", "mistral", "cohere", "deepseek", "openrouter"]
         for p_id in all_known:
             if p_id not in self.providers:
                 continue

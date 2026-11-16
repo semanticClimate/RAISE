@@ -1,5 +1,4 @@
 import {
-  Check,
   CheckCircle2,
   Cpu,
   Database,
@@ -328,35 +327,6 @@ export const ControlCenterModal: React.FC = () => {
               <span className="text-xs font-mono font-medium max-w-[240px] truncate text-zinc-300">
                 {connectNotice}
               </span>
-            )}
-
-            {activeTab !== 'launch' && hasConfiguredKey && (
-              <button
-                type="button"
-                disabled={isSaving || isWarmingUp || !isConnected}
-                onClick={handleFinalStart}
-                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                  isConnected && !isSaving && !isWarmingUp
-                    ? 'border-white/20 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer active:scale-95'
-                    : 'border-white/10 bg-white/[0.02] text-slate-600 cursor-not-allowed opacity-50'
-                }`}
-                title={
-                  !isConnected
-                    ? 'Backend Gateway is offline'
-                    : isWarmingUp
-                      ? 'Warming up neural models...'
-                      : 'Start directly with current settings'
-                }
-              >
-                {isSaving || isWarmingUp ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
-                ) : (
-                  <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
-                )}
-                <span className="hidden sm:inline">
-                  {isWarmingUp ? 'Warming Up...' : isSaving ? 'Saving...' : 'Save & Start'}
-                </span>
-              </button>
             )}
 
             {activeTab !== 'launch' ? (

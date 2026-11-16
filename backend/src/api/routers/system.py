@@ -87,17 +87,27 @@ async def update_system_routing(req: RoutingUpdateRequest) -> Dict[str, Any]:
         routing_policy=req.routing_policy,
     )
 
-    # Persist priority order and provider choice to .env
+    # Persist priority order and provider choice directly to .env with zero socket timeouts
     try:
-        from src.features.system.config_service import save_configuration
-        from src.features.system.schemas import SystemConfigRequest
-        save_configuration(SystemConfigRequest(
-            primary_provider=result.get("primary_provider"),
-            fallback_order=result.get("fallback_chain"),
-            disabled_providers=result.get("disabled_providers"),
-            routing_policy=result.get("routing_policy"),
-            llm_backend=result.get("primary_provider"),
-        ))
+        from src.features.system.config_service import persist_routing_env
+        env_updates = {
+            "PINNED_PRIMARY_PROVIDER": result.get("primary_provider") or "",
+            "LLM_BACKEND": result.get("primary_provider") or "",
+            "RAISE_LLM_PROVIDER": result.get("primary_provider") or "",
+            "LLM_PROVIDER": result.get("primary_provider") or "",
+        }
+        if result.get("fallback_chain"):
+            env_updates["LLM_FALLBACK_ORDER"] = ",".join(result["fallback_chain"])
+        if result.get("disabled_providers") is not None:
+            env_updates["DISABLED_PROVIDERS"] = ",".join(result["disabled_providers"])
+        if result.get("routing_policy"):
+            env_updates["ROUTING_POLICY"] = result["routing_policy"]
+            if result["routing_policy"] == "LOCAL_FIRST":
+                env_updates["EXECUTION_MODE"] = "LOCAL"
+            elif result["routing_policy"] == "CLOUD_FIRST":
+                env_updates["EXECUTION_MODE"] = "CLOUD"
+
+        persist_routing_env(env_updates)
     except Exception as e:
         logger.warning(f"Could not persist routing to .env: {e}")
 
