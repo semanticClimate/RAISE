@@ -106,6 +106,7 @@ async def update_system_routing(req: RoutingUpdateRequest) -> Dict[str, Any]:
         "success": True,
         "message": f"LLM Routing Priority applied: '{result.get('primary_provider')}' is now Primary.",
         "primary_provider": result.get("primary_provider"),
+        "pinned_primary_provider": result.get("pinned_primary_provider"),
         "fallback_order": result.get("fallback_order") or result.get("fallback_chain"),
         "fallback_chain": result.get("fallback_chain"),
         "disabled_providers": result.get("disabled_providers"),

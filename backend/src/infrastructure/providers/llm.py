@@ -83,7 +83,7 @@ class LocalVLLMProvider(BaseLLMProvider):
         ]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
-        probe_timeout = getattr(settings.llm, "probe_timeout", 0.35)
+        probe_timeout = max(float(getattr(settings.llm, "probe_timeout", 0.35)), 2.0)
         for u in candidate_urls:
             try:
                 req = urllib.request.Request(f"{u.rstrip('/')}/models", headers={"User-Agent": "RAISE-Provider"})
@@ -195,33 +195,8 @@ class LocalVLLMProvider(BaseLLMProvider):
             else:
                 logger.warning(f"Local vLLM endpoint ({self.base_url}) unavailable: {e}.")
 
-            # 1. First fallback: If user configured Groq or Gemini API key, fail over to Cloud automatically!
-            groq_key = os.getenv("GROQ_API_KEY", "").strip()
-            gemini_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-            if groq_key:
-                logger.info("Falling back from offline/unavailable vLLM to configured Groq Cloud API...")
-                cloud_fb = CloudOpenAICompatibleProvider(
-                    api_key=groq_key,
-                    base_url="https://api.groq.com/openai/v1",
-                    model_name=os.getenv("GROQ_MODEL_NAME", models.GROQ_MODEL_NAME),
-                )
-                return cloud_fb.complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
-            elif gemini_key:
-                logger.info("Falling back from offline/unavailable vLLM to configured Gemini API...")
-                from src.infrastructure.providers.gemini import GeminiProvider
-                return GeminiProvider().complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
-
-            # 2. Second fallback: In-process Transformers on GPU
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    logger.info("Attempting in-process GPU fallback via LocalTransformersProvider...")
-                    fallback_local = LocalTransformersProvider()
-                    return fallback_local.complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature, **kwargs)
-                else:
-                    raise RuntimeError("Local vLLM endpoint is offline and no Cloud API key or CUDA GPU is available.")
-            except Exception as _fb_err:
-                raise RuntimeError(f"Error executing local inference: vLLM ({e}) -> Fallback ({_fb_err})")
+            # Propagate error cleanly to ProviderRouter so configured fallback chain is respected
+            raise RuntimeError(f"Local vLLM inference failed at {self.base_url}: {e}")
 
     def health_check(self, timeout: float = 5.0) -> ProviderHealth:
         """Ping local vLLM endpoint and perform micro inference."""
@@ -504,7 +479,7 @@ class LocalOllamaProvider(BaseLLMProvider):
         for fallback in ["http://localhost:11434", "http://127.0.0.1:11434", "http://host.docker.internal:11434"]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
-        probe_timeout = getattr(settings.llm, "probe_timeout", 0.35)
+        probe_timeout = max(float(getattr(settings.llm, "probe_timeout", 0.35)), 2.0)
         for u in candidate_urls:
             try:
                 # 1. Probe Ollama native tags endpoint

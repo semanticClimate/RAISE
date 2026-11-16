@@ -193,6 +193,9 @@ class ProviderRouter:
         # Provider health, cooldown & disabled tracking (Requirement 1: clean empty set at init)
         self.provider_cooldowns: Dict[str, float] = {}
         self.disabled_providers: Set[str] = set()
+        self.pinned_primary_provider: Optional[str] = (
+            os.getenv("PINNED_PRIMARY_PROVIDER", "").strip().lower() or None
+        )
         self.last_used_provider: str = ""
         self.last_used_model: str = ""
 
@@ -295,8 +298,13 @@ class ProviderRouter:
                 if eng not in active:
                     active.append(eng)
 
-        # 4. If a primary provider was explicitly requested and is valid/alive
-        prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else None)
+        # 4. If user explicitly pinned a primary provider, lock and preserve it as #1
+        pinned = getattr(self, "pinned_primary_provider", None) or os.getenv("PINNED_PRIMARY_PROVIDER", "").strip().lower()
+        if pinned and pinned in self.providers and pinned not in self.disabled_providers:
+            prim = pinned
+        else:
+            prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else None)
+
         if prim and prim in self.providers and prim not in self.disabled_providers:
             if prim in ("vllm", "ollama") and prim not in alive_local:
                 pass  # Do not promote dead local engine to primary
@@ -573,6 +581,7 @@ class ProviderRouter:
             "status": "success",
             "message": "Dynamic routing status loaded.",
             "primary_provider": primary,
+            "pinned_primary_provider": getattr(self, "pinned_primary_provider", None),
             "fallback_order": self.fallback_chain,
             "fallback_chain": self.fallback_chain,
             "disabled_providers": list(self.disabled_providers),
@@ -605,6 +614,8 @@ class ProviderRouter:
         if primary_provider is not None:
             prim = primary_provider.lower().strip()
             if prim in self.providers:
+                self.pinned_primary_provider = prim
+                os.environ["PINNED_PRIMARY_PROVIDER"] = prim
                 for t in InferenceTask:
                     self.task_policy[t] = prim
                 if prim in self.disabled_providers:
@@ -613,6 +624,8 @@ class ProviderRouter:
                     self.fallback_chain.remove(prim)
                 self.fallback_chain.insert(0, prim)
         elif clean_order:
+            self.pinned_primary_provider = clean_order[0]
+            os.environ["PINNED_PRIMARY_PROVIDER"] = clean_order[0]
             for t in InferenceTask:
                 self.task_policy[t] = clean_order[0]
 

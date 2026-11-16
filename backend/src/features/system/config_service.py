@@ -221,6 +221,16 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
     target_backend = (cfg.llm_backend or "").strip().lower()
     raw_mode = (cfg.llm_mode or "").strip().lower()
 
+    has_explicit_llm_request = bool(target_backend or raw_mode)
+    if not has_explicit_llm_request:
+        # Preserve active environment configuration and pinned router primary
+        from src.infrastructure.providers.router import get_provider_router
+        active_router = get_provider_router()
+        pinned = getattr(active_router, "pinned_primary_provider", None) or os.getenv("PINNED_PRIMARY_PROVIDER", "").strip().lower()
+        existing_backend = pinned or env_map.get("LLM_BACKEND", "").strip().lower() or os.getenv("LLM_BACKEND", "").strip().lower()
+        target_backend = existing_backend or "vllm"
+        raw_mode = env_map.get("EXECUTION_MODE", "").strip().lower()
+
     if not target_backend and raw_mode:
         if raw_mode.startswith("cloud_"):
             target_backend = raw_mode[6:]
@@ -316,13 +326,17 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         env_map["LLM_BACKEND"] = "groq"
         env_map["LLM_PROVIDER"] = "groq"
         env_map["LLM_MODEL_NAME"] = models.GROQ_MODEL_NAME
-    else:  # cloud_groq default
+    elif has_explicit_llm_request:  # cloud_groq explicit fallback
         env_map["LLM_BACKEND"] = "groq"
         env_map["LLM_PROVIDER"] = "groq"
         env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = models.GROQ_MODEL_NAME
         if cfg.groq_api_key and not is_masked_secret(cfg.groq_api_key):
             env_map["GROQ_API_KEY"] = cfg.groq_api_key.strip()
+    else:
+        # Preserve active backend and execution mode without forcing cloud overwrite
+        if "LLM_BACKEND" not in env_map and target_backend:
+            env_map["LLM_BACKEND"] = target_backend
 
     # Update provider credentials if provided (ignoring masked placeholders)
     from src.infrastructure.credentials.manager import get_credential_manager
@@ -363,7 +377,12 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         else:
             router.set_execution_mode(ExecutionMode.AUTOMATIC)
             router.set_cloud_allowed(True)
-        router._refresh_fallback_chain(env_map.get("LLM_BACKEND"))
+        primary_hint = (
+            getattr(router, "pinned_primary_provider", None)
+            or (cfg.primary_provider if cfg.primary_provider else None)
+            or env_map.get("LLM_BACKEND")
+        )
+        router._refresh_fallback_chain(primary_hint)
         if cfg.fallback_order or cfg.disabled_providers is not None or cfg.primary_provider or cfg.routing_policy:
             router.set_routing(
                 fallback_order=cfg.fallback_order,
@@ -458,7 +477,7 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         os.environ["POSTGRES_URL"] = pg_val
         os.environ["DATABASE_URL"] = pg_val
 
-    # Mark first-time workstation setup completed across runtime & filesystem
+    # Mark first-time setup completed across runtime & filesystem
     env_map["SETUP_COMPLETED"] = "true"
     os.environ["SETUP_COMPLETED"] = "true"
     try:

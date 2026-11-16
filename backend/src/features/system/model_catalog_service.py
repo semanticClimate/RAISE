@@ -32,36 +32,44 @@ _CATALOG_CACHE_TTL: float = 900.0  # 15 minutes
 def _fetch_from_local_vllm() -> List[Dict[str, Any]]:
     """Probes local vLLM OpenAI-compatible endpoint for currently loaded/downloaded models."""
     local_models = []
-    vllm_base = os.getenv("VLLM_BASE_URL", os.getenv("VLLM_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
-    if vllm_base.endswith("/v1"):
-        endpoint = f"{vllm_base}/models"
-    else:
-        endpoint = f"{vllm_base}/v1/models"
-    try:
-        r = requests.get(endpoint, timeout=0.8)
-        if r.status_code == 200:
-            data = r.json()
-            for m in data.get("data", []):
-                m_id = m.get("id", "local-vllm-model")
-                max_len = m.get("max_model_len", 8192)
-                param_match = re.search(r"(\d+(?:\.\d+)?)[bB]", m_id)
-                param_val = float(param_match.group(1)) if param_match else 14.0
-                size_gb = round(param_val * 0.6, 1) if any(k in m_id.lower() for k in ("gptq", "int4", "awq", "int8")) else round(param_val * 1.5, 1)
-                min_ram = 16 if size_gb <= 12 else 32
+    base_env = os.getenv("VLLM_BASE_URL", os.getenv("VLLM_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
+    candidates = [base_env]
+    for alt in ["http://localhost:8002", "http://127.0.0.1:8002", "http://localhost:8000"]:
+        if alt not in candidates:
+            candidates.append(alt)
 
-                local_models.append({
-                    "id": m_id,
-                    "name": f"{m_id} ({int(param_val)}B - {max_len} ctx)",
-                    "download_size_gb": size_gb,
-                    "min_ram_gb": min_ram,
-                    "tier": "Installed (Local Engine)",
-                    "status": "READY",
-                    "downloads": "On-Device (vLLM GPU)",
-                    "source": "vllm_local",
-                    "isInstalled": True,
-                })
-    except Exception:
-        pass
+    for cand_base in candidates:
+        if cand_base.endswith("/v1"):
+            endpoint = f"{cand_base}/models"
+        else:
+            endpoint = f"{cand_base}/v1/models"
+        try:
+            r = requests.get(endpoint, timeout=2.5)
+            if r.status_code == 200:
+                data = r.json()
+                for m in data.get("data", []):
+                    m_id = m.get("id", "local-vllm-model")
+                    max_len = m.get("max_model_len", 8192)
+                    param_match = re.search(r"(\d+(?:\.\d+)?)[bB]", m_id)
+                    param_val = float(param_match.group(1)) if param_match else 14.0
+                    size_gb = round(param_val * 0.6, 1) if any(k in m_id.lower() for k in ("gptq", "int4", "awq", "int8")) else round(param_val * 1.5, 1)
+                    min_ram = 16 if size_gb <= 12 else 32
+
+                    local_models.append({
+                        "id": m_id,
+                        "name": f"{m_id} ({int(param_val)}B - {max_len} ctx)",
+                        "download_size_gb": size_gb,
+                        "min_ram_gb": min_ram,
+                        "tier": "Installed (Local Engine)",
+                        "status": "READY",
+                        "downloads": "On-Device (vLLM GPU)",
+                        "source": "vllm_local",
+                        "isInstalled": True,
+                    })
+                if local_models:
+                    break
+        except Exception:
+            pass
     return local_models
 
 
