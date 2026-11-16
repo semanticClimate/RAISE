@@ -90,10 +90,9 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           const norm = canonicalId(pid);
           return storeApiKeys.some((k) => {
             const kProv = canonicalId(k?.provider);
-            // Strictly check backend verification: key must be verified by backend API
             const isVerified = k?.verified === true && (typeof k?.latencyMs === 'number' && k.latencyMs > 0);
-            if (!isVerified) return false;
-            return kProv === norm;
+            const hasValidKey = Boolean(k?.key && k.key.trim().length >= 8);
+            return (isVerified || hasValidKey) && kProv === norm;
           });
         };
 
@@ -137,12 +136,13 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           };
         });
 
-        // Also merge any backend-approved keys present in the control center store
+        // Also merge any configured or verified keys present in the control center store
         storeApiKeys.forEach((k) => {
           if (!k?.provider || k.provider === 'unknown') return;
           const pid = canonicalId(k.provider);
+          const hasValidKey = Boolean(k?.key && k.key.trim().length >= 8);
           const isVerified = k.verified === true && (typeof k.latencyMs === 'number' && k.latencyMs > 0);
-          if (!isVerified) return; // Only merge if backend approved key with live latency
+          if (!hasValidKey && !isVerified) return;
           if (!merged[pid]) {
             merged[pid] = {
               id: pid,
@@ -150,7 +150,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
               status: 'READY',
               isOffline: false,
               isConfigured: true,
-              tier: `Connected (${k.latencyMs}ms)`,
+              tier: isVerified ? `Connected (${k.latencyMs}ms)` : 'Configured (Active)',
               model: (k as any).model || (pid === 'gemini' ? 'gemini-2.5-flash' : 'Universal Custom LLM'),
             };
           } else {
