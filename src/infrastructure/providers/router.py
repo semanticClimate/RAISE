@@ -544,21 +544,11 @@ class ProviderRouter:
             order_index = self.fallback_chain.index(p_id) + 1 if p_id in self.fallback_chain else 999
 
             if p_id == "vllm":
-                is_avail = False
-                try:
-                    is_avail = prov_obj.is_available()
-                except Exception:
-                    pass
-                status = "READY" if is_avail else "OFFLINE"
+                status = "READY" if vllm_alive else "OFFLINE"
                 display_name = "Local vLLM Container (GPU)"
                 tier = "Local High-Throughput (Zero API Cost)"
             elif p_id == "ollama":
-                is_avail = False
-                try:
-                    is_avail = prov_obj.is_available()
-                except Exception:
-                    pass
-                status = "READY" if is_avail else "OFFLINE"
+                status = "READY" if ollama_alive else "OFFLINE"
                 display_name = "Local Ollama Engine"
                 tier = "Local On-Device"
             elif p_id == "local":

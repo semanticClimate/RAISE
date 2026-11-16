@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from .schemas import PreflightDownloadRequest
-from src.core.config import models
+from src.core.config import models, resolve_local_model_path
 
 logger = logging.getLogger("raise.features.system.preflight")
 
@@ -36,7 +36,26 @@ def format_byte_size(num_bytes: int) -> str:
 
 
 def get_hf_model_disk_footprint(repo_id: str) -> int:
-    """Calculates actual on-disk byte footprint for a cached Hugging Face model repository."""
+    """Calculates actual on-disk byte footprint for a cached Hugging Face model repository or local directory."""
+    if not repo_id:
+        return 0
+
+    # 1. Check local model directory first (e.g. backend/models/google/embeddinggemma-2)
+    try:
+        resolved = resolve_local_model_path(repo_id)
+        if resolved and Path(resolved).is_dir():
+            total = 0
+            for root, _, files in os.walk(resolved):
+                for f in files:
+                    try:
+                        total += (Path(root) / f).resolve().stat().st_size
+                    except Exception:
+                        pass
+            if total > 0:
+                return total
+    except Exception:
+        pass
+
     candidate_hubs = []
     try:
         from huggingface_hub.constants import HF_HUB_CACHE
@@ -118,7 +137,21 @@ def get_package_disk_footprint(pkg_name: str) -> int:
 
 
 def check_hf_model_cached(repo_id: str) -> bool:
-    """Verifies whether model weights exist in local HuggingFace cache."""
+    """Verifies whether model weights exist in local model directory or HuggingFace cache."""
+    if not repo_id:
+        return False
+
+    # 1. Check local model directory first (e.g. backend/models/<repo_id>)
+    try:
+        resolved = resolve_local_model_path(repo_id)
+        if resolved and Path(resolved).is_dir():
+            p = Path(resolved)
+            # Verify required model files exist
+            if (p / "config.json").exists() or any(p.glob("*.safetensors")) or any(p.glob("*.bin")):
+                return True
+    except Exception:
+        pass
+
     try:
         from huggingface_hub import try_to_load_from_cache
         res = try_to_load_from_cache(repo_id=repo_id, filename="config.json")
