@@ -21,6 +21,7 @@ msgpack>=1.1.2
 neo4j>=5.26.0
 chromadb>=0.5.0
 hf-transfer>=0.1.8
+huggingface-hub>=0.23.0
 torch>=2.4.0
 
 # Networking & Cloud

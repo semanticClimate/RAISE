@@ -115,9 +115,21 @@ function Write-CardHeader {
 
 Write-Header
 
-$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } elseif ($env:BAT_DIR -and (Test-Path -LiteralPath $env:BAT_DIR)) { $env:BAT_DIR } else { (Get-Location).Path }; $repoRoot = (Resolve-Path -LiteralPath $scriptDir).Path
+$scriptDir = if ($env:BAT_DIR -and (Test-Path -LiteralPath $env:BAT_DIR)) {
+    $env:BAT_DIR
+} elseif ($PSScriptRoot) {
+    if (Test-Path (Join-Path $PSScriptRoot "backend\server.py")) {
+        $PSScriptRoot
+    } else {
+        Split-Path -Parent $PSScriptRoot
+    }
+} else {
+    (Get-Location).Path
+}
+$repoRoot = (Resolve-Path -LiteralPath $scriptDir).Path
 Set-Location -LiteralPath $repoRoot
 
+try {
 $backendDir = Join-Path $repoRoot "backend"; $frontendDir = Join-Path $repoRoot "frontend"
 if (-not (Test-Path (Join-Path $backendDir "server.py"))) { Write-Info "Backend folder not found at: $backendDir" "Red" "╰─"; exit 1 }
 if (-not (Test-Path (Join-Path $frontendDir "package.json"))) { Write-Info "Frontend folder not found at: $frontendDir" "Red" "╰─"; exit 1 }
@@ -256,7 +268,7 @@ function Test-PythonHasCoreDeps {
     param([string]$Path)
     if (-not (Test-ValidPython $Path)) { return $false }
     try {
-        $chk = & $Path -c "import sys, fastapi, uvicorn, pydantic, rich, prompt_toolkit, sentence_transformers, transformers; sys.stdout.write('OK')" 2>$null
+        $chk = & $Path -c "import sys, fastapi, uvicorn, pydantic, rich, prompt_toolkit, sentence_transformers, transformers, huggingface_hub, fakeredis, networkx; sys.stdout.write('OK')" 2>$null
         return ($chk -match "OK")
     } catch { return $false }
 }
@@ -527,6 +539,30 @@ if (-not (Test-Path $backendEnv)) {
     elseif (Test-Path $rootEnvEx) { Copy-Item -Path $rootEnvEx -Destination $backendEnv -Force }
 }
 if (-not (Test-Path $rootEnv) -and (Test-Path $backendEnv)) { Copy-Item -Path $backendEnv -Destination $rootEnv -Force }
+
+function Import-EnvFile {
+    param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return }
+    try {
+        Get-Content -Path $Path -Encoding utf8 | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                $parts = $line.Split("=", 2)
+                $k = $parts[0].Trim()
+                $v = $parts[1].Trim()
+                if (($v.StartsWith('"') -and $v.EndsWith('"')) -or ($v.StartsWith("'") -and $v.EndsWith("'"))) {
+                    $v = $v.Substring(1, $v.Length - 2)
+                }
+                if ($k -and -not [string]::IsNullOrEmpty($v)) {
+                    [Environment]::SetEnvironmentVariable($k, $v, [EnvironmentVariableTarget]::Process)
+                }
+            }
+        }
+    } catch {}
+}
+
+if (Test-Path $backendEnv) { Import-EnvFile -Path $backendEnv }
+if (Test-Path $rootEnv) { Import-EnvFile -Path $rootEnv }
 
 # Intelligent API Key Auto-Detector & Credential Manager
 function Mask-ApiKey {
@@ -911,10 +947,14 @@ function Request-RaiseKeysInteractive {
 
 if (Test-Path $rootEnv) {
     Request-RaiseKeysInteractive -EnvPath $rootEnv
+    Import-EnvFile -Path $rootEnv
+}
+if (Test-Path $backendEnv) {
+    Import-EnvFile -Path $backendEnv
 }
 
 # ------------------------------------------------------------------------------
-# Neural Asset Pre-flight Cache Probe (Embedding, Cross-Encoder, NLI)
+# Neural Asset Pre-flight Cache Probe (Embedding, Cross-Encoder, NLI, GLiNER)
 # ------------------------------------------------------------------------------
 $hfHubPath = if ($env:HF_HUB_CACHE -and (Test-Path $env:HF_HUB_CACHE)) { $env:HF_HUB_CACHE } `
              elseif ($env:HF_HOME -and (Test-Path (Join-Path $env:HF_HOME "hub"))) { Join-Path $env:HF_HOME "hub" } `
@@ -923,6 +963,15 @@ $hfHubPath = if ($env:HF_HUB_CACHE -and (Test-Path $env:HF_HUB_CACHE)) { $env:HF
 
 function Test-HfFolderReady {
     param([string]$RepoId)
+    if (-not $RepoId) { return $false }
+    $localCand1 = Join-Path $backendDir ("models\" + $RepoId)
+    $localCand2 = Join-Path $repoRoot ("models\" + $RepoId)
+    foreach ($cand in @($localCand1, $localCand2)) {
+        if (Test-Path -LiteralPath $cand) {
+            $hasFiles = Get-ChildItem -Path $cand -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "\.(safetensors|bin|json)$" } | Select-Object -First 1
+            if ($hasFiles) { return $true }
+        }
+    }
     $folder = "models--" + ($RepoId -replace "/", "--")
     $snapDir = Join-Path $hfHubPath ($folder + "\snapshots")
     if (Test-Path $snapDir) {
@@ -939,6 +988,7 @@ $configPath = Join-Path $backendDir "src\core\config.py"
 $embRepo = $null
 $rerankRepo = $null
 $nliRepo = $null
+$glinerRepo = "urchade/gliner_medium-v2.1"
 
 $activeEnv = if (Test-Path $backendEnv) { $backendEnv } elseif (Test-Path $rootEnv) { $rootEnv } else { $null }
 if ($activeEnv) {
@@ -959,6 +1009,7 @@ if (Test-Path $configPath) {
     if (-not $embRepo -and $cfgRaw -match 'EMBEDDING_MODEL_NAME:\s*str\s*=(?:[^\r\n]*?,)?\s*["'']([^"'']+)["'']') { $embRepo = $Matches[1].Trim() }
     if (-not $rerankRepo -and $cfgRaw -match 'RERANKER_MODEL_NAME:\s*str\s*=(?:[^\r\n]*?,)?\s*["'']([^"'']+)["'']') { $rerankRepo = $Matches[1].Trim() }
     if (-not $nliRepo -and $cfgRaw -match 'NLI_MODEL_NAME:\s*str\s*=(?:[^\r\n]*?,)?\s*["'']([^"'']+)["'']') { $nliRepo = $Matches[1].Trim() }
+    if ($cfgRaw -match 'GLINER_MODEL_NAME:\s*str\s*=(?:[^\r\n]*?,)?\s*["'']([^"'']+)["'']') { $glinerRepo = $Matches[1].Trim() }
 }
 
 if (-not $embRepo) { $embRepo = "google/embeddinggemma-2" }
@@ -968,14 +1019,16 @@ if (-not $nliRepo) { $nliRepo = "dleemiller/finecat-nli-ultra-l" }
 $embCached = Test-HfFolderReady $embRepo
 $rerankCached = Test-HfFolderReady $rerankRepo
 $nliCached = Test-HfFolderReady $nliRepo
+$glinerCached = Test-HfFolderReady $glinerRepo
 
-if ($embCached -and $rerankCached -and $nliCached) {
-    Write-Info "Neural Pipeline Assets: Dense Embedding [CACHED] * Cross-Encoder [CACHED] * NLI [CACHED]" "Green"
+if ($embCached -and $rerankCached -and $nliCached -and $glinerCached) {
+    Write-Info "Neural Pipeline Assets: Dense Embedding [CACHED] * Cross-Encoder [CACHED] * NLI [CACHED] * GLiNER [CACHED]" "Green"
 } else {
     $statusParts = @()
     $statusParts += if ($embCached) { "Embedding [CACHED]" } else { "Embedding [PENDING DOWNLOAD]" }
     $statusParts += if ($rerankCached) { "Reranker [CACHED]" } else { "Reranker [PENDING DOWNLOAD]" }
     $statusParts += if ($nliCached) { "NLI [CACHED]" } else { "NLI [PENDING DOWNLOAD]" }
+    $statusParts += if ($glinerCached) { "GLiNER [CACHED]" } else { "GLiNER [PENDING DOWNLOAD]" }
     Write-Info "Neural Pipeline Assets: $($statusParts -join ' * ')" "Yellow"
 
     # Auto-provision missing neural models via authenticated Hugging Face download
@@ -983,16 +1036,54 @@ if ($embCached -and $rerankCached -and $nliCached) {
     if (-not $embCached) { $missingRepos += $embRepo }
     if (-not $rerankCached) { $missingRepos += $rerankRepo }
     if (-not $nliCached) { $missingRepos += $nliRepo }
+    if (-not $glinerCached) { $missingRepos += $glinerRepo }
 
     if ($missingRepos.Count -gt 0 -and $pythonExe) {
         Write-Info "Downloading missing neural assets ($($missingRepos -join ', '))..." "Cyan"
         $reposPyList = ($missingRepos | ForEach-Object { "'$_'" }) -join ", "
-        $downloadPy = "import os, sys; from huggingface_hub import snapshot_download; token = os.getenv('HF_TOKEN') or os.getenv('HUGGINGFACE_TOKEN') or None; repos = [$reposPyList]; [print(f'Caching {r}...') or snapshot_download(repo_id=r, token=token) for r in repos]; print('DOWNLOAD_COMPLETE')"
-        try {
-            & $pythonExe -c $downloadPy
-            Write-Info "Neural pipeline models successfully downloaded and cached." "Green"
-        } catch {
-            Write-Info "Auto-download notice: $($_.Exception.Message)" "DarkYellow"
+        $dlScript = @"
+import os
+import sys
+
+try:
+    from huggingface_hub import snapshot_download
+except ImportError:
+    print('  [ERROR] huggingface_hub is not installed in the Python runtime.', flush=True)
+    sys.exit(2)
+
+token = os.getenv('HF_TOKEN') or os.getenv('HUGGINGFACE_TOKEN') or None
+if token:
+    token = token.strip()
+
+repos = [$reposPyList]
+failed = []
+
+for r in repos:
+    print(f'  ● Downloading weights for {r}...', flush=True)
+    try:
+        snapshot_download(repo_id=r, token=token, resume_download=True, local_files_only=False)
+        print(f'  ✓ {r} downloaded and cached successfully.', flush=True)
+    except Exception as exc:
+        print(f'  ✕ Failed downloading {r}: {exc}', flush=True)
+        failed.append(r)
+
+if failed:
+    sys.exit(1)
+"@
+        $tmpScript = Join-Path $env:TEMP "raise_dl_assets.py"
+        Set-Content -Path $tmpScript -Value $dlScript -Encoding utf8
+        & $pythonExe $tmpScript
+        $dlExit = $LASTEXITCODE
+        Remove-Item -LiteralPath $tmpScript -Force -ErrorAction SilentlyContinue
+
+        if ($dlExit -eq 0) {
+            Write-Info "Neural pipeline models successfully downloaded and verified." "Green"
+        } else {
+            Write-Info "One or more neural models failed to download. Some features may run in heuristic fallback mode." "Yellow"
+            if (-not $env:HF_TOKEN -and -not $env:HUGGINGFACE_TOKEN) {
+                Write-Host "  $($C.Yellow)[TIP] If 'google/embeddinggemma-2' failed with 401/403, it requires an authenticated Hugging Face token.$($C.Reset)"
+                Write-Host "  $($C.Yellow)      Obtain a token at https://huggingface.co/settings/tokens and accept terms at https://huggingface.co/google/embeddinggemma-2$($C.Reset)"
+            }
         }
     }
 }
@@ -1170,3 +1261,13 @@ if ($rawArgs) {
 $exitCode = $LASTEXITCODE
 Pop-Location
 exit $exitCode
+} catch {
+    Write-Host ""
+    Write-Host "  $($C.Red)======================================================================$($C.Reset)"
+    Write-Host "  $($C.Red)  [FATAL ERROR] An unexpected error occurred in RAISE launcher:$($C.Reset)"
+    Write-Host "  $($C.Red)======================================================================$($C.Reset)"
+    Write-Host "  $($C.Red)  $($_.Exception.ToString())$($C.Reset)"
+    Write-Host ""
+    Read-Host "  Press Enter to exit..."
+    exit 1
+}
