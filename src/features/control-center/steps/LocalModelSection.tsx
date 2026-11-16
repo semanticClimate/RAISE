@@ -57,12 +57,12 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
               <span>vLLM Engine</span>
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isVllmOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                  isVllmOnline ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
                 }`}
               />
               <span
                 className={`text-[10px] font-mono ${
-                  isVllmOnline ? 'text-emerald-400' : 'text-slate-400'
+                  isVllmOnline ? 'text-white font-semibold' : 'text-slate-400'
                 }`}
               >
                 {isVllmOnline ? 'Online (:8002)' : 'Standby (:8002)'}
@@ -80,12 +80,12 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
               <span>Ollama Service</span>
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isOllamaOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                  isOllamaOnline ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
                 }`}
               />
               <span
                 className={`text-[10px] font-mono ${
-                  isOllamaOnline ? 'text-emerald-400' : 'text-slate-400'
+                  isOllamaOnline ? 'text-white font-semibold' : 'text-slate-400'
                 }`}
               >
                 {isOllamaOnline ? 'Running (:11434)' : 'Standby (:11434)'}
@@ -116,7 +116,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
             <span className="text-xs font-semibold text-slate-300">Installed Local Models:</span>
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                isLocalEngineOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                isLocalEngineOnline ? 'bg-white animate-pulse' : 'bg-zinc-600'
               }`}
               title={isLocalEngineOnline ? 'Local inference engine online' : 'Local inference engine offline'}
             />
@@ -202,7 +202,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                     >
                       {m.model}
                     </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-white border border-white/15">
                       {m.source === 'vllm_local'
                         ? 'vLLM Local GPU Engine (:8002)'
                         : m.tier?.includes('Installed')
@@ -297,7 +297,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                 className="p-2.5 rounded-lg border border-white/10 bg-[#131622] text-xs flex items-center justify-between"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse shrink-0" />
                   <span className="font-semibold text-white truncate">{m.displayName}</span>
                   <code className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-300 shrink-0">
                     {m.model}

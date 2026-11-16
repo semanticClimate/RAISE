@@ -234,7 +234,7 @@ export const DatabaseStep: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           {testNotice && (
-            <span className="text-xs font-mono text-emerald-400 animate-in fade-in">
+            <span className="text-xs font-mono text-white font-bold animate-in fade-in">
               {testNotice}
             </span>
           )}
@@ -245,7 +245,7 @@ export const DatabaseStep: React.FC = () => {
             className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
             title="Probe live connectivity for all configured substrates"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin text-indigo-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin text-white' : ''}`} />
             <span>Test Substrates</span>
           </button>
         </div>
@@ -258,15 +258,15 @@ export const DatabaseStep: React.FC = () => {
           onClick={() => setAllSubstratesMode('in_memory_fallback')}
           className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
             isAllMemory
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+              ? 'bg-white text-black font-bold shadow-sm'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-emerald-400" />
+            <Cpu className={`w-4 h-4 ${isAllMemory ? 'text-black' : 'text-white'}`} />
             <span>Local Embedded (Zero-Dependency)</span>
           </div>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isAllMemory ? 'bg-black/10 text-black' : 'bg-black/40 text-slate-400'}`}>
             Zero Setup • Instant
           </span>
         </button>
@@ -276,15 +276,15 @@ export const DatabaseStep: React.FC = () => {
           onClick={() => setAllSubstratesMode('cloud')}
           className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
             isAllCloud
-              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
+              ? 'bg-white text-black font-bold shadow-sm'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-sky-400" />
+            <Cloud className={`w-4 h-4 ${isAllCloud ? 'text-black' : 'text-white'}`} />
             <span>Cloud</span>
           </div>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isAllCloud ? 'bg-black/10 text-black' : 'bg-black/40 text-slate-400'}`}>
             Remote Endpoints
           </span>
         </button>
@@ -292,10 +292,10 @@ export const DatabaseStep: React.FC = () => {
 
       {/* .env Detection Banner */}
       {hasAnyDbInEnv && (
-        <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-between text-xs">
+        <div className="p-2.5 rounded-xl bg-white/5 border border-white/15 flex items-center justify-between text-xs">
           <div>
-            <div className="font-semibold text-sky-300 flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-sky-400" />
+            <div className="font-semibold text-white flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-white" />
               <span>Endpoints found in .env:</span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex gap-2 flex-wrap">
@@ -307,7 +307,7 @@ export const DatabaseStep: React.FC = () => {
           <button
             type="button"
             onClick={() => setAllSubstratesMode('cloud')}
-            className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-semibold transition-all cursor-pointer shrink-0"
+            className="px-2.5 py-1 rounded bg-white hover:bg-zinc-200 text-black text-xs font-bold transition-all cursor-pointer shrink-0"
           >
             Apply
           </button>
@@ -375,7 +375,7 @@ export const DatabaseStep: React.FC = () => {
                       onClick={() => updateSubstrate(sub.key, { mode: 'in_memory_fallback' })}
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
                         isMemory
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                          ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
                       title="Select Local Embedded (Zero-Dependency)"
@@ -399,7 +399,7 @@ export const DatabaseStep: React.FC = () => {
                       onClick={() => updateSubstrate(sub.key, { mode: 'local' })}
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
                         isLocal
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                          ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
                       title="Select Local Daemon"
@@ -423,11 +423,11 @@ export const DatabaseStep: React.FC = () => {
                       onClick={() => handleOpenCloudModal(sub.key)}
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
                         isCloud && cfg?.online === true
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                          ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : isCloud && cfg?.tested && cfg?.online === false
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 shadow-sm'
+                          ? 'bg-zinc-800 text-zinc-300 border border-white/20 shadow-sm'
                           : isCloud
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-sm'
+                          ? 'bg-white/10 text-white border border-white/20 shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
                       title={
@@ -471,13 +471,13 @@ export const DatabaseStep: React.FC = () => {
       {/* ChromaDB Dense Vector Engine Substrate */}
       <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0 font-mono font-bold text-xs">
+          <div className="w-8 h-8 rounded-lg bg-white/10 text-white border border-white/20 flex items-center justify-center shrink-0 font-mono font-bold text-xs">
             V
           </div>
           <div>
             <div className="font-bold text-white flex items-center gap-2">
               <span>Vector Store</span>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/5 text-purple-300 border border-white/10 font-mono">
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/10 text-white border border-white/20 font-mono">
                 ChromaDB (Local Embedded)
               </span>
             </div>
@@ -523,7 +523,7 @@ export const DatabaseStep: React.FC = () => {
                 </div>
 
                 {cloudModalError && (
-                  <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
+                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/15 text-zinc-300 text-xs font-mono">
                     {cloudModalError}
                   </div>
                 )}
@@ -539,9 +539,9 @@ export const DatabaseStep: React.FC = () => {
 
                   if (detected?.present) {
                     return (
-                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between text-[11px]">
-                        <span className="text-emerald-300 flex items-center gap-1 font-mono">
-                          <Check className="w-3 h-3" />
+                      <div className="p-2 rounded-lg bg-white/10 border border-white/20 flex items-center justify-between text-[11px]">
+                        <span className="text-white flex items-center gap-1 font-mono font-semibold">
+                          <Check className="w-3 h-3 text-white" />
                           Detected in root .env ({detected.source})
                         </span>
                         <button
@@ -551,7 +551,7 @@ export const DatabaseStep: React.FC = () => {
                             if (detected.user) setCloudUser(detected.user);
                             if (detected.password) setCloudPass(detected.password);
                           }}
-                          className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 font-semibold cursor-pointer"
+                          className="px-2 py-0.5 rounded bg-white hover:bg-zinc-200 text-black font-bold cursor-pointer"
                         >
                           Use .env Value
                         </button>

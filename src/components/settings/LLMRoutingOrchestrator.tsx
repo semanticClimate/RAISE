@@ -325,16 +325,16 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
 
       {/* Confirmation Banner */}
       {feedbackBanner && (
-        <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-200 text-xs shadow-xs animate-in fade-in duration-200">
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-xs shadow-xs animate-in fade-in duration-200">
           <div className="flex items-center gap-1.5 truncate">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-white shrink-0" />
             <span className="font-medium truncate">{feedbackBanner.message}</span>
-            <span className="text-[10px] opacity-75 shrink-0">({feedbackBanner.timestamp})</span>
+            <span className="text-[10px] opacity-75 shrink-0 font-mono">({feedbackBanner.timestamp})</span>
           </div>
           <button
             type="button"
             onClick={() => setFeedbackBanner(null)}
-            className="text-emerald-700 hover:text-emerald-900 dark:hover:text-white shrink-0 cursor-pointer text-xs"
+            className="text-zinc-400 hover:text-white shrink-0 cursor-pointer text-xs"
           >
             ✕
           </button>
@@ -381,10 +381,10 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                   }}
                   className={`flex items-center justify-between px-3 py-2 rounded-xl border transition-all select-none ${
                     isPrimary
-                      ? 'bg-indigo-50/70 dark:bg-indigo-500/10 border-indigo-300 dark:border-indigo-500/40 shadow-xs'
+                      ? 'bg-white/10 border-white/40 text-white shadow-xs'
                       : 'bg-white dark:bg-white/[0.03] border-slate-200 dark:border-white/10 hover:border-slate-300'
                   } ${isDragged ? 'opacity-40 scale-98' : ''} ${
-                    isDropTarget ? 'ring-2 ring-indigo-500 border-transparent' : ''
+                    isDropTarget ? 'ring-2 ring-white border-transparent' : ''
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -402,7 +402,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                     <span
                       className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold shrink-0 ${
                         isPrimary
-                          ? 'bg-indigo-600 text-white'
+                          ? 'bg-white text-black'
                           : 'bg-slate-100 dark:bg-white/15 text-slate-700 dark:text-slate-300'
                       }`}
                     >
@@ -414,16 +414,16 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                         {p.name}
                       </span>
                       {isPrimary ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-[9.5px] font-bold uppercase tracking-wider">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white text-black text-[9.5px] font-bold uppercase tracking-wider">
                           PRIMARY #1
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[9.5px] font-medium">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/20 text-[9.5px] font-medium">
                           FALLBACK #{idx + 1}
                         </span>
                       )}
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9.5px] font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/15 text-[9.5px] font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse" />
                         Online
                       </span>
                     </div>
@@ -455,7 +455,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                       type="button"
                       onClick={() => disableProvider(providerId)}
                       disabled={activeChain.length <= 1}
-                      className="p-1 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors disabled:opacity-20 cursor-pointer"
+                      className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-20 cursor-pointer"
                       title="Disable provider"
                     >
                       <Power className="w-3.5 h-3.5" />
@@ -487,7 +487,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                   <button
                     type="button"
                     onClick={() => enableProvider(pId)}
-                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer pl-1"
+                    className="text-[11px] text-white hover:underline font-semibold cursor-pointer pl-1"
                   >
                     Enable
                   </button>

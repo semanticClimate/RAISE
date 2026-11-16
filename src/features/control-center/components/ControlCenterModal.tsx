@@ -187,12 +187,12 @@ export const ControlCenterModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-5 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0e1017] border border-white/10 shadow-[0_0_60px_-15px_rgba(99,102,241,0.35)] overflow-hidden text-slate-100 font-sans shrink-0 ring-1 ring-white/5">
+      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0a0a0c] border border-white/15 shadow-[0_0_60px_-15px_rgba(255,255,255,0.12)] overflow-hidden text-slate-100 font-sans shrink-0 ring-1 ring-white/10">
         {/* Top Header */}
-        <div className="h-16 px-6 border-b border-white/10 bg-[#131624] shrink-0 flex items-center justify-between">
+        <div className="h-16 px-6 border-b border-white/10 bg-gradient-to-r from-zinc-900 via-zinc-950 to-black shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner shrink-0">
-              <Zap className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white shadow-inner shrink-0">
+              <Zap className="w-4 h-4 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -200,8 +200,8 @@ export const ControlCenterModal: React.FC = () => {
                   Control Center
                 </h2>
                 {isSetupMode && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
-                    <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 text-white border border-white/20 font-mono">
+                    <Sparkles className="w-2.5 h-2.5 text-white" />
                     Setup
                   </span>
                 )}
@@ -210,7 +210,7 @@ export const ControlCenterModal: React.FC = () => {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {isSetupMode && !hasConfiguredKey && (
-              <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-md">
+              <span className="text-[10px] font-mono text-zinc-300 bg-white/5 border border-white/15 px-2 py-1 rounded-md">
                 Key Required
               </span>
             )}
@@ -233,15 +233,15 @@ export const ControlCenterModal: React.FC = () => {
 
         {/* First-Time Setup Welcome Banner */}
         {isSetupMode && !hasConfiguredKey && (
-          <div className="bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-900/60 border-b border-indigo-500/20 px-6 py-2 flex items-center justify-between text-xs shrink-0">
-            <div className="flex items-center gap-2 text-indigo-200">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+          <div className="bg-gradient-to-r from-zinc-900 via-zinc-950 to-black border-b border-white/10 px-6 py-2 flex items-center justify-between text-xs shrink-0">
+            <div className="flex items-center gap-2 text-zinc-200">
+              <Sparkles className="w-3.5 h-3.5 text-white shrink-0" />
               <span>Add an API key to start immediately.</span>
             </div>
             <button
               type="button"
               onClick={() => setActiveTab('models')}
-              className="text-[11px] font-bold text-indigo-300 hover:text-white underline underline-offset-2 shrink-0 ml-3 cursor-pointer"
+              className="text-[11px] font-bold text-zinc-300 hover:text-white underline underline-offset-2 shrink-0 ml-3 cursor-pointer"
             >
               Configure &rarr;
             </button>
@@ -249,7 +249,7 @@ export const ControlCenterModal: React.FC = () => {
         )}
 
         {/* Visual Stepper Navigation - NO step numbers (1, 2, 3, 4, 5) */}
-        <div className="h-14 border-b border-white/10 bg-[#10131e] px-4 sm:px-6 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
+        <div className="h-14 border-b border-white/10 bg-[#0c0d12] px-4 sm:px-6 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -266,7 +266,7 @@ export const ControlCenterModal: React.FC = () => {
                 }`}
               >
                 {tab.isCompleted && !isActive ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
                 ) : (
                   <Icon
                     className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-black' : 'text-slate-400 group-hover:text-white'}`}
@@ -279,7 +279,7 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Scrollable Step Content Body */}
-        <div className="flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-5 bg-[#0e1017] min-h-0">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-5 bg-[#0a0a0c] min-h-0">
           {activeTab === 'platform' && <PlatformStep />}
           {activeTab === 'models' && <EngineStep />}
           {activeTab === 'neural' && <NeuralStep />}
@@ -288,7 +288,7 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Refined Navigation Footer */}
-        <div className="h-16 flex items-center justify-between px-5 sm:px-6 border-t border-white/10 bg-[#131624] shrink-0">
+        <div className="h-16 flex items-center justify-between px-5 sm:px-6 border-t border-white/10 bg-gradient-to-r from-zinc-900 via-zinc-950 to-black shrink-0">
           <div>
             {currentTabIdx > 0 && (
               <button
@@ -303,14 +303,14 @@ export const ControlCenterModal: React.FC = () => {
 
           <div className="flex items-center gap-3">
             {stepBlockReason && (
-              <span className="text-[11px] font-mono text-amber-400 hidden sm:inline-flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-md">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-[11px] font-mono text-zinc-300 hidden sm:inline-flex items-center gap-1.5 bg-white/5 border border-white/15 px-2.5 py-1 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                 <span>{stepBlockReason}</span>
               </span>
             )}
 
             {connectNotice && (
-              <span className="text-xs font-mono font-medium max-w-[240px] truncate text-amber-400">
+              <span className="text-xs font-mono font-medium max-w-[240px] truncate text-zinc-300">
                 {connectNotice}
               </span>
             )}
@@ -334,9 +334,9 @@ export const ControlCenterModal: React.FC = () => {
                 }
               >
                 {isSaving || isWarmingUp ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
                 ) : (
-                  <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                  <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
                 )}
                 <span className="hidden sm:inline">
                   {isWarmingUp ? 'Warming Up...' : isSaving ? 'Saving...' : 'Save & Launch'}
@@ -351,7 +351,7 @@ export const ControlCenterModal: React.FC = () => {
                 onClick={handleNext}
                 className={`px-5 py-2 rounded-xl text-xs transition-all font-bold shadow-sm active:scale-95 flex items-center gap-1.5 ${
                   isCurrentStepReady
-                    ? 'bg-white hover:bg-slate-200 text-black cursor-pointer'
+                    ? 'bg-white hover:bg-zinc-200 text-black cursor-pointer'
                     : 'bg-white/10 text-slate-500 cursor-not-allowed opacity-50 border border-white/5'
                 }`}
                 title={stepBlockReason || undefined}
@@ -368,7 +368,7 @@ export const ControlCenterModal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveTab('models')}
-                className="px-5 py-2 rounded-xl text-xs transition-all font-bold bg-amber-400 hover:bg-amber-300 text-black cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
+                className="px-5 py-2 rounded-xl text-xs transition-all font-bold bg-white hover:bg-zinc-200 text-black cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
               >
                 <span>Configure Engine First &rarr;</span>
               </button>
@@ -379,7 +379,7 @@ export const ControlCenterModal: React.FC = () => {
                 onClick={handleFinalStart}
                 className={`px-6 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
                   hasConfiguredKey && isConnected && !isSaving && !isWarmingUp
-                    ? 'bg-white hover:bg-slate-200 text-black cursor-pointer'
+                    ? 'bg-white hover:bg-zinc-200 text-black cursor-pointer'
                     : 'bg-white/10 text-slate-500 cursor-not-allowed opacity-50'
                 }`}
                 title={

@@ -153,7 +153,7 @@ export const PlatformStep: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Laptop className="w-3.5 h-3.5 text-indigo-400" />
+            <Laptop className="w-3.5 h-3.5 text-white" />
             <span>Platform</span>
           </div>
           <div className="text-xs font-bold text-white truncate">
@@ -163,7 +163,7 @@ export const PlatformStep: React.FC = () => {
 
         <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <Zap className="w-3.5 h-3.5 text-white" />
             <span>Acceleration</span>
           </div>
           <div className="text-xs font-bold text-white">
@@ -179,8 +179,8 @@ export const PlatformStep: React.FC = () => {
             data-testid="connection-status-dot"
             className={`relative inline-flex rounded-full h-2.5 w-2.5 shrink-0 transition-colors ${
               isConnected
-                ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
-                : 'bg-rose-500 ring-2 ring-rose-500/20'
+                ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]'
+                : 'bg-zinc-600 ring-2 ring-white/10'
             }`}
           />
           <div>
@@ -190,15 +190,15 @@ export const PlatformStep: React.FC = () => {
                 {isConnected ? '127.0.0.1:8000' : 'Offline (Port 8000)'}
               </span>
               {isConnected && latencyMs ? (
-                <span className="text-[10px] font-mono text-emerald-400">({latencyMs}ms)</span>
+                <span className="text-[10px] font-mono text-zinc-300">({latencyMs}ms)</span>
               ) : null}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 text-[11px] font-mono">
-          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-          <span className={isConnected ? 'text-emerald-300 font-semibold' : 'text-rose-400 font-semibold'}>
+          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-white animate-pulse' : 'bg-zinc-600'}`} />
+          <span className={isConnected ? 'text-white font-semibold' : 'text-zinc-500 font-semibold'}>
             {isConnected ? 'Connected' : 'Offline'}
           </span>
         </div>

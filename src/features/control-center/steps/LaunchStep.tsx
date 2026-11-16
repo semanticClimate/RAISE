@@ -148,9 +148,9 @@ export const LaunchStep: React.FC = () => {
     >
       {/* Ready / Incomplete Status Banner */}
       {!hasConfiguredKey ? (
-        <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl border border-white/20 bg-white/5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-white shrink-0" />
             <div>
               <h4 className="text-sm font-bold text-white">API Key or Local Model Required</h4>
               <p className="text-xs text-slate-300 mt-0.5">
@@ -161,15 +161,15 @@ export const LaunchStep: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('models')}
-            className="text-xs font-bold text-amber-300 hover:text-white underline underline-offset-2 cursor-pointer shrink-0"
+            className="text-xs font-bold text-zinc-300 hover:text-white underline underline-offset-2 cursor-pointer shrink-0"
           >
             Configure &rarr;
           </button>
         </div>
       ) : hasExternalDatabases ? (
-        <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl border border-white/20 bg-white/10 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
             <div>
               <h4 className="text-sm font-bold text-white">System Ready & Synchronized</h4>
               <p className="text-xs text-slate-300 mt-0.5">
@@ -181,16 +181,16 @@ export const LaunchStep: React.FC = () => {
             type="button"
             onClick={handleTestAllSubstrates}
             disabled={isTestingSubstrates}
-            className="px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+            className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin' : ''}`} />
             <span>Test Substrates</span>
           </button>
         </div>
       ) : (
-        <div className="p-3.5 rounded-xl border border-sky-500/30 bg-sky-500/10 flex items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl border border-white/20 bg-white/5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Sparkles className="w-5 h-5 text-sky-400 shrink-0" />
+            <Sparkles className="w-5 h-5 text-white shrink-0" />
             <div>
               <h4 className="text-sm font-bold text-white">
                 Local Embedded (Zero-Dependency Mode)
@@ -204,7 +204,7 @@ export const LaunchStep: React.FC = () => {
             type="button"
             onClick={handleTestAllSubstrates}
             disabled={isTestingSubstrates}
-            className="px-3 py-1.5 rounded-lg border border-sky-500/30 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+            className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin' : ''}`} />
             <span>Test Substrates</span>
@@ -218,7 +218,7 @@ export const LaunchStep: React.FC = () => {
         <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5">
-              <Laptop className="w-3.5 h-3.5 text-indigo-400" />
+              <Laptop className="w-3.5 h-3.5 text-white" />
               <span>Target Platform</span>
             </span>
             <button
@@ -240,15 +240,15 @@ export const LaunchStep: React.FC = () => {
         {/* Backend Gateway */}
         <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <Zap className="w-3.5 h-3.5 text-emerald-400" />
+            <Zap className="w-3.5 h-3.5 text-white" />
             <span>Backend Gateway</span>
           </div>
           <div className="text-xs font-bold text-white flex items-center gap-1.5">
             <span
               className={`w-2 h-2 rounded-full ${
                 isConnected
-                  ? 'bg-emerald-400 ring-2 ring-emerald-400/20'
-                  : 'bg-amber-400 animate-pulse'
+                  ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]'
+                  : 'bg-zinc-600'
               }`}
             />
             <span>{isConnected ? 'Active & Synced' : 'Offline / Standby'}</span>
@@ -256,7 +256,7 @@ export const LaunchStep: React.FC = () => {
               ({apiBaseUrl || '127.0.0.1:8000'})
             </span>
           </div>
-          <div className="text-[10px] font-mono text-emerald-400">
+          <div className="text-[10px] font-mono text-zinc-300">
             {isConnected ? `Latency: ${latencyMs || 12}ms` : 'Start backend on port 8000'}
           </div>
         </div>
@@ -265,13 +265,13 @@ export const LaunchStep: React.FC = () => {
         <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5">
-              <Cpu className="w-3.5 h-3.5 text-purple-400" />
+              <Cpu className="w-3.5 h-3.5 text-white" />
               <span>Inference Engine</span>
             </span>
             <button
               type="button"
               onClick={() => setActiveTab('models')}
-              className="text-[10px] text-indigo-400 hover:text-indigo-300 cursor-pointer"
+              className="text-[10px] text-zinc-300 hover:text-white cursor-pointer"
             >
               Change
             </button>
@@ -288,13 +288,13 @@ export const LaunchStep: React.FC = () => {
         <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <Layers className="w-3.5 h-3.5 text-white" />
               <span>Neural Stack</span>
             </span>
             <button
               type="button"
               onClick={() => setActiveTab('neural')}
-              className="text-[10px] text-indigo-400 hover:text-indigo-300 cursor-pointer"
+              className="text-[10px] text-zinc-300 hover:text-white cursor-pointer"
             >
               Change
             </button>
@@ -312,13 +312,13 @@ export const LaunchStep: React.FC = () => {
       <div className="rounded-xl bg-[#131622] border border-white/10 overflow-hidden">
         <div className="p-3 border-b border-white/10 flex items-center justify-between bg-black/30">
           <div className="flex items-center gap-2">
-            <Database className="w-3.5 h-3.5 text-sky-400" />
+            <Database className="w-3.5 h-3.5 text-white" />
             <span className="text-xs font-bold text-white">Live Storage Substrates</span>
           </div>
           <button
             type="button"
             onClick={() => setActiveTab('databases')}
-            className="text-[11px] text-indigo-300 hover:text-white flex items-center gap-1 cursor-pointer"
+            className="text-[11px] text-zinc-300 hover:text-white flex items-center gap-1 cursor-pointer"
           >
             <span>Manage</span>
             <ArrowRight className="w-3 h-3" />
@@ -330,7 +330,7 @@ export const LaunchStep: React.FC = () => {
               <div>
                 <div className="font-semibold text-white flex items-center gap-2">
                   <span>{s.functionName}</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-purple-300 border border-white/10 font-medium">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/10 text-white border border-white/20 font-medium">
                     {s.engine}
                   </span>
                 </div>
