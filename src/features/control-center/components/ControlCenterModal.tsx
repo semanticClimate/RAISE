@@ -316,8 +316,8 @@ export const ControlCenterModal: React.FC = () => {
               </span>
             )}
 
-            {/* Next Step / Step Through */}
-            {activeTab !== 'overview' && (
+            {/* Navigation Buttons: Next &rarr; on prior steps, Start ONLY on overview */}
+            {activeTab !== 'overview' ? (
               <button
                 type="button"
                 disabled={!isCurrentStepReady}
@@ -328,45 +328,44 @@ export const ControlCenterModal: React.FC = () => {
               >
                 <span>Next &rarr;</span>
               </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isSaving || isWarmingUp || !hasConfiguredKey || !isConnected}
+                onClick={handleFinalStart}
+                className={`px-5 py-2 rounded-lg font-semibold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
+                  hasConfiguredKey && isConnected && !isSaving && !isWarmingUp
+                    ? 'bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000] cursor-pointer'
+                    : 'bg-[#171717] text-[#A3A3A3] border border-[#292929] cursor-not-allowed opacity-50'
+                }`}
+                title={
+                  !isConnected
+                    ? 'Backend Gateway is offline. Start backend on port 8000.'
+                    : !hasConfiguredKey
+                    ? 'Configure an inference engine or API key before starting.'
+                    : isWarmingUp
+                    ? 'Warming up neural models in backend...'
+                    : isSaving
+                    ? 'Saving configuration...'
+                    : 'Start'
+                }
+              >
+                {isSaving || isWarmingUp ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#000000]" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 fill-[#000000] text-[#000000]" />
+                )}
+                <span>
+                  {isWarmingUp
+                    ? 'Warming Up...'
+                    : isSaving
+                    ? 'Saving...'
+                    : isConnected
+                    ? 'Start'
+                    : 'Backend Offline'}
+                </span>
+              </button>
             )}
-
-            {/* Start Button */}
-            <button
-              type="button"
-              disabled={isSaving || isWarmingUp || !hasConfiguredKey || !isConnected}
-              onClick={handleFinalStart}
-              className={`px-5 py-2 rounded-lg font-semibold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
-                hasConfiguredKey && isConnected && !isSaving && !isWarmingUp
-                  ? 'bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000] cursor-pointer'
-                  : 'bg-[#171717] text-[#A3A3A3] border border-[#292929] cursor-not-allowed opacity-50'
-              }`}
-              title={
-                !isConnected
-                  ? 'Backend Gateway is offline. Start backend on port 8000.'
-                  : !hasConfiguredKey
-                  ? 'Configure an inference engine or API key before starting.'
-                  : isWarmingUp
-                  ? 'Warming up neural models in backend...'
-                  : isSaving
-                  ? 'Saving configuration...'
-                  : 'Start'
-              }
-            >
-              {isSaving || isWarmingUp ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#000000]" />
-              ) : (
-                <Zap className="w-3.5 h-3.5 fill-[#000000] text-[#000000]" />
-              )}
-              <span>
-                {isWarmingUp
-                  ? 'Warming Up...'
-                  : isSaving
-                  ? 'Saving...'
-                  : isConnected
-                  ? 'Start'
-                  : 'Backend Offline'}
-              </span>
-            </button>
           </div>
         </div>
       </div>
