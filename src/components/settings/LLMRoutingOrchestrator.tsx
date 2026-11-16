@@ -80,8 +80,9 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           const norm = pid.toLowerCase().trim();
           return storeApiKeys.some((k) => {
             const kProv = (k?.provider || '').toLowerCase().trim();
-            const hasKey = (k?.key && k.key.trim().length > 0 && kProv !== 'unknown') || k?.verified === true;
-            if (!hasKey) return false;
+            // Strictly check backend verification: key must be verified by backend API
+            const isVerified = k?.verified === true || (typeof k?.latencyMs === 'number' && k.latencyMs > 0);
+            if (!isVerified) return false;
             if (kProv === norm) return true;
             if ((kProv === 'custom' || kProv === 'universal') && (norm === 'custom' || norm === 'universal')) return true;
             return false;
@@ -128,29 +129,26 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           };
         });
 
-        // Also merge any verified or configured keys present in the control center store
+        // Also merge any backend-approved keys present in the control center store
         storeApiKeys.forEach((k) => {
           if (!k?.provider || k.provider === 'unknown') return;
           const pid = k.provider.toLowerCase().trim();
-          const isVerified = k.verified === true || (typeof k.latencyMs === 'number' && k.latencyMs > 0);
-          const hasKey = (k.key && k.key.trim().length > 0) || isVerified;
-          if (!hasKey) return;
+          const isVerified = k.verified === true && (typeof k.latencyMs === 'number' && k.latencyMs > 0);
+          if (!isVerified) return; // Only merge if backend approved key with live latency
           if (!merged[pid]) {
             merged[pid] = {
               id: pid,
               name: k.providerName || CLEAN_PROVIDER_NAMES[pid] || pid.toUpperCase(),
-              status: isVerified ? 'READY' : 'CONFIGURED',
+              status: 'READY',
               isOffline: false,
               isConfigured: true,
-              tier: k.latencyMs ? `Connected (${k.latencyMs}ms)` : 'Configured',
+              tier: `Connected (${k.latencyMs}ms)`,
               model: (k as any).model || (pid === 'gemini' ? 'gemini-2.5-flash' : 'Universal Custom LLM'),
             };
           } else {
             merged[pid].isConfigured = true;
-            if (isVerified || merged[pid].status === 'NOT_CONFIGURED') {
-              merged[pid].status = isVerified ? 'READY' : 'CONFIGURED';
-              merged[pid].isOffline = false;
-            }
+            merged[pid].status = 'READY';
+            merged[pid].isOffline = false;
           }
         });
 

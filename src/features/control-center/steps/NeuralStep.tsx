@@ -184,7 +184,7 @@ export const NeuralStep: React.FC = () => {
     if (!modelId || downloadingModelId === modelId) return;
     setDownloadingModelId(modelId);
     setStatusMessage({
-      text: `Starting backend download for ${modelId}...`,
+      text: `Connecting to backend to download ${modelId}...`,
       type: 'success',
     });
 
@@ -206,15 +206,37 @@ export const NeuralStep: React.FC = () => {
         config.huggingfaceToken || undefined
       );
 
-      setStatusMessage({
-        text: `Model ${modelId} successfully downloaded and verified in cache!`,
-        type: 'success',
-      });
-      setTimeout(() => setStatusMessage(null), 5000);
+      // Verify with backend preflight assets and config that it is actually cached on disk
       await refreshBackendData();
+      const freshAssets = await platformAdapter.getPreflightAssets();
+
+      const isVerifiedByBackend =
+        (freshAssets?.assets || []).some(
+          (a: any) =>
+            (a.id === modelId ||
+              a.name?.toLowerCase().includes(modelId.toLowerCase()) ||
+              modelId.toLowerCase().includes(a.name?.toLowerCase())) &&
+            a.verified
+        ) ||
+        Object.values((backendConfig?.neural_registry as Record<string, any>) || {})
+          .flat()
+          .some((m: any) => m && m.id === modelId && (m.cached || m.isInstalled));
+
+      if (isVerifiedByBackend) {
+        setStatusMessage({
+          text: `Backend Approved: Model ${modelId} verified in disk cache!`,
+          type: 'success',
+        });
+      } else {
+        setStatusMessage({
+          text: `Download stream completed for ${modelId}. Backend verifying cache integrity...`,
+          type: 'success',
+        });
+      }
+      setTimeout(() => setStatusMessage(null), 5000);
     } catch (err: any) {
       setStatusMessage({
-        text: `Download failed for ${modelId}: ${err?.message || 'Network error'}`,
+        text: `Backend download rejected for ${modelId}: ${err?.message || 'Network error'}`,
         type: 'error',
       });
       setTimeout(() => setStatusMessage(null), 6000);
@@ -854,7 +876,14 @@ export const NeuralStep: React.FC = () => {
                       </div>
 
                       <div className="shrink-0 flex items-center gap-2">
-                        {!isCached && (
+                        {isCached ? (
+                          <span
+                            className="p-1.5 rounded-md bg-white/10 border border-white/20 text-white flex items-center justify-center shadow-xs"
+                            title="Verified & Cached in Backend"
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </span>
+                        ) : (
                           <button
                             type="button"
                             onClick={(e) => {

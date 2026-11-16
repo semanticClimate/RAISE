@@ -1,4 +1,4 @@
-import { CheckCircle2, Eye, EyeOff, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type React from 'react';
 import { useState, useMemo } from 'react';
 import type { DynamicModelItem } from '../../../hooks/useDynamicModels';
@@ -41,8 +41,9 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
     setTestingKeyId(id);
     try {
       const res = await platformAdapter.pingApiKey(provider, key);
-      setKeyVerification(id, res.available, res.latencyMs, res.error);
-      if (res.available) {
+      const isVerified = Boolean(res.available);
+      setKeyVerification(id, isVerified, res.latencyMs, res.error);
+      if (isVerified) {
         if (provider && provider !== 'unknown') {
           await platformAdapter.saveConfig({
             [`${provider}_api_key`]: key.trim(),
@@ -59,43 +60,43 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
     }
   };
 
-  // Synthesize verified / configured keys from config.apiKeys with live backend models
+  // Filter keys present in config.apiKeys
   const configuredKeys = useMemo(() => {
     return (config.apiKeys || []).filter(
       (k) => (k?.key && k.key.trim().length > 0 && k.provider !== 'unknown') || k?.verified === true
     );
   }, [config.apiKeys]);
 
+  // Only models approved by the backend (either discovered in dynamic LLMs or verified with positive latency) are active
   const activeCloudModels = useMemo<DynamicModelItem[]>(() => {
     const list: DynamicModelItem[] = [...cloudDiscoveredLLMs];
 
-    // For any configured or verified key in the store, ensure it's represented
+    // For any configured key in the store, ONLY include if backend approved (k.verified === true)
     configuredKeys.forEach((k) => {
       const pId = k.provider.toLowerCase();
       const alreadyIncluded = list.some((m) => m.provider.toLowerCase() === pId);
       if (!alreadyIncluded) {
-        const isVerified = k.verified === true || (typeof k.latencyMs === 'number' && k.latencyMs > 0);
-        const modelName =
-          pId === 'gemini'
-            ? 'gemini-2.5-flash'
-            : pId === 'groq'
-              ? 'openai/gpt-oss-120b'
-              : pId === 'custom' || pId === 'universal'
-                ? 'Universal Custom LLM'
-                : `${k.providerName || pId} Model`;
+        // Backend approval requirement: key must be verified by backend API
+        const isBackendApproved = k.verified === true && (typeof k.latencyMs === 'number' && k.latencyMs > 0);
+        if (isBackendApproved) {
+          const modelName =
+            pId === 'gemini'
+              ? 'gemini-2.5-flash'
+              : pId === 'groq'
+                ? 'openai/gpt-oss-120b'
+                : pId === 'custom' || pId === 'universal'
+                  ? 'Universal Custom LLM'
+                  : `${k.providerName || pId} Model`;
 
-        list.push({
-          provider: k.provider,
-          displayName: k.providerName || k.provider.toUpperCase(),
-          model: modelName,
-          status: isVerified ? 'READY' : 'CONFIGURED',
-          isActive: isVerified || list.length === 0,
-          tier: k.latencyMs
-            ? `Connected (${k.latencyMs}ms)`
-            : isVerified
-              ? 'Connected (Live)'
-              : 'Configured',
-        });
+          list.push({
+            provider: k.provider,
+            displayName: k.providerName || k.provider.toUpperCase(),
+            model: modelName,
+            status: 'READY',
+            isActive: true,
+            tier: `Connected (${k.latencyMs}ms)`,
+          });
+        }
       }
     });
 
@@ -162,7 +163,13 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
                     {item.verified === false && (
                       <span className="text-[10px] font-mono text-zinc-400 flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded border border-white/10">
                         <XCircle className="w-3 h-3 text-zinc-400" />
-                        Unavailable
+                        Unavailable / Invalid
+                      </span>
+                    )}
+                    {hasKey && item.verified === undefined && (
+                      <span className="text-[10px] font-mono text-zinc-400 flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                        <AlertCircle className="w-3 h-3 text-zinc-400" />
+                        Unverified • Click Check
                       </span>
                     )}
 
