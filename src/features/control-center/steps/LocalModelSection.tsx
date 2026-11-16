@@ -1,5 +1,13 @@
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import {
+  ChevronRight,
+  ExternalLink,
+  HelpCircle,
+  HardDrive,
+  RefreshCw,
+  Terminal,
+} from 'lucide-react';
 import type React from 'react';
+import { useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
 import type { DynamicModelItem } from '../../../hooks/useDynamicModels';
 import type { DynamicLLMModel } from '../types';
@@ -19,6 +27,9 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
   fetchModels,
 }) => {
   const { config, updateConfig } = useControlCenterStore();
+
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const isOllamaOnline =
     dynamicModels.some((m) => m.isInstalled || m.source === 'ollama_local') ||
@@ -40,118 +51,98 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
     (m) => !m.isInstalled && m.source !== 'ollama_local' && m.source !== 'vllm_local' && !m.tier?.includes('Installed')
   );
 
-  const activeLocalEngines = localDiscoveredLLMs.filter(
-    (m) =>
-      (m.status === 'READY' || m.isActive) &&
-      m.status !== 'LOCAL_OFFLINE' &&
-      m.status !== 'OFFLINE'
-  );
-
   return (
     <div className="space-y-4">
-      {/* Local Daemons Status Check (vLLM Docker :8002 & Ollama :11434) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-bold text-white flex items-center gap-2">
-              <span>vLLM Engine</span>
+      {/* 1. COMPACT ENGINE STATUS STRIP */}
+      <div className="p-3 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <HardDrive className="w-4 h-4 text-white shrink-0" />
+            <span
+              className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${
+                isLocalEngineOnline ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
+              }`}
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-white">Local Runtimes:</span>
+            {/* vLLM Pill */}
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[11px] font-mono text-slate-300">
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-1.5 h-1.5 rounded-full ${
                   isVllmOnline ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
                 }`}
               />
-              <span
-                className={`text-[10px] font-mono ${
-                  isVllmOnline ? 'text-white font-semibold' : 'text-slate-400'
-                }`}
-              >
-                {isVllmOnline ? 'Online (:8002)' : 'Standby (:8002)'}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
-              http://localhost:8002
-            </p>
-          </div>
-        </div>
+              vLLM ({isVllmOnline ? 'Online' : 'Standby'})
+            </span>
 
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-bold text-white flex items-center gap-2">
-              <span>Ollama Service</span>
+            {/* Ollama Pill */}
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[11px] font-mono text-slate-300">
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-1.5 h-1.5 rounded-full ${
                   isOllamaOnline ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
                 }`}
               />
-              <span
-                className={`text-[10px] font-mono ${
-                  isOllamaOnline ? 'text-white font-semibold' : 'text-slate-400'
-                }`}
-              >
-                {isOllamaOnline ? 'Running (:11434)' : 'Standby (:11434)'}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
-              http://localhost:11434
-            </p>
+              Ollama ({isOllamaOnline ? 'Running' : 'Standby'})
+            </span>
           </div>
-          {!isOllamaOnline && (
-            <a
-              href="https://ollama.ai/download"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] font-semibold text-white px-2.5 py-1 rounded-lg border border-white/15 bg-white/10 hover:bg-white/15 transition-colors flex items-center gap-1 shrink-0"
-            >
-              Get Ollama
-              <ExternalLink className="w-2.5 h-2.5" />
-            </a>
-          )}
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          <button
+            type="button"
+            onClick={fetchModels}
+            disabled={isLoadingModels}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 text-white text-xs font-medium transition-colors cursor-pointer"
+            title="Rescan installed local models"
+          >
+            <RefreshCw className={`w-3 h-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
+            <span>Rescan</span>
+          </button>
         </div>
       </div>
 
-      {/* Model Selection from Dynamic Backend API */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-300">Installed Local Models:</span>
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                isLocalEngineOnline ? 'bg-white animate-pulse' : 'bg-zinc-600'
-              }`}
-              title={isLocalEngineOnline ? 'Local inference engine online' : 'Local inference engine offline'}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400 font-mono">
-              {installedModels.length} installed
-            </span>
-            <button
-              type="button"
-              onClick={fetchModels}
-              disabled={isLoadingModels}
-              className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              title="Rescan model catalog"
-            >
-              <RefreshCw className={`w-3 h-3 ${isLoadingModels ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
+      {/* 2. PRIMARY VIEW: INSTALLED LOCAL MODELS */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-bold text-white tracking-tight">
+            Installed Models
+          </span>
+          <span className="text-[11px] font-mono text-slate-400">
+            {installedModels.length} detected
+          </span>
         </div>
 
         {isLoadingModels ? (
-          <div className="p-6 text-center text-xs text-slate-400">
+          <div className="p-8 text-center text-xs text-slate-400 rounded-2xl bg-[#131622] border border-white/10">
             <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-white" />
-            Scanning local runtime...
+            Scanning local Docker containers and Ollama runtime...
           </div>
         ) : installedModels.length === 0 ? (
-          <div className="p-4 rounded-xl border border-white/10 bg-black/40 text-center space-y-2">
-            <p className="text-xs text-slate-300">
-              No local models currently discovered in vLLM container or Ollama daemon.
+          /* Empty State: Actionable guidance */
+          <div className="p-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] text-left space-y-2.5">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <HelpCircle className="w-4 h-4 text-slate-300" />
+              <span>No Local Models Detected</span>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              No active model was found in your local vLLM container (:8002) or Ollama service (:11434).
             </p>
-            <p className="text-[11px] text-slate-500 font-mono">
-              Start vLLM container on port 8002, run <code className="text-slate-300">ollama run qwen2.5:7b</code> in your terminal, or select a catalog preset below to pull.
-            </p>
+            <div className="p-3 rounded-xl bg-black/60 border border-white/10 space-y-1.5 text-xs">
+              <div className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <Terminal className="w-3.5 h-3.5 text-white" />
+                <span>Quick Setup (Terminal):</span>
+              </div>
+              <div className="font-mono text-[11px] text-white bg-black/40 p-2 rounded border border-white/10 select-all">
+                ollama run qwen2.5:7b
+              </div>
+              <p className="text-[10.5px] text-slate-400">
+                After pulling or starting your container, click &ldquo;Rescan&rdquo; above. Or switch to Cloud LLM to start immediately without downloading.
+              </p>
+            </div>
           </div>
         ) : (
+          /* Installed models cards */
           <div className="space-y-2">
             {installedModels.map((m) => {
               const isSelected = config.selectedLocalModel === m.model;
@@ -171,7 +162,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                     </div>
                   )}
                   <div>
-                    • <strong>Runtime Status:</strong> {m.status}
+                    • <strong>Source:</strong> {m.source === 'vllm_local' ? 'vLLM Engine' : 'Ollama Service'}
                   </div>
                 </div>
               );
@@ -187,35 +178,46 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                       updateConfig({ selectedLocalModel: m.model });
                     }
                   }}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
                     isSelected
-                      ? 'bg-white text-black border-white font-bold'
-                      : 'bg-[#131622] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/5'
+                      ? 'bg-white text-black border-white font-bold shadow-sm'
+                      : 'bg-[#131622] border-white/10 text-white hover:border-white/25 hover:bg-white/5'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="text-xs font-bold">{m.displayName}</div>
+                  <div className="flex items-center gap-3 min-w-0">
                     <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded ${
-                        isSelected ? 'bg-black/10 text-black' : 'bg-white/5 text-slate-400'
+                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                        isSelected
+                          ? 'bg-black ring-2 ring-black/20'
+                          : 'bg-white/20 border border-white/40'
                       }`}
-                    >
-                      {m.model}
-                    </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-white border border-white/15">
-                      {m.source === 'vllm_local'
-                        ? 'vLLM Local GPU Engine (:8002)'
-                        : m.tier?.includes('Installed')
-                          ? m.tier
-                          : 'Ollama Inference Service (:11434)'}
-                    </span>
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold truncate">{m.displayName}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span
+                          className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                            isSelected ? 'bg-black/10 text-black' : 'bg-white/10 text-slate-300 border border-white/15'
+                          }`}
+                        >
+                          {m.source === 'vllm_local' ? 'vLLM GPU Engine' : 'Ollama'}
+                        </span>
+                        <span
+                          className={`text-[10px] font-mono truncate ${
+                            isSelected ? 'text-slate-800' : 'text-slate-400'
+                          }`}
+                        >
+                          {m.model}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 shrink-0">
                     {m.sizeGb && (
                       <span
                         className={`text-[11px] font-mono ${
-                          isSelected ? 'text-slate-800' : 'text-slate-400'
+                          isSelected ? 'text-slate-800 font-bold' : 'text-slate-400'
                         }`}
                       >
                         {m.sizeGb} GB
@@ -228,20 +230,29 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
             })}
           </div>
         )}
+      </div>
 
-        {/* Downloadable Open-Weight Models Catalog */}
-        {catalogModels.length > 0 && (
-          <div className="pt-3 border-t border-white/10 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400">
-                Downloadable Catalog Presets:
-              </span>
-              <span className="text-[10px] font-mono text-slate-500">
-                Requires <code className="text-slate-400">ollama pull</code>
-              </span>
+      {/* 3. PROGRESSIVE DISCLOSURE: COLLAPSIBLE CATALOG PRESETS */}
+      {catalogModels.length > 0 && (
+        <div className="pt-2 border-t border-white/10">
+          <button
+            type="button"
+            onClick={() => setShowCatalog((prev) => !prev)}
+            className="w-full flex items-center justify-between text-xs font-medium text-slate-300 hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <ChevronRight
+                className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showCatalog ? 'rotate-90' : ''}`}
+              />
+              <span>Downloadable Catalog Presets ({catalogModels.length})</span>
             </div>
+            <span className="text-[10.5px] font-mono text-slate-500">
+              {showCatalog ? 'Collapse' : 'Expand'}
+            </span>
+          </button>
 
-            <div className="space-y-1.5">
+          {showCatalog && (
+            <div className="mt-2 space-y-1.5 pl-2 animate-in fade-in duration-100">
               {catalogModels.slice(0, 5).map((m) => {
                 const isSelected = config.selectedLocalModel === m.model;
                 return (
@@ -255,7 +266,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                         updateConfig({ selectedLocalModel: m.model });
                       }
                     }}
-                    className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
+                    className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
                       isSelected
                         ? 'bg-white text-black border-white font-bold'
                         : 'bg-[#131622]/80 border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/5'
@@ -282,40 +293,66 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* Detected Local Runtimes (vLLM / Local GPU / Ollama) */}
-        <div className="pt-3 border-t border-white/10 space-y-1.5">
-          <span className="text-[11px] font-mono text-slate-400">
-            Active Local Inference Engines:
-          </span>
-          {activeLocalEngines.length > 0 ? (
-            activeLocalEngines.map((m) => (
-              <div
-                key={`${m.provider}-${m.model}`}
-                className="p-2.5 rounded-lg border border-white/10 bg-[#131622] text-xs flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse shrink-0" />
-                  <span className="font-semibold text-white truncate">{m.displayName}</span>
-                  <code className="text-[10px] font-mono bg-black/40 px-1.5 py-0.5 rounded text-slate-300 shrink-0">
-                    {m.model}
-                  </code>
-                </div>
-                {m.tier && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10 shrink-0">
-                    {m.tier}
-                  </span>
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="p-2.5 rounded-lg border border-white/5 bg-black/20 text-[11px] font-mono text-slate-500">
-              No local container or daemon active on port 8002 / 11434.
-            </div>
           )}
         </div>
+      )}
+
+      {/* 4. PROGRESSIVE DISCLOSURE: COLLAPSIBLE DAEMON DIAGNOSTICS & PORTS */}
+      <div className="pt-2 border-t border-white/10">
+        <button
+          type="button"
+          onClick={() => setShowDiagnostics((prev) => !prev)}
+          className="w-full flex items-center justify-between text-xs font-medium text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <ChevronRight
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showDiagnostics ? 'rotate-90' : ''}`}
+            />
+            <span>Daemon Diagnostics & Endpoints</span>
+          </div>
+          <span className="text-[10.5px] font-mono text-slate-500">
+            {showDiagnostics ? 'Hide' : 'Show'}
+          </span>
+        </button>
+
+        {showDiagnostics && (
+          <div className="mt-2 p-3 rounded-xl bg-black/60 border border-white/10 space-y-2.5 animate-in fade-in duration-100 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-1">
+                <div className="text-[11px] font-bold text-white flex items-center justify-between">
+                  <span>vLLM Engine Port:</span>
+                  <span className="font-mono text-slate-300">8002</span>
+                </div>
+                <div className="text-[10.5px] font-mono text-slate-400">http://localhost:8002</div>
+                <div className="text-[10px] text-slate-500">
+                  Container status: {isVllmOnline ? 'Running / Responding' : 'Offline'}
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-1">
+                <div className="text-[11px] font-bold text-white flex items-center justify-between">
+                  <span>Ollama Service Port:</span>
+                  <span className="font-mono text-slate-300">11434</span>
+                </div>
+                <div className="text-[10.5px] font-mono text-slate-400">http://localhost:11434</div>
+                <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                  <span>Daemon status: {isOllamaOnline ? 'Running' : 'Standby'}</span>
+                  {!isOllamaOnline && (
+                    <a
+                      href="https://ollama.ai/download"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white hover:underline flex items-center gap-0.5"
+                    >
+                      <span>Install</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

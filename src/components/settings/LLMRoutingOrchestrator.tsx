@@ -6,6 +6,8 @@ import {
   Power,
   RefreshCw,
   CheckCircle2,
+  ChevronRight,
+  HelpCircle,
 } from 'lucide-react';
 import { systemService } from '../../services/SystemService';
 import type { RoutingUpdateRequest } from '../../types';
@@ -59,6 +61,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [feedbackBanner, setFeedbackBanner] = useState<{ message: string; timestamp: string } | null>(null);
+  const [showDisabled, setShowDisabled] = useState<boolean>(false);
 
   // Auto-dismiss confirmation banner after 4 seconds
   useEffect(() => {
@@ -358,12 +361,13 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
 
         <div className="flex flex-col gap-1">
           {activeChain.length === 0 ? (
-            <div className="p-4 rounded-xl border border-dashed border-white/10 bg-white/[0.02] text-center space-y-1">
-              <p className="text-xs font-semibold text-slate-300">
-                No active LLM engine connected yet
-              </p>
-              <p className="text-[11px] text-slate-400">
-                Configure a cloud API key (e.g. Gemini, Groq, Universal) or launch a local container (vLLM / Ollama) to activate the inference chain.
+            <div className="p-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] text-left space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-white">
+                <HelpCircle className="w-4 h-4 text-slate-300" />
+                <span>No Active LLM Inference Engine</span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Connect a verified cloud API key (Google Gemini, Groq, OpenAI) in <strong>Cloud LLM</strong> or launch a local container (vLLM / Ollama) in <strong>Local LLM</strong>. The orchestrator will automatically place the first available engine as Primary #1.
               </p>
             </div>
           ) : (
@@ -476,32 +480,42 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
         </div>
       </div>
 
-      {/* Disabled Providers Pool */}
+      {/* Disabled Providers Pool (Collapsible) */}
       {disabledList.length > 0 && (
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-white/10">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            DISABLED PROVIDERS (EXCLUDED MANUALLY)
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {disabledList.map((pId) => {
-              const name = providersData[pId]?.name || CLEAN_PROVIDER_NAMES[pId] || pId.toUpperCase();
-              return (
-                <div
-                  key={`dis-${pId}`}
-                  className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-300"
-                >
-                  <span className="font-medium">{name}</span>
-                  <button
-                    type="button"
-                    onClick={() => enableProvider(pId)}
-                    className="text-[11px] text-white hover:underline font-semibold cursor-pointer pl-1"
+        <div className="pt-2 border-t border-white/10">
+          <button
+            type="button"
+            onClick={() => setShowDisabled((prev) => !prev)}
+            className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <ChevronRight
+              className={`w-3 h-3 text-slate-400 transition-transform ${showDisabled ? 'rotate-90' : ''}`}
+            />
+            <span>Disabled Providers ({disabledList.length})</span>
+          </button>
+
+          {showDisabled && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2 pl-4 animate-in fade-in duration-100">
+              {disabledList.map((pId) => {
+                const name = providersData[pId]?.name || CLEAN_PROVIDER_NAMES[pId] || pId.toUpperCase();
+                return (
+                  <div
+                    key={`dis-${pId}`}
+                    className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-300"
                   >
-                    Enable
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    <span className="font-medium">{name}</span>
+                    <button
+                      type="button"
+                      onClick={() => enableProvider(pId)}
+                      className="text-[11px] text-white hover:underline font-semibold cursor-pointer pl-1"
+                    >
+                      Enable
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

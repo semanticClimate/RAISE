@@ -59,7 +59,7 @@ export function useControlCenterSave(
       const primaryCloudProvider =
         (config.apiKeys || []).find(
           (k) => k?.key && k.key.trim() && k.provider !== 'unknown'
-        )?.provider || 'groq';
+        )?.provider || 'gemini';
 
       // Query active system routing so user's pinned primary is preserved
       const activeRouting = await platformAdapter.getRouting().catch(() => null);
@@ -91,7 +91,8 @@ export function useControlCenterSave(
         mistral_api_key: sanitizeSecret(keyMap['mistral']),
         cohere_api_key: sanitizeSecret(keyMap['cohere']),
         openrouter_api_key: sanitizeSecret(keyMap['openrouter']),
-        custom_api_key: sanitizeSecret(keyMap['custom']),
+        custom_api_key: sanitizeSecret(keyMap['universal'] || keyMap['custom']),
+        universal_api_key: sanitizeSecret(keyMap['universal'] || keyMap['custom']),
         selected_local_model: config.selectedLocalModel,
         ollama_model: config.selectedLocalModel,
         tunnel_url: config.tunnelUrl,
