@@ -1125,7 +1125,13 @@ if (-not (Test-Path -LiteralPath $vitePkg)) {
 if (Test-Path -LiteralPath $vitePkg) {
     Write-Info "Frontend Vite bundle verified (node_modules\vite)" "Green"
 } else {
-    Write-Info "Frontend Vite package not detected; dev fallback mode will be used." "Yellow"
+    Write-Info "Frontend package installation failed: Vite not found under node_modules\vite." "Red" "╰─"
+    Write-Host ""
+    Write-Host "  $($C.Red)[ERROR] Frontend dependencies could not be installed automatically.$($C.Reset)"
+    Write-Host "  $($C.Yellow)Please navigate to the frontend directory and run:$($C.Reset)"
+    Write-Host "    $($C.White)cd frontend && npm install$($C.Reset)"
+    Write-Host ""
+    exit 1
 }
 
 # 7. Route Execution Mode (Unbuffered Python `-u` for zero-delay live streaming)
