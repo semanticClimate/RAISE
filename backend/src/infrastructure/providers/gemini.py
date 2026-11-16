@@ -159,24 +159,50 @@ class GeminiProvider(LLMProvider):
                 cost_mode=self.cost_mode,
             )
 
-        # Try native endpoint first
-        try:
-            native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
-            payload_native = {"contents": [{"parts": [{"text": "Hello"}]}], "generationConfig": {"maxOutputTokens": 5}}
-            resp, latency_ms = safe_http_request(native_url, payload=payload_native, headers={"x-goog-api-key": key}, timeout=timeout, max_retries=0)
-            return ProviderHealth(
-                provider=self.name,
-                configured=True,
-                credential_valid=True,
-                endpoint_reachable=True,
-                model_available=True,
-                functional_test=True,
-                status="READY",
-                latency_ms=round(latency_ms, 1),
-                cost_mode=self.cost_mode,
-            )
-        except Exception as _native_e:
-            pass
+        # Try native generateContent endpoint first across prioritized models
+        raw_candidates = [
+            self.model_name,
+            models.GEMINI_MODEL_NAME,
+            *models.GEMINI_FALLBACK_CANDIDATES,
+        ]
+        candidate_models = []
+        for m in raw_candidates:
+            if m and m not in candidate_models:
+                candidate_models.append(m)
+
+        for cand_m in candidate_models:
+            try:
+                native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_m}:generateContent"
+                payload_native = {"contents": [{"parts": [{"text": "Hello"}]}], "generationConfig": {"maxOutputTokens": 5}}
+                resp, latency_ms = safe_http_request(native_url, payload=payload_native, headers={"x-goog-api-key": key}, timeout=timeout, max_retries=0)
+                self.model_name = cand_m
+                return ProviderHealth(
+                    provider=self.name,
+                    configured=True,
+                    credential_valid=True,
+                    endpoint_reachable=True,
+                    model_available=True,
+                    functional_test=True,
+                    status="READY",
+                    latency_ms=round(latency_ms, 1),
+                    cost_mode=self.cost_mode,
+                )
+            except ProviderHTTPError as pe:
+                if pe.classification == "AUTH_FAILED" or getattr(pe, "status_code", None) == 403:
+                    return ProviderHealth(
+                        provider=self.name,
+                        configured=True,
+                        credential_valid=False,
+                        endpoint_reachable=True,
+                        model_available=False,
+                        functional_test=False,
+                        status="AUTH_FAILED",
+                        error_message="Gemini API authentication rejected. Please verify your Google AI Studio API key.",
+                        cost_mode=self.cost_mode,
+                    )
+                continue
+            except Exception:
+                continue
 
         payload = {
             "model": self.model_name,

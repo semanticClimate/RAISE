@@ -180,7 +180,23 @@ class VectorEmbeddingsMixin:
 
             try:
                 import torch
-                from sentence_transformers import SentenceTransformer
+                try:
+                    from sentence_transformers import SentenceTransformer
+                except ImportError:
+                    logger.warning("sentence_transformers missing from environment. Attempting dynamic self-healing install...")
+                    try:
+                        import sys
+                        import subprocess
+                        subprocess.run(
+                            [sys.executable, "-m", "pip", "install", "sentence-transformers", "transformers>=5.22.0"],
+                            check=True,
+                            timeout=180,
+                            capture_output=True,
+                        )
+                        from sentence_transformers import SentenceTransformer
+                    except Exception as _pip_e:
+                        logger.error(f"Dynamic install of sentence-transformers failed: {_pip_e}")
+                        raise
                 from src.core.config import resolve_local_model_path
 
                 cache_folder = os.getenv("HF_HOME", str(Path.home() / ".cache" / "huggingface" / "hub"))
@@ -364,7 +380,11 @@ class VectorEmbeddingsMixin:
 
         if model is None:
 
-            raise RuntimeError(f"Embedding model '{getattr(self, 'model_key', 'embedding')}' is not available.")
+            raise RuntimeError(
+                f"Embedding model '{getattr(self, 'model_key', 'embedding')}' is not available. "
+                f"Please ensure 'sentence-transformers' and 'transformers>=5.22.0' are installed in the active environment "
+                f"(run: pip install sentence-transformers 'transformers>=5.22.0')."
+            )
 
 
 

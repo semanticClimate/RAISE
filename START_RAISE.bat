@@ -275,7 +275,7 @@ function Test-PythonHasCoreDeps {
     param([string]$Path)
     if (-not (Test-ValidPython $Path)) { return $false }
     try {
-        $chk = & $Path -c "import sys, fastapi, uvicorn, pydantic, rich, prompt_toolkit; sys.stdout.write('OK')" 2>$null
+        $chk = & $Path -c "import sys, fastapi, uvicorn, pydantic, rich, prompt_toolkit, sentence_transformers, transformers; sys.stdout.write('OK')" 2>$null
         return ($chk -match "OK")
     } catch { return $false }
 }
@@ -429,6 +429,31 @@ if (Test-GlinerInstalled $pythonExe) {
         Write-Info "GLiNER Zero-Shot NER engine online ($glinerModelName)" "Green"
     } else {
         Write-Info "GLiNER auto-provisioning deferred to background warmup." "Yellow"
+    }
+}
+
+# 3.6 Neural Embeddings & Modern Transformers Architecture Verification
+function Test-EmbeddingTransformersInstalled {
+    param([string]$PyPath)
+    try {
+        $chk = & $PyPath -c "import sys, sentence_transformers, transformers; sys.stdout.write('OK')" 2>$null
+        return ($chk -match "OK")
+    } catch { return $false }
+}
+
+if (Test-EmbeddingTransformersInstalled $pythonExe) {
+    Write-Info "Neural embedding runtime verified (sentence-transformers & transformers)" "Green"
+} else {
+    Write-Info "Neural embedding runtime missing or incomplete. Auto-provisioning sentence-transformers & transformers..." "Yellow"
+    if ($activeUv) {
+        & $activeUv pip install sentence-transformers "transformers>=5.22.0" --python $pythonExe --index-strategy unsafe-best-match
+    } else {
+        & $pythonExe -m pip install sentence-transformers "transformers>=5.22.0" --quiet
+    }
+    if (Test-EmbeddingTransformersInstalled $pythonExe) {
+        Write-Info "Neural embedding runtime online (sentence-transformers & modern transformers)" "Green"
+    } else {
+        Write-Info "Neural embedding runtime installation deferred to background warmup." "Yellow"
     }
 }
 

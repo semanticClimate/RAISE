@@ -154,6 +154,16 @@ def check_hf_model_cached(repo_id: str) -> bool:
     return False
 
 
+def check_sentence_transformers_installed() -> bool:
+    """Verifies that sentence-transformers and modern transformers are installed."""
+    try:
+        import sentence_transformers
+        import transformers
+        return True
+    except ImportError:
+        return False
+
+
 def check_docling_pymupdf() -> bool:
     """Verifies that either PyMuPDF or Docling is available for document parsing."""
     try:
@@ -209,11 +219,13 @@ def get_preflight_assets() -> Dict[str, Any]:
     """
     docling_ok = check_docling_pymupdf()
     ggahc_ok = True  # In-process token-budgeted python engine
+    st_ok = check_sentence_transformers_installed()
     emb_model = models.EMBEDDING_MODEL_NAME
     rerank_model = models.RERANKER_MODEL_NAME
     nli_model = models.NLI_MODEL_NAME
 
     bge_large_ok = check_hf_model_cached(emb_model)
+    emb_ok = bge_large_ok and st_ok
     bge_reranker_ok = check_hf_model_cached(rerank_model)
     finecat_ok = check_hf_model_cached(nli_model)
     chroma_ok = check_chromadb_substrate()
@@ -232,7 +244,7 @@ def get_preflight_assets() -> Dict[str, Any]:
     all_verified = (
         docling_ok
         and ggahc_ok
-        and bge_large_ok
+        and emb_ok
         and bge_reranker_ok
         and finecat_ok
         and chroma_ok
@@ -269,11 +281,13 @@ def get_preflight_assets() -> Dict[str, Any]:
             "model_name": emb_model,
             "size": format_byte_size(emb_bytes) if emb_bytes > 0 else "Pending Download",
             "desc": "Dense semantic vector embeddings for ChromaDB HNSW",
-            "verified": bge_large_ok,
-            "status": "Cached & Verified" if bge_large_ok else f"Requires Download ({emb_model})",
+            "verified": emb_ok,
+            "status": "Cached & Verified" if emb_ok else (
+                "Missing sentence-transformers" if not st_ok else f"Requires Download ({emb_model})"
+            ),
             "statusColor": (
                 "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                if bge_large_ok
+                if emb_ok
                 else "text-amber-400 bg-amber-500/10 border-amber-500/20"
             ),
         },
