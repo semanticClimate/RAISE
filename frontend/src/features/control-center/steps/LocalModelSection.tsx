@@ -54,7 +54,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
   return (
     <div className="space-y-4">
       {/* 1. COMPACT ENGINE STATUS STRIP */}
-      <div className="p-3 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between gap-3 flex-wrap">
+      <div className="p-3 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="relative">
             <HardDrive className="w-4 h-4 text-white shrink-0" />
@@ -112,7 +112,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
         </div>
 
         {isLoadingModels ? (
-          <div className="p-8 text-center text-xs text-slate-400 rounded-2xl bg-[#131622] border border-white/10">
+          <div className="p-8 text-center text-xs text-slate-400 rounded-2xl bg-[#111111] border border-[#292929]">
             <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-white" />
             Scanning local Docker containers and Ollama runtime...
           </div>
@@ -179,7 +179,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                   className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
                     isSelected
                       ? 'bg-white text-black border-white font-bold shadow-sm'
-                      : 'bg-[#131622] border-white/10 text-white hover:border-white/25 hover:bg-white/5'
+                      : 'bg-[#111111] border-[#292929] text-white hover:border-white/25 hover:bg-white/5'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -267,7 +267,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                     className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
                       isSelected
                         ? 'bg-white text-black border-white font-bold'
-                        : 'bg-[#131622]/80 border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/5'
+                        : 'bg-[#111111]/80 border-[#292929] text-slate-300 hover:border-white/20 hover:bg-white/5'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">

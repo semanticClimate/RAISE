@@ -358,19 +358,19 @@ export const DatabaseStep: React.FC = () => {
       </div>
 
       {/* Global Storage Tier Quick-Toggle: Fast Local vs Docker Local vs Cloud Managed */}
-      <div className="p-1 rounded-xl bg-[#131622] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+      <div className="p-1 rounded-xl bg-[#111111] border border-[#292929] grid grid-cols-1 sm:grid-cols-3 gap-1.5">
         {/* Tier 1: Fast Local */}
         <button
           type="button"
           onClick={() => handleSetAllSubstrates('in_memory_fallback')}
           className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllMemory
-              ? 'bg-white text-black font-bold shadow-sm'
-              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
+              : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
           title="Zero-dependency fast in-memory execution"
         >
-          <Cpu className={`w-4 h-4 ${isAllMemory ? 'text-black' : 'text-white'}`} />
+          <Cpu className={`w-4 h-4 ${isAllMemory ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
           <span>Fast Local</span>
         </button>
 
@@ -380,12 +380,12 @@ export const DatabaseStep: React.FC = () => {
           onClick={() => handleSetAllSubstrates('local')}
           className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllLocal
-              ? 'bg-white text-black font-bold shadow-sm'
-              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
+              : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
           title="Local Docker container daemons"
         >
-          <Database className={`w-4 h-4 ${isAllLocal ? 'text-black' : 'text-white'}`} />
+          <Database className={`w-4 h-4 ${isAllLocal ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
           <span>Docker Local</span>
         </button>
 
@@ -395,12 +395,12 @@ export const DatabaseStep: React.FC = () => {
           onClick={() => handleSetAllSubstrates('cloud')}
           className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllCloud
-              ? 'bg-white text-black font-bold shadow-sm'
-              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
+              : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
           title="Cloud-hosted database endpoints"
         >
-          <Cloud className={`w-4 h-4 ${isAllCloud ? 'text-black' : 'text-white'}`} />
+          <Cloud className={`w-4 h-4 ${isAllCloud ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
           <span>Cloud Managed</span>
         </button>
       </div>
@@ -430,17 +430,17 @@ export const DatabaseStep: React.FC = () => {
       )}
 
       {/* Modern Table Format (Single unified view, click box and tick) */}
-      <div className="rounded-xl bg-[#131622] border border-white/10 overflow-hidden">
+      <div className="rounded-xl bg-[#111111] border border-[#292929] overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-white/10 bg-black/40 text-xs font-semibold text-slate-300">
+            <tr className="border-b border-[#292929] bg-[#0A0A0A] text-xs font-semibold text-[#A3A3A3]">
               <th className="py-2.5 px-4">Substrate</th>
               <th className="py-2.5 px-3 text-center">Fast Local</th>
               <th className="py-2.5 px-3 text-center">Docker Local</th>
               <th className="py-2.5 px-3 text-center">Cloud Managed</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5 text-xs">
+          <tbody className="divide-y divide-[#292929]/60 text-xs">
             {substrates.map((sub) => {
               const currentMode = getEffectiveMode(sub.key);
               const cfg = config[sub.key] || { mode: currentMode };
@@ -571,25 +571,25 @@ export const DatabaseStep: React.FC = () => {
       </div>
 
       {/* ChromaDB Dense Vector Engine Substrate */}
-      <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between text-xs">
+      <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white/10 text-white border border-white/20 flex items-center justify-center shrink-0 font-mono font-bold text-xs">
+          <div className="w-8 h-8 rounded-lg bg-[#171717] text-[#FFFFFF] border border-[#292929] flex items-center justify-center shrink-0 font-mono font-bold text-xs">
             V
           </div>
           <div>
-            <div className="font-bold text-white flex items-center gap-2">
+            <div className="font-bold text-[#FFFFFF] flex items-center gap-2">
               <span>Vector Store</span>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/10 text-white border border-white/20 font-mono">
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#171717] text-[#FFFFFF] border border-[#292929] font-mono">
                 ChromaDB (Local Embedded)
               </span>
             </div>
-            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+            <div className="text-[11px] text-[#A3A3A3] font-mono mt-0.5">
               Dense document embeddings & semantic similarity • Fast embedded SQLite/Parquet vector persistence
             </div>
           </div>
         </div>
         {typeof testResults?.chroma?.total_chunks === 'number' && (
-          <span className="text-[11px] font-mono text-slate-400 shrink-0">
+          <span className="text-[11px] font-mono text-[#A3A3A3] shrink-0">
             {testResults.chroma.total_chunks} chunks
           </span>
         )}
@@ -603,8 +603,8 @@ export const DatabaseStep: React.FC = () => {
           const Icon = sub.icon;
 
           return (
-            <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="w-full max-w-md bg-[#131622] border border-white/20 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="fixed inset-0 z-50 bg-[#000000]/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-md bg-[#111111] border border-[#292929] rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white shrink-0">

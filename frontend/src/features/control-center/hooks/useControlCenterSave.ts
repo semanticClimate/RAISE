@@ -79,7 +79,17 @@ export function useControlCenterSave(
         return trimmed;
       };
 
+      const targetStorageMode =
+        config.storageMode ||
+        (config.knowledgeGraph?.mode === 'cloud'
+          ? 'cloud'
+          : config.knowledgeGraph?.mode === 'local'
+          ? 'docker'
+          : 'fast');
+
       const saveRes = await platformAdapter.saveConfig({
+        storage_mode: targetStorageMode,
+        raise_storage_mode: targetStorageMode,
         llm_mode: activeLlmMode,
         llm_backend: activeBackend,
         groq_api_key: sanitizeSecret(keyMap['groq'] || config.groqApiKey),

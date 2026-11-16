@@ -13,7 +13,7 @@ import type {
 
 interface ControlCenterState {
   isOpen: boolean;
-  activeTab: 'platform' | 'models' | 'neural' | 'databases' | 'launch';
+  activeTab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch';
   hardware: SystemHardwareInfo | null;
   config: ControlCenterConfig;
   downloadProgress: number; // 0 - 100
@@ -29,7 +29,7 @@ interface ControlCenterState {
   resetToBaseline: () => void;
   saveBaseline: () => void;
   markDirty: () => void;
-  setActiveTab: (tab: 'platform' | 'models' | 'neural' | 'databases' | 'launch') => void;
+  setActiveTab: (tab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch') => void;
   updateConfig: (patch: Partial<ControlCenterConfig>) => void;
   setHardware: (info: SystemHardwareInfo) => void;
   setDownloadProgress: (percent: number, speed: string) => void;
@@ -61,7 +61,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
   persist(
     (set) => ({
       isOpen: false,
-      activeTab: 'platform',
+      activeTab: 'overview',
       hardware: {
         platform: defaultPlatform,
         osName: defaultPlatform === 'macos' ? 'macOS (Apple Silicon)' : defaultPlatform === 'windows' ? 'Windows' : 'Linux',
@@ -81,6 +81,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
         firstRunCompleted: typeof process !== 'undefined' && process.env.NODE_ENV === 'test',
         targetPlatform: defaultPlatform,
         llmDeployment: 'cloud',
+        storageMode: 'fast',
         embeddingModel: 'google/embeddinggemma-2',
         rerankerModel: 'BAAI/bge-reranker-v2-m3',
         nliVerifierModel: 'dleemiller/finecat-nli-ultra-l',
@@ -481,6 +482,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
               ...s.config,
               firstRunCompleted: Boolean(cfg.first_run_completed ?? s.config.firstRunCompleted),
               llmDeployment: isLocal ? 'local' : 'cloud',
+              storageMode: rawStorageMode === 'docker' ? 'docker' : rawStorageMode === 'cloud' ? 'cloud' : 'fast',
               llmMode: (llmMode || s.config.llmMode) as any,
               embeddingModel:
                 (cfg.embedding_model as string) || s.config.embeddingModel || 'google/embeddinggemma-2',
@@ -613,6 +615,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
             isDirty: true,
             config: {
               ...s.config,
+              storageMode: mode === 'local' ? 'docker' : mode === 'cloud' ? 'cloud' : 'fast',
               knowledgeGraph: kg,
               sessionMemory: mem,
               cacheAndSignals: cache,

@@ -9,7 +9,6 @@ import {
   HelpCircle,
   Plus,
   RefreshCw,
-  Sparkles,
   Trash2,
   X,
   XCircle,
@@ -279,7 +278,7 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
               return (
                 <div
                   key={item.id}
-                  className="rounded-xl border border-white/10 bg-[#131622] transition-all hover:border-white/25 overflow-hidden"
+                  className="rounded-xl border border-[#292929] bg-[#111111] transition-all hover:border-[#FFFFFF]/25 overflow-hidden"
                 >
                   <div className="p-3 flex items-center justify-between gap-3">
                     {/* Left Info */}
@@ -422,10 +421,10 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
 
       {/* 2. ADD CLOUD PROVIDER FORM (COLLAPSIBLE / STREAMLINED) */}
       {formShouldShow && (
-        <div className="p-4 rounded-2xl bg-[#131622] border border-white/15 space-y-3.5 shadow-sm animate-in fade-in duration-150">
+        <div className="p-4 rounded-2xl bg-[#111111] border border-[#292929] space-y-3.5 shadow-sm animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-white" />
+              <Plus className="w-4 h-4 text-white" />
               <span className="text-xs font-bold text-white tracking-tight">
                 {configuredKeys.length === 0 ? 'Connect Your First Provider' : 'Add Another Provider'}
               </span>
@@ -453,10 +452,10 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
                   setTestResult(null);
                   setShowTestErrorDetails(false);
                 }}
-                className="w-full appearance-none px-3 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white font-medium text-xs focus:outline-none focus:border-white transition-all cursor-pointer pr-8"
+                className="w-full appearance-none px-3 py-2.5 rounded-xl bg-black/60 border border-[#292929] text-white font-medium text-xs focus:outline-none focus:border-white transition-all cursor-pointer pr-8"
               >
                 {CLOUD_PROVIDERS.map((prov) => (
-                  <option key={prov.id} value={prov.id} className="bg-[#131622] text-white">
+                  <option key={prov.id} value={prov.id} className="bg-[#111111] text-white">
                     {prov.name}
                   </option>
                 ))}

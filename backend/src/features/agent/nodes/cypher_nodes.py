@@ -77,7 +77,19 @@ class CypherNodesMixin:
                     # Execute on local embedded Kùzu graph
                     kuzu_res = kuzu_eng.query(cypher)
                     if kuzu_res and "error" in kuzu_res[0]:
-                        error = str(kuzu_res[0]["error"])
+                        err_msg = str(kuzu_res[0]["error"])
+                        if "document_id" in err_msg:
+                            # Strip document_id filter and retry on embedded Kùzu graph
+                            clean_cypher = re.sub(r"AND\s*\([^)]*document_id[^)]*\)", "", cypher)
+                            clean_cypher = re.sub(r"WHERE\s*\([^)]*document_id[^)]*\)\s*AND", "WHERE", clean_cypher)
+                            clean_cypher = re.sub(r"WHERE\s*\([^)]*document_id[^)]*\)", "", clean_cypher)
+                            retry_res = kuzu_eng.query(clean_cypher)
+                            if retry_res and "error" not in retry_res[0]:
+                                records = retry_res
+                            else:
+                                error = err_msg
+                        else:
+                            error = err_msg
                     else:
                         records = kuzu_res
                 else:

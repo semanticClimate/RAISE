@@ -525,7 +525,7 @@ class ProviderRouter:
         except Exception:
             pass
 
-        configured_clouds = [cand for cand in ["groq", "gemini", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if cm.get_credential_status(cand) == "configured"]
+        configured_clouds = [cand for cand in ["groq", "gemini", "openai", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if cm.get_credential_status(cand) == "configured"]
         first_fallback = self.fallback_chain[0] if self.fallback_chain else (configured_clouds[0] if configured_clouds else "gemini")
 
         primary = self.task_policy.get(InferenceTask.RAG_GENERATION)
