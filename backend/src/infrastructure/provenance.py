@@ -82,13 +82,10 @@ def build_pipeline_info(mode: Optional[str] = "expert") -> Dict[str, str]:
     except Exception:
         try:
             import chromadb
-            base_dir = Path(__file__).resolve().parent.parent.parent
+            from src.core.config import BACKEND_DIR
             candidates = [
-                base_dir / ".chromadb_embeddinggemma_2",
-                base_dir / "backend" / ".chromadb_embeddinggemma_2",
-                base_dir.parent / "backend" / ".chromadb_embeddinggemma_2",
-                base_dir / ".chromadb_bge_large",
-                base_dir / "backend" / ".chromadb_bge_large",
+                BACKEND_DIR / ".chromadb_embeddinggemma_2",
+                BACKEND_DIR / ".chromadb_bge_large",
             ]
             target_chroma = next((p for p in candidates if p.exists()), None)
             if target_chroma:

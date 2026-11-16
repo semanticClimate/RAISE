@@ -71,9 +71,9 @@ class CoreferenceResolverNode:
                 resolved = re.sub(r"\bthey\b", dominant, resolved, flags=re.IGNORECASE)
                 resolved = re.sub(r"\bits\b", f"{dominant}'s", resolved, flags=re.IGNORECASE)
                 resolved = re.sub(r"\bit\b", dominant, resolved, flags=re.IGNORECASE)
-                resolved = re.sub(r"\bthat startup\b", dominant, flags=re.IGNORECASE)
-                resolved = re.sub(r"\bthat project\b", dominant, flags=re.IGNORECASE)
-                resolved = re.sub(r"\bthat institution\b", dominant, flags=re.IGNORECASE)
+                resolved = re.sub(r"\bthat startup\b", dominant, resolved, flags=re.IGNORECASE)
+                resolved = re.sub(r"\bthat project\b", dominant, resolved, flags=re.IGNORECASE)
+                resolved = re.sub(r"\bthat institution\b", dominant, resolved, flags=re.IGNORECASE)
                 return resolved, dominant
 
         return query, None
