@@ -394,9 +394,17 @@ export const useControlCenterStore = create<ControlCenterState>()(
             }
           }
 
-          const kgMode = (cfg.neo4j_mode as SubstrateMode) || 'in_memory_fallback';
-          const memMode = (cfg.postgres_mode as SubstrateMode) || 'in_memory_fallback';
-          const cacheMode = (cfg.redis_mode as SubstrateMode) || 'in_memory_fallback';
+          const rawStorageMode = String(cfg.storage_mode || cfg.raise_storage_mode || '').toLowerCase();
+          let defaultSubstrateMode: SubstrateMode = 'in_memory_fallback';
+          if (rawStorageMode === 'docker') {
+            defaultSubstrateMode = 'local';
+          } else if (rawStorageMode === 'cloud') {
+            defaultSubstrateMode = 'cloud';
+          }
+
+          const kgMode = (cfg.neo4j_mode as SubstrateMode) || defaultSubstrateMode;
+          const memMode = (cfg.postgres_mode as SubstrateMode) || defaultSubstrateMode;
+          const cacheMode = (cfg.redis_mode as SubstrateMode) || defaultSubstrateMode;
 
           set((s) => {
             // Merge: preserve any user-entered manual keys that are not from backend
@@ -484,14 +492,20 @@ export const useControlCenterStore = create<ControlCenterState>()(
             uri:
               mode === 'cloud' && envData.neo4j.present
                 ? envData.neo4j.uri
+                : mode === 'local'
+                ? 'bolt://localhost:7687'
                 : s.config.knowledgeGraph?.uri || '',
             user:
               mode === 'cloud' && envData.neo4j.present
                 ? envData.neo4j.user
+                : mode === 'local'
+                ? 'neo4j'
                 : s.config.knowledgeGraph?.user || 'neo4j',
             password:
               mode === 'cloud' && envData.neo4j.present
                 ? envData.neo4j.password
+                : mode === 'local'
+                ? 'raise_password'
                 : s.config.knowledgeGraph?.password || '',
           };
           const mem: SubstrateConfig = {
@@ -500,14 +514,20 @@ export const useControlCenterStore = create<ControlCenterState>()(
             uri:
               mode === 'cloud' && envData.postgres.present
                 ? envData.postgres.uri
+                : mode === 'local'
+                ? 'postgresql://raise_user:raise_password@localhost:5432/raise_db'
                 : s.config.sessionMemory?.uri || '',
             user:
               mode === 'cloud' && envData.postgres.present
                 ? envData.postgres.user
+                : mode === 'local'
+                ? 'raise_user'
                 : s.config.sessionMemory?.user || '',
             password:
               mode === 'cloud' && envData.postgres.present
                 ? envData.postgres.password
+                : mode === 'local'
+                ? 'raise_password'
                 : s.config.sessionMemory?.password || '',
           };
           const cache: SubstrateConfig = {
@@ -516,6 +536,8 @@ export const useControlCenterStore = create<ControlCenterState>()(
             uri:
               mode === 'cloud' && envData.redis.present
                 ? envData.redis.uri
+                : mode === 'local'
+                ? 'redis://localhost:6379/0'
                 : s.config.cacheAndSignals?.uri || '',
           };
           return {
