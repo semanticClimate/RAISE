@@ -135,17 +135,17 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
 
   const modeDisplay =
     mode === 'expert'
-      ? 'Expert Mode (Multi-Hop GraphRAG · TableFormer · NLI Grounding)'
+      ? 'Expert Mode'
       : mode === 'conversational'
-        ? 'Conversational Mode (Dual-Tier Persona Memory)'
-        : 'Fast Mode (Dense Vector & BM25 · Sub-Second Synthesis)';
+        ? 'Conversational Mode'
+        : 'Fast Mode';
 
   const synthesisMethod =
     mode === 'expert'
-      ? 'Deep Multi-Hop Cyclical Knowledge Graph Traversal & Entailment Verification'
+      ? 'Cyclic Knowledge Graph Traversal & Entailment Verification'
       : mode === 'conversational'
         ? 'Direct Persona Reasoning with Contextual Memory'
-        : 'Single-Pass Vector Similarity Search & Grounded Citation Extraction';
+        : 'Dense Vector & BM25 Similarity Search';
 
   return {
     storageUsed,
@@ -1582,7 +1582,7 @@ export function generatePdfBlob(
     `0.08 0.12 0.22 RG 1.5 w ${marginX} ${curY - 16} m ${marginX + 55} ${curY - 16} l S`
   );
   // Prominently render the active research mode badge next to the ANSWER header
-  const modeHeaderBadge = `[${prov.mode === 'expert' ? 'EXPERT MODE · MULTI-HOP GRAPHRAG' : prov.mode === 'conversational' ? 'CONVERSATIONAL MODE' : 'FAST MODE · DENSE VECTOR & BM25'}]`;
+  const modeHeaderBadge = `[${prov.mode === 'expert' ? 'EXPERT MODE' : prov.mode === 'conversational' ? 'CONVERSATIONAL MODE' : 'FAST MODE'}]`;
   const badgeRgb =
     prov.mode === 'expert'
       ? '0.45 0.2 0.75'
@@ -1845,7 +1845,7 @@ export function generatePdfBlob(
   );
   curY -= 24;
 
-  const cardHeight = 102;
+  const cardHeight = 90;
   currentOps.push(`0.97 0.98 0.99 rg`);
   currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re f`);
   currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
@@ -1853,7 +1853,6 @@ export function generatePdfBlob(
 
   const specRows = [
     { label: 'Research Mode:', val: prov.modeDisplay },
-    { label: 'Synthesis Architecture:', val: prov.synthesisMethod },
     { label: 'Storage Substrates:', val: prov.storageUsed },
     { label: 'Synthesis LLM:', val: `${prov.llmModel} (${prov.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
@@ -2500,10 +2499,10 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         'fast';
       const modeLabel =
         msgMode === 'expert'
-          ? 'Expert Mode (GraphRAG)'
+          ? 'Expert Mode'
           : msgMode === 'conversational'
             ? 'Conversational Mode'
-            : 'Fast Mode (Vector Search)';
+            : 'Fast Mode';
       const modeBadge = `[${modeLabel}]`;
       const modeBadgeWidth = estimateHelveticaWidth(modeBadge, 7.5);
       const modeColor =
@@ -2613,7 +2612,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   );
   curY -= 24;
 
-  const sessionCardHeight = 102;
+  const sessionCardHeight = 90;
   currentOps.push(`0.97 0.98 0.99 rg`);
   currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re f`);
   currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
@@ -2621,7 +2620,6 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
 
   const sessionSpecRows = [
     { label: 'Research Mode:', val: sProv.modeDisplay },
-    { label: 'Synthesis Architecture:', val: sProv.synthesisMethod },
     { label: 'Storage Substrates:', val: sProv.storageUsed },
     { label: 'Synthesis LLM:', val: `${sProv.llmModel} (${sProv.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },

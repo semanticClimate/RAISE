@@ -60,8 +60,17 @@ export function useControlCenterSave(
         (config.apiKeys || []).find(
           (k) => k?.key && k.key.trim() && k.provider !== 'unknown'
         )?.provider || 'groq';
-      const activeBackend = isCloud ? primaryCloudProvider : 'ollama';
-      const activeLlmMode = isCloud ? `cloud_${primaryCloudProvider}` : 'local_ollama';
+
+      // Query active system routing so user's pinned primary is preserved
+      const activeRouting = await platformAdapter.getRouting().catch(() => null);
+      const pinnedPrimary =
+        activeRouting?.pinned_primary_provider ||
+        activeRouting?.data?.pinned_primary_provider ||
+        activeRouting?.primary_provider ||
+        activeRouting?.data?.primary_provider;
+
+      const activeBackend = pinnedPrimary || (isCloud ? primaryCloudProvider : (config.selectedLocalModel ? 'ollama' : 'vllm'));
+      const activeLlmMode = isCloud ? `cloud_${primaryCloudProvider}` : `local_${activeBackend}`;
 
       const sanitizeSecret = (val?: string): string | undefined => {
         if (!val) return undefined;

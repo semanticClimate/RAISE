@@ -229,7 +229,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
                 title="Expert Mode: Cyclic Multi-Hop GraphRAG Reasoning"
               >
                 <Sparkles className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
-                <span>Expert Mode · GraphRAG</span>
+                <span>Expert Mode</span>
               </span>
             ) : effectiveMode === 'conversational' ? (
               <span
@@ -247,7 +247,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
                 title="Fast Mode: Dense Vector & BM25 Reciprocal Rank Fusion"
               >
                 <Zap className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
-                <span>Fast Mode · Vector Search</span>
+                <span>Fast Mode</span>
               </span>
             )}
           </div>
