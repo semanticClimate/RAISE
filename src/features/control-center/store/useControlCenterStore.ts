@@ -165,7 +165,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
   persist(
     (set) => ({
       isOpen: false,
-      activeTab: 'overview',
+      activeTab: 'platform',
       hardware: {
         platform: defaultPlatform,
         osName: defaultPlatform === 'macos' ? 'macOS (Apple Silicon)' : defaultPlatform === 'windows' ? 'Windows' : 'Linux',
@@ -233,12 +233,14 @@ export const useControlCenterStore = create<ControlCenterState>()(
           if (open) {
             return {
               isOpen: true,
+              activeTab: 'platform',
               baselineConfig: (s.baselineConfig ?? JSON.parse(JSON.stringify(s.config))) as ControlCenterConfig,
               isDirty: false,
             };
           }
           return {
             isOpen: false,
+            activeTab: 'platform',
             isDirty: false,
             baselineConfig: null,
           };
