@@ -5,7 +5,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 set "BAT_FILE=%~f0"
 set "BAT_DIR=%~dp0"
-set RAISE_RUN_ARGS=%*
+set "RAISE_RUN_ARGS=%*"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 set "PYTHONUNBUFFERED=1"
@@ -15,14 +15,22 @@ set "HF_HUB_DISABLE_PROGRESS_BARS=0"
 set "TRANSFORMERS_VERBOSITY=error"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $raw = [System.IO.File]::ReadAllText($env:BAT_FILE, [System.Text.Encoding]::UTF8); $tag = '<' + '#PS_CODE#>'; $idx = $raw.LastIndexOf($tag); if ($idx -ge 0) { Invoke-Expression $raw.Substring($idx + $tag.Length) } else { Write-Error 'Marker not found'; exit 1 } } catch { Write-Host $_ -ForegroundColor Red; exit 1 }"
 set "EXIT_CODE=%ERRORLEVEL%"
-if %EXIT_CODE% neq 0 (
+if not "%EXIT_CODE%"=="0" (
     echo.
     echo  [!] Process exited with code %EXIT_CODE%.
     echo  [!] Press any key to close this window...
     pause >nul
 )
-exit /b %EXIT_CODE%
+goto :bat_exit
 
+:bat_exit
+endlocal
+exit /b %EXIT_CODE%
+goto :eof
+
+:: ==============================================================================
+:: POWERSHELL RUNTIME BODY - UNREACHABLE BY CMD.EXE
+:: ==============================================================================
 <#PS_CODE#>
 $NoBrowser = $false
 
