@@ -378,7 +378,7 @@ def create_chat_sse_stream(
             nodes_count = len(subg.get("nodes", [])) if isinstance(subg, dict) else 0
             qg_dec = (result.get("quality_gate_decision") or "ACCEPT").upper()
             cits_cnt = len(result.get("citations", []) or [])
-            logger.info(f"[GRAPH-RAG] ✅ SSE Stream complete ({elapsed:.2f}s) | Chunks: {top_chunks_count} | Graph: {nodes_count} nodes | Gate: {qg_dec} | Citations: {cits_cnt}")
+            logger.info(f"[GRAPH-RAG] [OK] SSE Stream complete ({elapsed:.2f}s) | Chunks: {top_chunks_count} | Graph: {nodes_count} nodes | Gate: {qg_dec} | Citations: {cits_cnt}")
 
             # Emit final LangGraph pipeline stage progression (including SYNTHESIS)
             emitted_stage_names = {progressive_stages[i][1]["stage"] for i in emitted_indices}

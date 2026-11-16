@@ -75,16 +75,28 @@ class LocalVLLMProvider(BaseLLMProvider):
                 candidate_urls.append(candidate)
         for fallback in [
             "http://localhost:8002/v1",
-            "http://raise-vllm-prod:8000/v1",
-            "http://host.docker.internal:8002/v1",
             "http://127.0.0.1:8002/v1",
             "http://localhost:8080/v1",
             "http://localhost:1234/v1",
         ]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
-        probe_timeout = getattr(settings.llm, "probe_timeout", 0.35)
+        if os.path.exists("/.dockerenv"):
+            for container_host in ["http://raise-vllm-prod:8000/v1", "http://host.docker.internal:8002/v1"]:
+                if container_host not in candidate_urls:
+                    candidate_urls.append(container_host)
+        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.35))
         for u in candidate_urls:
+            try:
+                # Fast TCP pre-flight to prevent slow DNS connect timeouts
+                parsed = urllib.parse.urlparse(u)
+                host = parsed.hostname or "127.0.0.1"
+                port = parsed.port or 8002
+                with socket.create_connection((host, port), timeout=probe_timeout):
+                    pass
+            except Exception:
+                continue
+
             try:
                 req = urllib.request.Request(f"{u.rstrip('/')}/models", headers={"User-Agent": "RAISE-Provider"})
                 with urllib.request.urlopen(req, timeout=probe_timeout) as resp:
@@ -195,33 +207,8 @@ class LocalVLLMProvider(BaseLLMProvider):
             else:
                 logger.warning(f"Local vLLM endpoint ({self.base_url}) unavailable: {e}.")
 
-            # 1. First fallback: If user configured Groq or Gemini API key, fail over to Cloud automatically!
-            groq_key = os.getenv("GROQ_API_KEY", "").strip()
-            gemini_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-            if groq_key:
-                logger.info("Falling back from offline/unavailable vLLM to configured Groq Cloud API...")
-                cloud_fb = CloudOpenAICompatibleProvider(
-                    api_key=groq_key,
-                    base_url="https://api.groq.com/openai/v1",
-                    model_name=os.getenv("GROQ_MODEL_NAME", models.GROQ_MODEL_NAME),
-                )
-                return cloud_fb.complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
-            elif gemini_key:
-                logger.info("Falling back from offline/unavailable vLLM to configured Gemini API...")
-                from src.infrastructure.providers.gemini import GeminiProvider
-                return GeminiProvider().complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature)
-
-            # 2. Second fallback: In-process Transformers on GPU
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    logger.info("Attempting in-process GPU fallback via LocalTransformersProvider...")
-                    fallback_local = LocalTransformersProvider()
-                    return fallback_local.complete(prompt, system_prompt=system_prompt, max_tokens=max_tokens, temperature=temperature, **kwargs)
-                else:
-                    raise RuntimeError("Local vLLM endpoint is offline and no Cloud API key or CUDA GPU is available.")
-            except Exception as _fb_err:
-                raise RuntimeError(f"Error executing local inference: vLLM ({e}) -> Fallback ({_fb_err})")
+            # Propagate error cleanly to ProviderRouter so configured fallback chain is respected
+            raise RuntimeError(f"Local vLLM inference failed at {self.base_url}: {e}")
 
     def health_check(self, timeout: float = 5.0) -> ProviderHealth:
         """Ping local vLLM endpoint and perform micro inference."""
@@ -501,11 +488,23 @@ class LocalOllamaProvider(BaseLLMProvider):
         ollama_cfg_url = getattr(settings.llm, "ollama_base_url", "http://localhost:11434")
         if ollama_cfg_url not in candidate_urls:
             candidate_urls.append(ollama_cfg_url)
-        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434", "http://host.docker.internal:11434"]:
+        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434"]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
-        probe_timeout = getattr(settings.llm, "probe_timeout", 0.35)
+        if os.path.exists("/.dockerenv") and "http://host.docker.internal:11434" not in candidate_urls:
+            candidate_urls.append("http://host.docker.internal:11434")
+        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.35))
         for u in candidate_urls:
+            try:
+                # Fast TCP pre-flight to avoid HTTP connect timeouts
+                parsed = urllib.parse.urlparse(u)
+                host = parsed.hostname or "127.0.0.1"
+                port = parsed.port or 11434
+                with socket.create_connection((host, port), timeout=probe_timeout):
+                    pass
+            except Exception:
+                continue
+
             try:
                 # 1. Probe Ollama native tags endpoint
                 req = urllib.request.Request(f"{u.rstrip('/')}/api/tags", headers={"User-Agent": "RAISE-Provider"})

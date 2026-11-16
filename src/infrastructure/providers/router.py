@@ -127,17 +127,6 @@ class ProviderRouter:
         _cm = get_credential_manager()
         configured_clouds = [cand for cand in ["groq", "gemini", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if _cm.get_credential_status(cand) == "configured"]
 
-        if env_backend in self.providers and (
-            env_backend in ("vllm", "ollama", "local")
-            or _cm.get_credential_status(env_backend) == "configured"
-            or not configured_clouds
-        ):
-            primary_cloud = env_backend
-        elif configured_clouds:
-            primary_cloud = configured_clouds[0]
-        else:
-            primary_cloud = "gemini" if "gemini" in self.providers else "groq"
-
         # Probe local engines (vLLM and Ollama)
         vllm_alive = False
         try:
@@ -151,7 +140,25 @@ class ProviderRouter:
         except Exception:
             pass
 
-        local_target = "vllm" if vllm_alive else ("ollama" if ollama_alive else ("vllm" if "vllm" in self.providers else "local"))
+        local_target = "vllm" if vllm_alive else ("ollama" if ollama_alive else None)
+
+        # Only allow env_backend to be a local engine if that local engine is ACTUALLY ALIVE
+        if env_backend in ("vllm", "ollama"):
+            if (env_backend == "vllm" and vllm_alive) or (env_backend == "ollama" and ollama_alive):
+                primary_cloud = env_backend
+            elif configured_clouds:
+                primary_cloud = configured_clouds[0]
+            else:
+                primary_cloud = "gemini" if "gemini" in self.providers else "groq"
+        elif env_backend in self.providers and (
+            _cm.get_credential_status(env_backend) == "configured"
+            or not configured_clouds
+        ):
+            primary_cloud = env_backend
+        elif configured_clouds:
+            primary_cloud = configured_clouds[0]
+        else:
+            primary_cloud = "gemini" if "gemini" in self.providers else "groq"
 
         routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", os.getenv("LLM_ROUTING_MODE", ""))).upper().strip()
         user_chose_local = (
@@ -159,14 +166,14 @@ class ProviderRouter:
             or (self.mode == ExecutionMode.LOCAL)
             or (env_backend in ("vllm", "ollama", "local"))
         )
-        local_first = user_chose_local
+        local_first = user_chose_local and bool(local_target)
 
-        if user_chose_local and (vllm_alive or ollama_alive):
+        if local_first and local_target:
             default_target = local_target
         elif configured_clouds and self.cloud_allowed and self.mode != ExecutionMode.LOCAL:
             default_target = primary_cloud
         else:
-            default_target = local_target if (vllm_alive or ollama_alive) else primary_cloud
+            default_target = local_target if local_target else primary_cloud
 
         self.task_policy: Dict[InferenceTask, str] = {
             InferenceTask.CHAT: os.getenv("TASK_POLICY_CHAT", default_target),
@@ -193,6 +200,9 @@ class ProviderRouter:
         # Provider health, cooldown & disabled tracking (Requirement 1: clean empty set at init)
         self.provider_cooldowns: Dict[str, float] = {}
         self.disabled_providers: Set[str] = set()
+        self.pinned_primary_provider: Optional[str] = (
+            os.getenv("PINNED_PRIMARY_PROVIDER", "").strip().lower() or None
+        )
         self.last_used_provider: str = ""
         self.last_used_model: str = ""
 
@@ -295,8 +305,16 @@ class ProviderRouter:
                 if eng not in active:
                     active.append(eng)
 
-        # 4. If a primary provider was explicitly requested and is valid/alive
-        prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else None)
+        # 4. If user explicitly pinned a primary provider, lock and preserve it as #1
+        pinned = getattr(self, "pinned_primary_provider", None) or os.getenv("PINNED_PRIMARY_PROVIDER", "").strip().lower()
+        if pinned and pinned in self.providers and pinned not in self.disabled_providers:
+            if pinned in ("vllm", "ollama") and pinned not in alive_local:
+                prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else None)
+            else:
+                prim = pinned
+        else:
+            prim = primary_cloud or (self.fallback_chain[0] if self.fallback_chain else None)
+
         if prim and prim in self.providers and prim not in self.disabled_providers:
             if prim in ("vllm", "ollama") and prim not in alive_local:
                 pass  # Do not promote dead local engine to primary
@@ -315,6 +333,13 @@ class ProviderRouter:
                 active.append("local")
 
         self.fallback_chain = active
+
+        # Ensure task_policy is not pointing to a dead local engine
+        if active and self.task_policy.get(InferenceTask.RAG_GENERATION) in ("vllm", "ollama") and self.task_policy.get(InferenceTask.RAG_GENERATION) not in alive_local:
+            for t in InferenceTask:
+                if self.task_policy.get(t) in ("vllm", "ollama") and self.task_policy.get(t) not in alive_local:
+                    self.task_policy[t] = active[0]
+
         logger.info(f"Dynamic fallback chain updated: {self.fallback_chain}")
 
     def _get_cloud_meta(self) -> Dict[str, Dict[str, str]]:
@@ -367,78 +392,65 @@ class ProviderRouter:
             device_label = f"NVIDIA GPU ({primary_gpu.get('name')})"
             tier_label = f"{primary_gpu.get('total_vram_gb', 0)}GB VRAM"
 
-        # 1. In-process PyTorch Local Model
+        # 1. In-process PyTorch Local Model (ONLY if loaded and ready)
         if "local" in self.providers and "local" not in self.disabled_providers:
-            model_name = getattr(self.providers["local"], "model_name", None) or os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME)
             is_ready = bool(getattr(self.providers["local"], "pipeline", None) is not None)
-            available.append({
-                "provider": "local",
-                "display_name": f"Local Accelerator ({device_label})",
-                "model": model_name,
-                "status": "READY" if is_ready else "LOCAL_OFFLINE",
-                "is_active": self.mode == ExecutionMode.LOCAL and is_ready,
-                "tier": tier_label,
-            })
+            if is_ready:
+                model_name = getattr(self.providers["local"], "model_name", None) or os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME)
+                available.append({
+                    "provider": "local",
+                    "display_name": f"Local Accelerator ({device_label})",
+                    "model": model_name,
+                    "status": "READY",
+                    "is_active": self.mode == ExecutionMode.LOCAL and is_ready,
+                    "tier": tier_label,
+                })
 
         # 2. Probe Ollama dynamically from OLLAMA_BASE_URL (Requirement 3: Config-driven)
-        ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-        try:
-            req = urllib.request.Request(f"{ollama_base}/api/tags", headers={"User-Agent": "RAISE"})
-            with urllib.request.urlopen(req, timeout=0.8) as resp:
-                if resp.status == 200:
-                    data = json.loads(resp.read().decode())
-                    models = data.get("models", [])
-                    for m in models:
-                        m_name = m.get("name")
-                        available.append({
-                            "provider": "ollama",
-                            "display_name": f"Ollama ({device_label})",
-                            "model": m_name,
-                            "status": "READY",
-                            "is_active": self.mode == ExecutionMode.LOCAL or self.task_policy.get(InferenceTask.RAG_GENERATION) == "ollama",
-                            "tier": "Ollama Local Engine",
-                        })
-        except Exception:
-            pass
-
-        # 3. Probe vLLM Container dynamically from VLLM_BASE_URL (Requirement 3: Dynamic host/port parsing)
-        vllm_base = os.getenv("VLLM_BASE_URL", "http://127.0.0.1:8002").rstrip("/")
-        vllm_parsed = urllib.parse.urlparse(vllm_base)
-        vllm_host = vllm_parsed.hostname or "127.0.0.1"
-        vllm_port = vllm_parsed.port or (443 if vllm_parsed.scheme == "https" else 8002)
-
-        vllm_alive = False
-        # Prevent self-loop if vllm_port is 8000 (FastAPI server port)
-        if vllm_port != 8000:
+        ollama_alive = False
+        if "ollama" in self.providers and "ollama" not in self.disabled_providers:
             try:
-                models_endpoint = f"{vllm_base}/models" if vllm_base.endswith("/v1") else f"{vllm_base}/v1/models"
-                req = urllib.request.Request(models_endpoint, headers={"User-Agent": "RAISE"})
-                with urllib.request.urlopen(req, timeout=0.5) as resp:
-                    if resp.status == 200:
-                        vllm_alive = True
+                ollama_alive = self.providers["ollama"].is_available()
             except Exception:
-                try:
-                    with socket.create_connection((vllm_host, vllm_port), timeout=0.3):
-                        vllm_alive = True
-                except Exception:
-                    pass
+                ollama_alive = False
 
-        if vllm_alive or ("vllm" in self.providers and "vllm" not in self.disabled_providers and self.providers["vllm"].is_available()):
+        if ollama_alive:
+            ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+            try:
+                req = urllib.request.Request(f"{ollama_base}/api/tags", headers={"User-Agent": "RAISE"})
+                with urllib.request.urlopen(req, timeout=0.8) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode())
+                        models_list = data.get("models", [])
+                        for m in models_list:
+                            m_name = m.get("name")
+                            if m_name:
+                                available.append({
+                                    "provider": "ollama",
+                                    "display_name": f"Ollama ({device_label})",
+                                    "model": m_name,
+                                    "status": "READY",
+                                    "is_active": self.mode == ExecutionMode.LOCAL or self.task_policy.get(InferenceTask.RAG_GENERATION) == "ollama",
+                                    "tier": "Ollama Local Engine",
+                                })
+            except Exception:
+                pass
+
+        # 3. Probe vLLM Container dynamically from provider
+        vllm_alive = False
+        if "vllm" in self.providers and "vllm" not in self.disabled_providers:
+            try:
+                vllm_alive = self.providers["vllm"].is_available()
+            except Exception:
+                vllm_alive = False
+
+        if vllm_alive:
             available.append({
                 "provider": "vllm",
                 "display_name": f"Local vLLM Container ({device_label})",
                 "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME),
                 "status": "READY",
                 "is_active": self.mode == ExecutionMode.LOCAL or vllm_alive,
-                "tier": "Docker Local Inference",
-            })
-        elif "vllm" in self.providers and "vllm" not in self.disabled_providers:
-            available.append({
-                "provider": "vllm",
-                "display_name": f"Local vLLM Container ({device_label})",
-                "model": getattr(self.providers.get("vllm"), "model_name", None) or os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME),
-                "status": "LOCAL_OFFLINE",
-                "is_active": False,
                 "tier": "Docker Local Inference",
             })
 
@@ -497,7 +509,29 @@ class ProviderRouter:
     def get_routing_status(self) -> Dict[str, Any]:
         """Returns full routing policy, ordered fallback chain, disabled list, and provider states."""
         cm = get_credential_manager()
-        primary = self.task_policy.get(InferenceTask.RAG_GENERATION, self.fallback_chain[0] if self.fallback_chain else "vllm")
+
+        vllm_alive = False
+        try:
+            vllm_alive = self.providers["vllm"].is_available()
+        except Exception:
+            pass
+
+        ollama_alive = False
+        try:
+            ollama_alive = self.providers["ollama"].is_available()
+        except Exception:
+            pass
+
+        configured_clouds = [cand for cand in ["groq", "gemini", "mistral", "nvidia", "cohere", "deepseek", "openrouter", "universal"] if cm.get_credential_status(cand) == "configured"]
+        first_fallback = self.fallback_chain[0] if self.fallback_chain else (configured_clouds[0] if configured_clouds else "gemini")
+
+        primary = self.task_policy.get(InferenceTask.RAG_GENERATION)
+        if primary in ("vllm", "ollama"):
+            if (primary == "vllm" and not vllm_alive) or (primary == "ollama" and not ollama_alive):
+                primary = first_fallback
+        elif not primary:
+            primary = first_fallback
+
         providers_info = []
 
         all_known = ["vllm", "gemini", "groq", "ollama", "local", "nvidia", "mistral", "cohere", "deepseek", "openrouter"]
@@ -573,6 +607,7 @@ class ProviderRouter:
             "status": "success",
             "message": "Dynamic routing status loaded.",
             "primary_provider": primary,
+            "pinned_primary_provider": getattr(self, "pinned_primary_provider", None),
             "fallback_order": self.fallback_chain,
             "fallback_chain": self.fallback_chain,
             "disabled_providers": list(self.disabled_providers),
@@ -598,6 +633,18 @@ class ProviderRouter:
             for p in fallback_order:
                 cp = p.lower().strip()
                 if cp in self.providers and cp not in self.disabled_providers and cp not in clean_order:
+                    if cp == "vllm":
+                        try:
+                            if not self.providers["vllm"].is_available():
+                                continue
+                        except Exception:
+                            continue
+                    elif cp == "ollama":
+                        try:
+                            if not self.providers["ollama"].is_available():
+                                continue
+                        except Exception:
+                            continue
                     clean_order.append(cp)
             if clean_order:
                 self.fallback_chain = clean_order
@@ -605,14 +652,33 @@ class ProviderRouter:
         if primary_provider is not None:
             prim = primary_provider.lower().strip()
             if prim in self.providers:
-                for t in InferenceTask:
-                    self.task_policy[t] = prim
-                if prim in self.disabled_providers:
-                    self.disabled_providers.remove(prim)
-                if prim in self.fallback_chain:
-                    self.fallback_chain.remove(prim)
-                self.fallback_chain.insert(0, prim)
+                is_local_dead = False
+                if prim == "vllm":
+                    try:
+                        is_local_dead = not self.providers["vllm"].is_available()
+                    except Exception:
+                        is_local_dead = True
+                elif prim == "ollama":
+                    try:
+                        is_local_dead = not self.providers["ollama"].is_available()
+                    except Exception:
+                        is_local_dead = True
+
+                if not is_local_dead:
+                    self.pinned_primary_provider = prim
+                    os.environ["PINNED_PRIMARY_PROVIDER"] = prim
+                    for t in InferenceTask:
+                        self.task_policy[t] = prim
+                    if prim in self.disabled_providers:
+                        self.disabled_providers.remove(prim)
+                    if prim in self.fallback_chain:
+                        self.fallback_chain.remove(prim)
+                    self.fallback_chain.insert(0, prim)
+                else:
+                    logger.warning(f"Cannot pin offline local engine '{prim}' as primary provider.")
         elif clean_order:
+            self.pinned_primary_provider = clean_order[0]
+            os.environ["PINNED_PRIMARY_PROVIDER"] = clean_order[0]
             for t in InferenceTask:
                 self.task_policy[t] = clean_order[0]
 

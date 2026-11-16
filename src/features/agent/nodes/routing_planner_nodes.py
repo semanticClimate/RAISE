@@ -60,10 +60,13 @@ class RoutingPlannerNodesMixin:
 
     def _route_query_strategy(self, state: GraphRAGState) -> str:
         strategy = state.get("routing_strategy", "HYBRID_VECTOR")
+        mode = str(state.get("mode", "fast")).lower()
         hops = state.get("hops", 1)
         intent = str(state.get("query_intent", "")).upper()
-        # Activate cyclical multi-hop reasoning when hops > 1 or intent indicates multi-hop / comparative
-        if hops > 1 or intent in ("MULTI_HOP", "COMPARATIVE", "BRIDGE", "MULTI_HOP_REASONING"):
+
+        # Only activate cyclical multi-hop reasoning in expert mode with hops > 1 or explicit multi-hop intent.
+        # Fast mode queries strictly bypass iterative sub-query decomposition for sub-second responses.
+        if mode == "expert" and (hops > 1 or intent in ("MULTI_HOP", "COMPARATIVE", "BRIDGE", "MULTI_HOP_REASONING")):
             return "multi_hop_iterative"
         if strategy == "GLOBAL_COMMUNITY":
             return "global_community"

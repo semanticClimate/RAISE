@@ -106,6 +106,7 @@ async def update_system_routing(req: RoutingUpdateRequest) -> Dict[str, Any]:
         "success": True,
         "message": f"LLM Routing Priority applied: '{result.get('primary_provider')}' is now Primary.",
         "primary_provider": result.get("primary_provider"),
+        "pinned_primary_provider": result.get("pinned_primary_provider"),
         "fallback_order": result.get("fallback_order") or result.get("fallback_chain"),
         "fallback_chain": result.get("fallback_chain"),
         "disabled_providers": result.get("disabled_providers"),
@@ -162,6 +163,23 @@ async def pull_model_stream(req: ModelPullRequest):
         ),
         media_type="text/event-stream"
     )
+
+
+@router.get("/models", operation_id="get_system_models")
+async def get_system_models(include_catalog: bool = False) -> Dict[str, Any]:
+    """
+    Dynamic model registry endpoint consumed by frontend useDynamicModels.
+    Returns actively available live models and discovered models with zero hardcoding.
+    """
+    from src.infrastructure.providers.router import get_provider_router
+    p_router = get_provider_router()
+    avail = p_router.get_dynamic_available_providers()
+    return {
+        "status": "success",
+        "models": avail,
+        "dynamic_llms": avail,
+        "count": len(avail),
+    }
 
 
 @router.get("/models/discovered", operation_id="get_system_models_discovered")

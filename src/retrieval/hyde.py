@@ -84,57 +84,85 @@ class HyDEGenerator:
         prompt = HYDE_PROMPT_TEMPLATE.format(query=clean_query)
 
         try:
-            # Prioritize fast cloud inference (Gemini Flash / Groq) for sub-300ms generation
-            preferred_providers = ["gemini", "groq", "vllm", "local"]
             response_text = ""
 
-            for prov_name in preferred_providers:
-                provider = None
-                if hasattr(router, "providers") and isinstance(router.providers, dict):
-                    provider = router.providers.get(prov_name)
-                elif hasattr(router, "get_provider_by_name"):
-                    try:
-                        provider = router.get_provider_by_name(prov_name)
-                    except Exception:
-                        provider = None
+            # 1. Primary path: Route hypothetical expansion through ProviderRouter using active priority chain
+            if hasattr(router, "complete"):
+                try:
+                    from src.infrastructure.providers.router import InferenceTask
+                    task_target = InferenceTask.QUERY_REWRITE
+                except Exception:
+                    task_target = "query_rewrite"
 
-                if provider and getattr(provider, "is_available", True):
-                    try:
-                        res = None
-                        if hasattr(provider, "complete"):
-                            try:
-                                candidate = provider.complete(
-                                    prompt=prompt,
-                                    max_tokens=self.max_tokens,
-                                    temperature=self.temperature,
-                                )
-                                if isinstance(candidate, (str, dict)):
-                                    res = candidate
-                            except Exception as c_err:
-                                logger.debug("Provider %s complete error: %s", prov_name, c_err)
+                try:
+                    cand_res = router.complete(
+                        prompt=prompt,
+                        task=task_target,
+                        max_tokens=self.max_tokens,
+                        temperature=self.temperature,
+                    )
+                    if isinstance(cand_res, str) and cand_res.strip():
+                        if not any(cand_res.strip().startswith(err_pfx) for err_pfx in ("Error", "Cloud LLM", "ProviderHTTPError", "Inference execution error", "Empty response")):
+                            response_text = cand_res.strip()
+                except Exception as comp_err:
+                    logger.debug("Primary router.complete failed for HyDE: %s. Trying candidate chain...", comp_err)
 
-                        if res is None and hasattr(provider, "generate"):
-                            try:
-                                candidate = provider.generate(
-                                    prompt=prompt,
-                                    max_tokens=self.max_tokens,
-                                    temperature=self.temperature,
-                                )
-                                if isinstance(candidate, (str, dict)):
-                                    res = candidate
-                            except Exception as g_err:
-                                logger.debug("Provider %s generate error: %s", prov_name, g_err)
+            # 2. Dynamic fallback path: Iterate through router's active fallback chain (honors user's vLLM/local priority)
+            if not response_text:
+                candidate_chain = []
+                if hasattr(router, "fallback_chain") and router.fallback_chain:
+                    disabled = getattr(router, "disabled_providers", set())
+                    candidate_chain = [p for p in router.fallback_chain if p not in disabled]
+                if not candidate_chain:
+                    candidate_chain = ["vllm", "groq", "gemini", "local"]
 
-                        if isinstance(res, str) and res.strip():
-                            if not any(res.strip().startswith(err_pfx) for err_pfx in ("Error", "Cloud LLM", "ProviderHTTPError")):
-                                response_text = res.strip()
+                for prov_name in candidate_chain:
+                    provider = None
+                    if hasattr(router, "providers") and isinstance(router.providers, dict):
+                        provider = router.providers.get(prov_name)
+                    elif hasattr(router, "get_provider_by_name"):
+                        try:
+                            provider = router.get_provider_by_name(prov_name)
+                        except Exception:
+                            provider = None
+
+                    if provider and getattr(provider, "is_available", lambda: True)():
+                        try:
+                            res = None
+                            if hasattr(provider, "complete"):
+                                try:
+                                    candidate = provider.complete(
+                                        prompt=prompt,
+                                        max_tokens=self.max_tokens,
+                                        temperature=self.temperature,
+                                    )
+                                    if isinstance(candidate, (str, dict)):
+                                        res = candidate
+                                except Exception as c_err:
+                                    logger.debug("Provider %s complete error: %s", prov_name, c_err)
+
+                            if res is None and hasattr(provider, "generate"):
+                                try:
+                                    candidate = provider.generate(
+                                        prompt=prompt,
+                                        max_tokens=self.max_tokens,
+                                        temperature=self.temperature,
+                                    )
+                                    if isinstance(candidate, (str, dict)):
+                                        res = candidate
+                                except Exception as g_err:
+                                    logger.debug("Provider %s generate error: %s", prov_name, g_err)
+
+                            if isinstance(res, str) and res.strip():
+                                if not any(res.strip().startswith(err_pfx) for err_pfx in ("Error", "Cloud LLM", "ProviderHTTPError")):
+                                    response_text = res.strip()
+                                    break
+                            elif isinstance(res, dict) and res.get("text"):
+                                response_text = res["text"].strip()
                                 break
-                        elif isinstance(res, dict) and res.get("text"):
-                            response_text = res["text"].strip()
-                            break
-                    except Exception as p_err:
-                        logger.debug("Provider %s pass failed in HyDE: %s", prov_name, p_err)
-                        continue
+                        except Exception as p_err:
+                            logger.debug("Provider %s pass failed in HyDE: %s", prov_name, p_err)
+                            continue
 
             # Fallback to router.complete if direct provider pass did not succeed
             if not response_text and hasattr(router, "complete"):
