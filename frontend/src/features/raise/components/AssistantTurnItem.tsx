@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { Sparkles } from 'lucide-react';
 import { AnswerMarkdown } from '../../../components/chat/AnswerMarkdown';
 import {
   BackendErrorCard,
@@ -196,43 +195,19 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
     (msg as any)?.query ||
     '';
 
-  const effectiveMode =
-    msg.mode ||
-    (activeResp?.response as any)?.mode_used ||
-    (activeResp?.response as any)?.pipeline_info?.mode_used ||
-    (msg.response as any)?.mode_used ||
-    (msg.response as any)?.pipeline_info?.mode_used ||
-    'fast';
-
   return (
     <div
       key={`assistant-turn-${turnIndex}`}
       className="content-visibility-auto flex flex-col items-start w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto"
     >
-      {/* Thought Duration & Research Mode Header OUTSIDE response box */}
+      {/* Thought Duration Header OUTSIDE response box */}
       {isCurrentlyActive ? (
         <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
           <LiveThoughtDuration startTimeMs={msg.startedAtMs || Date.now()} />
         </div>
-      ) : Boolean(resolvedContent) && !isUngroundedFallback ? (
+      ) : Boolean(resolvedContent) && !isUngroundedFallback && executionTimeSec > 0 ? (
         <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
-          {executionTimeSec > 0 ? (
-            <ThoughtDuration executionTimeSec={executionTimeSec} />
-          ) : (
-            <div />
-          )}
-          {effectiveMode === 'expert' && (
-            <div className="mb-2 mr-0.5 select-none">
-              <span
-                data-testid="turn-mode-badge"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-white/10 dark:bg-white/10 text-slate-800 dark:text-white border border-slate-300 dark:border-white/20 shadow-2xs"
-                title="Expert Mode: Cyclic Multi-Hop GraphRAG Reasoning"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-slate-700 dark:text-white" />
-                <span>Expert Mode</span>
-              </span>
-            </div>
-          )}
+          <ThoughtDuration executionTimeSec={executionTimeSec} />
         </div>
       ) : null}
 

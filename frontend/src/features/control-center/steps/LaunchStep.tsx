@@ -17,7 +17,14 @@ import { useControlCenterStore } from '../store/useControlCenterStore';
 import { platformAdapter, type ConnectionTestResult } from '../services/platformAdapter';
 
 export const LaunchStep: React.FC = () => {
-  const { config, hardware, setHardware, setActiveTab } = useControlCenterStore();
+  const {
+    config,
+    hardware,
+    setHardware,
+    setActiveTab,
+    preflightAssets,
+    preflightFootprint,
+  } = useControlCenterStore();
   const { appMode, apiBaseUrl, latencyMs, runCapabilityProbe } = useModeStore();
   const isConnected = appMode === 'connected' || appMode === 'degraded';
 
@@ -304,6 +311,16 @@ export const LaunchStep: React.FC = () => {
           </div>
           <div className="text-[10px] font-mono text-slate-400 truncate">
             Quality Gate: {config.nliVerifierModel?.split('/').pop() || 'FineCat NLI Ultra-L'}
+          </div>
+          <div className="text-[10px] font-mono text-zinc-300 flex items-center justify-between pt-1 border-t border-white/5 truncate">
+            <span>
+              {preflightAssets.length > 0
+                ? preflightAssets.every((a) => a.verified)
+                  ? 'All 6 Assets Verified'
+                  : `${preflightAssets.filter((a) => a.verified).length} of ${preflightAssets.length} Verified`
+                : 'Neural Assets Active'}
+            </span>
+            <span className="text-slate-400">{preflightFootprint || '~4.6 GB Footprint'}</span>
           </div>
         </div>
       </div>

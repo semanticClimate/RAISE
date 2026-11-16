@@ -6,6 +6,7 @@ import {
   Laptop,
   Layers,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   X,
   Zap,
@@ -33,6 +34,8 @@ export const ControlCenterModal: React.FC = () => {
     config,
     updateConfig,
     completeFirstRun,
+    isDirty,
+    resetToBaseline,
   } = useControlCenterStore();
 
   const { appMode } = useModeStore();
@@ -214,20 +217,32 @@ export const ControlCenterModal: React.FC = () => {
                 Key Required
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  localStorage.setItem('raise_onboarding_completed', 'true');
-                } catch {}
-                setOpen(false);
-              }}
-              className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-white/10"
-              aria-label="Close Control Center"
-              title="Close Control Center"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {isDirty ? (
+              <button
+                type="button"
+                onClick={resetToBaseline}
+                className="w-8 h-8 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-white/10 group"
+                aria-label="Reset Changes"
+                title="Reset all changes to server settings"
+              >
+                <RotateCcw className="w-4 h-4 transition-transform group-hover:-rotate-45" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    localStorage.setItem('raise_onboarding_completed', 'true');
+                  } catch {}
+                  setOpen(false);
+                }}
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-white/10"
+                aria-label="Close Control Center"
+                title="Close Control Center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -330,7 +345,7 @@ export const ControlCenterModal: React.FC = () => {
                     ? 'Backend Gateway is offline'
                     : isWarmingUp
                       ? 'Warming up neural models...'
-                      : 'Launch directly with current settings'
+                      : 'Start directly with current settings'
                 }
               >
                 {isSaving || isWarmingUp ? (
@@ -339,7 +354,7 @@ export const ControlCenterModal: React.FC = () => {
                   <Check className="w-3.5 h-3.5 text-white stroke-[2.5]" />
                 )}
                 <span className="hidden sm:inline">
-                  {isWarmingUp ? 'Warming Up...' : isSaving ? 'Saving...' : 'Save & Launch'}
+                  {isWarmingUp ? 'Warming Up...' : isSaving ? 'Saving...' : 'Save & Start'}
                 </span>
               </button>
             )}
@@ -386,12 +401,12 @@ export const ControlCenterModal: React.FC = () => {
                   !isConnected
                     ? 'Backend Gateway is offline. Start backend on port 8000.'
                     : !hasConfiguredKey
-                      ? 'Configure an inference engine or API key before launching.'
+                      ? 'Configure an inference engine or API key before starting.'
                       : isWarmingUp
                         ? 'Warming up neural models in backend...'
                         : isSaving
                           ? 'Saving configuration...'
-                          : 'Launch App'
+                          : 'Start'
                 }
               >
                 {isSaving || isWarmingUp ? (
@@ -405,7 +420,7 @@ export const ControlCenterModal: React.FC = () => {
                     : isSaving
                       ? 'Saving Settings...'
                       : isConnected
-                        ? 'Launch App'
+                        ? 'Start'
                         : 'Backend Offline'}
                 </span>
               </button>

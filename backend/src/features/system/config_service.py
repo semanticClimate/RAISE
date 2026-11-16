@@ -60,6 +60,29 @@ def get_current_configuration() -> Dict[str, Any]:
     last_provider = p_router.last_used_provider
     available_provs = p_router.get_dynamic_available_providers()
 
+    storage_mode = (
+        os.getenv("RAISE_STORAGE_MODE")
+        or os.getenv("RAISE_SUBSTRATE_MODE")
+        or ("fast" if os.getenv("USE_FAKEREDIS", "false").lower() in ("true", "1") else "fast")
+    ).strip().lower()
+
+    if storage_mode == "fast":
+        default_neo4j = "in_memory_fallback"
+        default_postgres = "in_memory_fallback"
+        default_redis = "in_memory_fallback"
+    elif storage_mode == "docker":
+        default_neo4j = "local"
+        default_postgres = "local"
+        default_redis = "local"
+    elif storage_mode == "cloud":
+        default_neo4j = "cloud"
+        default_postgres = "cloud"
+        default_redis = "cloud"
+    else:
+        default_neo4j = "in_memory_fallback" if not neo4j_uri else "cloud"
+        default_postgres = "in_memory_fallback" if not postgres_url else "cloud"
+        default_redis = "in_memory_fallback" if not redis_url else "cloud"
+
     if privacy_mode:
         raw_model = "RAISE-Neural-Engine"
         last_model = "RAISE-Neural-Engine" if last_model else None
@@ -67,6 +90,7 @@ def get_current_configuration() -> Dict[str, Any]:
         available_provs = ["RAISE-Cloud-Mesh"]
 
     return {
+        "storage_mode": storage_mode,
         "llm_mode": "local_vllm" if llm_backend == "vllm" else ("local_ollama" if llm_backend == "ollama" else f"cloud_{llm_backend}"),
         "llm_backend": llm_backend,
         "llm_model_name": raw_model,
@@ -109,9 +133,9 @@ def get_current_configuration() -> Dict[str, Any]:
         "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL", os.getenv("NLI_MODEL", models.NLI_MODEL_NAME)),
         "nli_device": os.getenv("NLI_DEVICE", "auto"),
         "neural_device": os.getenv("NEURAL_DEVICE") or os.getenv("EMBEDDING_DEVICE", "auto"),
-        "neo4j_mode": os.getenv("NEO4J_MODE", "in_memory_fallback" if not neo4j_uri else "cloud"),
-        "postgres_mode": os.getenv("POSTGRES_MODE", "in_memory_fallback" if not postgres_url else "cloud"),
-        "redis_mode": os.getenv("REDIS_MODE", "in_memory_fallback" if not redis_url else "cloud"),
+        "neo4j_mode": os.getenv("NEO4J_MODE", default_neo4j),
+        "postgres_mode": os.getenv("POSTGRES_MODE", default_postgres),
+        "redis_mode": os.getenv("REDIS_MODE", default_redis),
         "huggingface_configured": bool(os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")),
         "huggingface_masked": mask_secret(os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")),
         "first_run_completed": bool(
@@ -456,6 +480,19 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         if cfg.neo4j_database:
             env_map["NEO4J_DATABASE"] = cfg.neo4j_database
             os.environ["NEO4J_DATABASE"] = cfg.neo4j_database
+    elif cfg.neo4j_mode == "local":
+        local_neo4j = cfg.neo4j_uri or "bolt://localhost:7687"
+        env_map["NEO4J_URI"] = local_neo4j
+        os.environ["NEO4J_URI"] = local_neo4j
+        local_user = cfg.neo4j_user or "neo4j"
+        env_map["NEO4J_USER"] = local_user
+        os.environ["NEO4J_USER"] = local_user
+        local_pass = cfg.neo4j_password or "raise_password"
+        env_map["NEO4J_PASSWORD"] = local_pass
+        os.environ["NEO4J_PASSWORD"] = local_pass
+        local_db = cfg.neo4j_database or "neo4j"
+        env_map["NEO4J_DATABASE"] = local_db
+        os.environ["NEO4J_DATABASE"] = local_db
 
     # Update Redis Substrate
     if cfg.redis_mode:
@@ -465,6 +502,10 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
     if cfg.redis_mode == "cloud" and redis_val:
         env_map["REDIS_URL"] = redis_val
         os.environ["REDIS_URL"] = redis_val
+    elif cfg.redis_mode == "local":
+        local_redis = redis_val or "redis://localhost:6379/0"
+        env_map["REDIS_URL"] = local_redis
+        os.environ["REDIS_URL"] = local_redis
 
     # Update Postgres Substrate (Session Memory)
     if cfg.postgres_mode:
@@ -476,6 +517,48 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         env_map["DATABASE_URL"] = pg_val
         os.environ["POSTGRES_URL"] = pg_val
         os.environ["DATABASE_URL"] = pg_val
+    elif cfg.postgres_mode == "local":
+        local_pg = pg_val or "postgresql://raise_user:raise_password@localhost:5432/raise_db"
+        env_map["POSTGRES_URL"] = local_pg
+        env_map["DATABASE_URL"] = local_pg
+        os.environ["POSTGRES_URL"] = local_pg
+        os.environ["DATABASE_URL"] = local_pg
+
+    # Sync Storage & Substrate Mode for START_RAISE.bat runtime consistency
+    storage_mode_req = getattr(cfg, "storage_mode", None)
+    if storage_mode_req and storage_mode_req.strip():
+        resolved_storage = storage_mode_req.strip().lower()
+    else:
+        modes = [cfg.neo4j_mode, cfg.redis_mode, cfg.postgres_mode]
+        if any(m == "cloud" for m in modes):
+            resolved_storage = "cloud"
+        elif any(m == "local" for m in modes):
+            resolved_storage = "docker"
+        elif all(m == "in_memory_fallback" for m in modes if m):
+            resolved_storage = "fast"
+        else:
+            resolved_storage = os.getenv("RAISE_STORAGE_MODE", "fast")
+
+    env_map["RAISE_STORAGE_MODE"] = resolved_storage
+    os.environ["RAISE_STORAGE_MODE"] = resolved_storage
+    env_map["RAISE_SUBSTRATE_MODE"] = resolved_storage
+    os.environ["RAISE_SUBSTRATE_MODE"] = resolved_storage
+
+    if resolved_storage == "fast":
+        env_map["USE_FAKEREDIS"] = "true"
+        os.environ["USE_FAKEREDIS"] = "true"
+        env_map["USE_LOCAL_FALLBACKS"] = "true"
+        os.environ["USE_LOCAL_FALLBACKS"] = "true"
+    elif resolved_storage == "docker":
+        env_map["USE_FAKEREDIS"] = "false"
+        os.environ["USE_FAKEREDIS"] = "false"
+        env_map["USE_LOCAL_FALLBACKS"] = "false"
+        os.environ["USE_LOCAL_FALLBACKS"] = "false"
+    elif resolved_storage == "cloud":
+        env_map["USE_FAKEREDIS"] = "false"
+        os.environ["USE_FAKEREDIS"] = "false"
+        env_map["USE_CLOUD_STORAGE"] = "true"
+        os.environ["USE_CLOUD_STORAGE"] = "true"
 
     # Mark first-time setup completed across runtime & filesystem
     env_map["SETUP_COMPLETED"] = "true"

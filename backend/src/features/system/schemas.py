@@ -50,6 +50,7 @@ class SystemConfigRequest(BaseModel):
     huggingface_token: Optional[str] = Field(None, validation_alias=AliasChoices("huggingface_token", "huggingfaceToken", "hf_token", "hfToken"))
 
     # Database Substrates
+    storage_mode: Optional[str] = Field(None, validation_alias=AliasChoices("storage_mode", "storageMode", "raise_storage_mode", "raiseStorageMode", "raise_substrate_mode", "raiseSubstrateMode"))
     neo4j_mode: Optional[str] = Field(default="in_memory_fallback", description="cloud, local, or in_memory_fallback", validation_alias=AliasChoices("neo4j_mode", "neo4jMode"))
     neo4j_uri: Optional[str] = Field(None, validation_alias=AliasChoices("neo4j_uri", "neo4jUri", "neo4j_url", "neo4jUrl"))
     neo4j_user: Optional[str] = Field(None, validation_alias=AliasChoices("neo4j_user", "neo4jUser"))

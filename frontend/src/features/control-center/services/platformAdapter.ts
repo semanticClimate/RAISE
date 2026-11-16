@@ -79,6 +79,7 @@ export interface ModelCatalogEntry {
 export interface PreflightAsset {
   id?: string;
   name: string;
+  model_name?: string;
   size?: string;
   desc?: string;
   verified?: boolean;
