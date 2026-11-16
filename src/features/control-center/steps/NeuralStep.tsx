@@ -933,7 +933,7 @@ export const NeuralStep: React.FC = () => {
             </div>
 
             {/* MODAL BODY (MODELS LIST WITH FULL SPECIFICATIONS & CONTEXT LABELS) */}
-            <div className="p-4 overflow-y-auto space-y-2 flex-1 overscroll-contain">
+            <div className="p-4 overflow-y-auto space-y-2 flex-1 overscroll-contain no-scrollbar scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {(() => {
                 const list =
                   activeCategoryModal === 'embedding'

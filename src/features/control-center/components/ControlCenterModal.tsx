@@ -253,7 +253,7 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Segmented Navigation Tab Bar - Strict Monochrome */}
-        <div className="h-11 border-b border-[#292929] bg-[#0A0A0A] px-4 sm:px-6 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+        <div className="h-11 border-b border-[#292929] bg-[#0A0A0A] px-4 sm:px-6 flex items-center gap-1.5 overflow-x-auto scrollbar-none no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden shrink-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -278,8 +278,8 @@ export const ControlCenterModal: React.FC = () => {
           })}
         </div>
 
-        {/* Step Content Body (Compact, minimum scroll) */}
-        <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 bg-[#0A0A0A] min-h-0">
+        {/* Step Content Body (Compact, hidden scrollbar with preserved scroll functionality) */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 bg-[#0A0A0A] min-h-0 no-scrollbar scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <div ref={contentWrapperRef} className="py-3.5 sm:py-4 space-y-3.5">
             {activeTab === 'overview' && <OverviewStep />}
             {activeTab === 'models' && <EngineStep />}
