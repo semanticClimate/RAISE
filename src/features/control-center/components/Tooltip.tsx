@@ -97,8 +97,8 @@ export const Tooltip: React.FC<TooltipProps> = ({
             }}
             className={`${
               size === 'sm'
-                ? 'w-auto max-w-[180px] px-2.5 py-1 text-[11px] font-sans font-medium text-center rounded-md bg-[#131622] border border-white/20'
-                : 'w-[260px] p-3 rounded-lg bg-[#0a0c12] border border-white/25 text-[11px] leading-relaxed'
+                ? 'w-auto max-w-[180px] px-2.5 py-1 text-[11px] font-sans font-medium text-center rounded-md bg-[#111111] border border-[#292929]'
+                : 'w-[260px] p-3 rounded-lg bg-[#0A0A0A] border border-[#292929] text-[11px] leading-relaxed'
             } text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md pointer-events-none animate-in fade-in-50 duration-100`}
           >
             {content}

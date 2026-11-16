@@ -537,7 +537,7 @@ export const NeuralStep: React.FC = () => {
       )}
 
       {/* SINGLE UNIFIED FORM CONTAINER */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-[#131622] border border-white/10 space-y-4 shadow-lg">
+      <div className="p-4 sm:p-5 rounded-2xl bg-[#111111] border border-[#292929] space-y-4 shadow-lg">
         {/* PREFLIGHT ASSETS & ON-DISK FOOTPRINT BANNER */}
         <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
           <div className="flex items-center justify-between gap-2 flex-wrap">

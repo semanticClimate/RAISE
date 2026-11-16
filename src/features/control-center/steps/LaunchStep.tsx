@@ -222,7 +222,7 @@ export const LaunchStep: React.FC = () => {
       {/* Summary Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {/* Device & Platform */}
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+        <div className="p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5">
               <Laptop className="w-3.5 h-3.5 text-white" />
@@ -245,7 +245,7 @@ export const LaunchStep: React.FC = () => {
         </div>
 
         {/* Backend Gateway */}
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+        <div className="p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-1">
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
             <Zap className="w-3.5 h-3.5 text-white" />
             <span>Backend Gateway</span>
@@ -269,7 +269,7 @@ export const LaunchStep: React.FC = () => {
         </div>
 
         {/* Intelligence Engine */}
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+        <div className="p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-white" />
@@ -292,7 +292,7 @@ export const LaunchStep: React.FC = () => {
         </div>
 
         {/* Neural Pipeline Substrates */}
-        <div className="p-3 rounded-xl bg-[#131622] border border-white/10 space-y-1">
+        <div className="p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-white" />
@@ -326,8 +326,8 @@ export const LaunchStep: React.FC = () => {
       </div>
 
       {/* Substrates Status Table */}
-      <div className="rounded-xl bg-[#131622] border border-white/10 overflow-hidden">
-        <div className="p-3 border-b border-white/10 flex items-center justify-between bg-black/30">
+      <div className="rounded-xl bg-[#111111] border border-[#292929] overflow-hidden">
+        <div className="p-3 border-b border-[#292929] flex items-center justify-between bg-black/30">
           <div className="flex items-center gap-2">
             <Database className="w-3.5 h-3.5 text-white" />
             <span className="text-xs font-bold text-white">Live Storage Substrates</span>

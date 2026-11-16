@@ -116,20 +116,20 @@ export const EngineStep: React.FC = () => {
           }}
           className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
             isCloud
-              ? 'bg-white text-black border-white font-bold shadow-lg scale-[1.01]'
-              : 'bg-[#131622] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/5'
+              ? 'bg-[#FFFFFF] text-[#000000] border-[#FFFFFF] font-bold shadow-lg scale-[1.01]'
+              : 'bg-[#111111] border-[#292929] text-[#A3A3A3] hover:border-[#FFFFFF]/20 hover:bg-[#171717]'
           }`}
         >
           <div
             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-              isCloud ? 'bg-black text-white' : 'bg-white/10 text-slate-400'
+              isCloud ? 'bg-[#000000] text-[#FFFFFF]' : 'bg-[#171717] text-[#A3A3A3]'
             }`}
           >
             <Cloud className="w-5 h-5" />
           </div>
           <div className="min-w-0">
             <div className="text-sm font-bold tracking-tight">Cloud LLM</div>
-            <div className={`text-xs mt-0.5 leading-relaxed ${isCloud ? 'text-slate-800' : 'text-slate-400'}`}>
+            <div className={`text-xs mt-0.5 leading-relaxed ${isCloud ? 'text-[#000000]/80' : 'text-[#A3A3A3]'}`}>
               Use hosted AI providers through API keys.
             </div>
           </div>
@@ -145,13 +145,13 @@ export const EngineStep: React.FC = () => {
           }
           className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
             !isCloud
-              ? 'bg-white text-black border-white font-bold shadow-lg scale-[1.01]'
-              : 'bg-[#131622] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/5'
+              ? 'bg-[#FFFFFF] text-[#000000] border-[#FFFFFF] font-bold shadow-lg scale-[1.01]'
+              : 'bg-[#111111] border-[#292929] text-[#A3A3A3] hover:border-[#FFFFFF]/20 hover:bg-[#171717]'
           }`}
         >
           <div
             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-              !isCloud ? 'bg-black text-white' : 'bg-white/10 text-slate-400'
+              !isCloud ? 'bg-[#000000] text-[#FFFFFF]' : 'bg-[#171717] text-[#A3A3A3]'
             }`}
           >
             <HardDrive className="w-5 h-5" />

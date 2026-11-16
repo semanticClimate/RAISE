@@ -77,6 +77,7 @@ export interface ControlCenterConfig {
   apiKeys: CloudApiKeyEntry[];
   selectedLocalModel: string;
   tunnelUrl?: string;
+  storageMode?: 'fast' | 'docker' | 'cloud';
 
   // Neural Pipeline Substrates
   embeddingModel?: string;
