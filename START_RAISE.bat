@@ -5,7 +5,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 set "BAT_FILE=%~f0"
 set "BAT_DIR=%~dp0"
-set "RAISE_RUN_ARGS=%*"
+set RAISE_RUN_ARGS=%*
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 set "PYTHONUNBUFFERED=1"
@@ -667,15 +667,16 @@ function Request-RaiseKeysInteractive {
             }
 
             $masked = Mask-ApiKey $keyInput
+            $safeKey = $keyInput.Replace('$', '$$')
             $detected = $false
 
             if ($keyInput -match '^(?:AIza|AQ\.)[a-zA-Z0-9_\-\.]{25,}$') {
                 Write-Host " [DETECTED] Google Gemini API Key recognized: $masked" -ForegroundColor Green
                 if ($envContent -match '(?m)^[ \t]*GEMINI_API_KEY=.*$') {
-                    $envContent = $envContent -replace '(?m)^[ \t]*GEMINI_API_KEY=.*$', "GEMINI_API_KEY=$keyInput"
+                    $envContent = $envContent -replace '(?m)^[ \t]*GEMINI_API_KEY=.*$', "GEMINI_API_KEY=$safeKey"
                 } else { $envContent += "`nGEMINI_API_KEY=$keyInput" }
                 if ($envContent -match '(?m)^[ \t]*GOOGLE_API_KEY=.*$') {
-                    $envContent = $envContent -replace '(?m)^[ \t]*GOOGLE_API_KEY=.*$', "GOOGLE_API_KEY=$keyInput"
+                    $envContent = $envContent -replace '(?m)^[ \t]*GOOGLE_API_KEY=.*$', "GOOGLE_API_KEY=$safeKey"
                 } else { $envContent += "`nGOOGLE_API_KEY=$keyInput" }
                 $envContent = $envContent -replace '(?m)^[ \t]*LLM_BACKEND=.*$', "LLM_BACKEND=gemini"
                 $detected = $true
@@ -683,7 +684,7 @@ function Request-RaiseKeysInteractive {
             elseif ($keyInput -match '^gsk_[a-zA-Z0-9]{20,}$') {
                 Write-Host " [DETECTED] Groq LPU API Key recognized: $masked" -ForegroundColor Green
                 if ($envContent -match '(?m)^[ \t]*GROQ_API_KEY=.*$') {
-                    $envContent = $envContent -replace '(?m)^[ \t]*GROQ_API_KEY=.*$', "GROQ_API_KEY=$keyInput"
+                    $envContent = $envContent -replace '(?m)^[ \t]*GROQ_API_KEY=.*$', "GROQ_API_KEY=$safeKey"
                 } else { $envContent += "`nGROQ_API_KEY=$keyInput" }
                 $envContent = $envContent -replace '(?m)^[ \t]*LLM_BACKEND=.*$', "LLM_BACKEND=groq"
                 $detected = $true
@@ -691,28 +692,28 @@ function Request-RaiseKeysInteractive {
             elseif ($keyInput -match '^sk-ant-[a-zA-Z0-9_\-]{20,}$') {
                 Write-Host " [DETECTED] Anthropic Claude API Key recognized: $masked" -ForegroundColor Green
                 if ($envContent -match '(?m)^[ \t]*ANTHROPIC_API_KEY=.*$') {
-                    $envContent = $envContent -replace '(?m)^[ \t]*ANTHROPIC_API_KEY=.*$', "ANTHROPIC_API_KEY=$keyInput"
+                    $envContent = $envContent -replace '(?m)^[ \t]*ANTHROPIC_API_KEY=.*$', "ANTHROPIC_API_KEY=$safeKey"
                 } else { $envContent += "`nANTHROPIC_API_KEY=$keyInput" }
                 $detected = $true
             }
             elseif ($keyInput -match '^sk-[a-zA-Z0-9_\-]{20,}$') {
                 Write-Host " [DETECTED] OpenAI Key recognized: $masked" -ForegroundColor Green
                 if ($envContent -match '(?m)^[ \t]*OPENAI_API_KEY=.*$') {
-                    $envContent = $envContent -replace '(?m)^[ \t]*OPENAI_API_KEY=.*$', "OPENAI_API_KEY=$keyInput"
+                    $envContent = $envContent -replace '(?m)^[ \t]*OPENAI_API_KEY=.*$', "OPENAI_API_KEY=$safeKey"
                 } else { $envContent += "`nOPENAI_API_KEY=$keyInput" }
                 $detected = $true
             }
             elseif ($keyInput -match '^nvapi-[a-zA-Z0-9_\-]{15,}$') {
                 Write-Host " [DETECTED] NVIDIA NIM API Key recognized: $masked" -ForegroundColor Green
                 if ($envContent -match '(?m)^[ \t]*NVIDIA_API_KEY=.*$') {
-                    $envContent = $envContent -replace '(?m)^[ \t]*NVIDIA_API_KEY=.*$', "NVIDIA_API_KEY=$keyInput"
+                    $envContent = $envContent -replace '(?m)^[ \t]*NVIDIA_API_KEY=.*$', "NVIDIA_API_KEY=$safeKey"
                 } else { $envContent += "`nNVIDIA_API_KEY=$keyInput" }
                 $detected = $true
             }
             elseif ($keyInput -match '^[a-fA-F0-9]{32}$') {
                 Write-Host " [DETECTED] Mistral AI Key recognized: $masked" -ForegroundColor Green
                 if ($envContent -match '(?m)^[ \t]*MISTRAL_API_KEY=.*$') {
-                    $envContent = $envContent -replace '(?m)^[ \t]*MISTRAL_API_KEY=.*$', "MISTRAL_API_KEY=$keyInput"
+                    $envContent = $envContent -replace '(?m)^[ \t]*MISTRAL_API_KEY=.*$', "MISTRAL_API_KEY=$safeKey"
                 } else { $envContent += "`nMISTRAL_API_KEY=$keyInput" }
                 $detected = $true
             }
@@ -720,19 +721,19 @@ function Request-RaiseKeysInteractive {
                 Write-Host " [NOTICE] Key format unrecognized ($masked)." -ForegroundColor Yellow
                 $choice = (Read-Host " Which provider is this key for? [1] Gemini [2] Groq [3] OpenAI [4] Other / Skip").Trim()
                 if ($choice -eq "1" -or $choice -match "(?i)gemini") {
-                    if ($envContent -match '(?m)^[ \t]*GEMINI_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*GEMINI_API_KEY=.*$', "GEMINI_API_KEY=$keyInput" }
+                    if ($envContent -match '(?m)^[ \t]*GEMINI_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*GEMINI_API_KEY=.*$', "GEMINI_API_KEY=$safeKey" }
                     else { $envContent += "`nGEMINI_API_KEY=$keyInput" }
-                    if ($envContent -match '(?m)^[ \t]*GOOGLE_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*GOOGLE_API_KEY=.*$', "GOOGLE_API_KEY=$keyInput" }
+                    if ($envContent -match '(?m)^[ \t]*GOOGLE_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*GOOGLE_API_KEY=.*$', "GOOGLE_API_KEY=$safeKey" }
                     else { $envContent += "`nGOOGLE_API_KEY=$keyInput" }
                     $envContent = $envContent -replace '(?m)^[ \t]*LLM_BACKEND=.*$', "LLM_BACKEND=gemini"
                     $detected = $true
                 } elseif ($choice -eq "2" -or $choice -match "(?i)groq") {
-                    if ($envContent -match '(?m)^[ \t]*GROQ_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*GROQ_API_KEY=.*$', "GROQ_API_KEY=$keyInput" }
+                    if ($envContent -match '(?m)^[ \t]*GROQ_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*GROQ_API_KEY=.*$', "GROQ_API_KEY=$safeKey" }
                     else { $envContent += "`nGROQ_API_KEY=$keyInput" }
                     $envContent = $envContent -replace '(?m)^[ \t]*LLM_BACKEND=.*$', "LLM_BACKEND=groq"
                     $detected = $true
                 } elseif ($choice -eq "3" -or $choice -match "(?i)openai") {
-                    if ($envContent -match '(?m)^[ \t]*OPENAI_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*OPENAI_API_KEY=.*$', "OPENAI_API_KEY=$keyInput" }
+                    if ($envContent -match '(?m)^[ \t]*OPENAI_API_KEY=.*$') { $envContent = $envContent -replace '(?m)^[ \t]*OPENAI_API_KEY=.*$', "OPENAI_API_KEY=$safeKey" }
                     else { $envContent += "`nOPENAI_API_KEY=$keyInput" }
                     $detected = $true
                 }
@@ -821,12 +822,13 @@ function Request-RaiseKeysInteractive {
             }
 
             # Save the valid token!
+            $safeHf = $hfInput.Replace('$', '$$')
             if ($envContent -match '(?m)^[ \t]*HUGGINGFACE_TOKEN=.*$') {
-                $envContent = $envContent -replace '(?m)^[ \t]*HUGGINGFACE_TOKEN=.*$', "HUGGINGFACE_TOKEN=$hfInput"
+                $envContent = $envContent -replace '(?m)^[ \t]*HUGGINGFACE_TOKEN=.*$', "HUGGINGFACE_TOKEN=$safeHf"
             } else { $envContent += "`nHUGGINGFACE_TOKEN=$hfInput" }
 
             if ($envContent -match '(?m)^[ \t]*HF_TOKEN=.*$') {
-                $envContent = $envContent -replace '(?m)^[ \t]*HF_TOKEN=.*$', "HF_TOKEN=$hfInput"
+                $envContent = $envContent -replace '(?m)^[ \t]*HF_TOKEN=.*$', "HF_TOKEN=$safeHf"
             } else { $envContent += "`nHF_TOKEN=$hfInput" }
 
             # Remove HF_TOKEN_SKIPPED if previously set
@@ -924,7 +926,7 @@ function Select-RaiseSubstrateMode {
         Write-Info "Profile Selected: FAST MODE (FakeRedis + NetworkX + SQLite + Local Chroma)" "Yellow"
         $env:USE_FAKEREDIS = "true"
         $env:USE_LOCAL_FALLBACKS = "true"
-        $hasFakeRedis = (& $PythonPath -c "import fakeredis, networkx; sys.stdout.write('OK')" 2>$null)
+        $hasFakeRedis = (& $PythonPath -c "import sys, fakeredis, networkx; sys.stdout.write('OK')" 2>$null)
         if ($hasFakeRedis -notmatch "OK") {
             Write-Info "Auto-provisioning FakeRedis & NetworkX for Fast Mode..." "Cyan"
             if ($UvPath) {
