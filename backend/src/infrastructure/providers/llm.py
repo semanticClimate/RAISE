@@ -75,16 +75,28 @@ class LocalVLLMProvider(BaseLLMProvider):
                 candidate_urls.append(candidate)
         for fallback in [
             "http://localhost:8002/v1",
-            "http://raise-vllm-prod:8000/v1",
-            "http://host.docker.internal:8002/v1",
             "http://127.0.0.1:8002/v1",
             "http://localhost:8080/v1",
             "http://localhost:1234/v1",
         ]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
-        probe_timeout = max(float(getattr(settings.llm, "probe_timeout", 0.35)), 2.0)
+        if os.path.exists("/.dockerenv"):
+            for container_host in ["http://raise-vllm-prod:8000/v1", "http://host.docker.internal:8002/v1"]:
+                if container_host not in candidate_urls:
+                    candidate_urls.append(container_host)
+        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.35))
         for u in candidate_urls:
+            try:
+                # Fast TCP pre-flight to prevent slow DNS connect timeouts
+                parsed = urllib.parse.urlparse(u)
+                host = parsed.hostname or "127.0.0.1"
+                port = parsed.port or 8002
+                with socket.create_connection((host, port), timeout=probe_timeout):
+                    pass
+            except Exception:
+                continue
+
             try:
                 req = urllib.request.Request(f"{u.rstrip('/')}/models", headers={"User-Agent": "RAISE-Provider"})
                 with urllib.request.urlopen(req, timeout=probe_timeout) as resp:
@@ -476,11 +488,23 @@ class LocalOllamaProvider(BaseLLMProvider):
         ollama_cfg_url = getattr(settings.llm, "ollama_base_url", "http://localhost:11434")
         if ollama_cfg_url not in candidate_urls:
             candidate_urls.append(ollama_cfg_url)
-        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434", "http://host.docker.internal:11434"]:
+        for fallback in ["http://localhost:11434", "http://127.0.0.1:11434"]:
             if fallback not in candidate_urls:
                 candidate_urls.append(fallback)
-        probe_timeout = max(float(getattr(settings.llm, "probe_timeout", 0.35)), 2.0)
+        if os.path.exists("/.dockerenv") and "http://host.docker.internal:11434" not in candidate_urls:
+            candidate_urls.append("http://host.docker.internal:11434")
+        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.35))
         for u in candidate_urls:
+            try:
+                # Fast TCP pre-flight to avoid HTTP connect timeouts
+                parsed = urllib.parse.urlparse(u)
+                host = parsed.hostname or "127.0.0.1"
+                port = parsed.port or 11434
+                with socket.create_connection((host, port), timeout=probe_timeout):
+                    pass
+            except Exception:
+                continue
+
             try:
                 # 1. Probe Ollama native tags endpoint
                 req = urllib.request.Request(f"{u.rstrip('/')}/api/tags", headers={"User-Agent": "RAISE-Provider"})

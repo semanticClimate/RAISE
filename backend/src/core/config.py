@@ -345,7 +345,7 @@ class LLMConfig(BaseModel):
     )
     ollama_base_url: str = Field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
     fallback_order: tuple[str, ...] = Field(
-        default_factory=lambda: _env_tuple("LLM_FALLBACK_ORDER", ("groq", "gemini", "cohere", "vllm"))
+        default_factory=lambda: _env_tuple("LLM_FALLBACK_ORDER", ("groq", "gemini", "cohere"))
     )
     cooldown_seconds: float = Field(default_factory=lambda: float(os.getenv("LLM_COOLDOWN_SECONDS", "60.0")))
     probe_timeout: float = Field(default_factory=lambda: float(os.getenv("LLM_PROBE_TIMEOUT", "0.5")))

@@ -627,21 +627,51 @@ function Request-RaiseKeysInteractive {
         $configuredLlm = "mistral"; $configuredLlmKey = $Matches[1].Trim()
     }
 
-    $isLocalFirst = ($envContent -match '(?m)^[ \t]*ROUTING_POLICY=[ \t]*[''"]?LOCAL_FIRST') -or `
-                    ($envContent -match '(?m)^[ \t]*LLM_PROVIDER=[ \t]*[''"]?(?:vllm|ollama)') -or `
-                    ($envContent -match '(?m)^[ \t]*LLM_BACKEND=[ \t]*[''"]?(?:vllm|ollama)')
+    # Dynamic probe for running local inference engines (vLLM :8002 / Ollama :11434)
+    $isVllmListening = $false
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $connect = $tcp.BeginConnect("127.0.0.1", 8002, $null, $null)
+        if ($connect.AsyncWaitHandle.WaitOne(200, $false)) {
+            $tcp.EndConnect($connect)
+            $isVllmListening = $true
+        }
+        $tcp.Close()
+    } catch { $isVllmListening = $false }
+
+    $isOllamaListening = $false
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $connect = $tcp.BeginConnect("127.0.0.1", 11434, $null, $null)
+        if ($connect.AsyncWaitHandle.WaitOne(200, $false)) {
+            $tcp.EndConnect($connect)
+            $isOllamaListening = $true
+        }
+        $tcp.Close()
+    } catch { $isOllamaListening = $false }
+
+    $hasLocalEngineOnline = $isVllmListening -or $isOllamaListening
+
+    $policyLocalFirst = ($envContent -match '(?m)^[ \t]*ROUTING_POLICY=[ \t]*[''"]?LOCAL_FIRST') -or `
+                        ($envContent -match '(?m)^[ \t]*LLM_PROVIDER=[ \t]*[''"]?(?:vllm|ollama)') -or `
+                        ($envContent -match '(?m)^[ \t]*LLM_BACKEND=[ \t]*[''"]?(?:vllm|ollama)')
+
+    $isLocalFirst = $policyLocalFirst -and $hasLocalEngineOnline
 
     $llmStatus = if ($configuredLlmKey) { Test-LlmKeyStatus -Provider $configuredLlm -Key $configuredLlmKey } else { @{ Status = "Missing" } }
 
     if ($isLocalFirst) {
-        Write-Info "Active LLM synthesis policy: LOCAL_FIRST (Local vLLM / Ollama Engine prioritized)." "Green"
+        $localEngineName = if ($isVllmListening) { "vLLM Container (:8002)" } else { "Ollama Daemon (:11434)" }
+        Write-Info "Active LLM synthesis policy: LOCAL_FIRST ($localEngineName prioritized)." "Green"
         if ($configuredLlmKey) {
             Write-Info "Cloud fallback standby credentials configured: $configuredLlm ($(Mask-ApiKey $configuredLlmKey))." "Cyan"
         }
     } elseif ($llmStatus.Status -eq "Valid" -and -not $forceSetup) {
-        Write-Info "Active LLM synthesis credentials verified in environment: $configuredLlm ($(Mask-ApiKey $configuredLlmKey))." "Green"
+        $provUpper = $configuredLlm.ToUpper()
+        Write-Info "Active LLM synthesis priority: $provUpper (Cloud-First) ($(Mask-ApiKey $configuredLlmKey))." "Green"
     } elseif ($llmStatus.Status -eq "UnverifiedOffline" -and -not $forceSetup) {
-        Write-Info "LLM synthesis credentials configured in environment: $configuredLlm ($(Mask-ApiKey $configuredLlmKey))." "Green"
+        $provUpper = $configuredLlm.ToUpper()
+        Write-Info "Active LLM synthesis priority: $provUpper (Cloud-First) ($(Mask-ApiKey $configuredLlmKey))." "Green"
     } else {
         Write-Host "`n==========================================================================" -ForegroundColor Cyan
         if ($llmStatus.Status -eq "Expired") {

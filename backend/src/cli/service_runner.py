@@ -157,7 +157,7 @@ def print_banner() -> None:
     print(f"\n  {B_DIM}╭{'─' * W_WIDTH}╮{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {C.TITLE}RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} {B_DIM}//{C.RESET} {C.CYAN}MONOREPO PLATFORM{C.RESET}{' ' * 23}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Backend API : http://localhost:8000   •  Swagger Docs : /docs{C.RESET}{' ' * 13}{B_DIM}│{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173   •  Architecture : Hybrid GraphRAG{C.RESET}{' ' * 3}{B_DIM}│{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173{C.RESET}{' ' * 38}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
 
 
@@ -211,6 +211,7 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     # 2. Subsystems
     cfg = fetch_json_endpoint("http://127.0.0.1:8000/api/system/config", timeout=1.5) or {}
     prov = fetch_json_endpoint("http://127.0.0.1:8000/api/system/provenance", timeout=1.5) or {}
+    routing = fetch_json_endpoint("http://127.0.0.1:8000/api/system/routing", timeout=1.5) or {}
     synth = get_synthesizer_status()
 
     chroma_count = 0
@@ -264,7 +265,17 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Relational Database      {C.SUCCESS}{sub_info['postgres']}{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}╰─{C.RESET} Document Vault Storage   {C.CYAN}{sub_info['storage']}{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}")
+    routing_chain = routing.get("fallback_chain") or []
+    policy_label = routing.get("routing_policy") or ("LOCAL_FIRST" if synth.get("type") == "local" else "CLOUD_FIRST")
+    if routing_chain:
+        chain_display = " -> ".join(p.upper() for p in routing_chain[:4])
+        priority_str = f"{C.WHITE}{chain_display}{C.RESET} {C.MUTED}({policy_label}){C.RESET}"
+    else:
+        prim = (synth.get("provider") or "AUTO").upper()
+        priority_str = f"{C.WHITE}{prim}{C.RESET} {C.MUTED}({policy_label}){C.RESET}"
+
     print(f"  {B_DIM}│{C.RESET} {C.SECTION}AI NEURAL MODEL PIPELINE{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Active LLM Priority      {priority_str}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Synthesis LLM Engine     {synth_str}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Dense Embedding Encoder  {C.WHITE}{encoder_name}{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} Cross-Attention Reranker {C.WHITE}{reranker_name}{C.RESET}")

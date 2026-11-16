@@ -165,6 +165,23 @@ async def pull_model_stream(req: ModelPullRequest):
     )
 
 
+@router.get("/models", operation_id="get_system_models")
+async def get_system_models(include_catalog: bool = False) -> Dict[str, Any]:
+    """
+    Dynamic model registry endpoint consumed by frontend useDynamicModels.
+    Returns actively available live models and discovered models with zero hardcoding.
+    """
+    from src.infrastructure.providers.router import get_provider_router
+    p_router = get_provider_router()
+    avail = p_router.get_dynamic_available_providers()
+    return {
+        "status": "success",
+        "models": avail,
+        "dynamic_llms": avail,
+        "count": len(avail),
+    }
+
+
 @router.get("/models/discovered", operation_id="get_system_models_discovered")
 @router.get("/models-discovered", operation_id="get_system_models_discovered_alias")
 async def get_discovered_models(provider: Optional[str] = None) -> Dict[str, Any]:
