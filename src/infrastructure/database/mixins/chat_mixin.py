@@ -128,6 +128,17 @@ class ChatStoreMixin(SessionLifecycleMixin):
             txt = m.get("text") or m.get("content", "")
             srcs = m.get("sources") or m.get("citations", [])
             lat_val = float(m.get("latency_sec") or m.get("durationSec") or m.get("execution_time") or m.get("duration_sec") or 0.0)
+            resp_dict = m.get("response")
+            if not isinstance(resp_dict, dict):
+                resp_dict = {}
+            else:
+                resp_dict = dict(resp_dict)
+            if srcs:
+                resp_dict.setdefault("citations", srcs)
+                resp_dict.setdefault("sources", srcs)
+            if txt:
+                resp_dict.setdefault("answer", txt)
+                resp_dict.setdefault("grounded_answer", txt)
             return {
                 **m,
                 "role": m.get("role", "user"),
@@ -139,7 +150,7 @@ class ChatStoreMixin(SessionLifecycleMixin):
                 "latency_sec": lat_val,
                 "durationSec": lat_val,
                 "execution_time": lat_val,
-                "response": m.get("response") or ({"sources": srcs} if srcs else None),
+                "response": resp_dict if resp_dict else None,
                 "created_at": m.get("created_at", datetime.now(timezone.utc).isoformat()),
             }
 
@@ -180,7 +191,12 @@ class ChatStoreMixin(SessionLifecycleMixin):
                     "mode": r[2],
                     "sources": raw_sources,
                     "citations": raw_sources,
-                    "response": {"sources": raw_sources} if raw_sources else None,
+                    "response": {
+                        "sources": raw_sources,
+                        "citations": raw_sources,
+                        "answer": text_content,
+                        "grounded_answer": text_content,
+                    } if raw_sources else None,
                     "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
                     "latency_sec": lat_val,
                     "durationSec": lat_val,

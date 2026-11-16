@@ -593,3 +593,40 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         "active_mode": env_map.get("LLM_BACKEND"),
         "active_model": env_map.get("LLM_MODEL_NAME"),
     }
+
+
+def persist_routing_env(updates: Dict[str, str]) -> bool:
+    """
+    Fast direct key-value synchronization of routing and priority order to runtime os.environ
+    and .env files without triggering heavy neural model or database socket re-probing.
+    Ensures sub-millisecond response latency during UI drag-and-drop orchestrator interactions.
+    """
+    for k, v in updates.items():
+        os.environ[k] = str(v)
+
+    for env_path in (ENV_FILE_PATH, ROOT_ENV_FILE_PATH):
+        try:
+            if not env_path.exists():
+                continue
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+            new_lines = []
+            keys_updated = set()
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("#") or not stripped or "=" not in stripped:
+                    new_lines.append(line)
+                    continue
+                k, _ = stripped.split("=", 1)
+                k_clean = k.strip()
+                if k_clean in updates:
+                    new_lines.append(f"{k_clean}={updates[k_clean]}")
+                    keys_updated.add(k_clean)
+                else:
+                    new_lines.append(line)
+            for k, v in updates.items():
+                if k not in keys_updated:
+                    new_lines.append(f"{k}={v}")
+            env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Could not update routing in {env_path}: {e}")
+    return True
