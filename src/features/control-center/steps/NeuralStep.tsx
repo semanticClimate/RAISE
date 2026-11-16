@@ -528,10 +528,10 @@ export const NeuralStep: React.FC = () => {
         </div>
       )}
 
-      {/* SINGLE UNIFIED FORM CONTAINER */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-[#111111] border border-[#292929] space-y-4 shadow-lg">
+      {/* UNIFIED FLAT CARDS (No nested box-in-box) */}
+      <div className="space-y-3.5">
         {/* PREFLIGHT ASSETS & ON-DISK FOOTPRINT BANNER */}
-        <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+        <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] space-y-2.5">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-2 flex-wrap">
@@ -625,8 +625,8 @@ export const NeuralStep: React.FC = () => {
           )}
         </div>
 
-        {/* 1. HUGGING FACE ACCESS TOKEN (TOP POSITION) */}
-        <div className="space-y-2 pb-4 border-b border-white/10">
+        {/* 1. HUGGING FACE ACCESS TOKEN */}
+        <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] space-y-2.5">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <label className="text-xs font-bold text-white flex items-center gap-2 flex-wrap">
               <Key className="w-3.5 h-3.5 text-white" />
@@ -718,14 +718,14 @@ export const NeuralStep: React.FC = () => {
         </div>
 
         {/* 2. THREE COMPACT CARDS (MINIMAL COGNITIVE LOAD: JUST MODEL NAME + STATUS SIGN + CHANGE BUTTON) */}
-        <div className="space-y-2.5 pt-1">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
+        <div className="space-y-2">
+          <div className="text-[11px] font-mono uppercase tracking-wider text-[#A3A3A3] font-semibold">
             Configured Neural Models
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* CARD 1: EMBEDDING MODEL */}
-            <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/30 transition-all flex flex-col justify-between space-y-3">
+            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-3">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-white">
@@ -751,7 +751,7 @@ export const NeuralStep: React.FC = () => {
             </div>
 
             {/* CARD 2: RERANKER */}
-            <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/30 transition-all flex flex-col justify-between space-y-3">
+            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-3">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-white">
@@ -777,7 +777,7 @@ export const NeuralStep: React.FC = () => {
             </div>
 
             {/* CARD 3: CLAIM VERIFIER */}
-            <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/30 transition-all flex flex-col justify-between space-y-3">
+            <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] hover:border-[#FFFFFF]/25 transition-all flex flex-col justify-between space-y-3">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-white">
@@ -806,22 +806,22 @@ export const NeuralStep: React.FC = () => {
 
         {/* 3. ADVANCED / CUSTOM MODELS (PROGRESSIVE DISCLOSURE) */}
         {customModelSupport && (
-          <div className="pt-2 border-t border-white/10">
+          <div className="pt-0.5">
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="py-1 text-xs font-medium text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="py-1 text-xs font-medium text-[#A3A3A3] hover:text-[#FFFFFF] flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               {showAdvanced ? (
-                <ChevronDown className="w-3.5 h-3.5 text-white" />
+                <ChevronDown className="w-3.5 h-3.5 text-[#FFFFFF]" />
               ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-white" />
+                <ChevronRight className="w-3.5 h-3.5 text-[#FFFFFF]" />
               )}
               <span>Advanced Configuration (Custom Hugging Face Repositories)</span>
             </button>
 
             {showAdvanced && (
-              <div className="mt-2.5 p-3 rounded-xl bg-black/40 border border-white/15 space-y-3 animate-in fade-in duration-150">
+              <div className="mt-2 p-3.5 rounded-xl bg-[#111111] border border-[#292929] space-y-3 animate-in fade-in duration-150">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-mono text-slate-400">Target Category:</span>
                   <div className="flex gap-1.5">

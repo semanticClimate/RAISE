@@ -72,6 +72,10 @@
     box-sizing: border-box;
   }
 
+  html {
+    interpolate-size: allow-keywords;
+  }
+
   html.light * {
     border-color: rgba(226, 232, 240, 0.9);
   }
