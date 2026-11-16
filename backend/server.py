@@ -947,6 +947,13 @@ async def check_neural_readiness(request: Request):
     }
 
 
+@app.get("/api/provenance")
+@app.get("/provenance")
+async def get_provenance_metadata(mode: Optional[str] = "expert"):
+    from src.infrastructure.provenance import build_pipeline_info
+    return build_pipeline_info(mode=mode)
+
+
 # ------------------------------------------------------------------------------
 # Mount Core RAISE Application Routes from app.py
 # ------------------------------------------------------------------------------

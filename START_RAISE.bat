@@ -19,22 +19,26 @@ set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 set "PYTHONUNBUFFERED=1"
 set "FORCE_COLOR=1"
+set "NO_COLOR="
 set "TERM="
 set "HF_HUB_DISABLE_PROGRESS_BARS=1"
 set "TQDM_DISABLE=1"
 set "TRANSFORMERS_VERBOSITY=error"
 set "TOKENIZERS_PARALLELISM=false"
 
-if not exist "%~dp0START_RAISE.ps1" (
+set "PS_HELPER=%~dp0start_helper.ps1"
+if not exist "%PS_HELPER%" set "PS_HELPER=%~dp0START_RAISE.ps1"
+
+if not exist "%PS_HELPER%" (
     echo.
-    echo  [ERROR] START_RAISE.ps1 not found in: %~dp0
-    echo  Please ensure START_RAISE.ps1 is present in the repository root.
+    echo  [ERROR] Launcher helper script not found in: %~dp0
+    echo  Please ensure start_helper.ps1 or START_RAISE.ps1 is present in the repository root.
     echo.
     pause
     exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0START_RAISE.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS_HELPER%" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 if not "%EXIT_CODE%"=="0" (
     echo.

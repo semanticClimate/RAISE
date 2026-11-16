@@ -57,6 +57,13 @@ async def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         )
 
 
+@router.get("/provenance")
+async def get_system_provenance(mode: Optional[str] = "expert") -> Dict[str, Any]:
+    """Returns real-time pipeline provenance, neural model states, and substrate descriptors."""
+    from src.infrastructure.provenance import build_pipeline_info
+    return build_pipeline_info(mode=mode)
+
+
 @router.get("/dynamic-llms")
 async def get_dynamic_llms() -> List[Dict[str, Any]]:
     """Returns list of dynamically available LLMs based on active hardware and configured API keys."""

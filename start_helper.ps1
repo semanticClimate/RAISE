@@ -878,6 +878,8 @@ function Request-RaiseKeysInteractive {
 
             # Save the valid token!
             $safeHf = $hfInput.Replace('$', '$$')
+            $env:HF_TOKEN = $hfInput
+            $env:HUGGINGFACE_TOKEN = $hfInput
             if ($envContent -match '(?m)^[ \t]*HUGGINGFACE_TOKEN=.*$') {
                 $envContent = $envContent -replace '(?m)^[ \t]*HUGGINGFACE_TOKEN=.*$', "HUGGINGFACE_TOKEN=$safeHf"
             } else { $envContent += "`nHUGGINGFACE_TOKEN=$hfInput" }
@@ -975,7 +977,24 @@ if ($embCached -and $rerankCached -and $nliCached) {
     $statusParts += if ($rerankCached) { "Reranker [CACHED]" } else { "Reranker [PENDING DOWNLOAD]" }
     $statusParts += if ($nliCached) { "NLI [CACHED]" } else { "NLI [PENDING DOWNLOAD]" }
     Write-Info "Neural Pipeline Assets: $($statusParts -join ' * ')" "Yellow"
-    Write-Info "Missing models will download automatically during first inference or via Control Center." "Cyan"
+
+    # Auto-provision missing neural models via authenticated Hugging Face download
+    $missingRepos = @()
+    if (-not $embCached) { $missingRepos += $embRepo }
+    if (-not $rerankCached) { $missingRepos += $rerankRepo }
+    if (-not $nliCached) { $missingRepos += $nliRepo }
+
+    if ($missingRepos.Count -gt 0 -and $pythonExe) {
+        Write-Info "Downloading missing neural assets ($($missingRepos -join ', '))..." "Cyan"
+        $reposPyList = ($missingRepos | ForEach-Object { "'$_'" }) -join ", "
+        $downloadPy = "import os, sys; from huggingface_hub import snapshot_download; token = os.getenv('HF_TOKEN') or os.getenv('HUGGINGFACE_TOKEN') or None; repos = [$reposPyList]; [print(f'Caching {r}...') or snapshot_download(repo_id=r, token=token) for r in repos]; print('DOWNLOAD_COMPLETE')"
+        try {
+            & $pythonExe -c $downloadPy
+            Write-Info "Neural pipeline models successfully downloaded and cached." "Green"
+        } catch {
+            Write-Info "Auto-download notice: $($_.Exception.Message)" "DarkYellow"
+        }
+    }
 }
 
 # Inspect active .env file for configured Cloud/Local AI keys
