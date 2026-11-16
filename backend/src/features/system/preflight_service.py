@@ -74,12 +74,13 @@ def get_chromadb_disk_footprint() -> int:
     except Exception:
         chroma_cfg = ""
 
+    chroma_dir_name = Path(chroma_cfg).name if chroma_cfg else f".chromadb_{models.EMBEDDING_MODEL_NAME.split('/')[-1]}"
     candidate_paths = [
         Path(chroma_cfg) if chroma_cfg else None,
-        Path(__file__).resolve().parents[3] / "backend" / ".chromadb_embeddinggemma_2",
-        Path(__file__).resolve().parents[3] / ".chromadb_embeddinggemma_2",
-        Path("backend/.chromadb_embeddinggemma_2"),
-        Path(".chromadb_embeddinggemma_2"),
+        Path(__file__).resolve().parents[3] / "backend" / chroma_dir_name,
+        Path(__file__).resolve().parents[3] / chroma_dir_name,
+        Path("backend") / chroma_dir_name,
+        Path(chroma_dir_name),
     ]
     for p in candidate_paths:
         if p and p.exists():
