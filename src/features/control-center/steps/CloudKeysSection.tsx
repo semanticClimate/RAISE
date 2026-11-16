@@ -593,19 +593,17 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
                 )}
               </button>
 
-              <button
-                type="button"
-                disabled={!newKeyInput.trim()}
-                onClick={handleAddProvider}
-                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  newKeyInput.trim()
-                    ? 'bg-white text-black hover:bg-slate-200 cursor-pointer shadow-sm'
-                    : 'bg-white/10 text-slate-500 border border-white/10 cursor-not-allowed'
-                }`}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add Provider
-              </button>
+              {/* Add Provider button is strictly rendered ONLY when connection test is successful */}
+              {testResult?.available === true && (
+                <button
+                  type="button"
+                  onClick={handleAddProvider}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 bg-white text-black hover:bg-slate-200 cursor-pointer shadow-sm animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Provider
+                </button>
+              )}
             </div>
           </div>
 

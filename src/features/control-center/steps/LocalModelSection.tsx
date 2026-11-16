@@ -66,25 +66,23 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-white">Local Runtimes:</span>
-            {/* vLLM Pill */}
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[11px] font-mono text-slate-300">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isVllmOnline ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
-                }`}
-              />
-              vLLM ({isVllmOnline ? 'Online' : 'Standby'})
-            </span>
-
-            {/* Ollama Pill */}
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[11px] font-mono text-slate-300">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isOllamaOnline ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
-                }`}
-              />
-              Ollama ({isOllamaOnline ? 'Running' : 'Standby'})
-            </span>
+            {isVllmOnline && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/10 border border-white/20 text-[11px] font-mono text-white">
+                <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse" />
+                vLLM Engine (Online)
+              </span>
+            )}
+            {isOllamaOnline && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/10 border border-white/20 text-[11px] font-mono text-white">
+                <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse" />
+                Ollama (Running)
+              </span>
+            )}
+            {!isVllmOnline && !isOllamaOnline && (
+              <span className="text-[11px] font-mono text-slate-400">
+                None active
+              </span>
+            )}
           </div>
         </div>
 
