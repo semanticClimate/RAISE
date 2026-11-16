@@ -110,7 +110,7 @@ def test_vllm_is_available_probes_candidate_urls():
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = None
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch("socket.create_connection"), patch("urllib.request.urlopen", return_value=mock_resp):
         is_alive = prov.is_available()
         assert is_alive is True
         assert prov.model_name == "mock_vllm_model"
@@ -126,7 +126,7 @@ def test_ollama_is_available_probes_tags_and_v1():
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = None
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch("socket.create_connection"), patch("urllib.request.urlopen", return_value=mock_resp):
         is_alive = prov.is_available()
         assert is_alive is True
         assert prov.model_name == "mock_ollama_model"

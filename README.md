@@ -214,6 +214,33 @@ When an institutional researcher submits a query, RAISE executes a structured mu
 
 ---
 
+## 🚀 Recent Improvements & Frontend Developer Handover
+
+### 1. Neural Asset Cache Verification & Live Preflight State
+- **Preflight Endpoint (`GET /api/system/preflight-assets`)**:
+  - Fully hardened cache detection across `HF_HUB_CACHE`, `HF_HOME`, `HUGGINGFACE_HUB_CACHE`, and `~/.cache/huggingface/hub`.
+  - Verifies snapshot directories to ensure models are complete on disk.
+  - Returns `all_verified: true` alongside `all_assets_verified: true`.
+  - Core pipeline assets (`google/embeddinggemma-2`, `BAAI/bge-reranker-v2-m3`, `dleemiller/finecat-nli-ultra-l`, `urchade/gliner_medium-v2.1`) report `"Cached & Verified"`, showing the verified completion tick icon in the Control Center without requiring redundant downloads.
+- **Dynamic Model Pull Stream (`POST /api/system/models/pull`)**:
+  - SSE streaming endpoint compatible with frontend `platformAdapter.pullModel` for real-time progress indicators when pulling unverified models.
+
+### 2. Dynamic Provider Discovery & Socket Resilience
+- **Fast TCP Socket Preflight**:
+  - Fixed missing `socket` and `urllib.parse` imports in `LocalVLLMProvider` and `LocalOllamaProvider`.
+  - Local engines (`vLLM` on `:8002` and `Ollama` on `:11434`) are dynamically discovered. When offline, they are automatically filtered from the priority routing chain without blocking cloud inference or throwing connection exceptions.
+- **Failover Routing Chain**:
+  - Multi-provider failover gracefully cascades through candidate providers on HTTP 429 rate limits or transient network errors.
+
+### 3. Startup Launcher & ASCII Badges
+- **`START_RAISE.bat` Boot Sequence**:
+  - Inspects local cache for neural embeddings and cross-encoders on startup and outputs:
+    `[INFO] Neural Pipeline Assets: Dense Embedding [CACHED] * Cross-Encoder [CACHED] * NLI [CACHED]`
+  - Wrapped PowerShell execution in robust `try ... catch` blocks to prevent unexpected terminal window closures on fresh clones.
+  - Strict compliance with clean ASCII badges (`[OK]`, `*`, `[!]`, `[ERR]`).
+
+---
+
 ## 📜 License
 
 This project is licensed under the **Apache 2.0 License**. See the [LICENSE](LICENSE) file for complete details.
