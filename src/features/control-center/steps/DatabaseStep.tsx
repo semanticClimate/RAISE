@@ -164,9 +164,9 @@ export const DatabaseStep: React.FC = () => {
       key: 'knowledgeGraph' as const,
       name: 'Knowledge Graph',
       getRole: (mode: SubstrateMode) => {
-        if (mode === 'in_memory_fallback') return 'NetworkX In-Memory Engine';
-        if (mode === 'local') return isNeo4jOnline ? 'Neo4j Graph Database (:7687)' : 'Neo4j Local Container (:7687)';
-        return isNeo4jOnline ? 'Neo4j AuraDB Cloud' : 'Neo4j AuraDB (Remote)';
+        if (mode === 'in_memory_fallback') return testResults?.neo4j?.provider || 'NetworkX In-Memory';
+        if (mode === 'local') return isNeo4jOnline ? (testResults?.neo4j?.provider || 'Neo4j Graph Database (:7687)') : 'Neo4j Local Container (Docker Offline)';
+        return isNeo4jOnline ? (testResults?.neo4j?.provider || 'Neo4j AuraDB Cloud') : 'Neo4j AuraDB (Remote)';
       },
       icon: Layers,
       info: 'Property graph database for semantic citations, concept nodes, and multi-hop reasoning.',
@@ -177,9 +177,9 @@ export const DatabaseStep: React.FC = () => {
       key: 'sessionMemory' as const,
       name: 'Session Memory',
       getRole: (mode: SubstrateMode) => {
-        if (mode === 'in_memory_fallback') return 'Local SQLite Storage';
-        if (mode === 'local') return isPostgresOnline ? 'PostgreSQL Store (:5432)' : 'PostgreSQL Local Container (:5432)';
-        return isPostgresOnline ? 'Neon Serverless Postgres' : 'PostgreSQL Cloud (Remote)';
+        if (mode === 'in_memory_fallback') return testResults?.postgres?.provider || 'Local SQLite Storage';
+        if (mode === 'local') return isPostgresOnline ? (testResults?.postgres?.provider || 'PostgreSQL Store (:5432)') : 'PostgreSQL Local Container (Docker Offline)';
+        return isPostgresOnline ? (testResults?.postgres?.provider || 'Neon Serverless Postgres') : 'PostgreSQL Cloud (Remote)';
       },
       icon: Database,
       info: 'Relational & vector persistence for cross-session chat persistence.',
@@ -190,9 +190,9 @@ export const DatabaseStep: React.FC = () => {
       key: 'cacheAndSignals' as const,
       name: 'Response Cache',
       getRole: (mode: SubstrateMode) => {
-        if (mode === 'in_memory_fallback') return 'In-Memory State & Signals';
-        if (mode === 'local') return isRedisOnline ? 'Redis Fast Bus (:6379)' : 'Redis Local Container (:6379)';
-        return isRedisOnline ? 'Upstash Redis Cloud' : 'Redis Cloud (Remote)';
+        if (mode === 'in_memory_fallback') return testResults?.redis?.provider || 'In-Memory State & Signals';
+        if (mode === 'local') return isRedisOnline ? (testResults?.redis?.provider || 'Redis Fast Bus (:6379)') : 'Redis Local Container (Docker Offline)';
+        return isRedisOnline ? (testResults?.redis?.provider || 'Upstash Redis Cloud') : 'Redis Cloud (Remote)';
       },
       icon: Zap,
       info: 'Sub-millisecond ephemeral streaming state and semantic query caching.',

@@ -558,11 +558,15 @@ export const useControlCenterStore = create<ControlCenterState>()(
             defaultSubstrateMode = 'local';
           } else if (rawStorageMode === 'cloud') {
             defaultSubstrateMode = 'cloud';
+          } else {
+            defaultSubstrateMode = 'in_memory_fallback';
           }
 
-          const kgMode = (cfg.neo4j_mode as SubstrateMode) || defaultSubstrateMode;
-          const memMode = (cfg.postgres_mode as SubstrateMode) || defaultSubstrateMode;
-          const cacheMode = (cfg.redis_mode as SubstrateMode) || defaultSubstrateMode;
+          // If backend reports fast mode or running without Docker containers, honor in_memory_fallback
+          const isFast = !rawStorageMode || rawStorageMode === 'fast';
+          const kgMode = isFast ? 'in_memory_fallback' : ((cfg.neo4j_mode as SubstrateMode) || defaultSubstrateMode);
+          const memMode = isFast ? 'in_memory_fallback' : ((cfg.postgres_mode as SubstrateMode) || defaultSubstrateMode);
+          const cacheMode = isFast ? 'in_memory_fallback' : ((cfg.redis_mode as SubstrateMode) || defaultSubstrateMode);
 
           set((s) => {
             // Merge: preserve any user-entered manual keys that are not from backend
