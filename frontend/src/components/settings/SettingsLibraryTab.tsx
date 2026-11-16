@@ -19,6 +19,8 @@ export interface LibraryItem {
   status: 'ready' | 'indexed' | 'processing' | 'error';
   color: 'rose' | 'indigo' | 'amber' | 'emerald';
   uploadProgress?: number;
+  phase?: string;
+  status_breadcrumb?: string;
   can_delete?: boolean;
   is_protected?: boolean;
   is_prebaked?: boolean;
@@ -109,6 +111,13 @@ export function documentItemToLibraryItem(doc: {
     pages: resolvedPages,
     chunks: resolvedChunks,
     status: isReady ? 'indexed' : isProcessing ? 'processing' : 'ready',
+    uploadProgress: typeof (doc as any).percent === 'number'
+      ? (doc as any).percent
+      : typeof (doc as any).progress_percent === 'number'
+        ? (doc as any).progress_percent
+        : undefined,
+    phase: (doc as any).phase,
+    status_breadcrumb: (doc as any).status_breadcrumb,
     color,
     ownership: doc.ownership || doc.owner || (isProtected ? 'system' : 'user'),
     is_prebaked: doc.is_prebaked || doc.is_prebuilt || isProtected,
@@ -833,10 +842,10 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                   {!indexed ? (
                     <span
                       className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate max-w-[150px]"
-                      title={`Pipeline stage: ${getDocumentStageLabel(progress)}`}
+                      title={`Pipeline stage: ${getDocumentStageLabel(progress, item.phase)}${item.status_breadcrumb ? ` (${item.status_breadcrumb})` : ''}`}
                     >
                       <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
-                      <span className="truncate">{getDocumentStageLabel(progress)}</span>
+                      <span className="truncate">{getDocumentStageLabel(progress, item.phase)}</span>
                     </span>
                   ) : (
                     <span className="text-[10px] text-slate-400 dark:text-[#a8a8a8] font-mono">
@@ -1001,7 +1010,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                         {!indexed ? (
                           <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
                             <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
-                            <span>{getDocumentStageLabel(progress)}</span>
+                            <span>{getDocumentStageLabel(progress, item.phase)}</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
@@ -1187,7 +1196,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-500/20 flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
-                        <span>{getDocumentStageLabel(progress)}</span>
+                        <span>{getDocumentStageLabel(progress, item.phase)}</span>
                       </span>
                       <div className="p-1" title={`Uploading: ${Math.round(progress)}%`}>
                         <CircularUploadProgress

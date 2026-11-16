@@ -31,20 +31,7 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
   }
 
   if (selectedDocs.length === 0) {
-    if (!onOpenDrawer) return null;
-    return (
-      <div className={`hidden sm:flex items-center py-0.5 select-none shrink ${className}`}>
-        <button
-          type="button"
-          onClick={onOpenDrawer}
-          title="Attach document to drawer"
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 border border-dashed border-white/10 hover:border-indigo-500/30 transition-all cursor-pointer animate-pulse"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-          <span>Attach document</span>
-        </button>
-      </div>
-    );
+    return null;
   }
 
   // Desktop horizontal scrolling chips
@@ -156,7 +143,7 @@ export const AttachedDocChips: React.FC<AttachedDocChipsProps> = ({
             {/* Simple tooltip with doc name on hover */}
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none">
               <div className="bg-slate-900 text-white dark:bg-[#1a1c23] dark:border dark:border-white/10 dark:text-slate-200 text-[11px] font-medium py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap max-w-[240px] truncate">
-                {isProcessing ? `${getDocumentStageLabel(progress)}: ${file.name} (${Math.round(progress)}%)` : file.name}
+                {isProcessing ? `${getDocumentStageLabel(progress, (file as any).phase)}: ${file.name} (${Math.round(progress)}%)` : file.name}
               </div>
               <div className="w-1.5 h-1.5 -mt-0.5 rotate-45 bg-slate-900 dark:bg-[#1a1c23] border-r border-b border-slate-900 dark:border-white/10" />
             </div>

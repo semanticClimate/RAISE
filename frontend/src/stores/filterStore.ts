@@ -17,7 +17,7 @@ interface FilterState {
 
 export const useFilterStore = create<FilterState>((set) => ({
   documentFilter: null,
-  hops: 2,
+  hops: 1,
   topK: 4,
   graphFilterType: null,
   searchQuery: '',
@@ -30,7 +30,7 @@ export const useFilterStore = create<FilterState>((set) => ({
   resetFilters: () =>
     set({
       documentFilter: null,
-      hops: 2,
+      hops: 1,
       topK: 4,
       graphFilterType: null,
       searchQuery: '',

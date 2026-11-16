@@ -23,7 +23,7 @@ export function useRaiseController() {
     isNeuralReady,
     readinessMessage,
   } = useModeStore();
-  const isOnline = isTunnelConfigured && (appMode === 'connected' || appMode === 'degraded');
+  const isOnline = appMode === 'connected' || appMode === 'degraded';
 
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
     try {
@@ -77,7 +77,20 @@ export function useRaiseController() {
   }, [appMode, ccConfig]);
 
   const [query, setQuery] = useState('');
-  const [parseMode, setParseMode] = useState<'fast' | 'expert'>('expert');
+  const [parseMode, setParseModeState] = useState<'fast' | 'expert'>(() => {
+    try {
+      const saved = localStorage.getItem('raise_research_mode');
+      if (saved === 'fast' || saved === 'expert') return saved;
+    } catch {}
+    return 'fast';
+  });
+
+  const setParseMode = useCallback((mode: 'fast' | 'expert') => {
+    setParseModeState(mode);
+    try {
+      localStorage.setItem('raise_research_mode', mode);
+    } catch {}
+  }, []);
   const [isPipelineDrawerOpen, setIsPipelineDrawerOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);

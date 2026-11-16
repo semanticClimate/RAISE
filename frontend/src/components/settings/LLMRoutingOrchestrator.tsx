@@ -9,12 +9,16 @@ import {
 } from 'lucide-react';
 import { systemService } from '../../services/SystemService';
 import type { RoutingUpdateRequest } from '../../types';
+import { useControlCenterStore } from '../../features/control-center/store/useControlCenterStore';
 
 interface ProviderCardState {
   id: string;
   name: string;
   status?: string;
   isOffline?: boolean;
+  isConfigured?: boolean;
+  tier?: string;
+  model?: string;
 }
 
 const CLEAN_PROVIDER_NAMES: Record<string, string> = {
@@ -28,15 +32,16 @@ const CLEAN_PROVIDER_NAMES: Record<string, string> = {
   cohere: 'Cohere',
   deepseek: 'DeepSeek',
   openrouter: 'OpenRouter',
+  universal: 'Universal / Custom API',
+  custom: 'Universal / Custom API',
 };
 
-const DEFAULT_CHAIN = ['groq', 'gemini', 'vllm', 'ollama', 'local'];
 const DEFAULT_DISABLED = ['mistral'];
 
 export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const [activeChain, setActiveChain] = useState<string[]>(DEFAULT_CHAIN);
+  const [activeChain, setActiveChain] = useState<string[]>([]);
   const [disabledList, setDisabledList] = useState<string[]>(DEFAULT_DISABLED);
-  const [primaryProvider, setPrimaryProvider] = useState<string>('groq');
+  const [primaryProvider, setPrimaryProvider] = useState<string>('gemini');
   const [providersData, setProvidersData] = useState<Record<string, ProviderCardState>>(() => {
     const initial: Record<string, ProviderCardState> = {};
     Object.entries(CLEAN_PROVIDER_NAMES).forEach(([id, name]) => {
@@ -56,22 +61,32 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
     return () => clearTimeout(timer);
   }, [feedbackBanner]);
 
-  // Load live routing from backend GET /api/system/routing & GET /api/system/dynamic-llms
+  // Load live routing from backend GET /api/system/routing & dynamically filter to detected/connected LLMs
   const fetchLiveRouting = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await systemService.getRouting();
       const raw = res.data as any;
       if (raw) {
-        const order: string[] = raw.fallback_order || raw.fallback_chain || [];
+        const rawOrder: string[] = raw.fallback_order || raw.fallback_chain || [];
         const disabled: string[] = raw.disabled_providers || [];
-        const primary: string = raw.primary_provider || order[0] || 'groq';
+        const primary: string =
+          raw.pinned_primary_provider ||
+          raw.primary_provider ||
+          'gemini';
 
-        if (order.length > 0) {
-          setActiveChain(order);
-          setPrimaryProvider(primary);
-        }
-        setDisabledList(disabled);
+        const storeApiKeys = useControlCenterStore.getState().config.apiKeys || [];
+        const hasStoreKey = (pid: string) => {
+          const norm = pid.toLowerCase().trim();
+          return storeApiKeys.some((k) => {
+            const kProv = (k?.provider || '').toLowerCase().trim();
+            const hasKey = (k?.key && k.key.trim().length > 0 && kProv !== 'unknown') || k?.verified === true;
+            if (!hasKey) return false;
+            if (kProv === norm) return true;
+            if ((kProv === 'custom' || kProv === 'universal') && (norm === 'custom' || norm === 'universal')) return true;
+            return false;
+          });
+        };
 
         const merged: Record<string, ProviderCardState> = {};
         Object.entries(CLEAN_PROVIDER_NAMES).forEach(([id, name]) => {
@@ -79,30 +94,121 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
         });
 
         // Parse providers whether returned as an Array or Record/Object
-        if (Array.isArray(raw.providers)) {
-          raw.providers.forEach((item: any) => {
-            if (item && item.id) {
-              const fallbackName = CLEAN_PROVIDER_NAMES[item.id] || item.id.toUpperCase();
-              merged[item.id] = {
-                id: item.id,
-                name: item.displayName || item.name || fallbackName,
-                status: item.status,
-                isOffline: item.status === 'OFFLINE' || item.status === 'LOCAL_OFFLINE',
-              };
-            }
-          });
-        } else if (raw.providers && typeof raw.providers === 'object') {
-          Object.entries(raw.providers).forEach(([key, info]: [string, any]) => {
-            const fallbackName = CLEAN_PROVIDER_NAMES[key] || key.toUpperCase();
-            merged[key] = {
-              id: key,
-              name: info.displayName || info.name || fallbackName,
-              status: info.status,
-              isOffline: info.status === 'OFFLINE' || info.status === 'LOCAL_OFFLINE',
+        const providersSource: any[] = Array.isArray(raw.providers_list)
+          ? raw.providers_list
+          : Array.isArray(raw.providers)
+            ? raw.providers
+            : typeof raw.providers === 'object' && raw.providers !== null
+              ? Object.entries(raw.providers).map(([k, v]: [string, any]) => ({ id: k, ...v }))
+              : [];
+
+        providersSource.forEach((item: any) => {
+          if (!item || !item.id) return;
+          const pid = item.id.toLowerCase();
+          const fallbackName = CLEAN_PROVIDER_NAMES[pid] || item.displayName || pid.toUpperCase();
+          const status = (item.status || '').toUpperCase().trim();
+          const isOffline = status === 'OFFLINE' || status === 'LOCAL_OFFLINE';
+          const isConfigured = Boolean(
+            item.configured ||
+            item.isActive ||
+            status === 'READY' ||
+            status === 'CONFIGURED' ||
+            status === 'ACTIVE' ||
+            hasStoreKey(pid)
+          );
+
+          merged[pid] = {
+            id: pid,
+            name: item.displayName || fallbackName,
+            status: item.status,
+            isOffline,
+            isConfigured,
+            tier: item.tier,
+            model: item.model,
+          };
+        });
+
+        // Also merge any verified or configured keys present in the control center store
+        storeApiKeys.forEach((k) => {
+          if (!k?.provider || k.provider === 'unknown') return;
+          const pid = k.provider.toLowerCase().trim();
+          const isVerified = k.verified === true || (typeof k.latencyMs === 'number' && k.latencyMs > 0);
+          const hasKey = (k.key && k.key.trim().length > 0) || isVerified;
+          if (!hasKey) return;
+          if (!merged[pid]) {
+            merged[pid] = {
+              id: pid,
+              name: k.providerName || CLEAN_PROVIDER_NAMES[pid] || pid.toUpperCase(),
+              status: isVerified ? 'READY' : 'CONFIGURED',
+              isOffline: false,
+              isConfigured: true,
+              tier: k.latencyMs ? `Connected (${k.latencyMs}ms)` : 'Configured',
+              model: (k as any).model || (pid === 'gemini' ? 'gemini-2.5-flash' : 'Universal Custom LLM'),
             };
-          });
+          } else {
+            merged[pid].isConfigured = true;
+            if (isVerified || merged[pid].status === 'NOT_CONFIGURED') {
+              merged[pid].status = isVerified ? 'READY' : 'CONFIGURED';
+              merged[pid].isOffline = false;
+            }
+          }
+        });
+
+        // Determine strictly if a provider is live, detected, and connected
+        const isConnectedAndLive = (pid: string): boolean => {
+          const norm = pid.toLowerCase().trim();
+          const info = merged[norm];
+
+          // 1. Local engines: MUST be actively running and responding (status READY/ONLINE/ACTIVE)
+          // OFFLINE, LOCAL_OFFLINE, STANDBY mean not running or not loaded in process
+          if (norm === 'vllm' || norm === 'ollama' || norm === 'local') {
+            if (!info) return false;
+            if (info.isOffline) return false;
+            const st = (info.status || '').toUpperCase().trim();
+            return st === 'READY' || st === 'ONLINE' || st === 'ACTIVE';
+          }
+
+          // 2. Cloud engines (Gemini, Groq, Custom/Universal, etc.):
+          // Live if valid key is in store or reported configured/ready by backend
+          if (hasStoreKey(norm)) return true;
+
+          if (info) {
+            if (info.isOffline) return false;
+            const st = (info.status || '').toUpperCase().trim();
+            if (st === 'NOT_CONFIGURED' || st === 'OFFLINE' || st === 'STANDBY' || st === 'LOCAL_OFFLINE') {
+              return false;
+            }
+            if (st === 'CONFIGURED' || st === 'READY' || st === 'ONLINE' || st === 'ACTIVE') {
+              return true;
+            }
+            if (info.isConfigured) return true;
+          }
+
+          return false;
+        };
+
+        // Construct activeChain strictly from connected & detected providers
+        const liveChain: string[] = [];
+        if (primary && isConnectedAndLive(primary) && !disabled.includes(primary)) {
+          liveChain.push(primary);
         }
 
+        rawOrder.forEach((pid) => {
+          if (!liveChain.includes(pid) && isConnectedAndLive(pid) && !disabled.includes(pid)) {
+            liveChain.push(pid);
+          }
+        });
+
+        // Check any other discovered providers that are connected
+        Object.keys(merged).forEach((pid) => {
+          if (!liveChain.includes(pid) && isConnectedAndLive(pid) && !disabled.includes(pid)) {
+            liveChain.push(pid);
+          }
+        });
+
+        setActiveChain(liveChain);
+        setDisabledList(disabled);
+        setPrimaryProvider(liveChain[0] || primary);
         setProvidersData(merged);
       }
     } catch {
@@ -141,7 +247,10 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
     try {
       await systemService.updateRouting(payload);
     } catch {
-      // Standalone mode: UI state persists locally
+      setFeedbackBanner({
+        message: 'Backend unreachable: Failed to persist routing priority. Check port 8000.',
+        timestamp: new Date().toLocaleTimeString(),
+      });
     }
   };
 
@@ -159,7 +268,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
   const disableProvider = (providerId: string) => {
     const updatedChain = activeChain.filter((p) => p !== providerId);
     const updatedDisabled = Array.from(new Set([...disabledList, providerId]));
-    const newPrimary = updatedChain[0] || 'local';
+    const newPrimary = updatedChain[0] || primaryProvider;
     const pName = providersData[providerId]?.name || providerId.toUpperCase();
     persistRouting(updatedChain, updatedDisabled, newPrimary, `Disabled ${pName}`);
   };
@@ -199,7 +308,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
             Interactive LLM Routing Orchestrator & Fallback Priority
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Drag cards or use controls to set fallback order. Sub-second queries failover instantly if a provider is rate-limited or offline.
+            Only verified, connected LLMs are shown in the active execution chain. Sub-second queries failover sequentially down the chain.
           </p>
         </div>
         <button
@@ -216,136 +325,155 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
 
       {/* Confirmation Banner */}
       {feedbackBanner && (
-        <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-200 text-xs shadow-xs animate-in fade-in duration-200">
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-xs shadow-xs animate-in fade-in duration-200">
           <div className="flex items-center gap-1.5 truncate">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-white shrink-0" />
             <span className="font-medium truncate">{feedbackBanner.message}</span>
-            <span className="text-[10px] opacity-75 shrink-0">({feedbackBanner.timestamp})</span>
+            <span className="text-[10px] opacity-75 shrink-0 font-mono">({feedbackBanner.timestamp})</span>
           </div>
           <button
             type="button"
             onClick={() => setFeedbackBanner(null)}
-            className="text-emerald-700 hover:text-emerald-900 dark:hover:text-white shrink-0 cursor-pointer text-xs"
+            className="text-zinc-400 hover:text-white shrink-0 cursor-pointer text-xs"
           >
             ✕
           </button>
         </div>
       )}
 
-      {/* Active Fallback Chain Cards (Drag & Drop) */}
+      {/* Active Inference Chain Cards (Drag & Drop) */}
       <div className="flex flex-col gap-1.5">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between">
-          <span>ACTIVE INFERENCE CHAIN (RANKED #1 TO #{activeChain.length})</span>
+          <span>ACTIVE INFERENCE CHAIN (RANKED #1 TO #{Math.max(1, activeChain.length)})</span>
           <span className="text-[10px] font-normal normal-case">Top provider executes first; falls through on error</span>
         </div>
 
         <div className="flex flex-col gap-1">
-          {activeChain.map((providerId, idx) => {
-            const p = providersData[providerId] || {
-              id: providerId,
-              name: CLEAN_PROVIDER_NAMES[providerId] || providerId.toUpperCase(),
-            };
-            const isPrimary = idx === 0;
-            const isDragged = draggedIndex === idx;
-            const isDropTarget = dragOverIndex === idx;
+          {activeChain.length === 0 ? (
+            <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] text-center space-y-1">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                No active LLM engine connected yet
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Configure a cloud API key (e.g. Gemini, Groq) or launch a local container (vLLM / Ollama) to activate the inference chain.
+              </p>
+            </div>
+          ) : (
+            activeChain.map((providerId, idx) => {
+              const p = providersData[providerId] || {
+                id: providerId,
+                name: CLEAN_PROVIDER_NAMES[providerId] || providerId.toUpperCase(),
+              };
+              const isPrimary = idx === 0;
+              const isDragged = draggedIndex === idx;
+              const isDropTarget = dragOverIndex === idx;
 
-            return (
-              <div
-                key={providerId}
-                draggable
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDrop={(e) => handleDrop(e, idx)}
-                onDragEnd={() => {
-                  setDraggedIndex(null);
-                  setDragOverIndex(null);
-                }}
-                className={`flex items-center justify-between px-3 py-2 rounded-xl border transition-all select-none ${
-                  isPrimary
-                    ? 'bg-indigo-50/70 dark:bg-indigo-500/10 border-indigo-300 dark:border-indigo-500/40 shadow-xs'
-                    : 'bg-white dark:bg-white/[0.03] border-slate-200 dark:border-white/10 hover:border-slate-300'
-                } ${isDragged ? 'opacity-40 scale-98' : ''} ${
-                  isDropTarget ? 'ring-2 ring-indigo-500 border-transparent' : ''
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span
-                    className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 shrink-0"
-                    title="Drag to reorder"
-                  >
-                    <GripVertical className="w-4 h-4" />
-                  </span>
-
-                  <span
-                    className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold shrink-0 ${
-                      isPrimary
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-slate-100 dark:bg-white/15 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {idx + 1}
-                  </span>
-
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
-                      {p.name}
+              return (
+                <div
+                  key={providerId}
+                  draggable={activeChain.length > 1}
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  onDragEnd={() => {
+                    setDraggedIndex(null);
+                    setDragOverIndex(null);
+                  }}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl border transition-all select-none ${
+                    isPrimary
+                      ? 'bg-white/10 border-white/40 text-white shadow-xs'
+                      : 'bg-white dark:bg-white/[0.03] border-slate-200 dark:border-white/10 hover:border-slate-300'
+                  } ${isDragged ? 'opacity-40 scale-98' : ''} ${
+                    isDropTarget ? 'ring-2 ring-white border-transparent' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`text-slate-400 shrink-0 ${
+                        activeChain.length > 1
+                          ? 'cursor-grab active:cursor-grabbing hover:text-slate-600 dark:hover:text-slate-300'
+                          : 'opacity-30 cursor-default'
+                      }`}
+                      title={activeChain.length > 1 ? 'Drag to reorder' : 'Single provider active'}
+                    >
+                      <GripVertical className="w-4 h-4" />
                     </span>
-                    {isPrimary && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-[9.5px] font-bold uppercase tracking-wider">
-                        PRIMARY #1
+
+                    <span
+                      className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold shrink-0 ${
+                        isPrimary
+                          ? 'bg-white text-black'
+                          : 'bg-slate-100 dark:bg-white/15 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
+                        {p.name}
                       </span>
-                    )}
-                    {p.isOffline && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-400 text-[9.5px] font-medium">
-                        Offline
+                      {isPrimary ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white text-black text-[9.5px] font-bold uppercase tracking-wider">
+                          PRIMARY #1
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/20 text-[9.5px] font-medium">
+                          FALLBACK #{idx + 1}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/15 text-[9.5px] font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse" />
+                        Online
                       </span>
-                    )}
+                    </div>
+                  </div>
+
+                  {/* Reordering Controls: Up, Down, Disable */}
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => moveItem(idx, idx - 1)}
+                      disabled={idx === 0}
+                      className="p-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-20 cursor-pointer"
+                      title="Move Up"
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => moveItem(idx, idx + 1)}
+                      disabled={idx === activeChain.length - 1}
+                      className="p-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-20 cursor-pointer"
+                      title="Move Down"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => disableProvider(providerId)}
+                      disabled={activeChain.length <= 1}
+                      className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-20 cursor-pointer"
+                      title="Disable provider"
+                    >
+                      <Power className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-
-                {/* Reordering Controls: Up, Down, Disable - clean, minimal, no 'Make #1' clutter */}
-                <div className="flex items-center gap-1 shrink-0 ml-2">
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, idx - 1)}
-                    disabled={idx === 0}
-                    className="p-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-20 cursor-pointer"
-                    title="Move Up"
-                  >
-                    <ArrowUp className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, idx + 1)}
-                    disabled={idx === activeChain.length - 1}
-                    className="p-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-20 cursor-pointer"
-                    title="Move Down"
-                  >
-                    <ArrowDown className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => disableProvider(providerId)}
-                    disabled={activeChain.length <= 1}
-                    className="p-1 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors disabled:opacity-20 cursor-pointer"
-                    title="Disable provider"
-                  >
-                    <Power className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
+
 
       {/* Disabled Providers Pool */}
       {disabledList.length > 0 && (
         <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-200/80 dark:border-white/10">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            DISABLED PROVIDERS (BYPASSED ENTIRELY DURING EXECUTION)
+            DISABLED PROVIDERS (EXCLUDED MANUALLY)
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {disabledList.map((pId) => {
@@ -359,7 +487,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                   <button
                     type="button"
                     onClick={() => enableProvider(pId)}
-                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer pl-1"
+                    className="text-[11px] text-white hover:underline font-semibold cursor-pointer pl-1"
                   >
                     Enable
                   </button>

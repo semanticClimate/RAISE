@@ -18,7 +18,7 @@ export const documentsQueryOptions = () =>
       const resp = await sourceService.getDocuments(signal);
       return resp.data?.documents ?? [];
     },
-    staleTime: 60_000,
+    staleTime: 5_000,
     gcTime: 10 * 60_000,
   });
 

@@ -1,19 +1,33 @@
 /**
  * Document Ingestion Pipeline Stage Utilities
- * Maps ingestion progress percentage and phase to descriptive human-readable pipeline stages.
+ * Maps ingestion progress percentage and phase to descriptive human-readable pipeline stages:
+ * parsing ➔ chunking ➔ vectorizing ➔ graph_extraction ➔ completed
  */
 export function getDocumentStageLabel(progress: number, phase?: string): string {
-  if (phase === 'failed') return 'Ingestion failed';
-  if (phase === 'ready' || progress >= 100) return 'Ready';
+  const normPhase = (phase || '').toLowerCase().trim();
+  if (normPhase === 'failed' || normPhase === 'error') return 'Ingestion failed';
+  if (normPhase === 'ready' || normPhase === 'completed' || progress >= 100) return 'Completed';
 
-  if (phase === 'embedding' || progress >= 85) {
-    return 'Indexing embeddings & graph...';
+  if (
+    normPhase === 'graph_extraction' ||
+    normPhase.includes('graph') ||
+    (progress >= 85 && normPhase !== 'vectorizing' && normPhase !== 'embedding')
+  ) {
+    return 'Extracting knowledge graph & entities...';
   }
-  if (phase === 'chunking' || progress >= 65) {
-    return 'Extracting semantic chunks...';
+  if (
+    normPhase === 'vectorizing' ||
+    normPhase === 'embedding' ||
+    normPhase.includes('vector') ||
+    progress >= 70
+  ) {
+    return 'Dense vector indexing (ChromaDB)...';
   }
-  if (phase === 'parsing' || progress >= 35) {
+  if (normPhase === 'chunking' || normPhase.includes('chunk') || progress >= 45) {
+    return 'Extracting semantic chunks (GGAHC)...';
+  }
+  if (normPhase === 'parsing' || normPhase.includes('parse') || progress >= 20) {
     return 'Parsing layout & tables (Docling)...';
   }
-  return 'Uploading file...';
+  return 'Uploading document...';
 }

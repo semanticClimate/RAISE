@@ -51,6 +51,7 @@ export interface ChatMessage {
   feedback?: 'thumbs_up' | 'thumbs_down' | null;
   id?: string;
   pipeline_info?: PipelineInfo;
+  mode?: 'fast' | 'expert' | 'conversational';
 }
 
 export interface ChatSession {

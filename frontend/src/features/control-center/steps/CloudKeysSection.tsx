@@ -1,6 +1,6 @@
 import { CheckCircle2, Eye, EyeOff, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { DynamicModelItem } from '../../../hooks/useDynamicModels';
 import { platformAdapter } from '../services/platformAdapter';
 import { useControlCenterStore } from '../store/useControlCenterStore';
@@ -59,6 +59,49 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
     }
   };
 
+  // Synthesize verified / configured keys from config.apiKeys with live backend models
+  const configuredKeys = useMemo(() => {
+    return (config.apiKeys || []).filter(
+      (k) => (k?.key && k.key.trim().length > 0 && k.provider !== 'unknown') || k?.verified === true
+    );
+  }, [config.apiKeys]);
+
+  const activeCloudModels = useMemo<DynamicModelItem[]>(() => {
+    const list: DynamicModelItem[] = [...cloudDiscoveredLLMs];
+
+    // For any configured or verified key in the store, ensure it's represented
+    configuredKeys.forEach((k) => {
+      const pId = k.provider.toLowerCase();
+      const alreadyIncluded = list.some((m) => m.provider.toLowerCase() === pId);
+      if (!alreadyIncluded) {
+        const isVerified = k.verified === true || (typeof k.latencyMs === 'number' && k.latencyMs > 0);
+        const modelName =
+          pId === 'gemini'
+            ? 'gemini-2.5-flash'
+            : pId === 'groq'
+              ? 'openai/gpt-oss-120b'
+              : pId === 'custom' || pId === 'universal'
+                ? 'Universal Custom LLM'
+                : `${k.providerName || pId} Model`;
+
+        list.push({
+          provider: k.provider,
+          displayName: k.providerName || k.provider.toUpperCase(),
+          model: modelName,
+          status: isVerified ? 'READY' : 'CONFIGURED',
+          isActive: isVerified || list.length === 0,
+          tier: k.latencyMs
+            ? `Connected (${k.latencyMs}ms)`
+            : isVerified
+              ? 'Connected (Live)'
+              : 'Configured',
+        });
+      }
+    });
+
+    return list;
+  }, [cloudDiscoveredLLMs, configuredKeys]);
+
   return (
     <div className="space-y-4">
       <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 space-y-3">
@@ -102,8 +145,8 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
                       </span>
                     )}
                     {isFromEnv && (
-                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
+                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-white/10 text-white border border-white/20 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-white" />
                         From .env {item.envVarName ? `(${item.envVarName})` : ''}
                       </span>
                     )}
@@ -111,14 +154,14 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
 
                   <div className="flex items-center gap-2">
                     {item.verified === true && (
-                      <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        <CheckCircle2 className="w-3 h-3" />
+                      <span className="text-[10px] font-mono text-white flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded border border-white/20">
+                        <CheckCircle2 className="w-3 h-3 text-white" />
                         Available ({item.latencyMs || 45}ms)
                       </span>
                     )}
                     {item.verified === false && (
-                      <span className="text-[10px] font-mono text-rose-400 flex items-center gap-1 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
-                        <XCircle className="w-3 h-3" />
+                      <span className="text-[10px] font-mono text-zinc-400 flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                        <XCircle className="w-3 h-3 text-zinc-400" />
                         Unavailable
                       </span>
                     )}
@@ -135,11 +178,11 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
                             refetchLiveModels();
                           }
                         }}
-                        className="text-slate-400 hover:text-rose-400 transition-colors p-1 cursor-pointer flex items-center gap-1 text-[11px]"
+                        className="text-slate-400 hover:text-white transition-colors p-1 cursor-pointer flex items-center gap-1 text-[11px]"
                         title="Delete / Clear API Key"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        <span className="text-[10px] text-slate-500 hover:text-rose-400">Clear</span>
+                        <span className="text-[10px] text-slate-500 hover:text-white">Clear</span>
                       </button>
                     )}
                   </div>
@@ -240,8 +283,8 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 flex-wrap">
                 <span>Cloud Models:</span>
-                <span className="text-[11px] font-mono text-emerald-400">
-                  {cloudDiscoveredLLMs.length} active
+                <span className="text-[11px] font-mono text-white font-bold">
+                  {activeCloudModels.length} active
                 </span>
                 {liveActiveModel && !isLocalProvider(liveActiveModel) && (
                   <span className="text-[10px] font-mono text-slate-400">
@@ -260,25 +303,25 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
               </button>
             </div>
 
-            {cloudDiscoveredLLMs.length === 0 ? (
+            {activeCloudModels.length === 0 ? (
               <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 flex items-center gap-2">
                 <span>Add a valid API key above to activate cloud models.</span>
               </div>
             ) : (
               <div className="space-y-1.5">
-                {cloudDiscoveredLLMs.map((m) => (
+                {activeCloudModels.map((m) => (
                   <div
                     key={`${m.provider}-${m.model}`}
                     className={`p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
                       m.isActive
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                        ? 'bg-white/10 border-white/30 text-white shadow-sm'
                         : 'bg-[#131622] border-white/10 text-slate-300'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className={`w-2 h-2 rounded-full shrink-0 ${
-                          m.isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+                          m.isActive ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] animate-pulse' : 'bg-zinc-600'
                         }`}
                       />
                       <span className="font-semibold truncate">{m.displayName}</span>
@@ -293,7 +336,7 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
                         </span>
                       )}
                       {m.isActive && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white text-black">
                           Active
                         </span>
                       )}

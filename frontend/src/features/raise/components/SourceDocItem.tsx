@@ -97,7 +97,7 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
             <span>•</span>
             {isProcessing ? (
               <span className="text-amber-600 dark:text-amber-400 font-medium animate-pulse truncate">
-                {getDocumentStageLabel(progress)} ({Math.round(progress)}%)
+                {getDocumentStageLabel(progress, (doc as any).phase)} ({Math.round(progress)}%)
               </span>
             ) : (
               <>

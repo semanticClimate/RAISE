@@ -155,6 +155,13 @@ export function synthesizeSubgraphResponse(
         ? meta.nli_verifier_model
         : 'Deterministic Claim Verifier';
 
+  const effectiveModeUsed =
+    (meta as any).mode_used ||
+    (meta as any).mode ||
+    (rawPipelineInfo as any).mode ||
+    req.mode ||
+    'fast';
+
   const pipelineInfo: PipelineInfo = {
     storage_used: storageUsed,
     llm_provider: llmProvider,
@@ -162,7 +169,8 @@ export function synthesizeSubgraphResponse(
     encoder_model: encoderModel,
     reranker_model: rerankerModel,
     nli_verifier_model: nliVerifierModel,
-  };
+    mode: effectiveModeUsed,
+  } as PipelineInfo;
 
   const synthesizedResp: SubgraphQueryResponse = {
     query: req.query,
@@ -179,6 +187,7 @@ export function synthesizeSubgraphResponse(
     encoder_model: encoderModel,
     reranker_model: rerankerModel,
     nli_verifier_model: nliVerifierModel,
+    mode_used: effectiveModeUsed,
     latency_sec:
       typeof meta.latency_sec === 'number' && meta.latency_sec > 0
         ? meta.latency_sec
