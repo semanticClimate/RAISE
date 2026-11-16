@@ -250,13 +250,13 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
 
         {/* Empty State: Explains clearly what to do next */}
         {configuredKeys.length === 0 && (
-          <div className="p-4 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] text-left space-y-2">
+          <div className="p-3 rounded-xl border border-dashed border-white/15 bg-white/[0.02] text-left space-y-1">
             <div className="flex items-center gap-2 text-xs font-bold text-white">
-              <HelpCircle className="w-4 h-4 text-slate-300" />
+              <HelpCircle className="w-3.5 h-3.5 text-slate-300" />
               <span>No Cloud Providers Connected</span>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Connect your cloud model provider (Google Gemini, Groq, OpenAI, etc.) below by pasting your API key. Once connected, your active engine will automatically power sub-second research queries.
+            <p className="text-[11px] text-slate-400">
+              Paste an API key (Google Gemini, Groq, OpenAI) below to enable research inference.
             </p>
           </div>
         )}
@@ -421,7 +421,7 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
 
       {/* 2. ADD CLOUD PROVIDER FORM (COLLAPSIBLE / STREAMLINED) */}
       {formShouldShow && (
-        <div className="p-4 rounded-2xl bg-[#111111] border border-[#292929] space-y-3.5 shadow-sm animate-in fade-in duration-150">
+        <div className="p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-2.5 shadow-sm animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Plus className="w-4 h-4 text-white" />

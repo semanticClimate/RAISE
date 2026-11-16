@@ -328,14 +328,14 @@ export const DatabaseStep: React.FC = () => {
     envData.postgres.present || envData.redis.present || envData.neo4j.present;
 
   return (
-    <div className="space-y-4 animate-in fade-in-50 duration-150">
+    <div className="space-y-3 animate-in fade-in-50 duration-150">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-bold text-white tracking-tight">
+          <h3 className="text-sm font-bold text-white tracking-tight">
             Storage Substrates
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Configure Graph, Memory, Cache, and Vector stores with runtime fallback.
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Graph, memory, cache & vector stores with fallback.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -348,7 +348,7 @@ export const DatabaseStep: React.FC = () => {
             type="button"
             onClick={handleTestAllSubstrates}
             disabled={isTestingSubstrates}
-            className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            className="px-2.5 py-1 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
             title="Probe live connectivity for all configured substrates"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin text-white' : ''}`} />
@@ -363,14 +363,14 @@ export const DatabaseStep: React.FC = () => {
         <button
           type="button"
           onClick={() => handleSetAllSubstrates('in_memory_fallback')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllMemory
               ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
               : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
           title="Zero-dependency fast in-memory execution"
         >
-          <Cpu className={`w-4 h-4 ${isAllMemory ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
+          <Cpu className={`w-3.5 h-3.5 ${isAllMemory ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
           <span>Fast Local</span>
         </button>
 
@@ -378,14 +378,14 @@ export const DatabaseStep: React.FC = () => {
         <button
           type="button"
           onClick={() => handleSetAllSubstrates('local')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllLocal
               ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
               : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
           title="Local Docker container daemons"
         >
-          <Database className={`w-4 h-4 ${isAllLocal ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
+          <Database className={`w-3.5 h-3.5 ${isAllLocal ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
           <span>Docker Local</span>
         </button>
 
@@ -393,21 +393,21 @@ export const DatabaseStep: React.FC = () => {
         <button
           type="button"
           onClick={() => handleSetAllSubstrates('cloud')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllCloud
               ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
               : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
           title="Cloud-hosted database endpoints"
         >
-          <Cloud className={`w-4 h-4 ${isAllCloud ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
+          <Cloud className={`w-3.5 h-3.5 ${isAllCloud ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
           <span>Cloud Managed</span>
         </button>
       </div>
 
       {/* .env Detection Banner */}
       {hasAnyDbInEnv && (
-        <div className="p-2.5 rounded-xl bg-white/5 border border-white/15 flex items-center justify-between text-xs">
+        <div className="p-2 rounded-xl bg-white/5 border border-white/15 flex items-center justify-between text-xs">
           <div>
             <div className="font-semibold text-white flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-white" />
@@ -422,7 +422,7 @@ export const DatabaseStep: React.FC = () => {
           <button
             type="button"
             onClick={() => handleSetAllSubstrates('cloud')}
-            className="px-2.5 py-1 rounded bg-white hover:bg-zinc-200 text-black text-xs font-bold transition-all cursor-pointer shrink-0"
+            className="px-2 py-0.5 rounded bg-white hover:bg-zinc-200 text-black text-xs font-bold transition-all cursor-pointer shrink-0"
           >
             Apply
           </button>
@@ -434,10 +434,10 @@ export const DatabaseStep: React.FC = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-[#292929] bg-[#0A0A0A] text-xs font-semibold text-[#A3A3A3]">
-              <th className="py-2.5 px-4">Substrate</th>
-              <th className="py-2.5 px-3 text-center">Fast Local</th>
-              <th className="py-2.5 px-3 text-center">Docker Local</th>
-              <th className="py-2.5 px-3 text-center">Cloud Managed</th>
+              <th className="py-2 px-3">Substrate</th>
+              <th className="py-2 px-3 text-center">Fast Local</th>
+              <th className="py-2 px-3 text-center">Docker Local</th>
+              <th className="py-2 px-3 text-center">Cloud Managed</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#292929]/60 text-xs">
@@ -453,17 +453,17 @@ export const DatabaseStep: React.FC = () => {
               return (
                 <tr key={sub.key} className="hover:bg-white/[0.02] transition-colors">
                   {/* Row Header (Substrate with Tooltip) */}
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-white shrink-0">
-                        <Icon className="w-3.5 h-3.5 text-white" />
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-white/10 flex items-center justify-center text-white shrink-0">
+                        <Icon className="w-3 h-3 text-white" />
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-white text-xs">{sub.name}</span>
                           <Tooltip size="sm" content={sub.info} />
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                        <div className="text-[10px] text-slate-400 font-mono">
                           {sub.getRole(currentMode)}
                         </div>
                       </div>
@@ -471,11 +471,11 @@ export const DatabaseStep: React.FC = () => {
                   </td>
 
                   {/* Fast Local Cell */}
-                  <td className="py-3.5 px-3 text-center">
+                  <td className="py-2 px-3 text-center">
                     <button
                       type="button"
                       onClick={() => handleSelectSubstrateMode(sub.key, 'in_memory_fallback')}
-                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all cursor-pointer ${
                         isMemory
                           ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
@@ -485,7 +485,7 @@ export const DatabaseStep: React.FC = () => {
                     >
                       {isMemory ? (
                         <>
-                          <Check className="w-4 h-4 stroke-[2.5]" />
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                           <span className="sr-only">Fast Local</span>
                         </>
                       ) : (
@@ -495,11 +495,11 @@ export const DatabaseStep: React.FC = () => {
                   </td>
 
                   {/* Docker Local Cell */}
-                  <td className="py-3.5 px-3 text-center">
+                  <td className="py-2 px-3 text-center">
                     <button
                       type="button"
                       onClick={() => handleSelectSubstrateMode(sub.key, 'local')}
-                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all cursor-pointer ${
                         isLocal
                           ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
@@ -509,7 +509,7 @@ export const DatabaseStep: React.FC = () => {
                     >
                       {isLocal ? (
                         <>
-                          <Check className="w-4 h-4 stroke-[2.5]" />
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                           <span className="sr-only">Docker Local</span>
                         </>
                       ) : (
@@ -519,11 +519,11 @@ export const DatabaseStep: React.FC = () => {
                   </td>
 
                   {/* Cloud Managed Cell */}
-                  <td className="py-3.5 px-3 text-center">
+                  <td className="py-2 px-3 text-center">
                     <button
                       type="button"
                       onClick={() => handleOpenCloudModal(sub.key)}
-                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all cursor-pointer ${
                         isCloud && cfg?.online === true
                           ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : isCloud
@@ -545,17 +545,17 @@ export const DatabaseStep: React.FC = () => {
                     >
                       {isCloud && cfg?.online === true ? (
                         <>
-                          <Check className="w-4 h-4 stroke-[2.5]" />
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                           <span className="sr-only">Cloud Managed</span>
                         </>
                       ) : isTestingSubstrates ? (
                         <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                          <RefreshCw className="w-3 h-3 animate-spin text-white" />
                           <span className="sr-only">Testing connection...</span>
                         </>
                       ) : isCloud ? (
                         <>
-                          <RotateCcw className="w-3.5 h-3.5 text-white stroke-[2.5] transition-transform duration-300 group-hover:-rotate-45" />
+                          <RotateCcw className="w-3 h-3 text-white stroke-[2.5] transition-transform duration-300 group-hover:-rotate-45" />
                           <span className="sr-only">Click to configure and connect</span>
                         </>
                       ) : (
@@ -571,19 +571,19 @@ export const DatabaseStep: React.FC = () => {
       </div>
 
       {/* ChromaDB Dense Vector Engine Substrate */}
-      <div className="p-3.5 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between text-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#171717] text-[#FFFFFF] border border-[#292929] flex items-center justify-center shrink-0 font-mono font-bold text-xs">
+      <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-[#171717] text-[#FFFFFF] border border-[#292929] flex items-center justify-center shrink-0 font-mono font-bold text-xs">
             V
           </div>
           <div>
             <div className="font-bold text-[#FFFFFF] flex items-center gap-2">
               <span>Vector Store</span>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[#171717] text-[#FFFFFF] border border-[#292929] font-mono">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#171717] text-[#FFFFFF] border border-[#292929] font-mono">
                 ChromaDB (Local Embedded)
               </span>
             </div>
-            <div className="text-[11px] text-[#A3A3A3] font-mono mt-0.5">
+            <div className="text-[10.5px] text-[#A3A3A3] font-mono mt-0.5">
               Dense document embeddings & semantic similarity • Fast embedded SQLite/Parquet vector persistence
             </div>
           </div>
