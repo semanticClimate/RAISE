@@ -241,9 +241,7 @@ export function formatMarkdownReport(
   lines.push('');
   lines.push('### 🔬 Architecture Running');
   lines.push(`* **Storage Substrates:** ${prov.storageUsed}`);
-  lines.push(`* **Dense Embedding Encoder:** ${prov.encoderModel}`);
-  lines.push(`* **Cross-Attention Reranker:** ${prov.rerankerModel}`);
-  lines.push(`* **NLI Entailment Verifier:** ${prov.nliVerifierModel}`);
+  lines.push(`* **Reasoning Pipeline:** ${prov.synthesisMethod}`);
   lines.push('* **Platform Attribution:** RAISE');
   lines.push('');
 
@@ -1153,9 +1151,6 @@ export function generateReportHtml(
         <div><strong style="color: #475569;">Research Engine Mode:</strong> <span style="color: ${prov.mode === 'expert' ? '#7c3aed' : '#0284c7'}; font-weight: 600;">${escapeHtml(prov.modeDisplay)}</span></div>
         <div><strong style="color: #475569;">Reasoning Pipeline:</strong> <span style="color: #0f172a;">${escapeHtml(prov.synthesisMethod)}</span></div>
         <div><strong style="color: #475569;">Storage Substrates:</strong> <span style="color: #0f172a;">${escapeHtml(prov.storageUsed)}</span></div>
-        <div><strong style="color: #475569;">Dense Embedding Encoder:</strong> <span style="color: #0f172a;">${escapeHtml(prov.encoderModel)}</span></div>
-        <div><strong style="color: #475569;">Cross-Attention Reranker:</strong> <span style="color: #0f172a;">${escapeHtml(prov.rerankerModel)}</span></div>
-        <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(prov.nliVerifierModel)}</span></div>
         <div><strong style="color: #475569;">Platform Attribution:</strong> <span style="color: #0f172a;">RAISE</span></div>
       </div>
     </section>
@@ -1819,10 +1814,8 @@ export function generatePdfBlob(
     ...(prov.mode !== 'conversational' && !String(prov.modeDisplay).toLowerCase().includes('conversational')
       ? [{ label: 'Research Mode:', val: prov.modeDisplay }]
       : []),
+    { label: 'Reasoning Pipeline:', val: prov.synthesisMethod },
     { label: 'Storage Substrates:', val: prov.storageUsed },
-    { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
-    { label: 'Cross-Attention Reranker:', val: prov.rerankerModel },
-    { label: 'NLI Entailment Verifier:', val: prov.nliVerifierModel },
     { label: 'Platform Attribution:', val: 'RAISE' },
   ];
 
@@ -2453,14 +2446,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       const isConversational = String(msgMode).toLowerCase().includes('conversational');
       const isExpert = String(msgMode).toLowerCase().includes('expert');
       const modeLabel = isExpert ? 'Expert Mode' : 'Fast Mode';
-      const rawProvModel =
-        (ex.assistantMsg.response as any)?.pipeline_info?.llm_model ||
-        (ex.assistantMsg.response as any)?.llm_model ||
-        (ex.assistantMsg as any).model ||
-        '';
-      const provModel =
-        rawProvModel && !rawProvModel.toLowerCase().includes('gemini-3.5') ? rawProvModel : '';
-      const modeBadge = provModel ? `[${modeLabel} • ${provModel}]` : `[${modeLabel}]`;
+      const modeBadge = `[${modeLabel}]`;
       const modeBadgeWidth = estimateHelveticaWidth(modeBadge, 7.5);
 
       ensureSpace(20);
@@ -2570,10 +2556,8 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
     ...(sProv.mode !== 'conversational' && !String(sProv.modeDisplay).toLowerCase().includes('conversational')
       ? [{ label: 'Research Mode:', val: sProv.modeDisplay }]
       : []),
+    { label: 'Reasoning Pipeline:', val: sProv.synthesisMethod },
     { label: 'Storage Substrates:', val: sProv.storageUsed },
-    { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },
-    { label: 'Cross-Attention Reranker:', val: sProv.rerankerModel },
-    { label: 'NLI Entailment Verifier:', val: sProv.nliVerifierModel },
     { label: 'Platform Attribution:', val: 'RAISE' },
   ];
 
