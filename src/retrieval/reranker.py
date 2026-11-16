@@ -150,7 +150,7 @@ class CrossEncoderReranker:
             try:
                 from src.core.config import resolve_local_model_path
                 resolved_name = resolve_local_model_path(self.model_name)
-                target_model = models.RERANKER_MODEL_NAME if ("bge-reranker" in resolved_name.lower() or "jina" in resolved_name.lower()) else resolved_name
+                target_model = resolved_name
 
                 target_dtype = (
                     torch.bfloat16
