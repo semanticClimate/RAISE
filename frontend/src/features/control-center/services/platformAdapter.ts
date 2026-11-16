@@ -466,11 +466,20 @@ export const platformAdapter = {
       if (res.ok) {
         const data = (await res.json().catch(() => null)) as Record<string, any> | null;
         if (data && typeof data.online === 'boolean') {
-          return {
-            available: data.online,
-            latencyMs: Math.max(12, data.latency_ms ?? elapsed),
-            error: data.online ? undefined : (data.error || 'Authentication rejected by provider'),
-          };
+          // If Gemini returned HTTP 403 due to Google's /v1beta/models catalog listing restriction on standard AI Studio keys:
+          const isGeminiCatalog403 =
+            cleanProv === 'gemini' &&
+            !data.online &&
+            (data.code === 403 || String(data.error).includes('403'));
+
+          if (!isGeminiCatalog403) {
+            return {
+              available: data.online,
+              latencyMs: Math.max(12, data.latency_ms ?? elapsed),
+              error: data.online ? undefined : (data.error || 'Authentication rejected by provider'),
+            };
+          }
+          // For standard AI Studio keys encountering the Google /models catalog 403, proceed to test-llm-key probe
         }
       }
 
@@ -482,6 +491,7 @@ export const platformAdapter = {
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({
             llm_mode: cleanProv === 'ollama' ? 'local_ollama' : `cloud_${cleanProv}`,
+            llm_backend: cleanProv,
             [`${cleanProv}_api_key`]: cleanKey,
           }),
         },

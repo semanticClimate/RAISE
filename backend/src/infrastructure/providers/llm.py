@@ -71,6 +71,10 @@ class LocalVLLMProvider(BaseLLMProvider):
 
     def is_available(self) -> bool:
         """Fast non-blocking check to determine if the local vLLM server is alive across common ports and Docker networks."""
+        now = time.time()
+        if hasattr(self, "_last_check_time") and (now - self._last_check_time) < 3.0:
+            return bool(getattr(self, "_last_available", False))
+
         candidate_urls = [self.base_url]
         for candidate in getattr(settings.llm, "vllm_candidate_urls", ()):
             if candidate and candidate not in candidate_urls:
@@ -119,9 +123,13 @@ class LocalVLLMProvider(BaseLLMProvider):
                                     self.model_name = discovered_id
                         except Exception:
                             pass
+                        self._last_check_time = now
+                        self._last_available = True
                         return True
             except Exception:
                 pass
+        self._last_check_time = now
+        self._last_available = False
         return False
 
     async def complete_stream(
@@ -486,6 +494,10 @@ class LocalOllamaProvider(BaseLLMProvider):
 
     def is_available(self) -> bool:
         """Fast non-blocking check to determine if local Ollama server is alive and has models."""
+        now = time.time()
+        if hasattr(self, "_last_check_time") and (now - self._last_check_time) < 3.0:
+            return bool(getattr(self, "_last_available", False))
+
         candidate_urls = [self.base_url]
         ollama_cfg_url = getattr(settings.llm, "ollama_base_url", "http://localhost:11434")
         if ollama_cfg_url not in candidate_urls:
@@ -495,7 +507,7 @@ class LocalOllamaProvider(BaseLLMProvider):
                 candidate_urls.append(fallback)
         if os.path.exists("/.dockerenv") and "http://host.docker.internal:11434" not in candidate_urls:
             candidate_urls.append("http://host.docker.internal:11434")
-        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.35))
+        probe_timeout = float(getattr(settings.llm, "probe_timeout", 0.2))
         for u in candidate_urls:
             try:
                 # Fast TCP pre-flight to avoid HTTP connect timeouts
@@ -518,6 +530,8 @@ class LocalOllamaProvider(BaseLLMProvider):
                         model_list = [m.get("name") for m in data.get("models", []) if m.get("name")]
                         if model_list and (not self.model_name or self.model_name == models.OLLAMA_MODEL_NAME):
                             self.model_name = model_list[0]
+                        self._last_check_time = now
+                        self._last_available = True
                         return True
             except Exception:
                 pass
@@ -532,9 +546,13 @@ class LocalOllamaProvider(BaseLLMProvider):
                         model_list = [m.get("id") for m in data.get("data", []) if m.get("id")]
                         if model_list and (not self.model_name or self.model_name == models.OLLAMA_MODEL_NAME):
                             self.model_name = model_list[0]
+                        self._last_check_time = now
+                        self._last_available = True
                         return True
             except Exception:
                 pass
+        self._last_check_time = now
+        self._last_available = False
         return False
 
     def health_check(self, timeout: float = 5.0) -> ProviderHealth:

@@ -116,7 +116,11 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
       ? rawStorage.trim()
       : 'ChromaDB (Vector) + SQLite (Local)';
 
-  const llmModel = pInfo?.llm_model || response?.llm_model || 'gemini-3.5-flash-lite';
+  const rawModel = pInfo?.llm_model || response?.llm_model || '';
+  const llmModel =
+    rawModel && !rawModel.toLowerCase().includes('gemini-3.5')
+      ? rawModel
+      : 'gemini-2.5-flash';
   const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
   const encoderModel = pInfo?.encoder_model || response?.encoder_model || 'google/embeddinggemma-2';
   const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'BAAI/bge-reranker-v2-m3';
@@ -237,7 +241,6 @@ export function formatMarkdownReport(
   lines.push('');
   lines.push('### 🔬 Architecture Running');
   lines.push(`* **Storage Substrates:** ${prov.storageUsed}`);
-  lines.push(`* **Synthesis LLM:** ${prov.llmModel} (${prov.llmProvider})`);
   lines.push(`* **Dense Embedding Encoder:** ${prov.encoderModel}`);
   lines.push(`* **Cross-Attention Reranker:** ${prov.rerankerModel}`);
   lines.push(`* **NLI Entailment Verifier:** ${prov.nliVerifierModel}`);
@@ -1150,7 +1153,6 @@ export function generateReportHtml(
         <div><strong style="color: #475569;">Research Engine Mode:</strong> <span style="color: ${prov.mode === 'expert' ? '#7c3aed' : '#0284c7'}; font-weight: 600;">${escapeHtml(prov.modeDisplay)}</span></div>
         <div><strong style="color: #475569;">Reasoning Pipeline:</strong> <span style="color: #0f172a;">${escapeHtml(prov.synthesisMethod)}</span></div>
         <div><strong style="color: #475569;">Storage Substrates:</strong> <span style="color: #0f172a;">${escapeHtml(prov.storageUsed)}</span></div>
-        <div><strong style="color: #475569;">Synthesis LLM:</strong> <span style="color: #0f172a;">${escapeHtml(`${prov.llmModel} (${prov.llmProvider})`)}</span></div>
         <div><strong style="color: #475569;">Dense Embedding Encoder:</strong> <span style="color: #0f172a;">${escapeHtml(prov.encoderModel)}</span></div>
         <div><strong style="color: #475569;">Cross-Attention Reranker:</strong> <span style="color: #0f172a;">${escapeHtml(prov.rerankerModel)}</span></div>
         <div><strong style="color: #475569;">NLI Entailment Verifier:</strong> <span style="color: #0f172a;">${escapeHtml(prov.nliVerifierModel)}</span></div>
@@ -1396,40 +1398,29 @@ export function formatMathFormula(latex: string): string {
   return s;
 }
 
+const HELVETICA_CHAR_WIDTHS: Record<number, number> = {
+  32: 278, 33: 278, 34: 355, 35: 556, 36: 556, 37: 889, 38: 667, 39: 222,
+  40: 333, 41: 333, 42: 389, 43: 584, 44: 278, 45: 333, 46: 278, 47: 278,
+  48: 556, 49: 556, 50: 556, 51: 556, 52: 556, 53: 556, 54: 556, 55: 556, 56: 556, 57: 556,
+  58: 278, 59: 278, 60: 584, 61: 584, 62: 584, 63: 556, 64: 1015,
+  65: 667, 66: 667, 67: 722, 68: 722, 69: 667, 70: 611, 71: 778, 72: 722, 73: 278, 74: 500,
+  75: 667, 76: 556, 77: 833, 78: 722, 79: 778, 80: 667, 81: 778, 82: 722, 83: 667, 84: 611,
+  85: 722, 86: 667, 87: 944, 88: 667, 89: 667, 90: 611,
+  91: 278, 92: 278, 93: 278, 94: 469, 95: 556, 96: 222,
+  97: 556, 98: 556, 99: 500, 100: 556, 101: 556, 102: 278, 103: 556, 104: 556, 105: 222,
+  106: 222, 107: 500, 108: 222, 109: 833, 110: 556, 111: 556, 112: 556, 113: 556, 114: 333,
+  115: 500, 116: 278, 117: 556, 118: 500, 119: 722, 120: 500, 121: 500, 122: 500,
+  123: 334, 124: 260, 125: 334, 126: 584,
+};
+
 /**
- * Estimates text width in points for standard Helvetica font.
+ * Estimates text width in points for standard Helvetica font based on official AFM metrics.
  */
 function estimateHelveticaWidth(text: string, fontSize: number): number {
   let units = 0;
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
-    if (code === 32) {
-      units += 278; // space
-    } else if (code >= 65 && code <= 90) {
-      // uppercase
-      if (code === 73)
-        units += 278; // I
-      else if (code === 77 || code === 87)
-        units += 833; // M, W
-      else units += 667;
-    } else if (code >= 97 && code <= 122) {
-      // lowercase
-      if (code === 105 || code === 108 || code === 116)
-        units += 250; // i, l, t
-      else if (code === 109 || code === 119)
-        units += 778; // m, w
-      else if (code === 102 || code === 114)
-        units += 333; // f, r
-      else units += 500;
-    } else if (code >= 48 && code <= 57) {
-      units += 556; // digits
-    } else if (code === 46 || code === 44 || code === 58 || code === 59) {
-      units += 278; // . , : ;
-    } else if (code === 40 || code === 41 || code === 91 || code === 93) {
-      units += 333; // ( ) [ ]
-    } else {
-      units += 500;
-    }
+    units += HELVETICA_CHAR_WIDTHS[code] ?? (code < 128 ? 556 : 600);
   }
   return (units / 1000) * fontSize;
 }
@@ -1453,21 +1444,19 @@ function formatPdfDate(date: Date = new Date()): string {
 }
 
 /**
- * Clean word-wrapping helper for fixed-width text columns.
- */
-/**
  * Typographic word-wrapping helper that wraps text based on points width in Helvetica.
- * Ensures lines use the full available width of container boxes without premature line breaks.
+ * Uses a conservative 96% boundary to guarantee that lines never exceed box or page bounds.
  */
 function wrapTextToWidth(text: string, maxWidthPts: number, fontSize: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let cur = '';
+  const effectiveMax = maxWidthPts * 0.96;
 
   for (const w of words) {
     if (!w) continue;
     const testLine = cur.length === 0 ? w : cur + ' ' + w;
-    if (estimateHelveticaWidth(testLine, fontSize) <= maxWidthPts) {
+    if (estimateHelveticaWidth(testLine, fontSize) <= effectiveMax) {
       cur = testLine;
     } else {
       if (cur.length > 0) {
@@ -1773,28 +1762,9 @@ export function generatePdfBlob(
         );
       }
 
-      // Typographic justification across lines using PDF word spacing operator 'Tw'
-      const isLastLine = idx === wrapped.length - 1;
-      const words = lineStr.trim().split(/\s+/);
-      let wordSpacing = 0;
-
-      if (!isLastLine && words.length > 1) {
-        const estWidth = estimateHelveticaWidth(lineStr, 9);
-        const diff = targetLineWidth - estWidth;
-        if (diff > 0 && diff < 70) {
-          wordSpacing = diff / (words.length - 1);
-        }
-      }
-
-      if (wordSpacing > 0) {
-        currentOps.push(
-          `BT /F1 9 Tf ${wordSpacing.toFixed(2)} Tw 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj 0 Tw ET`
-        );
-      } else {
-        currentOps.push(
-          `BT /F1 9 Tf 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj ET`
-        );
-      }
+      currentOps.push(
+        `BT /F1 9 Tf 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj ET`
+      );
       curY -= 13.5;
     }
   }
@@ -1845,23 +1815,22 @@ export function generatePdfBlob(
   );
   curY -= 24;
 
-  const cardHeight = 90;
-  currentOps.push(`0.97 0.98 0.99 rg`);
-  currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re f`);
-  currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
-  currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re s`);
-
   const specRows = [
     ...(prov.mode !== 'conversational' && !String(prov.modeDisplay).toLowerCase().includes('conversational')
       ? [{ label: 'Research Mode:', val: prov.modeDisplay }]
       : []),
     { label: 'Storage Substrates:', val: prov.storageUsed },
-    { label: 'Synthesis LLM:', val: `${prov.llmModel} (${prov.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
     { label: 'Cross-Attention Reranker:', val: prov.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: prov.nliVerifierModel },
     { label: 'Platform Attribution:', val: 'RAISE' },
   ];
+
+  const cardHeight = Math.max(40, specRows.length * 12 + 14);
+  currentOps.push(`0.97 0.98 0.99 rg`);
+  currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re f`);
+  currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
+  currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re s`);
 
   let specY = curY - 12;
   specRows.forEach((row) => {
@@ -2348,27 +2317,9 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
           );
         }
 
-        const isLastLine = idx === wrapped.length - 1;
-        const words = lineStr.trim().split(/\s+/);
-        let wordSpacing = 0;
-
-        if (!isLastLine && words.length > 1) {
-          const estWidth = estimateHelveticaWidth(lineStr, 9);
-          const diff = targetLineWidth - estWidth;
-          if (diff > 0 && diff < 70) {
-            wordSpacing = diff / (words.length - 1);
-          }
-        }
-
-        if (wordSpacing > 0) {
-          currentOps.push(
-            `BT /F1 9 Tf ${wordSpacing.toFixed(2)} Tw 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj 0 Tw ET`
-          );
-        } else {
-          currentOps.push(
-            `BT /F1 9 Tf 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj ET`
-          );
-        }
+        currentOps.push(
+          `BT /F1 9 Tf 0.15 0.18 0.24 rg ${indent} ${curY - 10} Td (${escapePdfText(lineStr)}) Tj ET`
+        );
         curY -= 13.5;
       }
     }
@@ -2502,11 +2453,13 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
       const isConversational = String(msgMode).toLowerCase().includes('conversational');
       const isExpert = String(msgMode).toLowerCase().includes('expert');
       const modeLabel = isExpert ? 'Expert Mode' : 'Fast Mode';
-      const provModel =
+      const rawProvModel =
         (ex.assistantMsg.response as any)?.pipeline_info?.llm_model ||
         (ex.assistantMsg.response as any)?.llm_model ||
         (ex.assistantMsg as any).model ||
         '';
+      const provModel =
+        rawProvModel && !rawProvModel.toLowerCase().includes('gemini-3.5') ? rawProvModel : '';
       const modeBadge = provModel ? `[${modeLabel} • ${provModel}]` : `[${modeLabel}]`;
       const modeBadgeWidth = estimateHelveticaWidth(modeBadge, 7.5);
 
@@ -2613,23 +2566,22 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   );
   curY -= 24;
 
-  const sessionCardHeight = 90;
-  currentOps.push(`0.97 0.98 0.99 rg`);
-  currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re f`);
-  currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
-  currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re s`);
-
   const sessionSpecRows = [
     ...(sProv.mode !== 'conversational' && !String(sProv.modeDisplay).toLowerCase().includes('conversational')
       ? [{ label: 'Research Mode:', val: sProv.modeDisplay }]
       : []),
     { label: 'Storage Substrates:', val: sProv.storageUsed },
-    { label: 'Synthesis LLM:', val: `${sProv.llmModel} (${sProv.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },
     { label: 'Cross-Attention Reranker:', val: sProv.rerankerModel },
     { label: 'NLI Entailment Verifier:', val: sProv.nliVerifierModel },
     { label: 'Platform Attribution:', val: 'RAISE' },
   ];
+
+  const sessionCardHeight = Math.max(40, sessionSpecRows.length * 12 + 14);
+  currentOps.push(`0.97 0.98 0.99 rg`);
+  currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re f`);
+  currentOps.push(`0.88 0.91 0.95 RG 0.75 w`);
+  currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re s`);
 
   let sessionSpecY = curY - 12;
   sessionSpecRows.forEach((row) => {

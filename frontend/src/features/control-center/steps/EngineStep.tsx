@@ -104,12 +104,16 @@ export const EngineStep: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <button
           type="button"
-          onClick={() =>
+          onClick={() => {
+            const firstConfigured = (config.apiKeys || []).find(
+              (k) => (k?.key && k.key.trim().length > 0 && k.provider !== 'unknown') || k?.verified === true
+            );
+            const prov = firstConfigured?.provider || 'gemini';
             updateConfig({
               llmDeployment: 'cloud',
-              llmMode: 'cloud_groq',
-            })
-          }
+              llmMode: `cloud_${prov}`,
+            });
+          }}
           className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
             isCloud
               ? 'bg-white text-black border-white font-bold shadow-lg scale-[1.01]'

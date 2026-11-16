@@ -54,7 +54,20 @@ export interface SystemHardwareInfo {
 }
 
 // Backward-compatible alias types for existing references
-export type LLMMode = 'cloud_groq' | 'cloud_gemini' | 'local_ollama';
+export type LLMMode =
+  | 'cloud_groq'
+  | 'cloud_gemini'
+  | 'cloud_openai'
+  | 'cloud_anthropic'
+  | 'cloud_mistral'
+  | 'cloud_deepseek'
+  | 'cloud_nvidia'
+  | 'cloud_cohere'
+  | 'cloud_openrouter'
+  | 'cloud_universal'
+  | 'local_ollama'
+  | 'local_vllm'
+  | (string & {});
 export type DatabaseMode = SubstrateMode;
 
 export interface ControlCenterConfig {
