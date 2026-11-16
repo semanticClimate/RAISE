@@ -117,14 +117,14 @@ export const DatabaseStep: React.FC = () => {
 
   const handleSetAllSubstrates = (targetMode: SubstrateMode) => {
     setAllSubstratesMode(targetMode);
-    const tierName =
+    const tierNotice =
       targetMode === 'in_memory_fallback'
-        ? 'Fast Local'
+        ? 'Fast Local (Zero-Dependency In-Memory)'
         : targetMode === 'local'
-        ? 'Docker Local'
+        ? 'Docker Local (auto-falls back to Fast Local if Docker is offline)'
         : 'Cloud Managed';
-    setTestNotice(`Selected ${tierName} for all substrates. Click Next and Start to apply.`);
-    setTimeout(() => setTestNotice(null), 3000);
+    setTestNotice(`Selected ${tierNotice}. Click Next and Start to apply.`);
+    setTimeout(() => setTestNotice(null), 4500);
   };
 
   const isNeo4jOnline = Boolean(
