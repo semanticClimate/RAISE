@@ -243,16 +243,24 @@ async def provision_substrate_endpoint(payload: Dict[str, Any] = Body(...)) -> D
     return auto_provision_substrate(substrate)
 
 
-@router.post("/providers/verify")
-@router.post("/test-provider")
-async def verify_provider_key(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+@router.api_route("/providers/verify", methods=["GET", "POST"])
+@router.api_route("/test-provider", methods=["GET", "POST"])
+@router.api_route("/test-key", methods=["GET", "POST"])
+async def verify_provider_key(
+    payload: Optional[Dict[str, Any]] = Body(None),
+    provider: Optional[str] = None,
+    key: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Live verification of a specific cloud LLM API key (Groq, Gemini, OpenAI, Anthropic, DeepSeek, OpenRouter).
+    Accepts payload via JSON Body (POST) or query parameters (GET/POST).
     """
-    prov = payload.get("provider") or "groq"
-    key = payload.get("api_key") or payload.get("key") or ""
+    body = payload or {}
+    prov = body.get("provider") or provider or "gemini"
+    resolved_key = body.get("api_key") or body.get("key") or api_key or key or ""
     from src.features.system.connection_service import probe_cloud_llm_key
-    return probe_cloud_llm_key(prov, key)
+    return probe_cloud_llm_key(prov, resolved_key)
 
 
 @router.post("/models/load", operation_id="post_system_models_load")

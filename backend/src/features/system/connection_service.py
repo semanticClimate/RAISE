@@ -492,7 +492,7 @@ def probe_cloud_llm_key(provider: str, api_key: str) -> Dict[str, Any]:
     if prov == "groq":
         url = "https://api.groq.com/openai/v1/models"
         headers = {"Authorization": f"Bearer {key}"}
-    elif prov == "gemini":
+    elif prov in ("gemini", "google", "google_gemini"):
         try:
             from src.infrastructure.providers.gemini import GeminiProvider
             gp = GeminiProvider(api_key=key)

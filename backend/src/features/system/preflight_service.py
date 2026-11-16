@@ -264,8 +264,9 @@ def get_preflight_assets() -> Dict[str, Any]:
             "statusColor": "text-slate-300 bg-white/5 border-white/10",
         },
         {
-            "id": "bge_large",
+            "id": "dense_embedding",
             "name": emb_model,
+            "model_name": emb_model,
             "size": format_byte_size(emb_bytes) if emb_bytes > 0 else "Pending Download",
             "desc": "Dense semantic vector embeddings for ChromaDB HNSW",
             "verified": bge_large_ok,
@@ -277,8 +278,9 @@ def get_preflight_assets() -> Dict[str, Any]:
             ),
         },
         {
-            "id": "bge_reranker",
+            "id": "cross_encoder_reranker",
             "name": rerank_model,
+            "model_name": rerank_model,
             "size": format_byte_size(rerank_bytes) if rerank_bytes > 0 else "Pending Download",
             "desc": "Contextual Cross-Encoder neural reranker on CUDA / CPU",
             "verified": bge_reranker_ok,
@@ -290,8 +292,9 @@ def get_preflight_assets() -> Dict[str, Any]:
             ),
         },
         {
-            "id": "finecat_nli",
+            "id": "nli_verifier",
             "name": nli_model,
+            "model_name": nli_model,
             "size": format_byte_size(nli_bytes) if nli_bytes > 0 else "Pending Download",
             "desc": "Runtime Faithfulness Quality Gate & zero-hallucination shield",
             "verified": finecat_ok,
