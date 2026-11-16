@@ -145,7 +145,7 @@ class CrossEncoderReranker:
             else:
                 dev = "cuda" if torch.cuda.is_available() else "cpu"
 
-            token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
             orig_requested_model = self.model_name
             try:
                 from src.core.config import resolve_local_model_path

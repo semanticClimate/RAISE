@@ -215,7 +215,7 @@ class VectorEmbeddingsMixin:
                     self.embed_model = _EMBEDDING_MODEL_CACHE[cache_key]
                     return self.embed_model
 
-                token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+                token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
                 embed_cfg = {"audio_config": None, "vision_config": None} if models.EMBEDDING_MODEL_KEYWORD in str(raw_id).lower() else None
                 dtype_val = (
                     torch.bfloat16

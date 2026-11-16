@@ -390,10 +390,12 @@ def trigger_asset_download(req: Optional[PreflightDownloadRequest] = None) -> Di
     emb_model = models.EMBEDDING_MODEL_NAME
     rerank_model = models.RERANKER_MODEL_NAME
     nli_model = models.NLI_MODEL_NAME
+    gliner_model = models.GLINER_MODEL_NAME
     models_to_check = [
         (emb_model, check_hf_model_cached(emb_model)),
         (rerank_model, check_hf_model_cached(rerank_model)),
         (nli_model, check_hf_model_cached(nli_model)),
+        (gliner_model, check_hf_model_cached(gliner_model)),
     ]
     for repo, cached in models_to_check:
         if not cached:
