@@ -41,14 +41,31 @@ def check_hf_model_cached(repo_id: str) -> bool:
             return True
     except Exception:
         pass
+
+    # Check candidate Hugging Face hub cache directories
+    candidate_hubs = []
     try:
-        hf_hub = Path.home() / ".cache" / "huggingface" / "hub"
-        repo_dir = f"models--{repo_id.replace('/', '--')}"
-        target = hf_hub / repo_dir
-        if target.exists() and any(target.glob("snapshots/*")):
-            return True
+        from huggingface_hub.constants import HF_HUB_CACHE
+        candidate_hubs.append(Path(HF_HUB_CACHE))
     except Exception:
         pass
+
+    env_hf = os.getenv("HUGGINGFACE_HUB_CACHE") or os.getenv("HF_HOME")
+    if env_hf:
+        p = Path(env_hf)
+        candidate_hubs.append(p / "hub" if not str(p).endswith("hub") else p)
+    candidate_hubs.append(Path.home() / ".cache" / "huggingface" / "hub")
+
+    repo_dir = f"models--{repo_id.replace('/', '--')}"
+    for hub in candidate_hubs:
+        try:
+            target = hub / repo_dir
+            if target.exists():
+                snapshots = list(target.glob("snapshots/*"))
+                if snapshots and any(s.is_dir() and any(s.iterdir()) for s in snapshots):
+                    return True
+        except Exception:
+            continue
     return False
 
 
@@ -208,6 +225,7 @@ def get_preflight_assets() -> Dict[str, Any]:
         "total_footprint": "~4.6 GB Total Footprint",
         "total_footprint_gb": 4.6,
         "all_assets_verified": all_verified,
+        "all_verified": all_verified,
         "download_progress": current_progress,
         "download_speed": (
             _ASSET_DOWNLOAD_SPEED

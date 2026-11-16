@@ -1852,7 +1852,9 @@ export function generatePdfBlob(
   currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re s`);
 
   const specRows = [
-    { label: 'Research Mode:', val: prov.modeDisplay },
+    ...(prov.mode !== 'conversational' && !String(prov.modeDisplay).toLowerCase().includes('conversational')
+      ? [{ label: 'Research Mode:', val: prov.modeDisplay }]
+      : []),
     { label: 'Storage Substrates:', val: prov.storageUsed },
     { label: 'Synthesis LLM:', val: `${prov.llmModel} (${prov.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
@@ -2497,32 +2499,31 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         (ex.assistantMsg.response as any)?.mode_used ||
         (ex.assistantMsg.response as any)?.pipeline_info?.mode_used ||
         'fast';
-      const modeLabel =
-        msgMode === 'expert'
-          ? 'Expert Mode'
-          : msgMode === 'conversational'
-            ? 'Conversational Mode'
-            : 'Fast Mode';
-      const modeBadge = `[${modeLabel}]`;
+      const isConversational = String(msgMode).toLowerCase().includes('conversational');
+      const isExpert = String(msgMode).toLowerCase().includes('expert');
+      const modeLabel = isExpert ? 'Expert Mode' : 'Fast Mode';
+      const provModel =
+        (ex.assistantMsg.response as any)?.pipeline_info?.llm_model ||
+        (ex.assistantMsg.response as any)?.llm_model ||
+        (ex.assistantMsg as any).model ||
+        '';
+      const modeBadge = provModel ? `[${modeLabel} • ${provModel}]` : `[${modeLabel}]`;
       const modeBadgeWidth = estimateHelveticaWidth(modeBadge, 7.5);
-      const modeColor =
-        msgMode === 'expert'
-          ? '0.45 0.2 0.75'
-          : msgMode === 'conversational'
-            ? '0.2 0.5 0.35'
-            : '0.12 0.42 0.85';
 
       ensureSpace(20);
       currentOps.push(
         `BT /F2 9.5 Tf 0.15 0.38 0.92 rg ${cardInnerX} ${curY - 10} Td (${escapePdfText(ansTitle)}) Tj ET`
       );
-      currentOps.push(
-        `BT /F2 7.5 Tf ${modeColor} rg ${cardInnerX + ansTitleWidth + 8} ${curY - 10} Td (${escapePdfText(modeBadge)}) Tj ET`
-      );
+      if (!isConversational) {
+        currentOps.push(
+          `BT /F2 7.5 Tf 0.15 0.38 0.92 rg ${cardInnerX + ansTitleWidth + 8} ${curY - 10} Td (${escapePdfText(modeBadge)}) Tj ET`
+        );
+      }
       if (durationSec != null && Number(durationSec) > 0) {
         const thoughtText = `Thought for ${Number(durationSec).toFixed(1)}s`;
+        const offset = !isConversational ? ansTitleWidth + 8 + modeBadgeWidth + 6 : ansTitleWidth + 8;
         currentOps.push(
-          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + ansTitleWidth + 8 + modeBadgeWidth + 6} ${curY - 10} Td (${escapePdfText(thoughtText)}) Tj ET`
+          `BT /F1 7.5 Tf 0.45 0.52 0.62 rg ${cardInnerX + offset} ${curY - 10} Td (${escapePdfText(thoughtText)}) Tj ET`
         );
       }
       curY -= 16;
@@ -2619,7 +2620,9 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re s`);
 
   const sessionSpecRows = [
-    { label: 'Research Mode:', val: sProv.modeDisplay },
+    ...(sProv.mode !== 'conversational' && !String(sProv.modeDisplay).toLowerCase().includes('conversational')
+      ? [{ label: 'Research Mode:', val: sProv.modeDisplay }]
+      : []),
     { label: 'Storage Substrates:', val: sProv.storageUsed },
     { label: 'Synthesis LLM:', val: `${sProv.llmModel} (${sProv.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },

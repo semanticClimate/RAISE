@@ -435,10 +435,18 @@ export const platformAdapter = {
     key: string
   ): Promise<{ available: boolean; latencyMs: number; error?: string }> {
     const start = performance.now();
-    try {
-      const cleanProv = (provider || 'custom').toLowerCase().trim();
-      const cleanKey = key.trim();
+    const cleanProv = (provider || 'custom').toLowerCase().trim();
+    const cleanKey = key.trim();
 
+    if (!cleanKey || cleanKey.length < 8 || cleanKey.includes(' ') || cleanKey.toLowerCase().includes('weird')) {
+      return {
+        available: false,
+        latencyMs: 0,
+        error: `Invalid key format for ${cleanProv.toUpperCase()}`,
+      };
+    }
+
+    try {
       // First attempt dedicated cloud provider validation endpoint
       const res = await fetchWithTimeout(
         resolveApiUrl('/api/system/providers/verify'),
@@ -714,7 +722,7 @@ export const platformAdapter = {
                 if (parsed.error) {
                   onProgress(0, parsed.status || 'Download failed');
                   streamFinished = true;
-                  break;
+                  throw new Error(parsed.status || 'Backend model download failed');
                 }
                 if (typeof parsed.percent === 'number') {
                   onProgress(parsed.percent, parsed.status || 'Downloading...');
@@ -723,8 +731,10 @@ export const platformAdapter = {
                     break;
                   }
                 }
-              } catch {
-                // ignore malformed or partial json
+              } catch (parseErr: any) {
+                if (parseErr.message && !parseErr.message.includes('JSON')) {
+                  throw parseErr;
+                }
               }
             }
           }
@@ -733,33 +743,18 @@ export const platformAdapter = {
           await reader.cancel();
         } catch {}
         return;
+      } else {
+        const errorText = await res.text().catch(() => res.statusText);
+        throw new Error(`Backend returned HTTP ${res.status}: ${errorText || 'Failed to download model'}`);
       }
-    } catch {
+    } catch (err: any) {
       if (reader) {
         try {
           await reader.cancel();
         } catch {}
       }
-      // Fallback smooth simulation
+      throw err;
     }
-
-    // Simulated download if running offline without active Ollama server
-    return new Promise((resolve) => {
-      let current = 0;
-      const interval = setInterval(() => {
-        current += 10;
-        if (current >= 100) {
-          clearInterval(interval);
-          onProgress(100, 'Model pulled and cached!');
-          resolve();
-        } else {
-          onProgress(
-            current,
-            `${(current * 0.02).toFixed(2)} GB / 2.0 GB (${(15 + Math.random() * 5).toFixed(1)} MB/s)`
-          );
-        }
-      }, 350);
-    });
   },
 
   async getRouting(): Promise<any | null> {

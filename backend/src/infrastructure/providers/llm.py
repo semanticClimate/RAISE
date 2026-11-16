@@ -8,10 +8,12 @@ from __future__ import annotations
 import os
 import json
 import logging
+import socket
 import threading
 import time
 import urllib.request
 import urllib.error
+import urllib.parse
 from typing import Any, AsyncGenerator, Optional
 
 from src.core.config import settings, LLMConfig, models

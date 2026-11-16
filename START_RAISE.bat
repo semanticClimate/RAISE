@@ -13,7 +13,7 @@ set "FORCE_COLOR=1"
 set "TERM="
 set "HF_HUB_DISABLE_PROGRESS_BARS=0"
 set "TRANSFORMERS_VERBOSITY=error"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$raw = [System.IO.File]::ReadAllText($env:BAT_FILE, [System.Text.Encoding]::UTF8); $tag = '<' + '#PS_CODE#>'; $idx = $raw.LastIndexOf($tag); if ($idx -ge 0) { Invoke-Expression $raw.Substring($idx + $tag.Length) }"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $raw = [System.IO.File]::ReadAllText($env:BAT_FILE, [System.Text.Encoding]::UTF8); $tag = '<' + '#PS_CODE#>'; $idx = $raw.LastIndexOf($tag); if ($idx -ge 0) { Invoke-Expression $raw.Substring($idx + $tag.Length) } else { Write-Error 'Marker not found'; exit 1 } } catch { Write-Host $_ -ForegroundColor Red; exit 1 }"
 set "EXIT_CODE=%ERRORLEVEL%"
 if %EXIT_CODE% neq 0 (
     echo.
@@ -884,6 +884,54 @@ function Request-RaiseKeysInteractive {
 
 if (Test-Path $rootEnv) {
     Request-RaiseKeysInteractive -EnvPath $rootEnv
+}
+
+# ------------------------------------------------------------------------------
+# Neural Asset Pre-flight Cache Probe (Embedding, Cross-Encoder, NLI)
+# ------------------------------------------------------------------------------
+$hfHubPath = if ($env:HF_HUB_CACHE -and (Test-Path $env:HF_HUB_CACHE)) { $env:HF_HUB_CACHE } `
+             elseif ($env:HF_HOME -and (Test-Path (Join-Path $env:HF_HOME "hub"))) { Join-Path $env:HF_HOME "hub" } `
+             elseif ($env:HUGGINGFACE_HUB_CACHE -and (Test-Path $env:HUGGINGFACE_HUB_CACHE)) { $env:HUGGINGFACE_HUB_CACHE } `
+             else { Join-Path $env:USERPROFILE ".cache\huggingface\hub" }
+
+function Test-HfFolderReady {
+    param([string]$RepoId)
+    $folder = "models--" + ($RepoId -replace "/", "--")
+    $snapDir = Join-Path $hfHubPath ($folder + "\snapshots")
+    if (Test-Path $snapDir) {
+        $dirs = Get-ChildItem -Path $snapDir -Directory -ErrorAction SilentlyContinue
+        foreach ($d in $dirs) {
+            $hasFiles = Get-ChildItem -Path $d.FullName -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($hasFiles) { return $true }
+        }
+    }
+    return $false
+}
+
+$configPath = Join-Path $backendDir "src\core\config.py"
+$embRepo = "google/embeddinggemma-2"
+$rerankRepo = "BAAI/bge-reranker-v2-m3"
+$nliRepo = "dleemiller/finecat-nli-ultra-l"
+if (Test-Path $configPath) {
+    $cfgRaw = Get-Content -Path $configPath -Raw -ErrorAction SilentlyContinue
+    if ($cfgRaw -match 'EMBEDDING_MODEL_NAME:\s*str\s*=\s*["'']([^"'']+)["'']') { $embRepo = $Matches[1] }
+    if ($cfgRaw -match 'RERANKER_MODEL_NAME:\s*str\s*=\s*["'']([^"'']+)["'']') { $rerankRepo = $Matches[1] }
+    if ($cfgRaw -match 'NLI_MODEL_NAME:\s*str\s*=\s*["'']([^"'']+)["'']') { $nliRepo = $Matches[1] }
+}
+
+$embCached = Test-HfFolderReady $embRepo
+$rerankCached = Test-HfFolderReady $rerankRepo
+$nliCached = Test-HfFolderReady $nliRepo
+
+if ($embCached -and $rerankCached -and $nliCached) {
+    Write-Info "Neural Pipeline Assets: Dense Embedding [CACHED] * Cross-Encoder [CACHED] * NLI [CACHED]" "Green"
+} else {
+    $statusParts = @()
+    $statusParts += if ($embCached) { "Embedding [CACHED]" } else { "Embedding [PENDING DOWNLOAD]" }
+    $statusParts += if ($rerankCached) { "Reranker [CACHED]" } else { "Reranker [PENDING DOWNLOAD]" }
+    $statusParts += if ($nliCached) { "NLI [CACHED]" } else { "NLI [PENDING DOWNLOAD]" }
+    Write-Info "Neural Pipeline Assets: $($statusParts -join ' * ')" "Yellow"
+    Write-Info "Missing models will download automatically during first inference or via Control Center." "Cyan"
 }
 
 # Inspect active .env file for configured Cloud/Local AI keys
