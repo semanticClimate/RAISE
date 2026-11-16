@@ -141,7 +141,13 @@ class ProviderRouter:
         except Exception:
             pass
 
-        local_target = "vllm" if vllm_alive else ("ollama" if ollama_alive else None)
+        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", os.getenv("LLM_ROUTING_MODE", ""))).upper().strip()
+        user_chose_local = (
+            (routing_policy == "LOCAL_FIRST")
+            or (self.mode == ExecutionMode.LOCAL)
+            or (env_backend in ("vllm", "ollama", "local"))
+        )
+        local_target = "vllm" if vllm_alive else ("ollama" if ollama_alive else ("vllm" if (self.mode == ExecutionMode.LOCAL or user_chose_local) else None))
 
         # Only allow env_backend to be a local engine if that local engine is ACTUALLY ALIVE
         if env_backend in ("vllm", "ollama"):
@@ -161,12 +167,6 @@ class ProviderRouter:
         else:
             primary_cloud = "gemini" if "gemini" in self.providers else "groq"
 
-        routing_policy = os.getenv("ROUTING_POLICY", os.getenv("ROUTING_PREFERENCE", os.getenv("LLM_ROUTING_MODE", ""))).upper().strip()
-        user_chose_local = (
-            (routing_policy == "LOCAL_FIRST")
-            or (self.mode == ExecutionMode.LOCAL)
-            or (env_backend in ("vllm", "ollama", "local"))
-        )
         local_first = user_chose_local and bool(local_target)
 
         if local_first and local_target:
@@ -335,8 +335,8 @@ class ProviderRouter:
 
         self.fallback_chain = active
 
-        # Ensure task_policy is not pointing to a dead local engine
-        if active and self.task_policy.get(InferenceTask.RAG_GENERATION) in ("vllm", "ollama") and self.task_policy.get(InferenceTask.RAG_GENERATION) not in alive_local:
+        # Ensure task_policy is not pointing to a dead local engine (unless in strict LOCAL mode)
+        if self.mode != ExecutionMode.LOCAL and active and self.task_policy.get(InferenceTask.RAG_GENERATION) in ("vllm", "ollama") and self.task_policy.get(InferenceTask.RAG_GENERATION) not in alive_local:
             for t in InferenceTask:
                 if self.task_policy.get(t) in ("vllm", "ollama") and self.task_policy.get(t) not in alive_local:
                     self.task_policy[t] = active[0]
