@@ -157,7 +157,7 @@ def print_banner() -> None:
     print(f"\n  {B_DIM}╭{'─' * W_WIDTH}╮{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {C.TITLE}RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} {B_DIM}//{C.RESET} {C.CYAN}MONOREPO PLATFORM{C.RESET}{' ' * 23}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Backend API : http://localhost:8000   •  Swagger Docs : /docs{C.RESET}{' ' * 13}{B_DIM}│{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173{C.RESET}{' ' * 38}{B_DIM}│{C.RESET}")
+    print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173{C.RESET}{' ' * 39}{B_DIM}│{C.RESET}")
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
 
 
