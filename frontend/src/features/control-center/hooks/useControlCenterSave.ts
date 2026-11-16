@@ -114,13 +114,22 @@ export function useControlCenterSave(
         reranker_id: config.rerankerModel,
         nli_verifier_model: config.nliVerifierModel,
         verifier_id: config.nliVerifierModel,
-        neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
+        neo4j_mode:
+          targetStorageMode === 'fast'
+            ? 'in_memory_fallback'
+            : config.knowledgeGraph?.mode || config.neo4jMode,
         neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
         neo4j_user: config.knowledgeGraph?.user,
         neo4j_password: sanitizeSecret(config.knowledgeGraph?.password || config.neo4jPassword),
-        postgres_mode: config.sessionMemory?.mode || config.postgresMode,
+        postgres_mode:
+          targetStorageMode === 'fast'
+            ? 'in_memory_fallback'
+            : config.sessionMemory?.mode || config.postgresMode,
         postgres_uri: config.sessionMemory?.uri,
-        redis_mode: config.cacheAndSignals?.mode || config.redisMode,
+        redis_mode:
+          targetStorageMode === 'fast'
+            ? 'in_memory_fallback'
+            : config.cacheAndSignals?.mode || config.redisMode,
         redis_uri: config.cacheAndSignals?.uri,
       });
 

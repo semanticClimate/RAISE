@@ -57,11 +57,115 @@ interface ControlCenterState {
 
 const defaultPlatform = detectHostOS();
 
+export const isConfigDirty = (
+  current: ControlCenterConfig,
+  baseline: ControlCenterConfig | null
+): boolean => {
+  if (!baseline) return false;
+
+  // 1. Target Hardware Platform
+  if (current.targetPlatform && baseline.targetPlatform && current.targetPlatform !== baseline.targetPlatform) {
+    return true;
+  }
+
+  // 2. LLM Deployment ('cloud' vs 'local')
+  if (current.llmDeployment && baseline.llmDeployment && current.llmDeployment !== baseline.llmDeployment) {
+    return true;
+  }
+  if (
+    current.llmDeployment === 'local' &&
+    current.selectedLocalModel &&
+    baseline.selectedLocalModel &&
+    current.selectedLocalModel !== baseline.selectedLocalModel
+  ) {
+    return true;
+  }
+
+  // 3. API Keys: Compare real user-configured keys
+  const getKeysSummary = (keys?: CloudApiKeyEntry[]) =>
+    (keys || [])
+      .filter((k) => k?.key && k.key.trim().length > 0 && k.key !== '••••••••••••••••')
+      .map((k) => `${k.provider}:${k.key.trim()}`)
+      .sort()
+      .join(';');
+
+  if (getKeysSummary(current.apiKeys) !== getKeysSummary(baseline.apiKeys)) {
+    return true;
+  }
+
+  // 4. Hugging Face Access Token
+  const curHf = (current.huggingfaceToken || '').trim();
+  const baseHf = (baseline.huggingfaceToken || '').trim();
+  if (curHf && curHf !== baseHf && curHf !== '••••••••••••••••') {
+    return true;
+  }
+
+  // 5. Configured Neural Models (Embedding, Reranker, Verifier)
+  if (current.embeddingModel && baseline.embeddingModel && current.embeddingModel !== baseline.embeddingModel) {
+    return true;
+  }
+  if (current.rerankerModel && baseline.rerankerModel && current.rerankerModel !== baseline.rerankerModel) {
+    return true;
+  }
+  if (current.nliVerifierModel && baseline.nliVerifierModel && current.nliVerifierModel !== baseline.nliVerifierModel) {
+    return true;
+  }
+
+  // 6. Storage Profile & Substrates
+  if (current.storageMode && baseline.storageMode && current.storageMode !== baseline.storageMode) {
+    return true;
+  }
+  if (
+    current.knowledgeGraph?.mode &&
+    baseline.knowledgeGraph?.mode &&
+    current.knowledgeGraph.mode !== baseline.knowledgeGraph.mode
+  ) {
+    return true;
+  }
+  if (
+    current.knowledgeGraph?.uri &&
+    baseline.knowledgeGraph?.uri &&
+    current.knowledgeGraph.uri !== baseline.knowledgeGraph.uri
+  ) {
+    return true;
+  }
+  if (
+    current.sessionMemory?.mode &&
+    baseline.sessionMemory?.mode &&
+    current.sessionMemory.mode !== baseline.sessionMemory.mode
+  ) {
+    return true;
+  }
+  if (
+    current.sessionMemory?.uri &&
+    baseline.sessionMemory?.uri &&
+    current.sessionMemory.uri !== baseline.sessionMemory.uri
+  ) {
+    return true;
+  }
+  if (
+    current.cacheAndSignals?.mode &&
+    baseline.cacheAndSignals?.mode &&
+    current.cacheAndSignals.mode !== baseline.cacheAndSignals.mode
+  ) {
+    return true;
+  }
+  if (
+    current.cacheAndSignals?.uri &&
+    baseline.cacheAndSignals?.uri &&
+    current.cacheAndSignals.uri !== baseline.cacheAndSignals.uri
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 export const useControlCenterStore = create<ControlCenterState>()(
   persist(
     (set) => ({
       isOpen: false,
-      activeTab: 'overview',
+      activeTab: 'platform',
       hardware: {
         platform: defaultPlatform,
         osName: defaultPlatform === 'macos' ? 'macOS (Apple Silicon)' : defaultPlatform === 'windows' ? 'Windows' : 'Linux',
@@ -129,12 +233,14 @@ export const useControlCenterStore = create<ControlCenterState>()(
           if (open) {
             return {
               isOpen: true,
+              activeTab: 'platform',
               baselineConfig: (s.baselineConfig ?? JSON.parse(JSON.stringify(s.config))) as ControlCenterConfig,
               isDirty: false,
             };
           }
           return {
             isOpen: false,
+            activeTab: 'platform',
             isDirty: false,
             baselineConfig: null,
           };
@@ -177,7 +283,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
           }
           return {
             config: updated,
-            isDirty: true,
+            isDirty: isConfigDirty(updated, s.baselineConfig),
           };
         }),
 
@@ -209,12 +315,13 @@ export const useControlCenterStore = create<ControlCenterState>()(
         };
         set((s) => {
           const currentKeys = Array.isArray(s.config?.apiKeys) ? s.config.apiKeys : [];
+          const updatedConfig: ControlCenterConfig = {
+            ...s.config,
+            apiKeys: [...currentKeys, newEntry],
+          };
           return {
-            isDirty: true,
-            config: {
-              ...s.config,
-              apiKeys: [...currentKeys, newEntry],
-            },
+            isDirty: isConfigDirty(updatedConfig, s.baselineConfig),
+            config: updatedConfig,
           };
         });
       },
@@ -241,14 +348,15 @@ export const useControlCenterStore = create<ControlCenterState>()(
           // Sync backward-compatible keys
           const groq = apiKeys.find((k: CloudApiKeyEntry) => k.provider === 'groq')?.key || '';
           const gemini = apiKeys.find((k: CloudApiKeyEntry) => k.provider === 'gemini')?.key || '';
+          const updatedConfig: ControlCenterConfig = {
+            ...s.config,
+            apiKeys,
+            groqApiKey: groq || s.config.groqApiKey,
+            geminiApiKey: gemini || s.config.geminiApiKey,
+          };
           return {
-            isDirty: true,
-            config: {
-              ...s.config,
-              apiKeys,
-              groqApiKey: groq || s.config.groqApiKey,
-              geminiApiKey: gemini || s.config.geminiApiKey,
-            },
+            isDirty: isConfigDirty(updatedConfig, s.baselineConfig),
+            config: updatedConfig,
           };
         });
       },
@@ -259,23 +367,24 @@ export const useControlCenterStore = create<ControlCenterState>()(
             ? s.config.apiKeys
             : [];
           const filtered = currentKeys.filter((k: CloudApiKeyEntry) => k.id !== id);
+          const updatedConfig: ControlCenterConfig = {
+            ...s.config,
+            apiKeys:
+              filtered.length > 0
+                ? filtered
+                : [
+                    {
+                      id: `key-${Date.now()}`,
+                      key: '',
+                      provider: 'unknown',
+                      providerName: 'Unconfigured Key',
+                      verified: null,
+                    },
+                  ],
+          };
           return {
-            isDirty: true,
-            config: {
-              ...s.config,
-              apiKeys:
-                filtered.length > 0
-                  ? filtered
-                  : [
-                      {
-                        id: `key-${Date.now()}`,
-                        key: '',
-                        provider: 'unknown',
-                        providerName: 'Unconfigured Key',
-                        verified: null,
-                      },
-                    ],
-            },
+            isDirty: isConfigDirty(updatedConfig, s.baselineConfig),
+            config: updatedConfig,
           };
         });
       },
@@ -315,7 +424,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
           }
           return {
             config: updatedConfig,
-            isDirty: true,
+            isDirty: isConfigDirty(updatedConfig, s.baselineConfig),
           };
         });
       },
@@ -449,11 +558,15 @@ export const useControlCenterStore = create<ControlCenterState>()(
             defaultSubstrateMode = 'local';
           } else if (rawStorageMode === 'cloud') {
             defaultSubstrateMode = 'cloud';
+          } else {
+            defaultSubstrateMode = 'in_memory_fallback';
           }
 
-          const kgMode = (cfg.neo4j_mode as SubstrateMode) || defaultSubstrateMode;
-          const memMode = (cfg.postgres_mode as SubstrateMode) || defaultSubstrateMode;
-          const cacheMode = (cfg.redis_mode as SubstrateMode) || defaultSubstrateMode;
+          // If backend reports fast mode or running without Docker containers, honor in_memory_fallback
+          const isFast = !rawStorageMode || rawStorageMode === 'fast';
+          const kgMode = isFast ? 'in_memory_fallback' : ((cfg.neo4j_mode as SubstrateMode) || defaultSubstrateMode);
+          const memMode = isFast ? 'in_memory_fallback' : ((cfg.postgres_mode as SubstrateMode) || defaultSubstrateMode);
+          const cacheMode = isFast ? 'in_memory_fallback' : ((cfg.redis_mode as SubstrateMode) || defaultSubstrateMode);
 
           set((s) => {
             // Merge: preserve any user-entered manual keys that are not from backend
@@ -611,18 +724,19 @@ export const useControlCenterStore = create<ControlCenterState>()(
                 ? 'redis://localhost:6379/0'
                 : s.config.cacheAndSignals?.uri || '',
           };
+          const updatedConfig: ControlCenterConfig = {
+            ...s.config,
+            storageMode: mode === 'local' ? 'docker' : mode === 'cloud' ? 'cloud' : 'fast',
+            knowledgeGraph: kg,
+            sessionMemory: mem,
+            cacheAndSignals: cache,
+            neo4jMode: mode,
+            postgresMode: mode,
+            redisMode: mode,
+          };
           return {
-            isDirty: true,
-            config: {
-              ...s.config,
-              storageMode: mode === 'local' ? 'docker' : mode === 'cloud' ? 'cloud' : 'fast',
-              knowledgeGraph: kg,
-              sessionMemory: mem,
-              cacheAndSignals: cache,
-              neo4jMode: mode,
-              postgresMode: mode,
-              redisMode: mode,
-            },
+            isDirty: isConfigDirty(updatedConfig, s.baselineConfig),
+            config: updatedConfig,
           };
         });
       },

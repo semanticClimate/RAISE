@@ -10,7 +10,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useScrollLock } from '../../../hooks';
 import { useModeStore } from '../../../stores/modeStore';
 import { detectHostOS, platformAdapter } from '../services/platformAdapter';
@@ -48,6 +48,7 @@ export const ControlCenterModal: React.FC = () => {
   // Load live hardware telemetry and accurately synchronize host OS on mount/open
   useEffect(() => {
     if (isOpen) {
+      setActiveTab('platform');
       useModeStore.getState().runCapabilityProbe();
       const hostOS = detectHostOS();
       if (hostOS === 'macos' && config.targetPlatform !== 'macos') {
@@ -164,9 +165,50 @@ export const ControlCenterModal: React.FC = () => {
     }
   };
 
+  const contentWrapperRef = useRef<HTMLDivElement>(null);
+  const [modalHeight, setModalHeight] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const el = contentWrapperRef.current;
+    if (!el) return;
+
+    const updateHeight = () => {
+      // Natural content height + fixed chrome (64px header + 48px tabs + 64px footer = 176px)
+      const contentH = el.scrollHeight;
+      const chromeH = 176;
+      const totalH = contentH + chromeH;
+      const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.90 : 720;
+      const minH = 460;
+      const finalH = Math.min(maxH, Math.max(minH, totalH));
+      setModalHeight(Math.round(finalH));
+    };
+
+    updateHeight();
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        updateHeight();
+      });
+      resizeObserver.observe(el);
+    }
+
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, [activeTab]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/80 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0A0A0A] border border-[#292929] shadow-2xl overflow-hidden text-[#FFFFFF] font-sans shrink-0">
+      <div
+        style={modalHeight ? { height: `${modalHeight}px` } : undefined}
+        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0A0A0A] border border-[#292929] shadow-2xl overflow-hidden text-[#FFFFFF] font-sans shrink-0 transition-[height] duration-300 ease-out"
+      >
         {/* Top Header - Strict Monochrome, Page Heading 28-32px */}
         <div className="h-16 px-6 border-b border-[#292929] bg-[#0A0A0A] shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -237,12 +279,14 @@ export const ControlCenterModal: React.FC = () => {
         </div>
 
         {/* Scrollable Step Content Body */}
-        <div className="flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-5 bg-[#0A0A0A] min-h-0">
-          {activeTab === 'overview' && <OverviewStep />}
-          {activeTab === 'models' && <EngineStep />}
-          {activeTab === 'neural' && <NeuralStep />}
-          {activeTab === 'databases' && <DatabaseStep />}
-          {activeTab === 'platform' && <PlatformStep />}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 bg-[#0A0A0A] min-h-0">
+          <div ref={contentWrapperRef} className="py-5 sm:py-6 space-y-5">
+            {activeTab === 'overview' && <OverviewStep />}
+            {activeTab === 'models' && <EngineStep />}
+            {activeTab === 'neural' && <NeuralStep />}
+            {activeTab === 'databases' && <DatabaseStep />}
+            {activeTab === 'platform' && <PlatformStep />}
+          </div>
         </div>
 
         {/* Refined Navigation Footer - Strict Monochrome */}
@@ -273,8 +317,8 @@ export const ControlCenterModal: React.FC = () => {
               </span>
             )}
 
-            {/* Next Step / Step Through */}
-            {activeTab !== 'overview' && (
+            {/* Navigation Buttons: Next &rarr; on prior steps, Start ONLY on overview */}
+            {activeTab !== 'overview' ? (
               <button
                 type="button"
                 disabled={!isCurrentStepReady}
@@ -285,45 +329,44 @@ export const ControlCenterModal: React.FC = () => {
               >
                 <span>Next &rarr;</span>
               </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isSaving || isWarmingUp || !hasConfiguredKey || !isConnected}
+                onClick={handleFinalStart}
+                className={`px-5 py-2 rounded-lg font-semibold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
+                  hasConfiguredKey && isConnected && !isSaving && !isWarmingUp
+                    ? 'bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000] cursor-pointer'
+                    : 'bg-[#171717] text-[#A3A3A3] border border-[#292929] cursor-not-allowed opacity-50'
+                }`}
+                title={
+                  !isConnected
+                    ? 'Backend Gateway is offline. Start backend on port 8000.'
+                    : !hasConfiguredKey
+                    ? 'Configure an inference engine or API key before starting.'
+                    : isWarmingUp
+                    ? 'Warming up neural models in backend...'
+                    : isSaving
+                    ? 'Saving configuration...'
+                    : 'Start'
+                }
+              >
+                {isSaving || isWarmingUp ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#000000]" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 fill-[#000000] text-[#000000]" />
+                )}
+                <span>
+                  {isWarmingUp
+                    ? 'Warming Up...'
+                    : isSaving
+                    ? 'Saving...'
+                    : isConnected
+                    ? 'Start'
+                    : 'Backend Offline'}
+                </span>
+              </button>
             )}
-
-            {/* Start Button */}
-            <button
-              type="button"
-              disabled={isSaving || isWarmingUp || !hasConfiguredKey || !isConnected}
-              onClick={handleFinalStart}
-              className={`px-5 py-2 rounded-lg font-semibold text-xs transition-all active:scale-95 shadow-sm flex items-center gap-2 ${
-                hasConfiguredKey && isConnected && !isSaving && !isWarmingUp
-                  ? 'bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000] cursor-pointer'
-                  : 'bg-[#171717] text-[#A3A3A3] border border-[#292929] cursor-not-allowed opacity-50'
-              }`}
-              title={
-                !isConnected
-                  ? 'Backend Gateway is offline. Start backend on port 8000.'
-                  : !hasConfiguredKey
-                  ? 'Configure an inference engine or API key before starting.'
-                  : isWarmingUp
-                  ? 'Warming up neural models in backend...'
-                  : isSaving
-                  ? 'Saving configuration...'
-                  : 'Start'
-              }
-            >
-              {isSaving || isWarmingUp ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#000000]" />
-              ) : (
-                <Zap className="w-3.5 h-3.5 fill-[#000000] text-[#000000]" />
-              )}
-              <span>
-                {isWarmingUp
-                  ? 'Warming Up...'
-                  : isSaving
-                  ? 'Saving...'
-                  : isConnected
-                  ? 'Start'
-                  : 'Backend Offline'}
-              </span>
-            </button>
           </div>
         </div>
       </div>

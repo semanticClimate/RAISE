@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   GripVertical,
   ArrowUp,
@@ -26,9 +26,10 @@ interface ProviderCardState {
 const CLEAN_PROVIDER_NAMES: Record<string, string> = {
   gemini: 'Google Gemini',
   groq: 'Groq LPU',
+  openai: 'OpenAI',
   vllm: 'vLLM Local Engine',
   ollama: 'Ollama Daemon',
-  local: 'Embedded Local Fallback',
+  local: 'Local PyTorch Transformers',
   mistral: 'Mistral AI',
   nvidia: 'NVIDIA NIM',
   cohere: 'Cohere',
@@ -62,6 +63,16 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [feedbackBanner, setFeedbackBanner] = useState<{ message: string; timestamp: string } | null>(null);
   const [showDisabled, setShowDisabled] = useState<boolean>(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   // Auto-dismiss confirmation banner after 4 seconds
   useEffect(() => {
@@ -165,7 +176,16 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           const norm = canonicalId(pid);
           const info = merged[norm];
 
-          // 1. Local engines: MUST be actively running and responding (status READY/ONLINE/ACTIVE)
+          // 1. Providers already present in rawOrder (the server's active fallback chain)
+          // Do not discard unless explicitly marked isOffline: true (prevents flash during reordering)
+          if (rawOrder.includes(norm)) {
+            if (info && info.isOffline) {
+              return false;
+            }
+            return true;
+          }
+
+          // 2. Local engines: MUST be actively running and responding (status READY/ONLINE/ACTIVE)
           // OFFLINE, LOCAL_OFFLINE, STANDBY mean not running or not loaded in process
           if (norm === 'vllm' || norm === 'ollama' || norm === 'local') {
             if (!info) return false;
@@ -174,7 +194,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
             return st === 'READY' || st === 'ONLINE' || st === 'ACTIVE';
           }
 
-          // 2. Cloud engines (Gemini, Groq, Universal, etc.):
+          // 3. Cloud engines (Gemini, Groq, Universal, etc.):
           // Live if valid key is in store or reported configured/ready by backend
           if (hasStoreKey(norm)) return true;
 
@@ -233,13 +253,14 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
     };
   }, [fetchLiveRouting]);
 
-  // Save changes to backend POST /api/system/routing
-  const persistRouting = async (
+  // Save changes to backend POST /api/system/routing with optimistic UI & 300ms debounce
+  const persistRouting = (
     newChain: string[],
     newDisabled: string[],
     newPrimary: string,
     actionDesc: string
   ) => {
+    // 1. Immediate optimistic local state update for 60 FPS responsiveness
     setActiveChain(newChain);
     setDisabledList(newDisabled);
     setPrimaryProvider(newPrimary);
@@ -255,14 +276,21 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
       routing_policy: newPrimary === 'vllm' || newPrimary === 'ollama' ? 'LOCAL_FIRST' : 'CLOUD_FIRST',
     };
 
-    try {
-      await systemService.updateRouting(payload);
-    } catch {
-      setFeedbackBanner({
-        message: 'Backend unreachable: Failed to persist routing priority. Check port 8000.',
-        timestamp: new Date().toLocaleTimeString(),
-      });
+    // 2. Debounce server persistence by 300ms
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        await systemService.updateRouting(payload);
+      } catch {
+        setFeedbackBanner({
+          message: 'Backend unreachable: Failed to persist routing priority. Check port 8000.',
+          timestamp: new Date().toLocaleTimeString(),
+        });
+      }
+    }, 300);
   };
 
   // Reordering handlers
@@ -425,13 +453,9 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                       <span className="text-xs font-semibold text-white truncate">
                         {p.name}
                       </span>
-                      {isPrimary ? (
+                      {isPrimary && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white text-black text-[9.5px] font-bold uppercase tracking-wider">
-                          PRIMARY #1
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/20 text-[9.5px] font-medium">
-                          FALLBACK #{idx + 1}
+                          Primary
                         </span>
                       )}
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/15 text-[9.5px] font-medium">
