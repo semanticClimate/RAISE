@@ -1,4 +1,4 @@
-import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, X, Zap } from 'lucide-react';
+import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, RotateCcw, X, Zap } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
@@ -526,19 +526,19 @@ export const DatabaseStep: React.FC = () => {
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
                         isCloud && cfg?.online === true
                           ? 'bg-white text-black border border-white font-bold shadow-sm'
-                          : isCloud && cfg?.tested && cfg?.online === false
-                          ? 'bg-zinc-800 text-zinc-300 border border-white/20 shadow-sm'
                           : isCloud
-                          ? 'bg-white/10 text-white border border-white/20 shadow-sm'
+                          ? 'bg-[#171717] hover:bg-[#292929] text-white border border-[#292929] hover:border-white shadow-sm active:scale-95 group'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
                       title={
                         isCloud && cfg?.online === true
                           ? 'Cloud connected (click to edit)'
+                          : isTestingSubstrates
+                          ? 'Testing connection...'
                           : isCloud && cfg?.tested && cfg?.online === false
-                          ? 'Cloud connection failed (click to retry)'
+                          ? 'Cloud connection failed (click to configure & retry)'
                           : isCloud
-                          ? 'Cloud configured, unverified (click to verify)'
+                          ? 'Cloud configured, unverified (click to configure & verify)'
                           : 'Click to configure Cloud connection'
                       }
                       aria-label={`Select Cloud Managed for ${sub.name}`}
@@ -548,15 +548,15 @@ export const DatabaseStep: React.FC = () => {
                           <Check className="w-4 h-4 stroke-[2.5]" />
                           <span className="sr-only">Cloud Managed</span>
                         </>
-                      ) : isCloud && cfg?.tested && cfg?.online === false ? (
+                      ) : isTestingSubstrates ? (
                         <>
-                          <X className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Connection Failed</span>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                          <span className="sr-only">Testing connection...</span>
                         </>
                       ) : isCloud ? (
                         <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span className="sr-only">Unverified</span>
+                          <RotateCcw className="w-3.5 h-3.5 text-white stroke-[2.5] transition-transform duration-300 group-hover:-rotate-45" />
+                          <span className="sr-only">Click to configure and connect</span>
                         </>
                       ) : (
                         <span>-</span>

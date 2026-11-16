@@ -26,9 +26,10 @@ interface ProviderCardState {
 const CLEAN_PROVIDER_NAMES: Record<string, string> = {
   gemini: 'Google Gemini',
   groq: 'Groq LPU',
+  openai: 'OpenAI',
   vllm: 'vLLM Local Engine',
   ollama: 'Ollama Daemon',
-  local: 'Embedded Local Fallback',
+  local: 'Local PyTorch Transformers',
   mistral: 'Mistral AI',
   nvidia: 'NVIDIA NIM',
   cohere: 'Cohere',
@@ -452,13 +453,9 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
                       <span className="text-xs font-semibold text-white truncate">
                         {p.name}
                       </span>
-                      {isPrimary ? (
+                      {isPrimary && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white text-black text-[9.5px] font-bold uppercase tracking-wider">
-                          PRIMARY #1
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/20 text-[9.5px] font-medium">
-                          FALLBACK #{idx + 1}
+                          Primary
                         </span>
                       )}
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/10 text-white border border-white/15 text-[9.5px] font-medium">
