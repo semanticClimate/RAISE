@@ -61,7 +61,7 @@ class KuzuGraphEngine:
 
         try:
             self.conn.execute(
-                "CREATE NODE TABLE Entity(id STRING, name STRING, label STRING, props STRING, PRIMARY KEY(id))"
+                "CREATE NODE TABLE Entity(id STRING, name STRING, label STRING, document_id STRING, props STRING, PRIMARY KEY(id))"
             )
         except Exception:
             pass  # Table might already exist
@@ -81,7 +81,9 @@ class KuzuGraphEngine:
         safe_id = str(entity_id).strip()
         safe_name = str(name).strip()
         safe_label = str(label).strip()
-        props_str = json.dumps(props or {})
+        props_dict = props or {}
+        safe_doc_id = str(props_dict.get("document_id") or "global_doc").strip()
+        props_str = json.dumps(props_dict)
 
         try:
             # Check if exists
@@ -89,13 +91,13 @@ class KuzuGraphEngine:
             if chk.has_next():
                 # Update
                 self.conn.execute(
-                    "MATCH (e:Entity {id: $id}) SET e.name = $name, e.label = $label, e.props = $props",
-                    {"id": safe_id, "name": safe_name, "label": safe_label, "props": props_str}
+                    "MATCH (e:Entity {id: $id}) SET e.name = $name, e.label = $label, e.document_id = $doc_id, e.props = $props",
+                    {"id": safe_id, "name": safe_name, "label": safe_label, "doc_id": safe_doc_id, "props": props_str}
                 )
             else:
                 self.conn.execute(
-                    "CREATE (:Entity {id: $id, name: $name, label: $label, props: $props})",
-                    {"id": safe_id, "name": safe_name, "label": safe_label, "props": props_str}
+                    "CREATE (:Entity {id: $id, name: $name, label: $label, document_id: $doc_id, props: $props})",
+                    {"id": safe_id, "name": safe_name, "label": safe_label, "doc_id": safe_doc_id, "props": props_str}
                 )
             return True
         except Exception as e:
