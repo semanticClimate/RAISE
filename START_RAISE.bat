@@ -3,6 +3,15 @@ chcp 65001 >nul
 title RAISE
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
+
+:: Auto-launch in Windows Terminal if available and running in standalone console
+if "%TERM_PROGRAM%"=="" if "%CI%"=="" if not defined WT_SESSION if not "%~1"=="--no-wt" (
+    where wt.exe >nul 2>nul && (
+        start wt.exe -d "%~dp0" cmd.exe /k ""%~f0" --no-wt %*"
+        exit /b 0
+    )
+)
+
 set "BAT_FILE=%~f0"
 set "BAT_DIR=%~dp0"
 set "RAISE_RUN_ARGS=%*"
@@ -11,8 +20,10 @@ set "PYTHONUTF8=1"
 set "PYTHONUNBUFFERED=1"
 set "FORCE_COLOR=1"
 set "TERM="
-set "HF_HUB_DISABLE_PROGRESS_BARS=0"
+set "HF_HUB_DISABLE_PROGRESS_BARS=1"
+set "TQDM_DISABLE=1"
 set "TRANSFORMERS_VERBOSITY=error"
+set "TOKENIZERS_PARALLELISM=false"
 
 if not exist "%~dp0START_RAISE.ps1" (
     echo.

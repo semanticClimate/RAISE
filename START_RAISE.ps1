@@ -13,8 +13,10 @@ $env:PYTHONUTF8 = "1"
 $env:PYTHONUNBUFFERED = "1"
 $env:FORCE_COLOR = "1"
 $env:TERM = ""
-$env:HF_HUB_DISABLE_PROGRESS_BARS = "0"
+$env:HF_HUB_DISABLE_PROGRESS_BARS = "1"
+$env:TQDM_DISABLE = "1"
 $env:TRANSFORMERS_VERBOSITY = "error"
+$env:TOKENIZERS_PARALLELISM = "false"
 
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [enum]::Parse([Net.SecurityProtocolType], 'Tls13') } catch {}
@@ -52,6 +54,15 @@ $C = @{
     Gray    = "$esc[38;5;246m"
 }
 
+# Construct crisp monochrome console glyphs via code points to prevent file-encoding mojibake and emoji fallback
+$G = @{
+    Check = [char]0x2713      # ✓
+    Dot   = [char]0x25CF      # ●
+    Cross = [char]0x2715      # ✕ (Multiplication X, stays monochrome alongside ✓ and ●)
+    Warn  = [char]0x25B2      # ▲
+    Arrow = [char]0x2192      # →
+}
+
 function global:Format-SanitizeOutput {
     param([string]$Text)
     if (-not $Text) { return $Text }
@@ -65,13 +76,10 @@ function global:Format-SanitizeOutput {
 function prompt { "$($C.Purple)╭─$($C.Reset) $($C.Bold)$($C.Cyan)RAISE$($C.Reset) $($C.Dim)>$($C.Reset) " }
 
 function Write-Header {
-    Clear-Host
     $ts = (Get-Date).ToString("HH:mm:ss")
     Write-Host ""
-    Write-Host "  $($C.Border)╭──────────────────────────────────────────────────────────────────────────╮$($C.Reset)"
-    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Bold)$($C.Cyan)RAISE$($C.Reset) $($C.Dim)//$($C.Reset) $($C.White)Research Assessment Intelligence & Semantic Extraction$($C.Reset)     $($C.Border)│$($C.Reset)"
-    Write-Host "  $($C.Border)│$($C.Reset)  $($C.Dim)Service Supervisor  •  Unbuffered Live Stream  •  Boot: $ts$($C.Reset)          $($C.Border)│$($C.Reset)"
-    Write-Host "  $($C.Border)╰──────────────────────────────────────────────────────────────────────────╯$($C.Reset)"
+    Write-Host "  $($C.Bold)$($C.Cyan)RAISE$($C.Reset) $($C.Dim)//$($C.Reset) $($C.White)Research Assessment Intelligence & Semantic Extraction$($C.Reset)"
+    Write-Host "  $($C.Dim)Service Supervisor $($G.Dot) Port 8000 + 5173 $($G.Dot) Boot: $ts$($C.Reset)"
     Write-Host ""
 }
 
@@ -80,12 +88,12 @@ function Write-Info {
     $ts = (Get-Date).ToString("HH:mm:ss.fff")
     $sanitized = Format-SanitizeOutput $Text
     $icon = switch ($Color) {
-        "Green"      { "$($C.Green)[OK]$($C.Reset)" }
-        "Yellow"     { "$($C.Yellow)[!]$($C.Reset)" }
-        "DarkYellow" { "$($C.Yellow)[~]$($C.Reset)" }
-        "Red"        { "$($C.Red)[ERR]$($C.Reset)" }
-        "Gray"       { "$($C.Dim)[-]$($C.Reset)" }
-        default      { "$($C.Cyan)*$($C.Reset)" }
+        "Green"      { "$($C.Green)$($G.Check)$($C.Reset)" }
+        "Yellow"     { "$($C.Yellow)$($G.Warn)$($C.Reset)" }
+        "DarkYellow" { "$($C.Yellow)$($G.Dot)$($C.Reset)" }
+        "Red"        { "$($C.Red)$($G.Cross)$($C.Reset)" }
+        "Gray"       { "$($C.Dim)$($G.Dot)$($C.Reset)" }
+        default      { "$($C.Cyan)$($G.Dot)$($C.Reset)" }
     }
     $textColor = switch ($Color) {
         "Green"      { $C.White }
@@ -102,9 +110,7 @@ function Write-CardHeader {
     param([string]$Step, [string]$Title, [string]$Tone = "Cyan")
     $toneCode = if ($Tone -eq "Red") { $C.Red } elseif ($Tone -eq "Yellow") { $C.Yellow } else { $C.Cyan }
     Write-Host ""
-    Write-Host "  $($C.Border)╭──────────────────────────────────────────────────────────────────────────╮$($C.Reset)"
-    Write-Host "  $($C.Border)│$($C.Reset) $toneCode$($C.Bold)$Step$($C.Reset) $($C.White)$($C.Bold)$Title$($C.Reset)"
-    Write-Host "  $($C.Border)╰──────────────────────────────────────────────────────────────────────────╯$($C.Reset)"
+    Write-Host "  $($C.Border)┌─$($C.Reset) $toneCode$($C.Bold)$Step$($C.Reset) $($C.White)$($C.Bold)$Title$($C.Reset)"
 }
 
 Write-Header

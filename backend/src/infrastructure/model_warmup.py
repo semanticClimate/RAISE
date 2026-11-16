@@ -84,12 +84,7 @@ def warmup_all_neural_models(
             except Exception:
                 pass
 
-        _safe_print("\033[1;94m" + "=" * 78 + "\033[0m")
-        _safe_print(" \033[1;94m[RAISE] PRE-WARMING NEURAL INFERENCE STACK (BACKGROUND GPU/CPU INIT)\033[0m")
-        _safe_print(f"  * Embedding Model : \033[93m{models.EMBEDDING_MODEL_NAME}\033[0m (Device: \033[96m{os.getenv('EMBEDDING_DEVICE', 'cuda')}\033[0m)")
-        _safe_print(f"  * Context Reranker: \033[93m{models.RERANKER_MODEL_NAME}\033[0m (Device: \033[96m{os.getenv('RERANKER_DEVICE', 'cuda')}\033[0m)")
-        _safe_print(f"  * NLI Verifier    : \033[93m{models.NLI_MODEL_NAME}\033[0m (Device: \033[96m{os.getenv('NLI_DEVICE', 'cuda')}\033[0m)")
-        _safe_print("\033[1;94m" + "-" * 78 + "\033[0m")
+        _safe_print(f"  \033[1;94m\u25cf\033[0m \033[1mPre-warming Neural Stack\033[0m \033[90m(Embedding, Reranker, NLI)...\033[0m")
 
         with inference_ctx:
             # 1. Pre-warm Dense Embedding Model on shared vector_engine singleton
@@ -111,7 +106,7 @@ def warmup_all_neural_models(
                     latencies["embedding"] = dur
                     m_key = getattr(ve, "model_key", getattr(ve, "model_path", "Dense Embeddings"))
                     logger.info("Local embedding model (%s) pre-warmed in %sms.", m_key, dur)
-                    _safe_print(f" \033[1;92m[OK]\033[0m \033[97mDense Embeddings Ready\033[0m     : \033[93m{m_key}\033[0m ({dur}ms)")
+                    _safe_print(f"  \033[1;92m\u2713\033[0m \033[97mDense Embeddings Ready\033[0m    \033[90m\u2192\033[0m \033[93m{m_key}\033[0m \033[90m({dur}ms)\033[0m")
                 else:
                     logger.warning("Local embedding model could not be loaded.")
             except Exception as exc:
@@ -139,7 +134,7 @@ def warmup_all_neural_models(
                     dur = round((time.perf_counter() - t0) * 1000, 1)
                     latencies["reranker"] = dur
                     logger.info("Contextual Cross-Encoder reranker (%s) pre-warmed in %sms.", reranker.model_name, dur)
-                    _safe_print(f" \033[1;92m[OK]\033[0m \033[97mContextual Reranker Ready\033[0m  : \033[93m{reranker.model_name}\033[0m ({dur}ms)")
+                    _safe_print(f"  \033[1;92m\u2713\033[0m \033[97mContextual Reranker Ready\033[0m \033[90m\u2192\033[0m \033[93m{reranker.model_name}\033[0m \033[90m({dur}ms)\033[0m")
                 else:
                     logger.warning("Cross-Encoder reranker could not be loaded; using heuristic fallback.")
             except Exception as exc:
@@ -158,13 +153,11 @@ def warmup_all_neural_models(
                     dur = round((time.perf_counter() - t0) * 1000, 1)
                     latencies["nli"] = dur
                     logger.info("NLI Claim Verifier (%s) pre-warmed in %sms.", FineCatNLIVerifier.MODEL_ID, dur)
-                    _safe_print(f" \033[1;92m[OK]\033[0m \033[97mNLI Verifier Gate Ready\033[0m    : \033[93m{verifier.model_id}\033[0m ({dur}ms)")
+                    _safe_print(f"  \033[1;92m\u2713\033[0m \033[97mNLI Verifier Gate Ready\033[0m   \033[90m\u2192\033[0m \033[93m{verifier.model_id}\033[0m \033[90m({dur}ms)\033[0m")
                 else:
                     logger.info("NLI verifier offline; deterministic lexical claim verification active.")
             except Exception as exc:
                 logger.warning("NLI verifier pre-warming notice: %s", exc)
-
-        _safe_print("\033[1;94m" + "=" * 78 + "\033[0m")
     finally:
         with sys._raise_warmup_lock:  # type: ignore[attr-defined]
             sys._raise_models_loaded = True         # type: ignore[attr-defined]
