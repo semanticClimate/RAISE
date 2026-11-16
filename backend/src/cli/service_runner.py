@@ -637,8 +637,11 @@ class DualProcessSupervisor:
                     if "HTTP/1.1\" 200 OK" not in log_msg:
                         print_supervisor_event(format_stream_row(logger_tag, log_msg, "\u25cf", C.CYAN, B_TXT))
 
-    def wait_for_backend(self, timeout_sec: int = 180) -> bool:
+    def wait_for_backend(self, timeout_sec: int = 300) -> bool:
         """Polls /api/health at high frequency (0.25s) for instant readiness detection."""
+        timeout_env = os.getenv("RAISE_BACKEND_TIMEOUT")
+        if timeout_env and timeout_env.isdigit():
+            timeout_sec = int(timeout_env)
         t0 = time.time()
         last_heartbeat = t0
         while time.time() - t0 < timeout_sec:
@@ -823,7 +826,7 @@ def main():
         print_supervisor_event(format_stream_row("FATAL", "Could not launch backend server.", "[ERR]", C.DANGER, C.DANGER))
         sys.exit(1)
 
-    backend_timeout = int(os.getenv("RAISE_BACKEND_TIMEOUT", "180"))
+    backend_timeout = int(os.getenv("RAISE_BACKEND_TIMEOUT", "300"))
     if not supervisor.wait_for_backend(timeout_sec=backend_timeout):
         print_supervisor_event(format_stream_row("FATAL", "Backend failed health check. Inspect backend.log.", "[ERR]", C.DANGER, C.DANGER))
         supervisor.shutdown()
