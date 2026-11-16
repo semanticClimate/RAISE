@@ -9,7 +9,6 @@ import {
   HelpCircle,
   Plus,
   RefreshCw,
-  Sparkles,
   Trash2,
   X,
   XCircle,
@@ -425,7 +424,7 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
         <div className="p-4 rounded-2xl bg-[#111111] border border-[#292929] space-y-3.5 shadow-sm animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-white" />
+              <Plus className="w-4 h-4 text-white" />
               <span className="text-xs font-bold text-white tracking-tight">
                 {configuredKeys.length === 0 ? 'Connect Your First Provider' : 'Add Another Provider'}
               </span>

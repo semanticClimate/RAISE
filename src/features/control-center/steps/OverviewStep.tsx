@@ -1,7 +1,5 @@
 import {
   ArrowRight,
-  ChevronDown,
-  ChevronUp,
   Database,
   Laptop,
   RefreshCw,
@@ -17,7 +15,6 @@ export const OverviewStep: React.FC = () => {
     config,
     hardware,
     setActiveTab,
-    preflightAssets,
     preflightFootprint,
     syncBackendConfig,
   } = useControlCenterStore();
@@ -25,9 +22,9 @@ export const OverviewStep: React.FC = () => {
   const { appMode, latencyMs, runCapabilityProbe } = useModeStore();
   const isConnected = appMode === 'connected' || appMode === 'degraded';
 
+  const [backendConfig, setBackendConfig] = useState<Record<string, any> | null>(null);
   const [testResults, setTestResults] = useState<ConnectionTestResult | null>(null);
   const [isTesting, setIsTesting] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Synchronize telemetry and probe substrates on mount
   useEffect(() => {
@@ -36,17 +33,21 @@ export const OverviewStep: React.FC = () => {
       try {
         await runCapabilityProbe();
         await syncBackendConfig();
-        const results = await platformAdapter.testConnections({
-          neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
-          neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
-          neo4j_user: config.knowledgeGraph?.user,
-          neo4j_password: config.knowledgeGraph?.password || config.neo4jPassword,
-          postgres_mode: config.sessionMemory?.mode || config.postgresMode,
-          postgres_uri: config.sessionMemory?.uri,
-          redis_mode: config.cacheAndSignals?.mode || config.redisMode,
-          redis_uri: config.cacheAndSignals?.uri,
-        });
+        const [cfg, results] = await Promise.all([
+          platformAdapter.getConfig(),
+          platformAdapter.testConnections({
+            neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
+            neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
+            neo4j_user: config.knowledgeGraph?.user,
+            neo4j_password: config.knowledgeGraph?.password || config.neo4jPassword,
+            postgres_mode: config.sessionMemory?.mode || config.postgresMode,
+            postgres_uri: config.sessionMemory?.uri,
+            redis_mode: config.cacheAndSignals?.mode || config.redisMode,
+            redis_uri: config.cacheAndSignals?.uri,
+          }),
+        ]);
         if (mounted) {
+          if (cfg) setBackendConfig(cfg);
           setTestResults(results);
         }
       } catch {
@@ -63,16 +64,20 @@ export const OverviewStep: React.FC = () => {
     setIsTesting(true);
     try {
       await runCapabilityProbe();
-      const results = await platformAdapter.testConnections({
-        neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
-        neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
-        neo4j_user: config.knowledgeGraph?.user,
-        neo4j_password: config.knowledgeGraph?.password || config.neo4jPassword,
-        postgres_mode: config.sessionMemory?.mode || config.postgresMode,
-        postgres_uri: config.sessionMemory?.uri,
-        redis_mode: config.cacheAndSignals?.mode || config.redisMode,
-        redis_uri: config.cacheAndSignals?.uri,
-      });
+      const [cfg, results] = await Promise.all([
+        platformAdapter.getConfig(),
+        platformAdapter.testConnections({
+          neo4j_mode: config.knowledgeGraph?.mode || config.neo4jMode,
+          neo4j_uri: config.knowledgeGraph?.uri || config.neo4jUri,
+          neo4j_user: config.knowledgeGraph?.user,
+          neo4j_password: config.knowledgeGraph?.password || config.neo4jPassword,
+          postgres_mode: config.sessionMemory?.mode || config.postgresMode,
+          postgres_uri: config.sessionMemory?.uri,
+          redis_mode: config.cacheAndSignals?.mode || config.redisMode,
+          redis_uri: config.cacheAndSignals?.uri,
+        }),
+      ]);
+      if (cfg) setBackendConfig(cfg);
       setTestResults(results);
     } catch {
       // offline
@@ -81,17 +86,32 @@ export const OverviewStep: React.FC = () => {
     }
   };
 
-  // Inference Provider dynamic discovery
+  // Dynamic Inference Engine & Provider from Backend API (Zero Hardcoding)
   const validKeys = (config.apiKeys || []).filter(
     (k) => k?.key && k.key.trim().length > 0 && k.provider !== 'unknown'
   );
   const isCloud = config.llmDeployment !== 'local';
-  const primaryProviderName =
-    (validKeys[0]?.providerName) ||
-    (config.selectedLocalModel ? `Ollama (${config.selectedLocalModel})` : 'Google Gemini');
+
+  const primaryProviderObj: any = (
+    Array.isArray(backendConfig?.available_providers) ? backendConfig.available_providers : []
+  ).find((p: any) => p.is_active || p.status === 'READY') ||
+  (Array.isArray(backendConfig?.available_providers) ? backendConfig.available_providers[0] : null);
+
+  const engineTitle =
+    primaryProviderObj?.display_name ||
+    (backendConfig?.llm_backend ? String(backendConfig.llm_backend).toUpperCase() : '') ||
+    validKeys[0]?.providerName ||
+    'Google Gemini';
+
   const activeModelName =
-    (config.selectedLocalModel) ||
+    backendConfig?.llm_model_name ||
+    primaryProviderObj?.model ||
+    config.selectedLocalModel ||
     'gemini-2.5-flash';
+
+  const providerTier =
+    primaryProviderObj?.tier ||
+    (isCloud ? `${validKeys.length} key active` : 'Local weights');
 
   // Storage Profile determination
   const currentStorageMode =
@@ -232,13 +252,13 @@ export const OverviewStep: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 2: Inference Engine */}
+        {/* Card 2: Inference Provider (Sourced dynamically from API, zero hardcoding) */}
         <div className="p-4 rounded-xl bg-[#111111] border border-[#292929] flex flex-col justify-between hover:border-[#FFFFFF]/20 transition-colors">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <span className="text-sm font-medium text-[#A3A3A3] block">Inference Engine</span>
+              <span className="text-sm font-medium text-[#A3A3A3] block">{engineTitle}</span>
               <span className="text-base sm:text-lg font-semibold text-[#FFFFFF] mt-0.5 block truncate max-w-[200px] sm:max-w-[240px]">
-                {primaryProviderName}
+                {activeModelName}
               </span>
             </div>
             <button
@@ -255,9 +275,9 @@ export const OverviewStep: React.FC = () => {
           <div className="mt-4 pt-3 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
             <div className="flex items-center gap-1.5 font-mono text-[#FFFFFF]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FFFFFF]" />
-              <span>{activeModelName}</span>
+              <span>{primaryProviderObj?.status === 'READY' || isConnected ? 'Operational' : 'Standby'}</span>
             </div>
-            <span>{isCloud ? `${validKeys.length} key active` : 'Local weights'}</span>
+            <span className="truncate max-w-[150px]">{providerTier}</span>
           </div>
         </div>
 
@@ -272,16 +292,12 @@ export const OverviewStep: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={() => setShowDiagnostics((prev) => !prev)}
-              className="text-xs font-medium text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
-              title="Toggle neural diagnostics"
+              onClick={() => setActiveTab('neural')}
+              className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
+              title="Configure neural models & rerankers"
             >
-              <span>{showDiagnostics ? 'Hide' : 'Diagnostics'}</span>
-              {showDiagnostics ? (
-                <ChevronUp className="w-3 h-3 text-[#FFFFFF]" />
-              ) : (
-                <ChevronDown className="w-3 h-3 text-[#FFFFFF]" />
-              )}
+              <span>Neural</span>
+              <ArrowRight className="w-3 h-3 text-[#FFFFFF]" />
             </button>
           </div>
 
@@ -327,38 +343,6 @@ export const OverviewStep: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Diagnostics Drawer (Progressive Disclosure) */}
-      {showDiagnostics && (
-        <div className="p-4 rounded-xl bg-[#111111] border border-[#292929] space-y-3 animate-in fade-in-50 duration-150">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-[#FFFFFF]">Neural Preflight Assets</span>
-            <span className="text-xs text-[#A3A3A3] font-mono">{preflightFootprint}</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {preflightAssets.length > 0 ? (
-              preflightAssets.map((asset) => (
-                <div
-                  key={asset.id || asset.name}
-                  className="p-2.5 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-between text-xs"
-                >
-                  <div className="min-w-0 pr-2">
-                    <div className="font-medium text-[#FFFFFF] truncate">{asset.name}</div>
-                    <div className="text-[11px] text-[#A3A3A3] truncate">{asset.desc || asset.size}</div>
-                  </div>
-                  <span className="text-[10px] font-mono text-[#FFFFFF] shrink-0 px-2 py-0.5 rounded bg-[#292929]">
-                    {asset.verified ? 'Verified' : 'Built-in'}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-[#A3A3A3] col-span-2 py-2">
-                All preflight assets loaded and operational.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Full-Width Substrate List */}
       <div className="space-y-2.5">
