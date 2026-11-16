@@ -77,7 +77,7 @@ export function useSessionHydration({
   );
 
   const hydrateSessions = useCallback(async () => {
-    if (!isTunnelConfigured || !isOnline) return;
+    if (!isOnline) return;
     setIsHydrating(true);
     try {
       const username = getStoredUsername();

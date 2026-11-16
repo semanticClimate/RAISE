@@ -23,7 +23,7 @@ export function useRaiseController() {
     isNeuralReady,
     readinessMessage,
   } = useModeStore();
-  const isOnline = isTunnelConfigured && (appMode === 'connected' || appMode === 'degraded');
+  const isOnline = appMode === 'connected' || appMode === 'degraded';
 
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(() => {
     try {
