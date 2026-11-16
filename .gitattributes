@@ -1,0 +1,48 @@
+# ==============================================================================
+# Git Attributes - End-of-Line (EOL) Normalization for Cross-Platform Integrity
+# ==============================================================================
+
+# Auto detect text files and perform LF normalization in the repository
+* text=auto
+
+# Windows Shell / Batch Launchers MUST ALWAYS checkout as CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Unix / Linux / macOS Shell Scripts MUST ALWAYS checkout as LF
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Code, configuration, documentation and markup normalize with LF
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+
+# Binary files - preserve as binary without text filtering
+*.dll binary
+*.so binary
+*.dylib binary
+*.exe binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.sqlite3 binary
+*.db binary
+*.parquet binary
+*.tar.gz binary
+*.zip binary
