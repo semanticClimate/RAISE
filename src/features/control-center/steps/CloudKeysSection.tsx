@@ -1,6 +1,6 @@
 import { CheckCircle2, Eye, EyeOff, Plus, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { DynamicModelItem } from '../../../hooks/useDynamicModels';
 import { platformAdapter } from '../services/platformAdapter';
 import { useControlCenterStore } from '../store/useControlCenterStore';
@@ -58,6 +58,49 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
       setTestingKeyId(null);
     }
   };
+
+  // Synthesize verified / configured keys from config.apiKeys with live backend models
+  const configuredKeys = useMemo(() => {
+    return (config.apiKeys || []).filter(
+      (k) => (k?.key && k.key.trim().length > 0 && k.provider !== 'unknown') || k?.verified === true
+    );
+  }, [config.apiKeys]);
+
+  const activeCloudModels = useMemo<DynamicModelItem[]>(() => {
+    const list: DynamicModelItem[] = [...cloudDiscoveredLLMs];
+
+    // For any configured or verified key in the store, ensure it's represented
+    configuredKeys.forEach((k) => {
+      const pId = k.provider.toLowerCase();
+      const alreadyIncluded = list.some((m) => m.provider.toLowerCase() === pId);
+      if (!alreadyIncluded) {
+        const isVerified = k.verified === true || (typeof k.latencyMs === 'number' && k.latencyMs > 0);
+        const modelName =
+          pId === 'gemini'
+            ? 'gemini-2.5-flash'
+            : pId === 'groq'
+              ? 'openai/gpt-oss-120b'
+              : pId === 'custom' || pId === 'universal'
+                ? 'Universal Custom LLM'
+                : `${k.providerName || pId} Model`;
+
+        list.push({
+          provider: k.provider,
+          displayName: k.providerName || k.provider.toUpperCase(),
+          model: modelName,
+          status: isVerified ? 'READY' : 'CONFIGURED',
+          isActive: isVerified || list.length === 0,
+          tier: k.latencyMs
+            ? `Connected (${k.latencyMs}ms)`
+            : isVerified
+              ? 'Connected (Live)'
+              : 'Configured',
+        });
+      }
+    });
+
+    return list;
+  }, [cloudDiscoveredLLMs, configuredKeys]);
 
   return (
     <div className="space-y-4">
@@ -241,7 +284,7 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
               <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 flex-wrap">
                 <span>Cloud Models:</span>
                 <span className="text-[11px] font-mono text-emerald-400">
-                  {cloudDiscoveredLLMs.length} active
+                  {activeCloudModels.length} active
                 </span>
                 {liveActiveModel && !isLocalProvider(liveActiveModel) && (
                   <span className="text-[10px] font-mono text-slate-400">
@@ -260,13 +303,13 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
               </button>
             </div>
 
-            {cloudDiscoveredLLMs.length === 0 ? (
+            {activeCloudModels.length === 0 ? (
               <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 flex items-center gap-2">
                 <span>Add a valid API key above to activate cloud models.</span>
               </div>
             ) : (
               <div className="space-y-1.5">
-                {cloudDiscoveredLLMs.map((m) => (
+                {activeCloudModels.map((m) => (
                   <div
                     key={`${m.provider}-${m.model}`}
                     className={`p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${

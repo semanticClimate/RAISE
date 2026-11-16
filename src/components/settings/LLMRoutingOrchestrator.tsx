@@ -6,7 +6,6 @@ import {
   Power,
   RefreshCw,
   CheckCircle2,
-  Plus,
 } from 'lucide-react';
 import { systemService } from '../../services/SystemService';
 import type { RoutingUpdateRequest } from '../../types';
@@ -33,13 +32,14 @@ const CLEAN_PROVIDER_NAMES: Record<string, string> = {
   cohere: 'Cohere',
   deepseek: 'DeepSeek',
   openrouter: 'OpenRouter',
+  universal: 'Universal / Custom API',
+  custom: 'Universal / Custom API',
 };
 
 const DEFAULT_DISABLED = ['mistral'];
 
 export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ className = '' }) => {
   const [activeChain, setActiveChain] = useState<string[]>([]);
-  const [standbyList, setStandbyList] = useState<string[]>([]);
   const [disabledList, setDisabledList] = useState<string[]>(DEFAULT_DISABLED);
   const [primaryProvider, setPrimaryProvider] = useState<string>('gemini');
   const [providersData, setProvidersData] = useState<Record<string, ProviderCardState>>(() => {
@@ -76,10 +76,17 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           'gemini';
 
         const storeApiKeys = useControlCenterStore.getState().config.apiKeys || [];
-        const hasStoreKey = (pid: string) =>
-          storeApiKeys.some(
-            (k) => k?.provider === pid && k.key && k.key.trim().length > 0 && k.provider !== 'unknown'
-          );
+        const hasStoreKey = (pid: string) => {
+          const norm = pid.toLowerCase().trim();
+          return storeApiKeys.some((k) => {
+            const kProv = (k?.provider || '').toLowerCase().trim();
+            const hasKey = (k?.key && k.key.trim().length > 0 && kProv !== 'unknown') || k?.verified === true;
+            if (!hasKey) return false;
+            if (kProv === norm) return true;
+            if ((kProv === 'custom' || kProv === 'universal') && (norm === 'custom' || norm === 'universal')) return true;
+            return false;
+          });
+        };
 
         const merged: Record<string, ProviderCardState> = {};
         Object.entries(CLEAN_PROVIDER_NAMES).forEach(([id, name]) => {
@@ -121,23 +128,62 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           };
         });
 
-        // Determine if a provider is live, detected, and connected
+        // Also merge any verified or configured keys present in the control center store
+        storeApiKeys.forEach((k) => {
+          if (!k?.provider || k.provider === 'unknown') return;
+          const pid = k.provider.toLowerCase().trim();
+          const isVerified = k.verified === true || (typeof k.latencyMs === 'number' && k.latencyMs > 0);
+          const hasKey = (k.key && k.key.trim().length > 0) || isVerified;
+          if (!hasKey) return;
+          if (!merged[pid]) {
+            merged[pid] = {
+              id: pid,
+              name: k.providerName || CLEAN_PROVIDER_NAMES[pid] || pid.toUpperCase(),
+              status: isVerified ? 'READY' : 'CONFIGURED',
+              isOffline: false,
+              isConfigured: true,
+              tier: k.latencyMs ? `Connected (${k.latencyMs}ms)` : 'Configured',
+              model: (k as any).model || (pid === 'gemini' ? 'gemini-2.5-flash' : 'Universal Custom LLM'),
+            };
+          } else {
+            merged[pid].isConfigured = true;
+            if (isVerified || merged[pid].status === 'NOT_CONFIGURED') {
+              merged[pid].status = isVerified ? 'READY' : 'CONFIGURED';
+              merged[pid].isOffline = false;
+            }
+          }
+        });
+
+        // Determine strictly if a provider is live, detected, and connected
         const isConnectedAndLive = (pid: string): boolean => {
-          const info = merged[pid];
-          // If this is the backend's active primary, it is live
-          if (pid === primary) return true;
-          if (!info) return false;
-          if (info.isOffline) return false;
-          const st = (info.status || '').toUpperCase().trim();
-          if (st === 'OFFLINE' || st === 'LOCAL_OFFLINE' || st === 'NOT_CONFIGURED') {
-            return false;
+          const norm = pid.toLowerCase().trim();
+          const info = merged[norm];
+
+          // 1. Local engines: MUST be actively running and responding (status READY/ONLINE/ACTIVE)
+          // OFFLINE, LOCAL_OFFLINE, STANDBY mean not running or not loaded in process
+          if (norm === 'vllm' || norm === 'ollama' || norm === 'local') {
+            if (!info) return false;
+            if (info.isOffline) return false;
+            const st = (info.status || '').toUpperCase().trim();
+            return st === 'READY' || st === 'ONLINE' || st === 'ACTIVE';
           }
-          if (st === 'READY' || st === 'CONFIGURED' || st === 'ONLINE' || st === 'ACTIVE') {
-            return true;
+
+          // 2. Cloud engines (Gemini, Groq, Custom/Universal, etc.):
+          // Live if valid key is in store or reported configured/ready by backend
+          if (hasStoreKey(norm)) return true;
+
+          if (info) {
+            if (info.isOffline) return false;
+            const st = (info.status || '').toUpperCase().trim();
+            if (st === 'NOT_CONFIGURED' || st === 'OFFLINE' || st === 'STANDBY' || st === 'LOCAL_OFFLINE') {
+              return false;
+            }
+            if (st === 'CONFIGURED' || st === 'READY' || st === 'ONLINE' || st === 'ACTIVE') {
+              return true;
+            }
+            if (info.isConfigured) return true;
           }
-          if (info.isConfigured || hasStoreKey(pid)) {
-            return true;
-          }
+
           return false;
         };
 
@@ -160,14 +206,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
           }
         });
 
-        // Standby / disconnected list (known to backend but offline or unconfigured)
-        const allKnown = Object.keys(CLEAN_PROVIDER_NAMES);
-        const disconnected = allKnown.filter(
-          (pid) => !liveChain.includes(pid) && !disabled.includes(pid)
-        );
-
         setActiveChain(liveChain);
-        setStandbyList(disconnected);
         setDisabledList(disabled);
         setPrimaryProvider(liveChain[0] || primary);
         setProvidersData(merged);
@@ -236,19 +275,9 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
 
   const enableProvider = (providerId: string) => {
     const updatedDisabled = disabledList.filter((p) => p !== providerId);
-    const updatedStandby = standbyList.filter((p) => p !== providerId);
     const updatedChain = [...activeChain, providerId];
-    setStandbyList(updatedStandby);
     const pName = providersData[providerId]?.name || providerId.toUpperCase();
     persistRouting(updatedChain, updatedDisabled, primaryProvider, `Enabled ${pName}`);
-  };
-
-  const activateStandbyProvider = (providerId: string) => {
-    const updatedStandby = standbyList.filter((p) => p !== providerId);
-    const updatedChain = [...activeChain, providerId];
-    setStandbyList(updatedStandby);
-    const pName = providersData[providerId]?.name || providerId.toUpperCase();
-    persistRouting(updatedChain, disabledList, activeChain[0] || providerId, `Activated ${pName}`);
   };
 
   // Drag and drop handlers
@@ -439,39 +468,6 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
         </div>
       </div>
 
-      {/* Standby / Disconnected Engines (Not in active execution chain) */}
-      {standbyList.length > 0 && (
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-200/80 dark:border-white/10">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between">
-            <span>STANDBY / UNCONNECTED ENGINES ({standbyList.length})</span>
-            <span className="text-[10px] font-normal normal-case text-slate-400">Offline or missing keys; bypassed during queries</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {standbyList.map((pId) => {
-              const p = providersData[pId] || { id: pId, name: CLEAN_PROVIDER_NAMES[pId] || pId.toUpperCase() };
-              return (
-                <div
-                  key={`standby-${pId}`}
-                  className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-600" />
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">({p.status || 'Offline'})</span>
-                  <button
-                    type="button"
-                    onClick={() => activateStandbyProvider(pId)}
-                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer pl-1 flex items-center gap-0.5"
-                    title={`Add ${p.name} to active fallback chain`}
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Add</span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Disabled Providers Pool */}
       {disabledList.length > 0 && (
