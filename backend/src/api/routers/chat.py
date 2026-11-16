@@ -463,7 +463,7 @@ async def chat_endpoint(
         subg = response_payload.get("subgraph") or {}
         nodes_count = len(subg.get("nodes", [])) if isinstance(subg, dict) else 0
         qg_dec = response_payload.get("quality_gate_decision", "accept").upper()
-        logger.info(f"[GRAPH-RAG] ✅ Answer synthesized in {elapsed:.2f}s | Chunks: {top_chunks_count} | Graph: {nodes_count} nodes | Gate: {qg_dec} | Citations: {len(citations)}")
+        logger.info(f"[GRAPH-RAG] [OK] Answer synthesized in {elapsed:.2f}s | Chunks: {top_chunks_count} | Graph: {nodes_count} nodes | Gate: {qg_dec} | Citations: {len(citations)}")
 
         # Cache in Redis with semantic vector indexing (TTL: 86400s / 24h)
         if redis_cache:
