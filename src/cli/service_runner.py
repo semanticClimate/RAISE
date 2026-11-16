@@ -69,7 +69,7 @@ def _now_ts() -> str:
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 
-def format_stream_row(tag: str, message: str, icon: str = "*", tag_color: str = C.CYAN, msg_color: str = C.WHITE) -> str:
+def format_stream_row(tag: str, message: str, icon: str = "\u25cf", tag_color: str = C.CYAN, msg_color: str = C.WHITE) -> str:
     """Formats a single live telemetry line in column format."""
     ts = _now_ts()
     tag_padded = f"{tag:<8}"[:8]
@@ -154,11 +154,8 @@ def fetch_json_endpoint(url: str, timeout: float = 3.0) -> Optional[Dict[str, An
 
 def print_banner() -> None:
     """Renders the top-level RAISE banner."""
-    print(f"\n  {B_DIM}╭{'─' * W_WIDTH}╮{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET}  {C.TITLE}RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} {B_DIM}//{C.RESET} {C.CYAN}MONOREPO PLATFORM{C.RESET}{' ' * 23}{B_DIM}│{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Backend API : http://localhost:8000   •  Swagger Docs : /docs{C.RESET}{' ' * 13}{B_DIM}│{C.RESET}")
-    print(f"  {B_DIM}│{C.RESET}  {C.MUTED}Frontend UI : http://localhost:5173{C.RESET}{' ' * 39}{B_DIM}│{C.RESET}")
-    print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
+    print(f"\n  {C.TITLE}RAISE ACADEMIC GRAPHRAG STUDIO{C.RESET} {B_DIM}//{C.RESET} {C.CYAN}MONOREPO PLATFORM{C.RESET}")
+    print(f"  {C.MUTED}Backend API : http://localhost:8000 (Swagger: /docs)   \u2022   Frontend UI : http://localhost:5173{C.RESET}\n")
 
 
 def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
@@ -237,17 +234,17 @@ def _render_status_dashboard(focused_doc: Optional[str] = None) -> None:
         pass
 
     neo4j_online = is_port_open(7687)
-    neo4j_str = f"{C.SUCCESS}[OK] CONNECTED{C.RESET} (bolt://localhost:7687)" if neo4j_online else f"{C.WARN}[STANDBY]{C.RESET}   (In-memory NetworkX active)"
+    neo4j_str = f"{C.SUCCESS}\u2713 CONNECTED{C.RESET} (bolt://localhost:7687)" if neo4j_online else f"{C.WARN}\u25cf STANDBY{C.RESET}   (In-memory NetworkX active)"
 
     redis_online = is_port_open(6379)
-    redis_str = f"{C.SUCCESS}[OK] CONNECTED{C.RESET} (localhost:6379)" if redis_online else f"{C.MUTED}[STANDBY]{C.RESET}   (In-memory LRU active)"
+    redis_str = f"{C.SUCCESS}\u2713 CONNECTED{C.RESET} (localhost:6379)" if redis_online else f"{C.MUTED}\u25cf STANDBY{C.RESET}   (In-memory LRU active)"
 
     pg_online = is_port_open(5432)
-    pg_str = f"{C.SUCCESS}[OK] CONNECTED{C.RESET} (localhost:5432)" if pg_online else f"{C.MUTED}[STANDBY]{C.RESET}   (SQLite local persistence)"
+    pg_str = f"{C.SUCCESS}\u2713 CONNECTED{C.RESET} (localhost:5432)" if pg_online else f"{C.MUTED}\u25cf STANDBY{C.RESET}   (SQLite local persistence)"
 
-    chroma_str = f"{C.SUCCESS}[OK] ACTIVE{C.RESET}    ({chroma_count} chunks | {chroma_model})" if chroma_online else f"{C.WARN}[STANDBY] EMPTY / OFFLINE{C.RESET}"
-    synth_raw = synth.get("display_string", f"{C.SUCCESS}[OK] ACTIVE{C.RESET}")
-    synth_str = synth_raw.replace("\u25cf", "[OK]").replace("\u2713", "[OK]").replace("\u2714", "[OK]").replace("\u2716", "[ERR]")
+    chroma_str = f"{C.SUCCESS}\u2713 ACTIVE{C.RESET}    ({chroma_count} chunks | {chroma_model})" if chroma_online else f"{C.WARN}\u25cf STANDBY EMPTY / OFFLINE{C.RESET}"
+    synth_raw = synth.get("display_string", f"{C.SUCCESS}\u2713 ACTIVE{C.RESET}")
+    synth_str = synth_raw.replace("\u2714", "\u2713").replace("\u2716", "\u2715")
 
     encoder_name = prov.get("encoder_model") or cfg.get("embedding_model") or chroma_model
     reranker_name = prov.get("reranker_model") or cfg.get("reranker_model") or models.RERANKER_MODEL_NAME
@@ -335,26 +332,26 @@ def run_system_doctor() -> None:
                 status = resp.status
                 latency = round((time.perf_counter() - t0) * 1000, 1)
                 if 200 <= status < 400:
-                    badge = f"{C.SUCCESS}[OK] PASS{C.RESET} (HTTP {status} • {latency}ms)"
+                    badge = f"{C.SUCCESS}\u2713 PASS{C.RESET} (HTTP {status} • {latency}ms)"
                 else:
-                    badge = f"{C.WARN}[!] HTTP {status}{C.RESET} ({latency}ms)"
+                    badge = f"{C.WARN}\u25b2 HTTP {status}{C.RESET} ({latency}ms)"
         except urllib.error.HTTPError as e:
-            badge = f"{C.DANGER}[ERR] HTTP {e.code}{C.RESET} ({e.reason})"
+            badge = f"{C.DANGER}\u2715 HTTP {e.code}{C.RESET} ({e.reason})"
         except Exception as e:
-            badge = f"{C.DANGER}[ERR] UNREACHABLE{C.RESET} ({type(e).__name__})"
+            badge = f"{C.DANGER}\u2715 UNREACHABLE{C.RESET} ({type(e).__name__})"
 
         print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} {name:<30} {badge}")
 
     neo_ok = is_port_open(7687)
-    neo_badge = f"{C.SUCCESS}[OK] ONLINE{C.RESET} (Port 7687 responding)" if neo_ok else f"{C.WARN}[STANDBY]{C.RESET} (In-memory NetworkX active)"
+    neo_badge = f"{C.SUCCESS}\u2713 ONLINE{C.RESET} (Port 7687 responding)" if neo_ok else f"{C.WARN}\u25b2 STANDBY{C.RESET} (In-memory NetworkX active)"
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} {'Neo4j Database (:7687)':<30} {neo_badge}")
 
     redis_ok = is_port_open(6379)
-    redis_badge = f"{C.SUCCESS}[OK] ONLINE{C.RESET} (Port 6379 responding)" if redis_ok else f"{C.MUTED}[STANDBY]{C.RESET} (In-memory LRU active)"
+    redis_badge = f"{C.SUCCESS}\u2713 ONLINE{C.RESET} (Port 6379 responding)" if redis_ok else f"{C.MUTED}\u25cf STANDBY{C.RESET} (In-memory LRU active)"
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}├─{C.RESET} {'Redis Cache (:6379)':<30} {redis_badge}")
 
     pg_ok = is_port_open(5432)
-    pg_badge = f"{C.SUCCESS}[OK] ONLINE{C.RESET} (Port 5432 responding)" if pg_ok else f"{C.MUTED}[STANDBY]{C.RESET} (SQLite local persistence)"
+    pg_badge = f"{C.SUCCESS}\u2713 ONLINE{C.RESET} (Port 5432 responding)" if pg_ok else f"{C.MUTED}\u25cf STANDBY{C.RESET} (SQLite local persistence)"
     print(f"  {B_DIM}│{C.RESET}  {B_DIM}╰─{C.RESET} {'PostgreSQL Database (:5432)':<30} {pg_badge}")
 
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
@@ -506,76 +503,73 @@ class DualProcessSupervisor:
 
                 clean_line = sanitize_text(line)
 
-                # 1. Model loading / weights progress (fast 0.25s refresh for live feel)
+                # 1. Model loading / weights progress (silent during download, announce once ready)
                 if any(kw in clean_line for kw in ("it/s", "%|", "Loading weights:", "Downloading")):
                     if ("100%|" in clean_line or "Loaded 20 prompts" in clean_line) and not self._model_ready_announced:
                         self._model_ready_announced = True
-                        print_supervisor_event(format_stream_row("NEURAL", "Neural embedding weights initialized.", "✨", C.SUCCESS, C.SUCCESS))
-                    else:
-                        now_ts = time.time()
-                        if now_ts - self._last_progress_print >= 0.25:
-                            self._last_progress_print = now_ts
-                            short_prog = clean_line.strip()
-                            if len(short_prog) > 68:
-                                short_prog = short_prog[:65] + "..."
-                            print_supervisor_event(format_stream_row("WEIGHTS", short_prog, "⏳", C.MUTED, C.MUTED))
+                        print_supervisor_event(format_stream_row("NEURAL", "Neural embedding weights initialized.", "\u2713", C.SUCCESS, C.SUCCESS))
                     continue
 
                 # 2. High-value lifecycle & routing events
                 if "Loading SentenceTransformer model" in clean_line:
                     model_id = clean_line.split("from")[-1].strip().rstrip(".")
-                    print_supervisor_event(format_stream_row("NEURAL", f"Initializing SentenceTransformer ({model_id})...", "🧠", C.CYAN, C.WHITE))
+                    print_supervisor_event(format_stream_row("NEURAL", f"Initializing SentenceTransformer ({model_id})...", "\u25cf", C.CYAN, C.WHITE))
                     continue
 
                 if "Starting neural models pre-warming" in clean_line:
-                    print_supervisor_event(format_stream_row("WARMUP", "Pre-warming neural inference stack (reranker, NLI)...", "⚡", C.CYAN, C.WHITE))
+                    print_supervisor_event(format_stream_row("WARMUP", "Pre-warming neural inference stack (reranker, NLI)...", "\u25cf", C.CYAN, C.WHITE))
                     continue
 
                 if "Neural models pre-warming completed successfully" in clean_line:
-                    print_supervisor_event(format_stream_row("NEURAL", "All neural models warmed up and ready.", "✨", C.SUCCESS, C.SUCCESS))
+                    print_supervisor_event(format_stream_row("NEURAL", "All neural models warmed up and ready.", "\u2713", C.SUCCESS, C.SUCCESS))
                     continue
 
                 if "Successfully mounted all core RAISE GraphRAG routes" in clean_line:
-                    print_supervisor_event(format_stream_row("CORE", "All GraphRAG routers mounted successfully.", "[OK]", C.SUCCESS, C.WHITE))
+                    print_supervisor_event(format_stream_row("CORE", "All GraphRAG routers mounted successfully.", "\u2713", C.SUCCESS, C.WHITE))
                     continue
 
                 if "[GRAPH-RAG]" in clean_line:
                     clean_rag = clean_line.split("[GRAPH-RAG]")[-1].strip()
-                    print_supervisor_event(format_stream_row("GRAPHRAG", clean_rag, "*", C.CYAN, C.WHITE))
+                    print_supervisor_event(format_stream_row("GRAPHRAG", clean_rag, "\u25cf", C.CYAN, C.WHITE))
                     continue
 
                 if "switched to" in clean_line and "Reason" in clean_line:
                     clean_fo = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
-                    print_supervisor_event(format_stream_row("FAILOVER", clean_fo, "[!]", C.WARN, C.WARN))
+                    print_supervisor_event(format_stream_row("FAILOVER", clean_fo, "\u25b2", C.WARN, C.WARN))
                     continue
 
                 if "[INFERENCE]" in clean_line or "Executing task" in clean_line:
                     clean_inf = clean_line.split("[INFERENCE]")[-1].replace("raise.infrastructure.providers.router:", "").strip()
                     clean_inf = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_inf)
-                    print_supervisor_event(format_stream_row("ROUTER", clean_inf, "*", C.ACCENT, C.WHITE))
+                    print_supervisor_event(format_stream_row("ROUTER", clean_inf, "\u25cf", C.ACCENT, C.WHITE))
                     continue
 
                 if "Synthesis Success" in clean_line:
                     clean_syn = re.sub(r'^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\[[A-Z]+\]\s+[^:]*:\s*', '', clean_line)
-                    print_supervisor_event(format_stream_row("SYNTH", clean_syn, "[OK]", C.SUCCESS, C.SUCCESS))
+                    print_supervisor_event(format_stream_row("SYNTH", clean_syn, "\u2713", C.SUCCESS, C.SUCCESS))
                     continue
 
                 if "POST /api/documents/upload" in clean_line:
-                    print_supervisor_event(format_stream_row("INGEST", "Document upload received from UI Library.", "[OK]", C.SUCCESS, C.WHITE))
+                    print_supervisor_event(format_stream_row("INGEST", "Document upload received from UI Library.", "\u2713", C.SUCCESS, C.WHITE))
                     continue
 
                 if "GET /api/pdf/" in clean_line and "200 OK" not in clean_line:
                     pdf_match = re.search(r'GET /api/pdf/([^ /]+)', clean_line)
                     pdf_name = urllib.parse.unquote(pdf_match.group(1)) if pdf_match else "PDF"
-                    print_supervisor_event(format_stream_row("VIEWER", f"Streaming PDF: {pdf_name}", "*", C.MUTED, C.MUTED))
+                    print_supervisor_event(format_stream_row("VIEWER", f"Streaming PDF: {pdf_name}", "\u25cf", C.MUTED, C.MUTED))
                     continue
 
                 if "ready in" in clean_line or "Local:" in clean_line:
-                    print_supervisor_event(format_stream_row("FRONTEND", "React / Vite UI ready on http://localhost:5173", "[OK]", C.SUCCESS, C.SUCCESS))
+                    print_supervisor_event(format_stream_row("FRONTEND", "React / Vite UI ready on http://localhost:5173", "\u2713", C.SUCCESS, C.SUCCESS))
                     continue
 
                 # 3. Filter only repetitive heartbeat / CORS noise so real events always show
                 is_noisy_poll = any(ep in clean_line for ep in (
+                    "HTTP Request: GET",
+                    "HTTP Request: HEAD",
+                    "httpx",
+                    "httpcore",
+                    "urllib3",
                     "OPTIONS /api/",
                     "GET /api/health",
                     "GET /api/system/hardware",
@@ -636,12 +630,12 @@ class DualProcessSupervisor:
                 ) and not is_error
 
                 if is_error:
-                    print_supervisor_event(format_stream_row("ERROR", log_msg, "[ERR]", C.DANGER, C.DANGER))
+                    print_supervisor_event(format_stream_row("ERROR", log_msg, "\u2715", C.DANGER, C.DANGER))
                 elif is_warning:
-                    print_supervisor_event(format_stream_row("WARNING", log_msg, "[WARN]", C.WARN, C.WARN))
+                    print_supervisor_event(format_stream_row("WARNING", log_msg, "\u25b2", C.WARN, C.WARN))
                 else:
                     if "HTTP/1.1\" 200 OK" not in log_msg:
-                        print_supervisor_event(format_stream_row(logger_tag, log_msg, "*", C.CYAN, B_TXT))
+                        print_supervisor_event(format_stream_row(logger_tag, log_msg, "\u25cf", C.CYAN, B_TXT))
 
     def wait_for_backend(self, timeout_sec: int = 180) -> bool:
         """Polls /api/health at high frequency (0.25s) for instant readiness detection."""

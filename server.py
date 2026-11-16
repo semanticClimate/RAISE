@@ -476,59 +476,47 @@ def _print_live_edge_monitor(event_data: Dict[str, Any]):
 
 
 
+_POLL_PATHS = {
+    "/api/health",
+    "/api/system/routing",
+    "/api/system/hardware",
+    "/api/system/config",
+    "/api/system/diagnostics",
+    "/api/documents",
+    "/api/commands",
+    "/api/telemetry",
+    "/favicon.ico",
+}
+_LOCAL_IPS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
 def _safe_print_live_edge_monitor(event_data: Dict[str, Any]):
-
-    client_ip = event_data.get("client_ip", "127.0.0.1")
-
-    country = event_data.get("country", "LOCAL")
-
-    ray_id = event_data.get("ray_id", "DIRECT")
-
-    device = event_data.get("device", "Desktop")
-
-    os_name = event_data.get("os", "Unknown")
-
-    browser = event_data.get("browser", "Unknown")
-
-    method = event_data.get("method", "GET")
-
     path = event_data.get("path", "/")
-
-    status_code = event_data.get("status", 200)
-
-    duration_ms = event_data.get("duration_ms", 0.0)
-
-    req_body = event_data.get("request_body", "")
-
-
-
-    # Only print for API calls (skip favicon, static)
-
     if not path.startswith("/api"):
-
         return
 
+    method = event_data.get("method", "GET")
+    client_ip = event_data.get("client_ip", "127.0.0.1")
 
+    # Mute noisy periodic background polls from local frontend / supervisor
+    if method == "GET" and (client_ip in _LOCAL_IPS or client_ip.startswith("127.")):
+        if any(path == p or path.startswith(p + "/") or path.startswith(p + "?") for p in _POLL_PATHS):
+            return
 
-    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(event_data.get("timestamp", time.time())))
+    status_code = event_data.get("status", 200)
+    duration_ms = event_data.get("duration_ms", 0.0)
+    req_body = event_data.get("request_body", "")
 
-    print("\033[1;96m═" * 78 + "\033[0m")
+    ts = time.strftime("%H:%M:%S", time.localtime(event_data.get("timestamp", time.time())))
+    sym = "\u2713" if 200 <= status_code < 400 else "\u2715"
+    color = "\033[92m" if 200 <= status_code < 400 else "\033[91m"
+    ip_disp = "local" if (client_ip in _LOCAL_IPS or client_ip.startswith("127.")) else client_ip
 
-    print(f"\033[1;92m🔌 INCOMING EDGE CONNECTION\033[0m | \033[90m[{ts}]\033[0m")
-
-    print(f"  • \033[1mClient IP\033[0m  : \033[93m{client_ip}\033[0m (Region: \033[96m{country}\033[0m | Ray-ID: \033[90m{ray_id}\033[0m)")
-
-    print(f"  • \033[1mDevice\033[0m     : \033[97m{device}\033[0m (OS: \033[96m{os_name}\033[0m | Browser: \033[96m{browser}\033[0m)")
-
-    print(f"  • \033[1mRoute\033[0m      : \033[1;95m{method} {path}\033[0m -> Status \033[1;92m{status_code}\033[0m (\033[93m{duration_ms}ms\033[0m)")
-
+    print(f"  \033[90m[{ts}]\033[0m {color}{sym}\033[0m \033[1m{method} {path}\033[0m \033[90m\u2192\033[0m {color}{status_code}\033[0m \033[90m({duration_ms:.1f}ms \u2022 {ip_disp})\033[0m")
     if req_body and req_body != "[MULTIPART_UPLOAD_BYPASS]":
-
-        preview = req_body[:120].replace("\n", " ")
-
-        print(f"  • \033[1mPayload\033[0m    : \033[90m{preview}\033[0m")
-
-    print("\033[1;96m─" * 78 + "\033[0m")
+        preview = req_body[:100].replace("\n", " ").strip()
+        if preview:
+            print(f"       \033[90m\u2514\u2500 {preview}\033[0m")
 
 
 
@@ -556,13 +544,11 @@ async def server_lifespan(app: FastAPI):
 
 
 
-    print("\033[1;96m═" * 78 + "\033[0m")
+    # Mute noisy third-party loggers during model pre-warming and request servicing
+    for logger_name in ("httpx", "httpcore", "urllib3", "huggingface_hub", "transformers"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
-    print(" \033[1;95m🚀 RAISE (v1.0.0) CLOUDFLARE GATEWAY & MASTER EDGE HOST\033[0m")
-
-    print(" \033[90mSystem: Research Assessment Intelligence & Semantic Extraction\033[0m")
-
-    print("\033[1;96m═" * 78 + "\033[0m")
+    print(f"  \033[1;92m\u2713\033[0m \033[1mRAISE Edge Gateway\033[0m \033[90m\u2022\033[0m \033[96mhttp://localhost:{APP_PORT}\033[0m \033[90m(Swagger: /docs)\033[0m")
 
 
 
@@ -673,8 +659,7 @@ async def server_lifespan(app: FastAPI):
             print("\033[1;92m" + "─" * 78 + "\033[0m")
 
     else:
-
-        print(f"\033[1;93mℹ️  [Tunnel Mode: DISABLED via --no-tunnel / config] Running locally on http://localhost:{APP_PORT}\033[0m")
+        logger.info(f"Local gateway active on http://localhost:{APP_PORT}")
 
 
 
