@@ -17,7 +17,6 @@ export const OverviewStep: React.FC = () => {
     config,
     hardware,
     setActiveTab,
-    setAllSubstratesMode,
     preflightAssets,
     preflightFootprint,
     syncBackendConfig,
@@ -197,15 +196,26 @@ export const OverviewStep: React.FC = () => {
                 Backend Gateway
               </span>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] text-xs font-mono">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isConnected ? 'bg-[#FFFFFF]' : 'border border-[#FFFFFF]/40'
-                }`}
-              />
-              <span className="text-[#FFFFFF]">
-                {isConnected ? 'Port 8000' : 'Offline'}
-              </span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#171717] border border-[#292929] text-xs font-mono">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isConnected ? 'bg-[#FFFFFF]' : 'border border-[#FFFFFF]/40'
+                  }`}
+                />
+                <span className="text-[#FFFFFF]">
+                  {isConnected ? 'Port 8000' : 'Offline'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('platform')}
+                className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                title="Configure platform & device hardware"
+              >
+                <span>Device</span>
+                <ArrowRight className="w-3 h-3 text-[#FFFFFF]" />
+              </button>
             </div>
           </div>
 
@@ -303,49 +313,17 @@ export const OverviewStep: React.FC = () => {
               className="text-xs font-medium text-[#FFFFFF] hover:text-[#FFFFFF] px-2.5 py-1 rounded-md bg-[#171717] border border-[#292929] hover:bg-[#292929] transition-all flex items-center gap-1 cursor-pointer shrink-0"
               title="Configure storage substrates"
             >
-              <span>Details</span>
+              <span>Storage</span>
               <ArrowRight className="w-3 h-3 text-[#FFFFFF]" />
             </button>
           </div>
 
-          {/* Quick Segmented Mode Buttons */}
-          <div className="mt-3 pt-3 border-t border-[#292929]/60 grid grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => setAllSubstratesMode('in_memory_fallback')}
-              className={`py-1 px-2 rounded-md text-xs font-medium transition-all text-center cursor-pointer ${
-                currentStorageMode === 'fast'
-                  ? 'bg-[#FFFFFF] text-[#000000] font-semibold'
-                  : 'bg-[#171717] text-[#A3A3A3] hover:text-[#FFFFFF] border border-transparent'
-              }`}
-              title="Fast Local: Zero-dependency in-memory execution"
-            >
-              Fast
-            </button>
-            <button
-              type="button"
-              onClick={() => setAllSubstratesMode('local')}
-              className={`py-1 px-2 rounded-md text-xs font-medium transition-all text-center cursor-pointer ${
-                currentStorageMode === 'docker'
-                  ? 'bg-[#FFFFFF] text-[#000000] font-semibold'
-                  : 'bg-[#171717] text-[#A3A3A3] hover:text-[#FFFFFF] border border-transparent'
-              }`}
-              title="Docker Local: Local containerized daemons"
-            >
-              Docker
-            </button>
-            <button
-              type="button"
-              onClick={() => setAllSubstratesMode('cloud')}
-              className={`py-1 px-2 rounded-md text-xs font-medium transition-all text-center cursor-pointer ${
-                currentStorageMode === 'cloud'
-                  ? 'bg-[#FFFFFF] text-[#000000] font-semibold'
-                  : 'bg-[#171717] text-[#A3A3A3] hover:text-[#FFFFFF] border border-transparent'
-              }`}
-              title="Cloud Managed: Remote endpoints"
-            >
-              Cloud
-            </button>
+          <div className="mt-4 pt-3 border-t border-[#292929]/60 flex items-center justify-between text-xs text-[#A3A3A3]">
+            <div className="flex items-center gap-1.5 font-mono text-[#FFFFFF]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FFFFFF]" />
+              <span>4 Substrates Active</span>
+            </div>
+            <span>Runtime Fallback</span>
           </div>
         </div>
       </div>

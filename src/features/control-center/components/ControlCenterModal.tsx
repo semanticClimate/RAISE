@@ -91,6 +91,11 @@ export const ControlCenterModal: React.FC = () => {
       icon: LayoutDashboard,
     },
     {
+      id: 'platform' as const,
+      label: 'Device',
+      icon: Laptop,
+    },
+    {
       id: 'models' as const,
       label: 'Inference',
       icon: Cpu,
@@ -104,11 +109,6 @@ export const ControlCenterModal: React.FC = () => {
       id: 'databases' as const,
       label: 'Storage',
       icon: Database,
-    },
-    {
-      id: 'platform' as const,
-      label: 'Device',
-      icon: Laptop,
     },
   ];
 
@@ -146,13 +146,13 @@ export const ControlCenterModal: React.FC = () => {
     }
 
     if (activeTab === 'overview') {
+      setActiveTab('platform');
+    } else if (activeTab === 'platform') {
       setActiveTab('models');
     } else if (activeTab === 'models') {
       setActiveTab('neural');
     } else if (activeTab === 'neural') {
       setActiveTab('databases');
-    } else if (activeTab === 'databases') {
-      setActiveTab('platform');
     } else {
       handleFinalStart();
     }
@@ -274,7 +274,7 @@ export const ControlCenterModal: React.FC = () => {
             )}
 
             {/* Next Step / Step Through */}
-            {activeTab !== 'overview' && activeTab !== 'platform' && (
+            {activeTab !== 'databases' && (
               <button
                 type="button"
                 disabled={!isCurrentStepReady}
