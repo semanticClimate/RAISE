@@ -166,6 +166,7 @@ export function useControlCenterSave(
         }
       } catch {}
 
+      useControlCenterStore.getState().saveBaseline();
       completeFirstRun();
       setOpen(false);
     } catch (err) {

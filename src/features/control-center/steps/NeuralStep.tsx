@@ -388,51 +388,34 @@ export const NeuralStep: React.FC = () => {
     return cleaned.replace(/^["']|["']$/g, '');
   };
 
-  // Apply selected model directly to backend
-  const handleSelectModel = async (category: ModelCategory, modelId: string) => {
-    const payloadKey =
+  // Select model to stage in configuration
+  const handleSelectModel = (category: ModelCategory, modelId: string) => {
+    const configKey =
       category === 'embedding'
-        ? 'embedding_model'
+        ? 'embeddingModel'
         : category === 'reranker'
-          ? 'reranker_model'
-          : 'nli_verifier_model';
+          ? 'rerankerModel'
+          : 'nliVerifierModel';
 
-    try {
-      const res = await platformAdapter.saveConfig({
-        [payloadKey]: modelId,
-      });
+    updateConfig({
+      [configKey]: modelId,
+    });
 
-      if (res.success) {
-        setStatusMessage({
-          text: `Applied ${category === 'embedding' ? 'Embedding' : category === 'reranker' ? 'Reranker' : 'Verifier'} model: ${modelId}`,
-          type: 'success',
-        });
-        setTimeout(() => setStatusMessage(null), 4000);
-        await refreshBackendData();
-        setActiveCategoryModal(null);
-      } else {
-        setStatusMessage({
-          text: res.message || 'Failed to update backend model configuration',
-          type: 'error',
-        });
-        setTimeout(() => setStatusMessage(null), 5000);
-      }
-    } catch (err: any) {
-      setStatusMessage({
-        text: err?.message || 'Error communicating with backend API',
-        type: 'error',
-      });
-      setTimeout(() => setStatusMessage(null), 5000);
-    }
+    setStatusMessage({
+      text: `Selected ${category === 'embedding' ? 'Embedding' : category === 'reranker' ? 'Reranker' : 'Verifier'} model: ${modelId}. Click Next and Start to apply.`,
+      type: 'success',
+    });
+    setTimeout(() => setStatusMessage(null), 4000);
+    setActiveCategoryModal(null);
   };
 
   // Apply custom model ID
-  const handleApplyCustomModel = async () => {
+  const handleApplyCustomModel = () => {
     const cleaned = handleExtractSnippet(customModelInput);
     if (!cleaned) return;
 
     setIsApplyingCustom(true);
-    await handleSelectModel(customModelCategory, cleaned);
+    handleSelectModel(customModelCategory, cleaned);
     setIsApplyingCustom(false);
     setCustomModelInput('');
   };
@@ -488,20 +471,14 @@ export const NeuralStep: React.FC = () => {
     }
   };
 
-  // Change Execution Device
-  const handleSelectDevice = async (device: 'auto' | 'mps' | 'cuda' | 'cpu') => {
+  // Change Execution Device (staged in store, applied on Start)
+  const handleSelectDevice = (device: 'auto' | 'mps' | 'cuda' | 'cpu') => {
     updateConfig({ neuralDevice: device });
-    try {
-      await platformAdapter.saveConfig({
-        neural_device: device,
-        embedding_device: device,
-        reranker_device: device,
-        nli_device: device,
-      });
-      await refreshBackendData();
-    } catch (err) {
-      console.warn('Device update failed:', err);
-    }
+    setStatusMessage({
+      text: `Selected ${device.toUpperCase()} acceleration device. Click Next and Start to apply.`,
+      type: 'success',
+    });
+    setTimeout(() => setStatusMessage(null), 3000);
   };
 
   const embeddingStatus = getModelStatus(configuredEmbedding, 'embedding');

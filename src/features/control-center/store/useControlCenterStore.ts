@@ -22,8 +22,13 @@ interface ControlCenterState {
   statusMessage: string | null;
   preflightAssets: import('../services/platformAdapter').PreflightAsset[];
   preflightFootprint: string;
+  isDirty: boolean;
+  baselineConfig: ControlCenterConfig | null;
 
   setOpen: (open: boolean) => void;
+  resetToBaseline: () => void;
+  saveBaseline: () => void;
+  markDirty: () => void;
   setActiveTab: (tab: 'platform' | 'models' | 'neural' | 'databases' | 'launch') => void;
   updateConfig: (patch: Partial<ControlCenterConfig>) => void;
   setHardware: (info: SystemHardwareInfo) => void;
@@ -70,6 +75,8 @@ export const useControlCenterStore = create<ControlCenterState>()(
       statusMessage: null,
       preflightAssets: [],
       preflightFootprint: '~4.6 GB Total Footprint',
+      isDirty: false,
+      baselineConfig: null,
       config: {
         firstRunCompleted: typeof process !== 'undefined' && process.env.NODE_ENV === 'test',
         targetPlatform: defaultPlatform,
@@ -116,8 +123,40 @@ export const useControlCenterStore = create<ControlCenterState>()(
         redisMode: 'in_memory_fallback',
       },
 
-      setOpen: (open) => set({ isOpen: open }),
+      setOpen: (open) =>
+        set((s): Partial<ControlCenterState> => {
+          if (open) {
+            return {
+              isOpen: true,
+              baselineConfig: (s.baselineConfig ?? JSON.parse(JSON.stringify(s.config))) as ControlCenterConfig,
+              isDirty: false,
+            };
+          }
+          return {
+            isOpen: false,
+            isDirty: false,
+            baselineConfig: null,
+          };
+        }),
       setActiveTab: (tab) => set({ activeTab: tab }),
+
+      markDirty: () => set({ isDirty: true }),
+
+      resetToBaseline: () =>
+        set((s): Partial<ControlCenterState> => {
+          if (!s.baselineConfig) return { isDirty: false };
+          return {
+            config: JSON.parse(JSON.stringify(s.baselineConfig)) as ControlCenterConfig,
+            isDirty: false,
+            statusMessage: 'Configuration reset to server settings.',
+          };
+        }),
+
+      saveBaseline: () =>
+        set((s): Partial<ControlCenterState> => ({
+          baselineConfig: JSON.parse(JSON.stringify(s.config)) as ControlCenterConfig,
+          isDirty: false,
+        })),
 
       updateConfig: (patch) =>
         set((s) => {
@@ -135,7 +174,10 @@ export const useControlCenterStore = create<ControlCenterState>()(
           if (patch.cacheAndSignals?.mode) {
             updated.redisMode = patch.cacheAndSignals.mode;
           }
-          return { config: updated };
+          return {
+            config: updated,
+            isDirty: true,
+          };
         }),
 
       setHardware: (hardware) => set({ hardware }),
@@ -167,6 +209,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
         set((s) => {
           const currentKeys = Array.isArray(s.config?.apiKeys) ? s.config.apiKeys : [];
           return {
+            isDirty: true,
             config: {
               ...s.config,
               apiKeys: [...currentKeys, newEntry],
@@ -198,6 +241,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
           const groq = apiKeys.find((k: CloudApiKeyEntry) => k.provider === 'groq')?.key || '';
           const gemini = apiKeys.find((k: CloudApiKeyEntry) => k.provider === 'gemini')?.key || '';
           return {
+            isDirty: true,
             config: {
               ...s.config,
               apiKeys,
@@ -215,6 +259,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
             : [];
           const filtered = currentKeys.filter((k: CloudApiKeyEntry) => k.id !== id);
           return {
+            isDirty: true,
             config: {
               ...s.config,
               apiKeys:
@@ -267,7 +312,10 @@ export const useControlCenterStore = create<ControlCenterState>()(
           if (type === 'cacheAndSignals' && patch.mode) {
             updatedConfig.redisMode = patch.mode;
           }
-          return { config: updatedConfig };
+          return {
+            config: updatedConfig,
+            isDirty: true,
+          };
         });
       },
 
@@ -429,54 +477,58 @@ export const useControlCenterStore = create<ControlCenterState>()(
               });
             }
 
-            return {
-              config: {
-                ...s.config,
-                firstRunCompleted: Boolean(cfg.first_run_completed ?? s.config.firstRunCompleted),
-                llmDeployment: isLocal ? 'local' : 'cloud',
-                llmMode: (llmMode || s.config.llmMode) as any,
-                embeddingModel:
-                  (cfg.embedding_model as string) || s.config.embeddingModel || 'google/embeddinggemma-2',
-                rerankerModel:
-                  (cfg.reranker_model as string) || s.config.rerankerModel || 'BAAI/bge-reranker-v2-m3',
-                nliVerifierModel:
-                  (cfg.nli_verifier_model as string) ||
-                  (cfg.nli_model as string) ||
-                  s.config.nliVerifierModel ||
-                  'dleemiller/finecat-nli-ultra-l',
-                neuralDevice:
-                  (cfg.neural_device as any) ||
-                  (cfg.embedding_device as any) ||
-                  s.config.neuralDevice ||
-                  'auto',
-                huggingfaceConfigured: Boolean(cfg.huggingface_configured),
-                huggingfaceMasked: String(cfg.huggingface_masked || ''),
-                huggingfaceToken:
-                  s.config.huggingfaceToken ||
-                  (cfg.huggingface_configured ? String(cfg.huggingface_masked || '') : ''),
-                apiKeys: mergedKeys,
-                knowledgeGraph: {
-                  ...s.config.knowledgeGraph,
-                  mode: kgMode,
-                  uri: (cfg.neo4j_uri as string) || s.config.knowledgeGraph?.uri || '',
-                  database: (cfg.neo4j_database as string) || 'neo4j',
-                  online: true,
-                },
-                sessionMemory: {
-                  ...s.config.sessionMemory,
-                  mode: memMode,
-                  online: true,
-                },
-                cacheAndSignals: {
-                  ...s.config.cacheAndSignals,
-                  mode: cacheMode,
-                  online: true,
-                },
-                neo4jMode: kgMode,
-                postgresMode: memMode,
-                redisMode: cacheMode,
+            const syncedConfig: ControlCenterConfig = {
+              ...s.config,
+              firstRunCompleted: Boolean(cfg.first_run_completed ?? s.config.firstRunCompleted),
+              llmDeployment: isLocal ? 'local' : 'cloud',
+              llmMode: (llmMode || s.config.llmMode) as any,
+              embeddingModel:
+                (cfg.embedding_model as string) || s.config.embeddingModel || 'google/embeddinggemma-2',
+              rerankerModel:
+                (cfg.reranker_model as string) || s.config.rerankerModel || 'BAAI/bge-reranker-v2-m3',
+              nliVerifierModel:
+                (cfg.nli_verifier_model as string) ||
+                (cfg.nli_model as string) ||
+                s.config.nliVerifierModel ||
+                'dleemiller/finecat-nli-ultra-l',
+              neuralDevice:
+                (cfg.neural_device as any) ||
+                (cfg.embedding_device as any) ||
+                s.config.neuralDevice ||
+                'auto',
+              huggingfaceConfigured: Boolean(cfg.huggingface_configured),
+              huggingfaceMasked: String(cfg.huggingface_masked || ''),
+              huggingfaceToken:
+                s.config.huggingfaceToken ||
+                (cfg.huggingface_configured ? String(cfg.huggingface_masked || '') : ''),
+              apiKeys: mergedKeys,
+              knowledgeGraph: {
+                ...s.config.knowledgeGraph,
+                mode: kgMode,
+                uri: (cfg.neo4j_uri as string) || s.config.knowledgeGraph?.uri || '',
+                database: (cfg.neo4j_database as string) || 'neo4j',
+                online: true,
               },
+              sessionMemory: {
+                ...s.config.sessionMemory,
+                mode: memMode,
+                online: true,
+              },
+              cacheAndSignals: {
+                ...s.config.cacheAndSignals,
+                mode: cacheMode,
+                online: true,
+              },
+              neo4jMode: kgMode,
+              postgresMode: memMode,
+              redisMode: cacheMode,
             };
+
+            return {
+              config: syncedConfig,
+              baselineConfig: JSON.parse(JSON.stringify(syncedConfig)) as ControlCenterConfig,
+              isDirty: false,
+            } as Partial<ControlCenterState>;
           });
 
           // Also keep preflight assets and live disk footprint synchronized
@@ -558,6 +610,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
                 : s.config.cacheAndSignals?.uri || '',
           };
           return {
+            isDirty: true,
             config: {
               ...s.config,
               knowledgeGraph: kg,

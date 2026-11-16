@@ -27,33 +27,6 @@ export const DatabaseStep: React.FC = () => {
   const [isConnectingCloud, setIsConnectingCloud] = useState(false);
   const [cloudModalError, setCloudModalError] = useState<string | null>(null);
 
-  const buildSavePayload = (overrides: Record<string, unknown>) => {
-    const cur = useControlCenterStore.getState().config;
-    let targetBackend = cur.llmDeployment === 'local' ? (cur.selectedLocalModel?.includes('vllm') ? 'vllm' : 'ollama') : 'gemini';
-    if (cur.llmMode) {
-      if (cur.llmMode.startsWith('cloud_')) {
-        targetBackend = cur.llmMode.replace('cloud_', '');
-      } else if (cur.llmMode.startsWith('local_')) {
-        targetBackend = cur.llmMode.replace('local_', '');
-      }
-    }
-
-    return {
-      llm_mode: cur.llmMode || 'cloud_gemini',
-      llm_backend: targetBackend,
-      primary_provider: targetBackend,
-      neo4j_mode: cur.knowledgeGraph?.mode || cur.neo4jMode || 'in_memory_fallback',
-      neo4j_uri: cur.knowledgeGraph?.uri || cur.neo4jUri || '',
-      neo4j_user: cur.knowledgeGraph?.user || 'neo4j',
-      neo4j_password: cur.knowledgeGraph?.password || cur.neo4jPassword || '',
-      postgres_mode: cur.sessionMemory?.mode || cur.postgresMode || 'in_memory_fallback',
-      postgres_uri: cur.sessionMemory?.uri || '',
-      redis_mode: cur.cacheAndSignals?.mode || cur.redisMode || 'in_memory_fallback',
-      redis_uri: cur.cacheAndSignals?.uri || '',
-      ...overrides,
-    };
-  };
-
   const handleTestAllSubstrates = async () => {
     setIsTestingSubstrates(true);
     setTestNotice('Testing substrates...');
@@ -121,85 +94,37 @@ export const DatabaseStep: React.FC = () => {
     };
   }, []);
 
-  const handleSelectSubstrateMode = async (
+  const handleSelectSubstrateMode = (
     key: 'knowledgeGraph' | 'sessionMemory' | 'cacheAndSignals',
     targetMode: SubstrateMode
   ) => {
     updateSubstrate(key, { mode: targetMode });
     const tierName =
       targetMode === 'in_memory_fallback'
-        ? 'Fast Local (Embedded)'
+        ? 'Fast Local'
         : targetMode === 'local'
-        ? 'Docker Stack (Local)'
+        ? 'Docker Local'
         : 'Cloud Managed';
-    setTestNotice(`Switching to ${tierName}...`);
-
-    const overrides: Record<string, unknown> = {};
-    if (key === 'knowledgeGraph') {
-      overrides.neo4j_mode = targetMode;
-      if (targetMode === 'local') {
-        overrides.neo4j_uri = config.knowledgeGraph?.uri || 'bolt://localhost:7687';
-        overrides.neo4j_user = config.knowledgeGraph?.user || 'neo4j';
-        overrides.neo4j_password = config.knowledgeGraph?.password || 'raise_password';
-      }
-    } else if (key === 'sessionMemory') {
-      overrides.postgres_mode = targetMode;
-      if (targetMode === 'local') {
-        overrides.postgres_uri =
-          config.sessionMemory?.uri ||
-          'postgresql://raise_user:raise_password@localhost:5432/raise_db';
-      }
-    } else if (key === 'cacheAndSignals') {
-      overrides.redis_mode = targetMode;
-      if (targetMode === 'local') {
-        overrides.redis_uri = config.cacheAndSignals?.uri || 'redis://localhost:6379/0';
-      }
-    }
-
-    try {
-      await platformAdapter.saveConfig(buildSavePayload(overrides));
-      await handleTestAllSubstrates();
-      setTestNotice(`${tierName} applied & verified.`);
-    } catch {
-      setTestNotice('Could not persist storage setting to backend.');
-    } finally {
-      setTimeout(() => setTestNotice(null), 3000);
-    }
+    const subLabel =
+      key === 'knowledgeGraph'
+        ? 'Knowledge Graph'
+        : key === 'sessionMemory'
+        ? 'Session Memory'
+        : 'Response Cache';
+    setTestNotice(`Selected ${tierName} for ${subLabel}. Click Next and Start to apply.`);
+    setTimeout(() => setTestNotice(null), 3000);
   };
 
-  const handleSetAllSubstrates = async (targetMode: SubstrateMode) => {
+  const handleSetAllSubstrates = (targetMode: SubstrateMode) => {
     setAllSubstratesMode(targetMode);
     const tierName =
       targetMode === 'in_memory_fallback'
-        ? 'Fast Local (Embedded)'
+        ? 'Fast Local'
         : targetMode === 'local'
-        ? 'Docker Stack (Local)'
+        ? 'Docker Local'
         : 'Cloud Managed';
-    setTestNotice(`Applying ${tierName} to all substrates...`);
-
-    const overrides: Record<string, unknown> = {
-      neo4j_mode: targetMode,
-      postgres_mode: targetMode,
-      redis_mode: targetMode,
-    };
-
-    if (targetMode === 'local') {
-      overrides.neo4j_uri = 'bolt://localhost:7687';
-      overrides.neo4j_user = 'neo4j';
-      overrides.neo4j_password = 'raise_password';
-      overrides.postgres_uri = 'postgresql://raise_user:raise_password@localhost:5432/raise_db';
-      overrides.redis_uri = 'redis://localhost:6379/0';
-    }
-
-    try {
-      await platformAdapter.saveConfig(buildSavePayload(overrides));
-      await handleTestAllSubstrates();
-      setTestNotice(`All substrates set to ${tierName}.`);
-    } catch {
-      setTestNotice('Could not persist storage setting to backend.');
-    } finally {
-      setTimeout(() => setTestNotice(null), 3000);
-    }
+    setTestNotice(`Selected ${tierName} for all substrates. Click Next and Start to apply.`);
+    setTimeout(() => setTestNotice(null), 3000);
   };
 
   const isNeo4jOnline = Boolean(
@@ -370,10 +295,9 @@ export const DatabaseStep: React.FC = () => {
         latencyMs: latency,
       });
 
-      // Persist to backend .env and live runtime
-      await platformAdapter.saveConfig(buildSavePayload(payload));
-      await handleTestAllSubstrates();
       setActiveCloudSubstrate(null);
+      setTestNotice('Cloud endpoint configured. Click Next and Start to apply.');
+      setTimeout(() => setTestNotice(null), 3000);
     } catch (err: any) {
       setCloudModalError(err?.message || 'Connection test failed. Verify credentials.');
     } finally {
@@ -433,78 +357,51 @@ export const DatabaseStep: React.FC = () => {
         </div>
       </div>
 
-      {/* Global Storage Tier Quick-Toggle: Fast Local vs Docker Containers vs Cloud Managed */}
-      <div className="p-1.5 rounded-xl bg-[#131622] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        {/* Tier 1: Fast Local (Zero-Dependency) */}
+      {/* Global Storage Tier Quick-Toggle: Fast Local vs Docker Local vs Cloud Managed */}
+      <div className="p-1 rounded-xl bg-[#131622] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+        {/* Tier 1: Fast Local */}
         <button
           type="button"
           onClick={() => handleSetAllSubstrates('in_memory_fallback')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+          className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllMemory
               ? 'bg-white text-black font-bold shadow-sm'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
-          title="Zero-dependency fast in-memory execution (NetworkX, SQLite WAL, In-Memory Signals)"
+          title="Zero-dependency fast in-memory execution"
         >
-          <div className="flex items-center gap-2">
-            <Cpu className={`w-4 h-4 ${isAllMemory ? 'text-black' : 'text-white'}`} />
-            <span>Fast Local (Embedded)</span>
-          </div>
-          <span
-            className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-              isAllMemory ? 'bg-black/10 text-black' : 'bg-black/40 text-slate-400'
-            }`}
-          >
-            Zero Setup • Instant
-          </span>
+          <Cpu className={`w-4 h-4 ${isAllMemory ? 'text-black' : 'text-white'}`} />
+          <span>Fast Local</span>
         </button>
 
-        {/* Tier 2: Docker Containers (Localhost) */}
+        {/* Tier 2: Docker Local */}
         <button
           type="button"
           onClick={() => handleSetAllSubstrates('local')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+          className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllLocal
               ? 'bg-white text-black font-bold shadow-sm'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
-          title="Local Docker container daemons (Redis :6379, Postgres :5432, Neo4j :7687)"
+          title="Local Docker container daemons"
         >
-          <div className="flex items-center gap-2">
-            <Database className={`w-4 h-4 ${isAllLocal ? 'text-black' : 'text-white'}`} />
-            <span>Docker Stack (Local)</span>
-          </div>
-          <span
-            className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-              isAllLocal ? 'bg-black/10 text-black' : 'bg-black/40 text-slate-400'
-            }`}
-          >
-            Containers • Localhost
-          </span>
+          <Database className={`w-4 h-4 ${isAllLocal ? 'text-black' : 'text-white'}`} />
+          <span>Docker Local</span>
         </button>
 
-        {/* Tier 3: Cloud Managed Remote Endpoints */}
+        {/* Tier 3: Cloud Managed */}
         <button
           type="button"
           onClick={() => handleSetAllSubstrates('cloud')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+          className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllCloud
               ? 'bg-white text-black font-bold shadow-sm'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
-          title="Cloud-hosted database endpoints (Upstash Redis, Neon Postgres, Neo4j AuraDB)"
+          title="Cloud-hosted database endpoints"
         >
-          <div className="flex items-center gap-2">
-            <Cloud className={`w-4 h-4 ${isAllCloud ? 'text-black' : 'text-white'}`} />
-            <span>Cloud Managed</span>
-          </div>
-          <span
-            className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-              isAllCloud ? 'bg-black/10 text-black' : 'bg-black/40 text-slate-400'
-            }`}
-          >
-            Remote Endpoints
-          </span>
+          <Cloud className={`w-4 h-4 ${isAllCloud ? 'text-black' : 'text-white'}`} />
+          <span>Cloud Managed</span>
         </button>
       </div>
 
@@ -538,8 +435,8 @@ export const DatabaseStep: React.FC = () => {
           <thead>
             <tr className="border-b border-white/10 bg-black/40 text-xs font-semibold text-slate-300">
               <th className="py-2.5 px-4">Substrate</th>
-              <th className="py-2.5 px-3 text-center">Fast Local (Embedded)</th>
-              <th className="py-2.5 px-3 text-center">Docker Stack (Local)</th>
+              <th className="py-2.5 px-3 text-center">Fast Local</th>
+              <th className="py-2.5 px-3 text-center">Docker Local</th>
               <th className="py-2.5 px-3 text-center">Cloud Managed</th>
             </tr>
           </thead>
@@ -573,7 +470,7 @@ export const DatabaseStep: React.FC = () => {
                     </div>
                   </td>
 
-                  {/* Fast Local (Embedded) Cell */}
+                  {/* Fast Local Cell */}
                   <td className="py-3.5 px-3 text-center">
                     <button
                       type="button"
@@ -583,13 +480,13 @@ export const DatabaseStep: React.FC = () => {
                           ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
-                      title="Select Fast Local (Embedded Zero-Dependency)"
-                      aria-label={`Select Fast Local (Embedded) for ${sub.name}`}
+                      title="Select Fast Local"
+                      aria-label={`Select Fast Local for ${sub.name}`}
                     >
                       {isMemory ? (
                         <>
                           <Check className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Fast Local (Embedded)</span>
+                          <span className="sr-only">Fast Local</span>
                         </>
                       ) : (
                         <span>-</span>
@@ -597,7 +494,7 @@ export const DatabaseStep: React.FC = () => {
                     </button>
                   </td>
 
-                  {/* Docker Stack (Local) Cell */}
+                  {/* Docker Local Cell */}
                   <td className="py-3.5 px-3 text-center">
                     <button
                       type="button"
@@ -607,13 +504,13 @@ export const DatabaseStep: React.FC = () => {
                           ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
-                      title="Select Docker Stack (Localhost Daemons)"
-                      aria-label={`Select Docker Stack (Local) for ${sub.name}`}
+                      title="Select Docker Local"
+                      aria-label={`Select Docker Local for ${sub.name}`}
                     >
                       {isLocal ? (
                         <>
                           <Check className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Docker Stack (Local)</span>
+                          <span className="sr-only">Docker Local</span>
                         </>
                       ) : (
                         <span>-</span>
