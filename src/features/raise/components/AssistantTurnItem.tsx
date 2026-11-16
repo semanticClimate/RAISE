@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Zap, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { AnswerMarkdown } from '../../../components/chat/AnswerMarkdown';
 import {
   BackendErrorCard,
@@ -221,27 +221,18 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
           ) : (
             <div />
           )}
-          <div className="mb-2 mr-0.5 select-none">
-            {effectiveMode === 'expert' ? (
+          {effectiveMode === 'expert' && (
+            <div className="mb-2 mr-0.5 select-none">
               <span
                 data-testid="turn-mode-badge"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20 shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-white/10 dark:bg-white/10 text-slate-800 dark:text-white border border-slate-300 dark:border-white/20 shadow-2xs"
                 title="Expert Mode: Cyclic Multi-Hop GraphRAG Reasoning"
               >
-                <Sparkles className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+                <Sparkles className="w-3.5 h-3.5 text-slate-700 dark:text-white" />
                 <span>Expert Mode</span>
               </span>
-            ) : effectiveMode === 'conversational' ? null : (
-              <span
-                data-testid="turn-mode-badge"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-sky-500/10 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-500/20 shadow-2xs"
-                title="Fast Mode: Dense Vector & BM25 Reciprocal Rank Fusion"
-              >
-                <Zap className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
-                <span>Fast Mode</span>
-              </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       ) : null}
 
