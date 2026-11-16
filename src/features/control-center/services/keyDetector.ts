@@ -9,6 +9,7 @@ export type DetectedProvider =
   | 'deepseek'
   | 'openrouter'
   | 'huggingface'
+  | 'universal'
   | 'custom'
   | 'unknown';
 

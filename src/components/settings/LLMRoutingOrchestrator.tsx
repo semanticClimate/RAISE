@@ -217,6 +217,17 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
 
   useEffect(() => {
     fetchLiveRouting();
+    const handleSyncEvent = () => {
+      fetchLiveRouting();
+    };
+    window.addEventListener('raise:sync-routing', handleSyncEvent);
+    const interval = setInterval(() => {
+      fetchLiveRouting();
+    }, 10000);
+    return () => {
+      window.removeEventListener('raise:sync-routing', handleSyncEvent);
+      clearInterval(interval);
+    };
   }, [fetchLiveRouting]);
 
   // Save changes to backend POST /api/system/routing

@@ -1852,7 +1852,9 @@ export function generatePdfBlob(
   currentOps.push(`${marginX} ${curY - cardHeight} ${contentWidth} ${cardHeight} re s`);
 
   const specRows = [
-    { label: 'Research Mode:', val: prov.modeDisplay },
+    ...(prov.mode !== 'conversational' && !String(prov.modeDisplay).toLowerCase().includes('conversational')
+      ? [{ label: 'Research Mode:', val: prov.modeDisplay }]
+      : []),
     { label: 'Storage Substrates:', val: prov.storageUsed },
     { label: 'Synthesis LLM:', val: `${prov.llmModel} (${prov.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: prov.encoderModel },
@@ -2618,7 +2620,9 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
   currentOps.push(`${marginX} ${curY - sessionCardHeight} ${contentWidth} ${sessionCardHeight} re s`);
 
   const sessionSpecRows = [
-    { label: 'Research Mode:', val: sProv.modeDisplay },
+    ...(sProv.mode !== 'conversational' && !String(sProv.modeDisplay).toLowerCase().includes('conversational')
+      ? [{ label: 'Research Mode:', val: sProv.modeDisplay }]
+      : []),
     { label: 'Storage Substrates:', val: sProv.storageUsed },
     { label: 'Synthesis LLM:', val: `${sProv.llmModel} (${sProv.llmProvider})` },
     { label: 'Dense Embedding Encoder:', val: sProv.encoderModel },

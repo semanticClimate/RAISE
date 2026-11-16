@@ -100,8 +100,8 @@ export const EngineStep: React.FC = () => {
         </p>
       </div>
 
-      {/* Deployment Strategy Switcher */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* LLM Mode Selection: Two Large Selectable Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <button
           type="button"
           onClick={() =>
@@ -110,23 +110,23 @@ export const EngineStep: React.FC = () => {
               llmMode: 'cloud_groq',
             })
           }
-          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+          className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
             isCloud
-              ? 'bg-white text-black border-white font-bold shadow-md'
+              ? 'bg-white text-black border-white font-bold shadow-lg scale-[1.01]'
               : 'bg-[#131622] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/5'
           }`}
         >
           <div
-            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
               isCloud ? 'bg-black text-white' : 'bg-white/10 text-slate-400'
             }`}
           >
-            <Cloud className="w-4 h-4" />
+            <Cloud className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-xs font-bold">Cloud Inference</div>
-            <div className={`text-[11px] mt-0.5 ${isCloud ? 'text-slate-700' : 'text-slate-400'}`}>
-              Groq, Gemini, DeepSeek, OpenAI
+          <div className="min-w-0">
+            <div className="text-sm font-bold tracking-tight">Cloud LLM</div>
+            <div className={`text-xs mt-0.5 leading-relaxed ${isCloud ? 'text-slate-800' : 'text-slate-400'}`}>
+              Use hosted AI providers through API keys.
             </div>
           </div>
         </button>
@@ -139,23 +139,23 @@ export const EngineStep: React.FC = () => {
               llmMode: 'local_ollama',
             })
           }
-          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+          className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
             !isCloud
-              ? 'bg-white text-black border-white font-bold shadow-md'
+              ? 'bg-white text-black border-white font-bold shadow-lg scale-[1.01]'
               : 'bg-[#131622] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/5'
           }`}
         >
           <div
-            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
               !isCloud ? 'bg-black text-white' : 'bg-white/10 text-slate-400'
             }`}
           >
-            <HardDrive className="w-4 h-4" />
+            <HardDrive className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-xs font-bold">Local Engine</div>
-            <div className={`text-[11px] mt-0.5 ${!isCloud ? 'text-slate-700' : 'text-slate-400'}`}>
-              On-device Ollama &amp; Metal/CUDA
+          <div className="min-w-0">
+            <div className="text-sm font-bold tracking-tight">Local LLM</div>
+            <div className={`text-xs mt-0.5 leading-relaxed ${!isCloud ? 'text-slate-800' : 'text-slate-400'}`}>
+              Run AI models on your own machine.
             </div>
           </div>
         </button>

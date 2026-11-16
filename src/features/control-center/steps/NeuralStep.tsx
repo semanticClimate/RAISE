@@ -473,14 +473,13 @@ export const NeuralStep: React.FC = () => {
             <label className="text-xs font-bold text-white flex items-center gap-2 flex-wrap">
               <Key className="w-3.5 h-3.5 text-white" />
               <span>Hugging Face Access Token</span>
-              <span className="text-[10px] font-normal text-slate-400 font-mono">(Optional)</span>
               {config.huggingfaceConfigured ? (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/10 border border-white/20 text-white font-semibold">
                   Configured in Backend ({config.huggingfaceMasked || 'Active'})
                 </span>
               ) : (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-400">
-                  Optional • Unconfigured
+                  Unconfigured
                 </span>
               )}
             </label>

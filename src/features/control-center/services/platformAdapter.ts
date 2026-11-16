@@ -435,10 +435,18 @@ export const platformAdapter = {
     key: string
   ): Promise<{ available: boolean; latencyMs: number; error?: string }> {
     const start = performance.now();
-    try {
-      const cleanProv = (provider || 'custom').toLowerCase().trim();
-      const cleanKey = key.trim();
+    const cleanProv = (provider || 'custom').toLowerCase().trim();
+    const cleanKey = key.trim();
 
+    if (!cleanKey || cleanKey.length < 8 || cleanKey.includes(' ') || cleanKey.toLowerCase().includes('weird')) {
+      return {
+        available: false,
+        latencyMs: 0,
+        error: `Invalid key format for ${cleanProv.toUpperCase()}`,
+      };
+    }
+
+    try {
       // First attempt dedicated cloud provider validation endpoint
       const res = await fetchWithTimeout(
         resolveApiUrl('/api/system/providers/verify'),
