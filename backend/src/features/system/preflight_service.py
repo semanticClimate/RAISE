@@ -233,7 +233,7 @@ def _background_download_worker(repo_ids: List[str]):
             try:
                 from huggingface_hub import snapshot_download
                 logger.info(f"Pre-flight downloading {repo_id} with authentication...")
-                snapshot_download(repo_id=repo_id, token=hf_token, resume_download=True)
+                snapshot_download(repo_id=repo_id, token=hf_token)
             except Exception as e:
                 logger.warning(f"Failed to snapshot download {repo_id}: {e}")
             _ASSET_DOWNLOAD_PROGRESS = round(((idx + 1) / total) * 100, 1)
@@ -479,7 +479,6 @@ async def stream_model_pull(
             lambda: snapshot_download(
                 repo_id=model_name,
                 token=token,
-                resume_download=True,
                 local_files_only=False,
             )
         )

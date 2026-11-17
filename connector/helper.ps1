@@ -1044,6 +1044,14 @@ if ($embCached -and $rerankCached -and $nliCached -and $glinerCached) {
         $dlScript = @"
 import os
 import sys
+import warnings
+
+# Suppress deprecation warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+
+# Enable interactive transfer progress bars for model downloads
+os.environ.pop('HF_HUB_DISABLE_PROGRESS_BARS', None)
+os.environ.pop('TQDM_DISABLE', None)
 
 try:
     from huggingface_hub import snapshot_download
@@ -1061,7 +1069,7 @@ failed = []
 for r in repos:
     print(f'  ● Downloading weights for {r}...', flush=True)
     try:
-        snapshot_download(repo_id=r, token=token, resume_download=True, local_files_only=False)
+        snapshot_download(repo_id=r, token=token, local_files_only=False)
         print(f'  ✓ {r} downloaded and cached successfully.', flush=True)
     except Exception as exc:
         print(f'  ✕ Failed downloading {r}: {exc}', flush=True)
