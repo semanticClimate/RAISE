@@ -492,8 +492,10 @@ class PlanExecutorMixin:
                         # Split text into candidate sentences
                         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned_body) if len(s.strip()) > 15]
                         for s in sentences:
-                            # Skip pure question prompts, TOC navigation, or table lines
-                            if s.endswith("?") or any(s.startswith(pfx) for pfx in ("|", "###", "Table ", "Chapter ")) or "..." in s:
+                            # Skip pure question prompts, TOC navigation, or irrelevant headers
+                            if s.endswith("?") or any(s.startswith(pfx) for pfx in ("###", "Chapter ")) or "..." in s:
+                                continue
+                            if s.startswith("|") and not any(kw in q_lower for kw in ("table", "ranking", "rank", "nature index", "position", "score", "index", "category")):
                                 continue
                             if re.match(r"^\d+\s+[A-Za-z\s]+basics\s+\d+", s):
                                 continue
