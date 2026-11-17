@@ -78,6 +78,15 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
         messagesEndRef.current.scrollIntoView({ behavior: scrollBehavior, block: 'end' });
       }
     }
+
+    // If conversation is short (e.g. 1 message) and content doesn't overflow significantly,
+    // ensure scroll-to-bottom button is hidden and lock is released
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 100) {
+      isAutoScrollLockedRef.current = false;
+      setIsAutoScrollLocked(false);
+      setShowScrollToBottom(false);
+    }
   }, [conversation, isLoading, isAutoScrollLocked, currentSessionId]);
 
   const scrollToBottom = useCallback(() => {
@@ -110,36 +119,43 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
 
         const scrollHeight = container.scrollHeight;
         const clientHeight = container.clientHeight;
-        const scrollTop = container.scrollTop;
-        const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+        const maxScrollable = scrollHeight - clientHeight;
 
-        // If distance from bottom is > 80px, user scrolled up -> LOCK auto-scroll & show button
-        if (distanceFromBottom > 80) {
-          if (!isAutoScrollLockedRef.current) {
-            isAutoScrollLockedRef.current = true;
-            setIsAutoScrollLocked(true);
-            setShowScrollToBottom(true);
-          }
-        } else if (distanceFromBottom <= 20) {
-          // User scrolled all the way back to the bottom -> restore auto-scroll & hide button
+        // If content fits on screen without overflow, or if conversation is empty,
+        // never show scroll to bottom button
+        if (maxScrollable <= 100 || conversation.length === 0) {
           if (isAutoScrollLockedRef.current) {
             isAutoScrollLockedRef.current = false;
             setIsAutoScrollLocked(false);
-            setShowScrollToBottom(false);
           }
+          setShowScrollToBottom(false);
+          return;
+        }
+
+        const scrollTop = container.scrollTop;
+        const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+
+        // Only show button if user has scrolled up away from bottom by > 120px
+        if (distanceFromBottom > 120) {
+          if (!isAutoScrollLockedRef.current) {
+            isAutoScrollLockedRef.current = true;
+            setIsAutoScrollLocked(true);
+          }
+          setShowScrollToBottom(true);
+        } else if (distanceFromBottom <= 30) {
+          // User scrolled back down near bottom
+          if (isAutoScrollLockedRef.current) {
+            isAutoScrollLockedRef.current = false;
+            setIsAutoScrollLocked(false);
+          }
+          setShowScrollToBottom(false);
         }
       });
     };
 
-    const handleWheel = (e: WheelEvent) => {
-      // User wheeled up: immediately lock auto-scroll and show button
-      if (e.deltaY < -2) {
-        isAutoScrollLockedRef.current = true;
-        setIsAutoScrollLocked(true);
-        setShowScrollToBottom(true);
-      } else if (e.deltaY > 2) {
-        checkScrollPosition();
-      }
+    const handleWheel = () => {
+      // Check actual scroll geometry on wheel rather than blindly setting true
+      checkScrollPosition();
     };
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -148,16 +164,9 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
       }
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
-      if (touchStartYRef.current !== null && e.touches.length > 0) {
-        const currentY = e.touches[0].clientY;
-        // User dragged finger downwards (scrolling content upwards to see earlier turns)
-        if (currentY - touchStartYRef.current > 6) {
-          isAutoScrollLockedRef.current = true;
-          setIsAutoScrollLocked(true);
-          setShowScrollToBottom(true);
-        }
-      }
+    const handleTouchMove = () => {
+      // Check actual scroll geometry on touch scroll
+      checkScrollPosition();
     };
 
     const handleTouchEnd = () => {

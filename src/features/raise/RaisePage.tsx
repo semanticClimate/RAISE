@@ -211,16 +211,16 @@ export const RaisePage: React.FC = () => {
           <div ref={c.autoScroll.messagesEndRef} />
 
           {/* Floating Scroll to Bottom Down Arrow Button (ChatGPT / Gemini style) */}
-          {c.autoScroll.showScrollToBottom && (
-            <div className="sticky bottom-20 sm:bottom-24 z-40 flex justify-center pointer-events-none mb-2">
+          {c.autoScroll.showScrollToBottom && c.chatSessions.conversation.length > 0 && (
+            <div className="fixed bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 z-40 flex justify-center pointer-events-none">
               <button
                 type="button"
                 data-testid="scroll-to-bottom-btn"
                 aria-label="Scroll to bottom"
                 onClick={c.autoScroll.scrollToBottom}
-                className="pointer-events-auto flex items-center justify-center w-8 h-8 rounded-full bg-white dark:bg-[#181b26] border border-slate-300 dark:border-white/10 text-slate-600 dark:text-slate-300 shadow-md hover:bg-slate-50 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white transition-all active:scale-95 cursor-pointer animate-in fade-in slide-in-from-bottom-2 duration-150"
+                className="pointer-events-auto flex items-center justify-center w-8 h-8 rounded-full bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF] shadow-xl transition-all active:scale-95 cursor-pointer animate-in fade-in slide-in-from-bottom-2 duration-150"
               >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-4 h-4 text-[#FFFFFF]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </button>
@@ -285,6 +285,8 @@ export const RaisePage: React.FC = () => {
         setTheme={c.setTheme}
         onSelectLibraryDocument={c.sessionSources.handleSelectLibraryDocument}
         onDeleteSourceDoc={c.sessionSources.handleRemoveSource}
+        onToggleSelectDoc={c.sessionSources.handleToggleDocSelection}
+        onDeselectAllDocs={c.sessionSources.handleDeselectAllDocs}
         sessions={c.chatSessions.sessions}
         onSessionsChange={c.chatSessions.setSessions}
         onDeleteAllChats={c.chatSessions.handleDeleteAllChats}

@@ -39,6 +39,8 @@ export interface LibraryPickerModalProps {
   onOpenUploadFromPC: () => void;
   onViewPdf?: (filename: string, pageNumber?: number) => void;
   onAttachAll?: (items: LibraryItem[]) => void;
+  onDetachAll?: () => void;
+  onToggleDocument?: (doc: LibraryItem) => void;
   onDocumentDeleted?: (filename: string) => void;
 }
 
@@ -49,6 +51,8 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   attachedDocNames,
   onOpenUploadFromPC,
   onAttachAll,
+  onDetachAll,
+  onToggleDocument,
   onDocumentDeleted,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -282,6 +286,11 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
     return filteredItems.filter((item) => !attachedSet.has(item.name.toLowerCase().trim()));
   }, [filteredItems, attachedSet]);
 
+  const areAllAttached = useMemo(() => {
+    if (items.length === 0) return false;
+    return items.every((item) => attachedSet.has(item.name.toLowerCase().trim()));
+  }, [items, attachedSet]);
+
   useScrollLock(isOpen);
 
   if (!isOpen) return null;
@@ -390,15 +399,29 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                 <span className="sm:hidden font-medium">Add</span>
               </button>
 
-              {onAttachAll && unattachedReadyItems.length > 0 && (
+              {items.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => onAttachAll(unattachedReadyItems)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-xl bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF] transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95"
-                  title="Attach all ready documents to current chat"
-                  aria-label="Attach all ready documents"
+                  onClick={() => {
+                    if (areAllAttached) {
+                      onDetachAll?.();
+                    } else if (onAttachAll) {
+                      onAttachAll(unattachedReadyItems.length > 0 ? unattachedReadyItems : items);
+                    }
+                  }}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95 ${
+                    areAllAttached
+                      ? 'bg-[#FFFFFF] text-[#000000] hover:bg-[#FFFFFF]/90 font-semibold shadow-xs'
+                      : 'bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF]'
+                  }`}
+                  title={
+                    areAllAttached
+                      ? 'Unselect all attached documents from current chat'
+                      : 'Attach all ready documents to current chat'
+                  }
+                  aria-label={areAllAttached ? 'Unselect all attached documents' : 'Attach all ready documents'}
                 >
-                  All
+                  {areAllAttached ? 'Unselect All' : 'All'}
                 </button>
               )}
             </div>
@@ -521,11 +544,6 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                             <span>{item.pages} pp.</span>
                           </>
                         )}
-                        <span>•</span>
-                        <span className="inline-flex items-center gap-1 text-[#FFFFFF] font-mono text-[10px]">
-                          <span className="w-1 h-1 rounded-full bg-[#FFFFFF]" />
-                          <span>Ready</span>
-                        </span>
                       </div>
                     </div>
                   </div>
@@ -547,12 +565,19 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => onSelectDocument(item)}
+                      onClick={() => {
+                        if (isAttached && onToggleDocument) {
+                          onToggleDocument(item);
+                        } else {
+                          onSelectDocument(item);
+                        }
+                      }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                         isAttached
-                          ? 'bg-[#171717] border border-[#292929] text-[#FFFFFF]'
+                          ? 'bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF]'
                           : 'bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000]'
                       }`}
+                      title={isAttached ? `Click to unselect "${item.name}"` : `Attach "${item.name}"`}
                     >
                       {isAttached ? (
                         <>

@@ -59,6 +59,8 @@ export interface RaiseModalsProps {
   onOpenPdfViewer: (file: string, pageNumber?: number) => void;
   activePdfCitation: any;
   onClosePdfViewer: () => void;
+  onToggleSelectDoc?: (id: string) => void;
+  onDeselectAllDocs?: () => void;
 }
 
 export const RaiseModals: React.FC<RaiseModalsProps> = ({
@@ -67,6 +69,8 @@ export const RaiseModals: React.FC<RaiseModalsProps> = ({
   setTheme,
   onSelectLibraryDocument,
   onDeleteSourceDoc,
+  onToggleSelectDoc,
+  onDeselectAllDocs,
   sessions,
   onSessionsChange,
   onDeleteAllChats,
@@ -157,6 +161,18 @@ export const RaiseModals: React.FC<RaiseModalsProps> = ({
             isOpen={isLibraryPickerOpen}
             onClose={onCloseLibraryPicker}
             onSelectDocument={onSelectLibraryDocument}
+            onToggleDocument={(item) => {
+              const matched = sourceDocs.find(
+                (d) => d.name.toLowerCase() === item.name.toLowerCase() || d.id === item.id
+              );
+              if (matched) {
+                if (onToggleSelectDoc) {
+                  onToggleSelectDoc(matched.id);
+                } else {
+                  onDeleteSourceDoc(matched.id, matched.name);
+                }
+              }
+            }}
             attachedDocNames={sourceDocs.filter((d) => d.selected).map((d) => d.name)}
             onOpenUploadFromPC={onBrowseFileClick}
             onViewPdf={onOpenPdfViewer}
@@ -164,6 +180,15 @@ export const RaiseModals: React.FC<RaiseModalsProps> = ({
               items.forEach((item) => {
                 onSelectLibraryDocument(item);
               });
+            }}
+            onDetachAll={() => {
+              if (onDeselectAllDocs) {
+                onDeselectAllDocs();
+              } else {
+                sourceDocs.forEach((d) => {
+                  onDeleteSourceDoc(d.id, d.name);
+                });
+              }
             }}
             onDocumentDeleted={(filename) => {
               const matched = sourceDocs.find(
