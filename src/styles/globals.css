@@ -87,9 +87,9 @@
   body {
     background-color: #f8fafc;
     color: #0f172a;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "kern" 1, "liga" 1;
     font-family:
-      -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
     margin: 0;
     padding: 0;
     overflow-x: clip;
@@ -103,6 +103,28 @@
     background-color: #0e1017;
     color: #f1f5f9;
   }
+}
+
+/* Crisp Devanagari & Multilingual Typography */
+.indic-text,
+.ai-response-card,
+[lang="hi"],
+:lang(hi) {
+  font-family: 'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* 1. Prevent clipping of top (ि, ी, े, ै) and bottom (ु, ू, ृ) matras */
+  line-height: 1.75;
+
+  /* 2. Critical: NEVER add letter-spacing to Hindi/Indic scripts; it breaks the top line (shirorekha) */
+  letter-spacing: normal;
+
+  /* 3. Enable proper OpenType ligatures & conjunct shaping */
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  text-rendering: optimizeLegibility;
+
+  /* 4. Clean word wrapping without splitting conjuncts mid-syllable */
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Modern Standard Scrollbar & Layout Stability (Chrome Baseline) */
