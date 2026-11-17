@@ -58,7 +58,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   return (
     <div
       id="searchModalBackdrop"
-      className="fixed inset-0 z-[110] flex items-start justify-center pt-[clamp(3.5rem,8vh,5rem)] p-3 sm:p-5 bg-[#000000]/80 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-[110] flex items-start justify-center pt-[clamp(3.5rem,8vh,5rem)] p-3 sm:p-5 bg-[#000000]/40 backdrop-blur-md animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -217,9 +217,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             <Plus className="w-3.5 h-3.5 text-[#FFFFFF]" />
             <span>Create New Chat</span>
           </button>
-          <span className="text-[11px] font-mono text-[#A3A3A3]">
-            Click any chat to open
-          </span>
         </div>
       </div>
     </div>

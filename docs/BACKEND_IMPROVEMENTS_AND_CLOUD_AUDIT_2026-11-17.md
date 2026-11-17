@@ -157,6 +157,22 @@ Most critically, an in-depth code trace has identified a **fatal cascading failu
 
 ---
 
+### 2.7 Bug 7: Session Title Sync Silent Discard on Empty Messages
+* **Location**: `src/features/sessions/service.py` (line 144) & `src/infrastructure/database/mixins/chat_mixin.py` (line 225)
+* **Description**:
+  When `rename_session` falls back to `sync_chat_history(session_id=target_id, messages=[], title=clean_title)`, `chat_mixin.py` executes:
+  ```python
+  if not session_id or not messages:
+      return 0
+  ```
+  Since `messages` is an empty list, it discards the rename operation immediately without updating `session_metadata.title`.
+* **Impact**:
+  Session renaming fails silently in fallback mode.
+* **Recommended Fix**:
+  Allow `sync_chat_history` to update metadata (`title`, `attached_docs`, `preferences`) even when `messages` is empty, or ensure `postgres_manager` implements `rename_session` natively across all database backends.
+
+---
+
 ## 3. High Priority: Missing Docker Availability Detection
 
 ### 3.1 Docker False-Assumption on Clean Developer Laptops
@@ -236,11 +252,22 @@ Following the user's instructions, the following improvements have been landed o
 6. **Strict Authoritative Library Filtering**:
    Updated the library picker to display only documents that have been parsed and indexed successfully (`status === 'ready' | 'indexed'`), and added instant query cache invalidation on document deletion.
 
+7. **Sources Drawer & Search Modal UI Simplification**:
+   - Merged the search filter bar directly with the list view in `SourcesDrawer.tsx`, removing redundant horizontal divider lines.
+   - Removed the dashed outer box container from the empty state for a minimalist presentation.
+   - Removed secondary subheader text from the drawer header and attached-count from the footer.
+   - Removed 'Click any chat to open' hint from `SearchModal.tsx`.
+   - Replaced heavy pitch-black backdrop (`bg-black/80`) with a lighter, visible backdrop (`bg-black/40 backdrop-blur-md`) across all popups.
+
+8. **Dynamic System Platform Telemetry**:
+   - Replaced hardcoded `'macos'` checks in `ControlCenterModal.tsx`, `PlatformStep.tsx`, `LaunchStep.tsx`, and `useControlCenterStore.ts` with dynamic host detection and backend telemetry (`hw.platform`, `hw.os_name`, `detectHostOS()`).
+
 ---
 
 ## 6. Action Items for Backend Team
 
 - [ ] **Fix Document Deletion Resurrection**: In `src/api/context.py:auto_scan_and_reconcile_documents()`, do not re-register documents listed in `manifest["deleted_documents"]`. In `src/features/documents/service.py:delete_document()`, delete/archive physical files from `data/documents/` and `data/cache/chunks/`.
+- [ ] **Fix Session Rename Fallback**: In `src/infrastructure/database/mixins/chat_mixin.py:sync_chat_history()`, allow metadata updates (`title`) even when `messages` is empty.
 - [ ] **Patch `postgres.py`**: Apply adaptive TCP probe timeout (`3.0s` for remote hosts, `0.03s` for local) and support `POSTGRES_URL` in cloud resolution.
 - [ ] **Patch `redis.py`**: Support `REDIS_URL` for Upstash/cloud endpoints when `REDIS_MODE == "cloud"`.
 - [ ] **Patch `config_service.py`**: Decouple substrate fallback flags so one cloud substrate does not disable local fallbacks for other substrates.

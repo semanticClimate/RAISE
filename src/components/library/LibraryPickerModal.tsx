@@ -219,7 +219,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-[#000000]/80 backdrop-blur-sm animate-in fade-in duration-150 select-none ${
+      className={`fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-[#000000]/40 backdrop-blur-md animate-in fade-in duration-150 select-none ${
         isDragOver ? 'ring-2 ring-[#FFFFFF]/50' : ''
       }`}
       onClick={onClose}

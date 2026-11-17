@@ -65,7 +65,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
   return (
     <div
       id="sourcesModalBackdrop"
-      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-5 bg-[#000000]/80 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-5 bg-[#000000]/40 backdrop-blur-md animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -92,9 +92,6 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
                   <span>{isOnline ? `${activeSourcesCount} active` : 'Offline'}</span>
                 </span>
               </div>
-              <p className="text-[11px] text-[#A3A3A3] truncate">
-                Source data documents for retrieval augmented generation
-              </p>
             </div>
           </div>
 
@@ -110,8 +107,8 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
           </button>
         </div>
 
-        {/* Filter & Actions Bar */}
-        <div className="p-3 sm:px-5 sm:py-3 border-b border-[#292929] bg-[#0A0A0A] flex items-center gap-2.5 shrink-0">
+        {/* Filter & Actions Bar - Seamlessly merged without extra line */}
+        <div className="pt-3.5 px-4 sm:px-6 pb-2 bg-[#0A0A0A] flex items-center gap-2.5 shrink-0">
           <div className="relative flex-1 min-w-0">
             <Search className="w-3.5 h-3.5 text-[#A3A3A3] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -143,7 +140,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
         </div>
 
         {/* Scrollable Document List */}
-        <div className="p-3 sm:p-5 overflow-y-auto max-h-[340px] space-y-2 bg-[#0A0A0A]">
+        <div className="px-4 sm:px-6 pb-4 overflow-y-auto max-h-[340px] space-y-2 bg-[#0A0A0A]">
           {sourceDocs.length > 0 && (
             <div className="flex items-center justify-between px-1 py-0.5 text-xs text-[#A3A3A3]">
               <span className="text-[11px] font-mono">
@@ -189,7 +186,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
           ))}
 
           {filteredDocs.length === 0 && (
-            <div className="text-center py-6 sm:py-8 px-4 rounded-xl border border-dashed border-[#292929] bg-[#111111]/40">
+            <div className="text-center py-7 px-4">
               <div className="w-10 h-10 mx-auto mb-2.5 rounded-xl bg-[#171717] border border-[#292929] flex items-center justify-center text-[#A3A3A3]">
                 <Database className="w-5 h-5 text-[#A3A3A3]" />
               </div>
@@ -212,15 +209,7 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="h-14 px-5 sm:px-6 border-t border-[#292929] bg-[#0A0A0A] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#FFFFFF]" />
-            <span className="text-xs font-mono text-[#A3A3A3]">
-              {isOnline
-                ? `${activeSourcesCount} of ${sourceDocs.length} attached`
-                : 'Gateway offline • 0 active'}
-            </span>
-          </div>
+        <div className="h-14 px-5 sm:px-6 border-t border-[#292929] bg-[#0A0A0A] flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}

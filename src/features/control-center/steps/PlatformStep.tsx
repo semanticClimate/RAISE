@@ -19,13 +19,14 @@ export const PlatformStep: React.FC = () => {
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
 
   const clientOSLabel =
-    hardware?.platform === 'macos'
+    hardware?.osName ||
+    (hardware?.platform === 'macos'
       ? 'macOS (Apple Silicon)'
       : hardware?.platform === 'windows'
         ? 'Windows'
         : hardware?.platform === 'linux'
           ? 'Linux'
-          : 'macOS (Apple Silicon)';
+          : 'Detected Host OS');
 
   const platforms: {
     id: TargetPlatform;

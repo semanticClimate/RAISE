@@ -50,22 +50,23 @@ export const ControlCenterModal: React.FC = () => {
     if (isOpen) {
       useModeStore.getState().runCapabilityProbe();
       const hostOS = detectHostOS();
-      if (hostOS === 'macos' && config.targetPlatform !== 'macos' && !useControlCenterStore.getState().isDirty) {
-        updateConfig({ targetPlatform: 'macos' });
+      if (hostOS && config.targetPlatform !== hostOS && !useControlCenterStore.getState().isDirty) {
+        updateConfig({ targetPlatform: hostOS });
       }
 
       useControlCenterStore.getState().syncBackendConfig();
       useControlCenterStore.getState().syncEnvCredentials();
       platformAdapter.getHardware().then((hw) => {
-        const detected = detectHostOS();
+        const detected = hw.platform ? (hw.platform as any) : hostOS;
+        const displayOs = hw.os_name || (detected === 'macos' ? 'macOS (Apple Silicon)' : detected === 'windows' ? 'Windows' : 'Linux');
         setHardware({
           platform: detected,
-          osName: detected === 'macos' ? 'macOS (Apple Silicon)' : hw.os_name || detected,
+          osName: displayOs,
           totalRamGb: hw.total_ram_gb || 16.0,
           cpuCores: hw.cpu_cores || 8,
           freeRamGb: hw.free_ram_gb,
-          gpuName: hw.gpu?.details || (hw as any).gpu_name || 'Apple MPS',
-          hasMetalOrCuda: true,
+          gpuName: hw.gpu?.details || (hw as any).gpu_name || (detected === 'macos' ? 'Apple MPS' : detected === 'windows' ? 'DirectML / NVIDIA' : 'ROCm / NVIDIA / CPU'),
+          hasMetalOrCuda: Boolean(hw.has_metal_or_cuda ?? (detected === 'macos' || detected === 'windows')),
         });
         if (!useControlCenterStore.getState().isDirty) {
           updateConfig({ targetPlatform: detected });
@@ -205,7 +206,7 @@ export const ControlCenterModal: React.FC = () => {
   }, [activeTab]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/80 backdrop-blur-sm p-3 sm:p-5 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/40 backdrop-blur-md p-3 sm:p-5 animate-in fade-in duration-150">
       <div
         style={modalHeight ? { height: `${modalHeight}px` } : undefined}
         className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0A0A0A] border border-[#292929] shadow-2xl overflow-hidden text-[#FFFFFF] font-sans shrink-0 transition-[height] duration-300 ease-out"

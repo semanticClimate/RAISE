@@ -122,11 +122,15 @@ export const SearchSessionItem: React.FC<SearchSessionItemProps> = ({
               if (e.key === 'Enter') {
                 e.preventDefault();
                 handleSaveRename(session.id);
+                if (setRenamingSessionId) setRenamingSessionId(null);
               } else if (e.key === 'Escape' && setRenamingSessionId) {
                 setRenamingSessionId(null);
               }
             }}
-            onBlur={() => handleSaveRename(session.id)}
+            onBlur={() => {
+              handleSaveRename(session.id);
+              if (setRenamingSessionId) setRenamingSessionId(null);
+            }}
             className="w-full text-xs font-medium px-2 py-0.5 rounded bg-[#111111] border border-[#292929] text-[#FFFFFF] focus:outline-none focus:border-[#FFFFFF]/50"
           />
         ) : (

@@ -828,13 +828,12 @@ export const useControlCenterStore = create<ControlCenterState>()(
         ) {
           mergedConfig.tunnelUrl = '';
         }
-        // Normalize platform away from 'web' or mobile, or old hardcoded 'windows' on Mac
+        // Normalize platform away from 'web' or mobile
         if (
           !mergedConfig.targetPlatform ||
           mergedConfig.targetPlatform === 'web' ||
           mergedConfig.targetPlatform === 'ios' ||
-          mergedConfig.targetPlatform === 'android' ||
-          (defaultPlatform === 'macos' && mergedConfig.targetPlatform === 'windows')
+          mergedConfig.targetPlatform === 'android'
         ) {
           mergedConfig.targetPlatform = defaultPlatform;
         }

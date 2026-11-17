@@ -51,7 +51,7 @@ export const LaunchStep: React.FC = () => {
         ? 'Windows'
         : config.targetPlatform === 'linux'
           ? 'Linux'
-          : 'macOS (Desktop)');
+          : 'Detected Host Platform');
 
   const handleTestAllSubstrates = async () => {
     setIsTestingSubstrates(true);

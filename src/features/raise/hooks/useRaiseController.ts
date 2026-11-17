@@ -280,6 +280,7 @@ export function useRaiseController() {
   const handleSaveRename = useCallback(
     (sessionId: string) => {
       chatSessions.handleSaveRename(sessionId, newSessionTitle);
+      setRenamingSessionId(null);
     },
     [chatSessions, newSessionTitle]
   );
