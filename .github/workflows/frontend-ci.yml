@@ -23,7 +23,7 @@ concurrency:
 jobs:
   validate:
     name: Lint, Typecheck & Build Verification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
@@ -72,7 +72,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Setup GitHub Pages
         id: setup-pages
