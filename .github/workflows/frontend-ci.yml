@@ -79,8 +79,6 @@ jobs:
       - name: Setup GitHub Pages
         id: setup-pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Deploy Pages Artifact
         id: deployment
