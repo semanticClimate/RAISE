@@ -16,7 +16,6 @@ export const OverviewStep: React.FC = () => {
     hardware,
     setActiveTab,
     preflightFootprint,
-    syncBackendConfig,
   } = useControlCenterStore();
 
   const { appMode, latencyMs, runCapabilityProbe } = useModeStore();
@@ -32,7 +31,6 @@ export const OverviewStep: React.FC = () => {
     const probe = async () => {
       try {
         await runCapabilityProbe();
-        await syncBackendConfig();
         const [cfg, results] = await Promise.all([
           platformAdapter.getConfig(),
           platformAdapter.testConnections({

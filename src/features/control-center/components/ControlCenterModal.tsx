@@ -50,7 +50,7 @@ export const ControlCenterModal: React.FC = () => {
     if (isOpen) {
       useModeStore.getState().runCapabilityProbe();
       const hostOS = detectHostOS();
-      if (hostOS === 'macos' && config.targetPlatform !== 'macos') {
+      if (hostOS === 'macos' && config.targetPlatform !== 'macos' && !useControlCenterStore.getState().isDirty) {
         updateConfig({ targetPlatform: 'macos' });
       }
 
@@ -67,7 +67,9 @@ export const ControlCenterModal: React.FC = () => {
           gpuName: hw.gpu?.details || (hw as any).gpu_name || 'Apple MPS',
           hasMetalOrCuda: true,
         });
-        updateConfig({ targetPlatform: detected });
+        if (!useControlCenterStore.getState().isDirty) {
+          updateConfig({ targetPlatform: detected });
+        }
       });
     }
   }, [isOpen]);

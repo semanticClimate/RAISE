@@ -79,6 +79,12 @@ export interface ControlCenterConfig {
   tunnelUrl?: string;
   storageMode?: 'fast' | 'docker' | 'cloud';
 
+  // LLM Routing & Fallback Priority
+  fallbackOrder?: string[];
+  disabledProviders?: string[];
+  primaryProvider?: string;
+  routingPolicy?: string;
+
   // Neural Pipeline Substrates
   embeddingModel?: string;
   rerankerModel?: string;

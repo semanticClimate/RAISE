@@ -48,9 +48,14 @@ const canonicalId = (pid: string): string => {
 const DEFAULT_DISABLED = ['mistral'];
 
 export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ className = '' }) => {
-  const [activeChain, setActiveChain] = useState<string[]>([]);
-  const [disabledList, setDisabledList] = useState<string[]>(DEFAULT_DISABLED);
-  const [primaryProvider, setPrimaryProvider] = useState<string>('gemini');
+  const isCC = useControlCenterStore((s) => s.isOpen);
+  const storeFallbackOrder = useControlCenterStore((s) => s.config.fallbackOrder);
+  const storeDisabledProviders = useControlCenterStore((s) => s.config.disabledProviders);
+  const storePrimaryProvider = useControlCenterStore((s) => s.config.primaryProvider);
+
+  const [activeChain, setActiveChain] = useState<string[]>(storeFallbackOrder || []);
+  const [disabledList, setDisabledList] = useState<string[]>(storeDisabledProviders || DEFAULT_DISABLED);
+  const [primaryProvider, setPrimaryProvider] = useState<string>(storePrimaryProvider || 'gemini');
   const [providersData, setProvidersData] = useState<Record<string, ProviderCardState>>(() => {
     const initial: Record<string, ProviderCardState> = {};
     Object.entries(CLEAN_PROVIDER_NAMES).forEach(([id, name]) => {
@@ -226,10 +231,29 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
         rawOrder.forEach(pushToChain);
         Object.keys(merged).forEach(pushToChain);
 
-        setActiveChain(liveChain);
-        setDisabledList(disabled);
-        setPrimaryProvider(liveChain[0] || primary);
         setProvidersData(merged);
+
+        // If inside Control Center, check if user already staged an order in store
+        const stagedOrder = useControlCenterStore.getState().config.fallbackOrder;
+        const stagedDisabled = useControlCenterStore.getState().config.disabledProviders;
+        const stagedPrimary = useControlCenterStore.getState().config.primaryProvider;
+
+        if (useControlCenterStore.getState().isOpen && stagedOrder && stagedOrder.length > 0) {
+          setActiveChain(stagedOrder);
+          setDisabledList(stagedDisabled || disabled);
+          setPrimaryProvider(stagedPrimary || stagedOrder[0] || primary);
+        } else {
+          setActiveChain(liveChain);
+          setDisabledList(disabled);
+          setPrimaryProvider(liveChain[0] || primary);
+          if (useControlCenterStore.getState().isOpen && !useControlCenterStore.getState().isDirty) {
+            useControlCenterStore.getState().updateConfig({
+              fallbackOrder: liveChain,
+              disabledProviders: disabled,
+              primaryProvider: liveChain[0] || primary,
+            });
+          }
+        }
       }
     } catch {
       // Backend not yet reachable; state smoothly retained
@@ -238,6 +262,21 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
     }
   }, []);
 
+  // Synchronize with store when user resets to baseline in Control Center
+  useEffect(() => {
+    if (isCC) {
+      if (storeFallbackOrder && storeFallbackOrder.length > 0) {
+        setActiveChain(storeFallbackOrder);
+      }
+      if (storeDisabledProviders) {
+        setDisabledList(storeDisabledProviders);
+      }
+      if (storePrimaryProvider) {
+        setPrimaryProvider(storePrimaryProvider);
+      }
+    }
+  }, [isCC, storeFallbackOrder, storeDisabledProviders, storePrimaryProvider]);
+
   useEffect(() => {
     fetchLiveRouting();
     const handleSyncEvent = () => {
@@ -245,6 +284,10 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
     };
     window.addEventListener('raise:sync-routing', handleSyncEvent);
     const interval = setInterval(() => {
+      // If inside Control Center and changes are pending, don't wipe uncommitted user changes!
+      if (useControlCenterStore.getState().isOpen && useControlCenterStore.getState().isDirty) {
+        return;
+      }
       fetchLiveRouting();
     }, 10000);
     return () => {
@@ -266,6 +309,21 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
     setPrimaryProvider(newPrimary);
 
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    if (useControlCenterStore.getState().isOpen) {
+      // In Control Center: Stage reordering into store and mark isDirty!
+      // Do NOT send to backend yet - only finalize when user clicks "Start"
+      useControlCenterStore.getState().updateConfig({
+        fallbackOrder: newChain,
+        disabledProviders: newDisabled,
+        primaryProvider: newPrimary,
+        routingPolicy: newPrimary === 'vllm' || newPrimary === 'ollama' ? 'LOCAL_FIRST' : 'CLOUD_FIRST',
+      });
+      const bannerMsg = `${actionDesc}: ${newPrimary.toUpperCase()} is Primary (#1) (Pending Start)`;
+      setFeedbackBanner({ message: bannerMsg, timestamp: timeStr });
+      return;
+    }
+
     const bannerMsg = `${actionDesc}: ${newPrimary.toUpperCase()} is Primary (#1)`;
     setFeedbackBanner({ message: bannerMsg, timestamp: timeStr });
 

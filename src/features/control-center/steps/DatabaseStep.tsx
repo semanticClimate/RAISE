@@ -8,7 +8,7 @@ import { useControlCenterStore } from '../store/useControlCenterStore';
 import type { SubstrateMode } from '../types';
 
 export const DatabaseStep: React.FC = () => {
-  const { config, updateSubstrate, setAllSubstratesMode, syncBackendConfig } = useControlCenterStore();
+  const { config, updateSubstrate, setAllSubstratesMode } = useControlCenterStore();
   const envData = detectEnvCredentials();
 
   // Test live substrate connectivity state
@@ -79,11 +79,6 @@ export const DatabaseStep: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
     const init = async () => {
-      try {
-        await syncBackendConfig();
-      } catch {
-        // Backend offline or unreachable
-      }
       if (isMounted) {
         await handleTestAllSubstrates();
       }

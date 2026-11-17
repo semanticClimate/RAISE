@@ -176,6 +176,24 @@ export function useControlCenterSave(
         return;
       }
 
+      // Persist user-selected LLM routing fallback chain if modified in Control Center
+      if (config.fallbackOrder || config.disabledProviders || config.primaryProvider) {
+        try {
+          await platformAdapter.updateRouting({
+            fallback_order: config.fallbackOrder,
+            disabled_providers: config.disabledProviders,
+            primary_provider: config.primaryProvider,
+            routing_policy:
+              config.routingPolicy ||
+              (config.primaryProvider === 'vllm' || config.primaryProvider === 'ollama'
+                ? 'LOCAL_FIRST'
+                : 'CLOUD_FIRST'),
+          });
+        } catch (err) {
+          console.warn('Non-fatal error updating routing order on launch:', err);
+        }
+      }
+
       // 6. Successful Launch: Mark onboarding completed & close modal
       try {
         localStorage.setItem('raise_onboarding_completed', 'true');

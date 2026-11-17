@@ -82,10 +82,28 @@ export const isConfigDirty = (
     return true;
   }
 
-  // 3. API Keys: Compare real user-configured keys
+  // 3. Fallback Priority & Inference Routing Chain
+  const curFallback = (current.fallbackOrder || []).join(',');
+  const baseFallback = (baseline.fallbackOrder || []).join(',');
+  if (curFallback !== baseFallback) {
+    return true;
+  }
+  const curDisabled = [...(current.disabledProviders || [])].sort().join(',');
+  const baseDisabled = [...(baseline.disabledProviders || [])].sort().join(',');
+  if (curDisabled !== baseDisabled) {
+    return true;
+  }
+  if (current.primaryProvider && baseline.primaryProvider && current.primaryProvider !== baseline.primaryProvider) {
+    return true;
+  }
+  if (current.routingPolicy && baseline.routingPolicy && current.routingPolicy !== baseline.routingPolicy) {
+    return true;
+  }
+
+  // 4. API Keys: Compare configured keys
   const getKeysSummary = (keys?: CloudApiKeyEntry[]) =>
     (keys || [])
-      .filter((k) => k?.key && k.key.trim().length > 0 && k.key !== '••••••••••••••••')
+      .filter((k) => k?.provider && k.provider !== 'unknown')
       .map((k) => `${k.provider}:${k.key.trim()}`)
       .sort()
       .join(';');
@@ -94,14 +112,14 @@ export const isConfigDirty = (
     return true;
   }
 
-  // 4. Hugging Face Access Token
+  // 5. Hugging Face Access Token
   const curHf = (current.huggingfaceToken || '').trim();
   const baseHf = (baseline.huggingfaceToken || '').trim();
-  if (curHf && curHf !== baseHf && curHf !== '••••••••••••••••') {
+  if (curHf !== baseHf) {
     return true;
   }
 
-  // 5. Configured Neural Models (Embedding, Reranker, Verifier)
+  // 6. Configured Neural Models (Embedding, Reranker, Verifier) & Device
   if (current.embeddingModel && baseline.embeddingModel && current.embeddingModel !== baseline.embeddingModel) {
     return true;
   }
@@ -111,8 +129,11 @@ export const isConfigDirty = (
   if (current.nliVerifierModel && baseline.nliVerifierModel && current.nliVerifierModel !== baseline.nliVerifierModel) {
     return true;
   }
+  if (current.neuralDevice && baseline.neuralDevice && current.neuralDevice !== baseline.neuralDevice) {
+    return true;
+  }
 
-  // 6. Storage Profile & Substrates
+  // 7. Storage Profile & Substrates
   if (current.storageMode && baseline.storageMode && current.storageMode !== baseline.storageMode) {
     return true;
   }
@@ -130,6 +151,15 @@ export const isConfigDirty = (
   ) {
     return true;
   }
+  if ((current.knowledgeGraph?.password || '') !== (baseline.knowledgeGraph?.password || '')) {
+    return true;
+  }
+  if ((current.knowledgeGraph?.user || '') !== (baseline.knowledgeGraph?.user || '')) {
+    return true;
+  }
+  if ((current.knowledgeGraph?.database || '') !== (baseline.knowledgeGraph?.database || '')) {
+    return true;
+  }
   if (
     current.sessionMemory?.mode &&
     baseline.sessionMemory?.mode &&
@@ -142,6 +172,9 @@ export const isConfigDirty = (
     baseline.sessionMemory?.uri &&
     current.sessionMemory.uri !== baseline.sessionMemory.uri
   ) {
+    return true;
+  }
+  if ((current.sessionMemory?.password || '') !== (baseline.sessionMemory?.password || '')) {
     return true;
   }
   if (
@@ -158,13 +191,21 @@ export const isConfigDirty = (
   ) {
     return true;
   }
+  if ((current.cacheAndSignals?.password || '') !== (baseline.cacheAndSignals?.password || '')) {
+    return true;
+  }
+
+  // 8. Tunnel URL
+  if ((current.tunnelUrl || '').trim() !== (baseline.tunnelUrl || '').trim()) {
+    return true;
+  }
 
   return false;
 };
 
 export const useControlCenterStore = create<ControlCenterState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isOpen: false,
       activeTab: 'platform',
       hardware: {
@@ -518,8 +559,22 @@ export const useControlCenterStore = create<ControlCenterState>()(
 
       syncBackendConfig: async () => {
         try {
-          const cfg = await platformAdapter.getConfig();
+          // If user currently has uncommitted changes in Control Center, do NOT overwrite draft config or clear isDirty!
+          if (get().isDirty) {
+            return;
+          }
+
+          const [cfg, routingRes] = await Promise.all([
+            platformAdapter.getConfig(),
+            platformAdapter.getRouting().catch(() => null),
+          ]);
           if (!cfg) return;
+
+          const rawRouting = (routingRes?.data || routingRes) as any;
+          const rawOrder = (rawRouting?.fallback_order || rawRouting?.fallback_chain || []).map((x: string) => (x || '').toLowerCase().trim());
+          const disabled = (rawRouting?.disabled_providers || []).map((x: string) => (x || '').toLowerCase().trim());
+          const primary = ((rawRouting?.pinned_primary_provider || rawRouting?.primary_provider || rawOrder[0] || 'gemini') as string).toLowerCase().trim();
+          const routingPolicy = rawRouting?.routing_policy || (primary === 'vllm' || primary === 'ollama' ? 'LOCAL_FIRST' : 'CLOUD_FIRST');
 
           const llmMode = String(cfg.llm_mode || '');
           const llmBackend = String(cfg.llm_backend || '');
@@ -576,6 +631,10 @@ export const useControlCenterStore = create<ControlCenterState>()(
           const cacheMode = isFast ? 'in_memory_fallback' : ((cfg.redis_mode as SubstrateMode) || defaultSubstrateMode);
 
           set((s) => {
+            if (s.isDirty) {
+              return {};
+            }
+
             // Merge: preserve any user-entered manual keys that are not from backend
             const mergedKeys = [...backendApiKeys];
             for (const existingKey of s.config.apiKeys || []) {
@@ -598,12 +657,18 @@ export const useControlCenterStore = create<ControlCenterState>()(
               });
             }
 
+            const fallbackChain = rawOrder.length > 0 ? rawOrder : s.config.fallbackOrder || ['gemini', 'groq', 'universal', 'local'];
+
             const syncedConfig: ControlCenterConfig = {
               ...s.config,
               firstRunCompleted: Boolean(cfg.first_run_completed ?? s.config.firstRunCompleted),
               llmDeployment: isLocal ? 'local' : 'cloud',
               storageMode: rawStorageMode === 'docker' ? 'docker' : rawStorageMode === 'cloud' ? 'cloud' : 'fast',
               llmMode: (llmMode || s.config.llmMode) as any,
+              fallbackOrder: fallbackChain,
+              disabledProviders: disabled,
+              primaryProvider: primary,
+              routingPolicy: routingPolicy,
               embeddingModel:
                 (cfg.embedding_model as string) || s.config.embeddingModel || 'google/embeddinggemma-2',
               rerankerModel:

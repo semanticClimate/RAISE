@@ -69,17 +69,20 @@ export const NeuralStep: React.FC = () => {
       ]);
       if (cfg) {
         setBackendConfig(cfg);
-        updateConfig({
-          embeddingModel: (cfg.embedding_model as string) || config.embeddingModel,
-          rerankerModel: (cfg.reranker_model as string) || config.rerankerModel,
-          nliVerifierModel:
-            (cfg.nli_verifier_model as string) ||
-            (cfg.nli_model as string) ||
-            config.nliVerifierModel,
-          neuralDevice: (cfg.neural_device as any) || config.neuralDevice,
-          huggingfaceConfigured: Boolean(cfg.huggingface_configured),
-          huggingfaceMasked: String(cfg.huggingface_masked || ''),
-        });
+        const isCurrentlyDirty = useControlCenterStore.getState().isDirty;
+        if (!isCurrentlyDirty) {
+          updateConfig({
+            embeddingModel: config.embeddingModel || (cfg.embedding_model as string),
+            rerankerModel: config.rerankerModel || (cfg.reranker_model as string),
+            nliVerifierModel:
+              config.nliVerifierModel ||
+              (cfg.nli_verifier_model as string) ||
+              (cfg.nli_model as string),
+            neuralDevice: config.neuralDevice || (cfg.neural_device as any) || 'auto',
+            huggingfaceConfigured: Boolean(cfg.huggingface_configured),
+            huggingfaceMasked: String(cfg.huggingface_masked || ''),
+          });
+        }
       }
       if (assetsRes && Array.isArray(assetsRes.assets)) {
         setPreflightAssets(assetsRes.assets);
@@ -90,7 +93,7 @@ export const NeuralStep: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [config.embeddingModel, config.rerankerModel, config.nliVerifierModel, config.neuralDevice, updateConfig]);
+  }, []);
 
   useEffect(() => {
     refreshBackendData();

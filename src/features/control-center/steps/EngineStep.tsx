@@ -10,7 +10,7 @@ import { LocalModelSection } from './LocalModelSection';
 import { LLMRoutingOrchestrator } from '../../../components/settings/LLMRoutingOrchestrator';
 
 export const EngineStep: React.FC = () => {
-  const { config, updateConfig, syncEnvCredentials, syncBackendConfig } = useControlCenterStore();
+  const { config, updateConfig, syncEnvCredentials } = useControlCenterStore();
 
   const {
     models: liveDiscoveredLLMs,
@@ -86,7 +86,6 @@ export const EngineStep: React.FC = () => {
   };
 
   useEffect(() => {
-    syncBackendConfig();
     syncEnvCredentials();
     fetchModels();
   }, []);
