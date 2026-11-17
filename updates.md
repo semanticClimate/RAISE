@@ -21,6 +21,7 @@
 5. [Redesigned Control Center & Hardware Telemetry](#5-redesigned-control-center--hardware-telemetry)
 6. [Source-Level Neural Model Download & Frontend Progress Sync](#6-source-level-neural-model-download--frontend-progress-sync)
 7. [Full-Stack API Communication & Hook Orchestration](#7-full-stack-api-communication--hook-orchestration)
+8. [How to Run the Pipeline (Zero-Friction Quickstart on `re-testing`)](#8-how-to-run-the-pipeline-zero-friction-quickstart-on-re-testing)
 
 ---
 
@@ -57,16 +58,7 @@ A summary of foundational improvements preceding this release:
 1. **TableFormer & Docling PDF Ingestion Engine**:
    - Upgraded PDF parsing to leverage IBM Docling with TableFormer OCR for complex tabular structures.
    - Successfully resolved multi-column institutional rankings from dense reports (e.g., Page 9 Nature Index table in NIPGR Annual Report 2025).
-2. **Zero Hardcoded Model Policy (`AGENTS.md` / `GEMINI.md`)**:
-   - Enforced single source of truth across all modules via `src.core.config.models`.
-   - Prevented regressions using automated AST scanners and the CI guard `tests/test_no_hardcoded_models.py`.
-3. **FineCat-NLI Verifier Device Auto-Resolution**:
-   - Resolved PyTorch device crash when `NLI_DEVICE="auto"` or `NEURAL_DEVICE="auto"`.
-   - Normalizes strings dynamically to `"cuda:0" if torch.cuda.is_available() else "cpu"`, restoring local semantic claim verification.
-4. **Batch Launcher Syntax Hardening**:
-   - Escaped unquoted command separators (`title RAISE - ... ^& ...`) in `START_RAISE.bat` to eliminate Windows `cmd.exe` command execution splitting.
-   - Reorganized modular bootloader scripts under `connector/helper.ps1`.
-5. **Substrate Router Fast Mode Fallback**:
+2. **Substrate Router Fast Mode Fallback**:
    - Added automatic graceful fallback from `fakeredis` to in-memory dictionary caching when running in lightweight environments without compiled C-extensions.
 
 ---
@@ -300,7 +292,65 @@ The client application orchestrates complex RAG interactions using modular custo
 
 ---
 
-## 8. Summary & Verification Status
+## 8. How to Run the Pipeline (Zero-Friction Quickstart on `re-testing`)
+
+RAISE is designed to run out-of-the-box on a fresh clone with zero manual Python environment configuration or complex Docker orchestration.
+
+### Step 1: Clone or Download the Monorepo
+Clone the `re-testing` integration branch directly:
+```bash
+git clone -b re-testing https://github.com/semanticClimate/RAISE.git
+cd RAISE
+```
+*(Alternatively, download the repository as a ZIP archive from GitHub and extract it to any local directory).*
+
+### Step 2: One-Click Startup (`START_RAISE.bat`)
+Simply **double-click** the `START_RAISE.bat` file in the root folder, or run it from your terminal:
+```bat
+START_RAISE.bat
+```
+The automated supervisor (`connector/helper.ps1`) will:
+1. Detect or auto-provision a compatible Python 3.10–3.13 runtime.
+2. Verify all core dependencies (FastAPI, Uvicorn, Sentence-Transformers, Transformers, GLiNER, NetworkX, FakeRedis).
+3. Check and compile native Rust acceleration modules (`raise_engine`).
+4. Ensure the React/Vite frontend dependencies are installed and ready.
+
+### Step 3: Interactive Credential Handshake (Console Prompts)
+During the initial boot sequence, the launcher presents two quick prompts in the terminal:
+
+1. **LLM Inference Credential (Gemini / Groq / OpenAI)**:
+   ```
+   Paste LLM API Key [or press Enter to skip / use local model]: <YOUR_API_KEY>
+   ```
+   - Supports Google Gemini (recommended default `gemini-2.5-flash`), Groq LPUs, OpenAI, Anthropic, or local inference.
+   - The key is validated in real-time and securely saved to your local `.env`.
+
+2. **Hugging Face Token (`HF_TOKEN`)**:
+   ```
+   Paste Hugging Face Token [or press Enter to skip]: <YOUR_HF_TOKEN>
+   ```
+   - Used to authenticate and automatically pull the required neural weights directly from Hugging Face Hub (`google/embeddinggemma-2`, `BAAI/bge-reranker-v2-m3`, `dleemiller/finecat-nli-ultra-l`, `urchade/gliner_medium-v2.1`).
+   - If skipped, the pipeline automatically runs with cached or local models.
+
+### Step 4: Automatic Pipeline Launch & Browser Startup
+Once credentials are confirmed:
+- The backend FastAPI server starts on **`http://localhost:8000`**.
+- The frontend Vite development server boots on **`http://localhost:5173`**.
+- The supervisor **automatically opens your default web browser** directly to `http://localhost:5173`.
+
+### Step 5: Instant Audited Querying from the Attached PDF
+You do **not** need to manually upload or index documents to get started:
+- An institutional scientific document (such as `NIPGR_BRIC_Annual_Report_2025.pdf`) is **already pre-scanned, parsed with TableFormer OCR, chunked, and embedded into the local ChromaDB vector store and NetworkX knowledge graph**.
+- When the chat UI loads, the pre-indexed PDF chip is **already attached and active** in the query workspace.
+- You can immediately ask complex, data-dense questions directly in the query box:
+  - *"What are the Nature Index rankings of iBRIC+ India for overall and biological sciences?"*
+  - *"Summarize the institutional research output and key scientific findings across themes."*
+  - *"What are the primary budget allocations and international patent filings reported?"*
+- RAISE will immediately execute multi-hop hybrid retrieval, reason across the knowledge graph, and stream verified answers with exact page citations (`[p. 9]`, `[p. 16]`) ready for export!
+
+---
+
+## 9. Summary & Verification Status
 
 - **Automated Test Coverage**: 100% pass across model configuration, AST hardcoding guard, and full frontend-backend API integration suites (`16/16` and `19/19` pytest cases).
 - **Git Invariant Compliance**: Monorepo clean state maintained on `re-testing`; flat root layout mirrored to `origin/backend`.
