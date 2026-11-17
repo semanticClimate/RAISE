@@ -2,7 +2,7 @@
 
 > **Release Version**: RAISE v2.5.0-rc  
 > **Last Updated**: 2026-11-17  
-> **Scope**: Export Infrastructure, Multi-Mode Substrate Engine (`Fast` / `Docker` / `Cloud`), Dynamic Neural Model Provisioning, Redesigned Control Center, and End-to-End API Architecture.
+> **Scope**: Export Infrastructure, Multi-Mode Substrate Engine (`Fast` / `Docker` / `Cloud`), Dynamic Neural Model Provisioning, and End-to-End API Architecture.
 
 ---
 
@@ -18,10 +18,9 @@
 4. [Substrate Architecture & Data Flow Across Modes](#4-substrate-architecture--data-flow-across-modes)
    - [Substrate Transition Matrix](#41-substrate-transition-matrix)
    - [Architecture & Data Flow Diagram (Mermaid)](#42-architecture--data-flow-diagram)
-5. [Redesigned Control Center & Hardware Telemetry](#5-redesigned-control-center--hardware-telemetry)
-6. [Source-Level Neural Model Download & Frontend Progress Sync](#6-source-level-neural-model-download--frontend-progress-sync)
-7. [Full-Stack API Communication & Hook Orchestration](#7-full-stack-api-communication--hook-orchestration)
-8. [How to Run the Pipeline (Zero-Friction Quickstart on `re-testing`)](#8-how-to-run-the-pipeline-zero-friction-quickstart-on-re-testing)
+5. [Source-Level Neural Model Download & Frontend Progress Sync](#5-source-level-neural-model-download--frontend-progress-sync)
+6. [Full-Stack API Communication & Hook Orchestration](#6-full-stack-api-communication--hook-orchestration)
+7. [How to Run the Pipeline (Zero-Friction Quickstart on `re-testing`)](#7-how-to-run-the-pipeline-zero-friction-quickstart-on-re-testing)
 
 ---
 
@@ -158,40 +157,7 @@ flowchart TD
 
 ---
 
-## 5. Redesigned Control Center & Hardware Telemetry
-
-The Control Center Modal (`frontend/src/features/control-center/`) has been completely overhauled into a multi-stage operational console:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          RAISE CONTROL CENTER                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  [Overview]    [Platform]    [Database]    [Neural Models]    [API Keys]    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  HARDWARE TELEMETRY                                                         │
-│  ● Platform: Windows (win32)       ● CPU: 16 Cores (AMD Ryzen 9 5900X)      │
-│  ● RAM: 64.0 GB (48.2 GB Available)● GPU: NVIDIA GeForce RTX 3090 (24 GB)   │
-│                                                                             │
-│  SUBSTRATE ROUTER STATUS                                                    │
-│  ● Active Mode: [FAST MODE] Zero-Docker Local Engine                        │
-│  ● Cache: [FAKEREDIS] In-process FakeStrictRedis                            │
-│  ● Graph: [FAST-MEM]  In-memory NetworkX MultiDiGraph (342 entities)        │
-│  ● Store: [SQLITE]    backend/data/raise_local.db                           │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Key Capabilities
-1. **Real-Time Telemetry Polling**:
-   - Communicates with `GET /api/hardware/telemetry` to capture live CPU utilization, system RAM pressure, and GPU VRAM consumption.
-   - Detects CUDA / Metal acceleration capabilities and adjusts batch sizes dynamically.
-2. **Substrate Probing & Diagnostics**:
-   - `POST /api/system/test-connections` tests TCP availability, credentials, and ping latency across Neo4j, Redis, and PostgreSQL before switching modes.
-3. **Provider Priority Switcher**:
-   - Allows seamless switching between **Cloud-First** (Google Gemini, Groq, OpenAI) and **Local-First** (Ollama on port 11434, vLLM on port 8000).
-
----
-
-## 6. Source-Level Neural Model Download & Frontend Progress Sync
+## 5. Source-Level Neural Model Download & Frontend Progress Sync
 
 To allow non-technical users to clone the repository and start querying immediately without manual shell commands, RAISE features an integrated neural model auto-provisioning system.
 
@@ -235,7 +201,7 @@ During initialization or through the Control Center, RAISE verifies five core as
 
 ---
 
-## 7. Full-Stack API Communication & Hook Orchestration
+## 6. Full-Stack API Communication & Hook Orchestration
 
 The backend (FastAPI) and frontend (React 18) communicate via a dual-layer protocol: REST for transactional state, and SSE for streaming execution.
 
@@ -290,7 +256,7 @@ The client application orchestrates complex RAG interactions using modular custo
 
 ---
 
-## 8. How to Run the Pipeline (Zero-Friction Quickstart on `re-testing`)
+## 7. How to Run the Pipeline (Zero-Friction Quickstart on `re-testing`)
 
 RAISE is designed to run out-of-the-box on a fresh clone with zero manual Python environment configuration or complex Docker orchestration.
 
@@ -348,7 +314,7 @@ You do **not** need to manually upload or index documents to get started:
 
 ---
 
-## 9. Summary & Verification Status
+## 8. Summary & Verification Status
 
 - **Automated Test Coverage**: 100% pass across model configuration, AST hardcoding guard, and full frontend-backend API integration suites (`16/16` and `19/19` pytest cases).
 - **Git Invariant Compliance**: Monorepo clean state maintained on `re-testing`; flat root layout mirrored to `origin/backend`.
