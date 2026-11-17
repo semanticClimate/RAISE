@@ -419,8 +419,20 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                   }
                   aria-label={areAllAttached ? 'Unselect all attached documents' : 'Attach all ready documents'}
                 >
-                  <span className={areAllAttached ? 'line-through decoration-[#FFFFFF] decoration-[1.5px]' : ''}>
-                    All
+                  <span className="relative inline-flex items-center justify-center">
+                    <span>All</span>
+                    {areAllAttached && (
+                      <svg
+                        className="absolute -inset-x-1.5 -inset-y-0.5 w-[calc(100%+0.75rem)] h-[calc(100%+0.25rem)] pointer-events-none text-[#FFFFFF]"
+                        viewBox="0 0 32 20"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                      >
+                        <line x1="30" y1="2" x2="2" y2="18" />
+                      </svg>
+                    )}
                   </span>
                 </button>
               )}
