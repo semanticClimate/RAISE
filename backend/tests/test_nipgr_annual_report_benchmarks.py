@@ -49,7 +49,7 @@ def test_nipgr_acknowledgements_roster(rag_pipeline):
     res = rag_pipeline.query_subgraph_graphrag(
         query=query,
         active_docs=["NIPGR_BRIC_Annual_Report_2025.pdf"],
-        top_k=4,
+        top_k=10,
         hops=2,
     )
     answer = res.get("answer", "")
@@ -104,7 +104,7 @@ def test_nipgr_nature_index_rankings_table(rag_pipeline):
     res = rag_pipeline.query_subgraph_graphrag(
         query=query,
         active_docs=["NIPGR_BRIC_Annual_Report_2025.pdf"],
-        top_k=8,
+        top_k=10,
         hops=2,
     )
     answer = res.get("answer", "")
@@ -188,7 +188,7 @@ def test_nipgr_nature_index_individual_metrics(rag_pipeline, query, expected_tok
     res = rag_pipeline.query_subgraph_graphrag(
         query=query,
         active_docs=["NIPGR_BRIC_Annual_Report_2025.pdf"],
-        top_k=4,
+        top_k=10,
         hops=2,
     )
     answer = res.get("answer", "")
