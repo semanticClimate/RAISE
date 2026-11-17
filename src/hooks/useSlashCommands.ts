@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_SLASH_COMMANDS, type SlashCommand } from '../schemas/commands';
+import { DEFAULT_SLASH_COMMANDS, isDevSlashCommand, type SlashCommand } from '../schemas/commands';
 import { commandService } from '../services/CommandService';
 import { useUiStore } from '../stores/uiStore';
 
@@ -20,24 +20,30 @@ export function useSlashCommands({
 
   const [commands, setCommands] = useState<SlashCommand[]>(() => {
     const cached = commandService.getCachedCommands(isDeveloper);
-    return isDeveloper ? cached : cached.filter((c) => !c.is_dev_only);
+    const visible = isDeveloper ? cached : cached.filter((c) => !isDevSlashCommand(c));
+    return visible.length > 0 ? visible : DEFAULT_SLASH_COMMANDS;
   });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isDismissed, setIsDismissed] = useState(false);
 
   // Fetch registered slash commands on mount or when view mode changes
   useEffect(() => {
+    // Immediately apply synchronous cache/defaults for instant zero-latency UI toggle response
+    const cached = commandService.getCachedCommands(isDeveloper);
+    const visible = isDeveloper ? cached : cached.filter((c) => !isDevSlashCommand(c));
+    setCommands(visible.length > 0 ? visible : DEFAULT_SLASH_COMMANDS);
+
     let isCancelled = false;
     const controller = new AbortController();
 
     commandService
-      .getCommands(controller.signal, isDeveloper)
+      .getCommands(controller.signal, isDeveloper, true)
       .then((res) => {
         if (!isCancelled && res.data && res.data.length > 0) {
-          const visible = isDeveloper
+          const fresh = isDeveloper
             ? res.data
-            : res.data.filter((c) => !c.is_dev_only);
-          setCommands(visible.length > 0 ? visible : DEFAULT_SLASH_COMMANDS);
+            : res.data.filter((c) => !isDevSlashCommand(c));
+          setCommands(fresh.length > 0 ? fresh : DEFAULT_SLASH_COMMANDS);
         }
       })
       .catch(() => {

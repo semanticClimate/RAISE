@@ -72,3 +72,24 @@ export const DEV_SLASH_COMMANDS: SlashCommand[] = [
   },
 ];
 
+/**
+ * Set of primary command names and aliases reserved exclusively for developer diagnostic mode.
+ */
+export const DEV_COMMAND_NAMES = new Set([
+  '/audit',
+  '/help',
+  '/verify',
+  '/factcheck',
+  '/commands',
+]);
+
+/**
+ * Determines whether a slash command is classified as developer-only.
+ * Guards against backend misconfigurations where /audit and /help omit is_dev_only=True.
+ */
+export function isDevSlashCommand(command: SlashCommand | { name: string; is_dev_only?: boolean }): boolean {
+  if (command.is_dev_only) return true;
+  const name = command.name.toLowerCase().trim();
+  return DEV_COMMAND_NAMES.has(name);
+}
+

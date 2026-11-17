@@ -206,6 +206,43 @@ Most critically, an in-depth code trace has identified a **fatal cascading failu
 
 ---
 
+### 2.9 Bug 9: Diagnostic Slash Commands `/audit` and `/help` Omit `is_dev_only=True`
+* **Location**: `src/features/commands/__init__.py` (lines 48–75)
+* **Description**:
+  When registering system slash commands in `_init_default_commands(registry)`:
+  - `/audit` is registered with `is_dev_only=False` (line 54).
+  - `/help` is registered with `is_dev_only=False` (line 74).
+* **Root Cause**:
+  The discovery endpoint `GET /api/commands?include_dev=false` (`src/api/routers/commands.py:18`) relies on `registry.list_commands(include_dev=include_dev)`, which evaluates `cmds = [m for m in self._metadata.values() if include_dev or not m.is_dev_only]`.
+  Because `/audit` and `/help` were marked `is_dev_only=False`, both were always returned even when `include_dev=false`. Furthermore, each command's serialized payload reported `"is_dev_only": false`.
+* **Impact**:
+  The frontend UI toggle *"Developer Diagnostic Commands: Show diagnostic commands (/audit, /help) in the / autocomplete menu"* was rendered ineffective. Turning the toggle OFF still kept `/audit` and `/help` in the user's slash command palette because the backend payload falsely asserted they were standard user commands.
+* **Recommended Backend Fix**:
+  In `src/features/commands/__init__.py`, set `is_dev_only=True` for both diagnostic handlers:
+  ```python
+  registry.register(
+      name="audit",
+      description="Strict anti-hallucination factual audit with numerical cross-checking.",
+      syntax="/audit [claim or section]",
+      examples=["/audit", "/audit patents and publications", "/audit budget expenditures"],
+      aliases=["verify", "factcheck"],
+      category="Verification",
+      is_dev_only=True,
+  )(handle_audit_command)
+
+  registry.register(
+      name="help",
+      description="Show all available slash commands and usage syntax.",
+      syntax="/help",
+      examples=["/help"],
+      aliases=["commands", "?"],
+      category="Help",
+      is_dev_only=True,
+  )(handle_help_command)
+  ```
+
+---
+
 ## 3. High Priority: Missing Docker Availability Detection
 
 ### 3.1 Docker False-Assumption on Clean Developer Laptops
@@ -299,6 +336,7 @@ Following the user's instructions, the following improvements have been landed o
 
 ## 6. Action Items for Backend Team
 
+- [ ] **Mark `/audit` and `/help` as `is_dev_only=True`**: In `src/features/commands/__init__.py:54,74`, set `is_dev_only=True` so `GET /api/commands?include_dev=false` only returns public research commands.
 - [ ] **Fix Document Deletion Resurrection**: In `src/api/context.py:auto_scan_and_reconcile_documents()`, do not re-register documents listed in `manifest["deleted_documents"]`. In `src/features/documents/service.py:delete_document()`, delete/archive physical files from `data/documents/` and `data/cache/chunks/`.
 - [ ] **Legacy Font Mojibake Handling**: In `src/parsers/text_quality.py`, intercept legacy Kruti Dev / non-Unicode Devanagari text patterns and map to clean Unicode before chunk vectorization.
 - [ ] **Fix Session Rename Fallback**: In `src/infrastructure/database/mixins/chat_mixin.py:sync_chat_history()`, allow metadata updates (`title`) even when `messages` is empty.

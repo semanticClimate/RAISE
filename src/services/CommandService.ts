@@ -5,6 +5,7 @@ import {
   DEFAULT_SLASH_COMMANDS,
   DEV_SLASH_COMMANDS,
   DISALLOWED_SLASH_COMMANDS,
+  isDevSlashCommand,
   type SlashCommand,
 } from '../schemas/commands';
 
@@ -55,15 +56,23 @@ export class CommandService {
 
       if (res.data?.commands && res.data.commands.length > 0) {
         // Sid says: Purge /boost, /synthesize, /graph, /bench from backend responses
-        const sanitized = res.data.commands.filter(
-          (c) => !DISALLOWED_SLASH_COMMANDS.has(c.name.toLowerCase().trim())
-        );
-        const finalCommands = sanitized.length > 0 ? sanitized : fallbackCommands;
-        CommandService.cachedCommands = finalCommands;
+        const sanitized = res.data.commands
+          .filter((c) => !DISALLOWED_SLASH_COMMANDS.has(c.name.toLowerCase().trim()))
+          .map((c) => ({
+            ...c,
+            is_dev_only: isDevSlashCommand(c),
+          }));
+
+        const finalCommands = includeDev
+          ? sanitized
+          : sanitized.filter((c) => !c.is_dev_only);
+
+        const resolved = finalCommands.length > 0 ? finalCommands : fallbackCommands;
+        CommandService.cachedCommands = resolved;
         CommandService.cachedIncludeDev = includeDev;
         CommandService.lastFetchTime = now;
         return {
-          data: finalCommands,
+          data: resolved,
           error: null,
           status: res.status,
           isMock: res.isMock,
