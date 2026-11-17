@@ -112,7 +112,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
 
   if (turnError && !isCurrentlyActive && !isStopped) {
     return (
-      <div key={`assistant-turn-${turnIndex}`} className="content-visibility-auto w-full mb-4">
+      <div key={`assistant-turn-${turnIndex}`} className="w-full mb-4">
         <BackendErrorCard
           error={turnError}
           targetUrl={apiBaseUrl}
@@ -202,7 +202,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
   return (
     <div
       key={`assistant-turn-${turnIndex}`}
-      className="content-visibility-auto flex flex-col items-start w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto"
+      className="flex flex-col items-start w-full max-w-[min(100%,clamp(42rem,90vw,56rem))] mx-auto"
     >
       {/* Thought Duration Header OUTSIDE response box */}
       {isCurrentlyActive ? (

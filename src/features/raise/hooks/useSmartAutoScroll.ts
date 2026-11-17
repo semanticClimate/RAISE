@@ -4,11 +4,13 @@ import type { ChatMessage } from '../types';
 export interface UseSmartAutoScrollOptions {
   conversation?: ChatMessage[];
   isLoading?: boolean;
+  currentSessionId?: string | null;
 }
 
 export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
   const conversation = options?.conversation ?? [];
   const isLoading = options?.isLoading ?? false;
+  const currentSessionId = options?.currentSessionId ?? null;
 
   const contentContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -21,17 +23,25 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
 
   const isInitialMountRef = useRef(true);
   const prevConversationLengthRef = useRef(conversation.length);
+  const prevSessionIdRef = useRef<string | null>(currentSessionId);
   const prevIsLoadingRef = useRef(isLoading);
+  const touchStartYRef = useRef<number | null>(null);
 
   // Auto-scroll on new user questions or active streaming response tokens
   useEffect(() => {
+    const container = contentContainerRef.current;
+
     // 1. If conversation is empty (hero state), ensure container stays at top and never slides down
     if (conversation.length === 0) {
-      if (contentContainerRef.current && contentContainerRef.current.scrollTop !== 0) {
-        contentContainerRef.current.scrollTop = 0;
+      if (container && container.scrollTop !== 0) {
+        container.scrollTop = 0;
       }
       prevConversationLengthRef.current = 0;
+      prevSessionIdRef.current = currentSessionId;
       prevIsLoadingRef.current = false;
+      isAutoScrollLockedRef.current = false;
+      setIsAutoScrollLocked(false);
+      setShowScrollToBottom(false);
       return;
     }
 
@@ -39,36 +49,41 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
       prevConversationLengthRef.current = conversation.length;
+      prevSessionIdRef.current = currentSessionId;
       prevIsLoadingRef.current = isLoading;
+      if (container && container.scrollTop !== 0) {
+        container.scrollTop = 0;
+      }
       return;
     }
 
-    const container = contentContainerRef.current;
-    if (!container) return;
-
-    const isNewTurn = conversation.length > prevConversationLengthRef.current;
-    const isStreaming = isLoading && !isAutoScrollLockedRef.current;
-
-    prevConversationLengthRef.current = conversation.length;
-    prevIsLoadingRef.current = isLoading;
-
-    // 3. If a new turn was submitted by the user, unlock and smooth scroll to bottom
-    if (isNewTurn && !isLoading) {
+    // 3. If session changed (switching between chats / opening an old chat):
+    // Reset to top cleanly without ANY smooth-scroll animation or sliding down.
+    if (currentSessionId !== prevSessionIdRef.current) {
+      prevSessionIdRef.current = currentSessionId;
+      prevConversationLengthRef.current = conversation.length;
+      prevIsLoadingRef.current = isLoading;
       isAutoScrollLockedRef.current = false;
       setIsAutoScrollLocked(false);
       setShowScrollToBottom(false);
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: 'smooth',
-      });
+      if (container) {
+        container.scrollTop = 0;
+      }
       return;
     }
 
-    // 4. During active streaming tokens, keep scroll pinned to bottom only if user hasn't scrolled up
+    if (!container) return;
+
+    // 4. During active query execution / streaming tokens:
+    // Keep scroll pinned to bottom only if the user hasn't scrolled up
+    const isStreaming = isLoading && !isAutoScrollLockedRef.current;
     if (isStreaming) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [conversation, isLoading]);
+
+    prevConversationLengthRef.current = conversation.length;
+    prevIsLoadingRef.current = isLoading;
+  }, [conversation, isLoading, currentSessionId]);
 
   const scrollToBottom = useCallback(() => {
     isAutoScrollLockedRef.current = false;
@@ -128,13 +143,33 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
       }
     };
 
-    const handleTouchStart = () => {
-      // Touch interaction started
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        touchStartYRef.current = e.touches[0].clientY;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (touchStartYRef.current !== null && e.touches.length > 0) {
+        const currentY = e.touches[0].clientY;
+        // User dragged finger downwards (scrolling content upwards to see earlier turns)
+        if (currentY - touchStartYRef.current > 6) {
+          isAutoScrollLockedRef.current = true;
+          setIsAutoScrollLocked(true);
+          setShowScrollToBottom(true);
+        }
+      }
+    };
+
+    const handleTouchEnd = () => {
+      touchStartYRef.current = null;
     };
 
     container.addEventListener('scroll', checkScrollPosition, { passive: true });
     container.addEventListener('wheel', handleWheel, { passive: true });
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
     window.addEventListener('resize', checkScrollPosition, { passive: true });
 
     return () => {
@@ -142,6 +177,8 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
       container.removeEventListener('scroll', checkScrollPosition);
       container.removeEventListener('wheel', handleWheel);
       container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('resize', checkScrollPosition);
     };
   }, []);

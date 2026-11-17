@@ -182,6 +182,7 @@ export function useRaiseController() {
   const autoScroll = useSmartAutoScroll({
     conversation: chatSessions.conversation,
     isLoading: chatStream.isLoading,
+    currentSessionId: chatSessions.currentSessionId,
   });
 
   autoScrollLockProxyRef.current = autoScroll.setIsAutoScrollLocked;
