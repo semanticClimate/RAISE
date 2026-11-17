@@ -119,43 +119,41 @@ START_RAISE.bat --cloud         :: Connects to managed cloud endpoints & cloud s
 ### 4.2 Architecture & Data Flow Diagram
 
 ```mermaid
+%%{init: {'flowchart': {'curve': 'basis'}}}%%
 flowchart TD
-    subgraph UI["Frontend UI (React 18 + Vite :5173)"]
-        Chat["Conversation Stream & Export"]
-        ControlCenter["Control Center & Telemetry"]
+    classDef client fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1;
+    classDef gateway fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#6b21a8;
+    classDef router fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef fast fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#15803d;
+    classDef docker fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px,color:#3730a3;
+    classDef cloud fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#9d174d;
+    classDef llm fill:#fff1f2,stroke:#e11d48,stroke-width:2px,color:#9f1239;
+
+    UI["Frontend UI (React 18 + Vite :5173)<br/>Chat Stream • Exporter • Control Center"]:::client
+    Gateway["FastAPI Gateway (:8000)<br/>Auth • Model Preflight • SSE Dispatcher"]:::gateway
+    Router{"Substrate Router<br/>(RAISE_SUBSTRATE_MODE)"}:::router
+
+    UI -->|"User Query & Config"| Gateway
+    Gateway -->|"Route Context"| Router
+
+    subgraph Substrates["Dynamic Substrate Profiles"]
+        Fast["FAST MODE (Zero-Docker)<br/>• Cache: In-Memory FakeRedis<br/>• Graph: NetworkX MultiDiGraph<br/>• DB: Local SQLite Engine<br/>• Vectors: Local ChromaDB"]:::fast
+        Docker["DOCKER MODE (Enterprise)<br/>• Cache: Redis Container (:6379)<br/>• Graph: Neo4j Container (:7687)<br/>• DB: PostgreSQL Container (:5432)<br/>• Vectors: Persistent Volume"]:::docker
+        Cloud["CLOUD MODE (Serverless)<br/>• Cache: Upstash TLS Redis<br/>• Graph: Neo4j AuraDB Cluster<br/>• DB: Managed Cloud PostgreSQL<br/>• Storage: S3 / Cloudflare R2 Vault"]:::cloud
     end
 
-    subgraph Router["Backend Gateway & Substrate Router (FastAPI :8000)"]
-        SubstrateRouter{"Substrate Router<br/>(RAISE_SUBSTRATE_MODE)"}
-    end
+    Router -->|"fast"| Fast
+    Router -->|"docker"| Docker
+    Router -->|"cloud"| Cloud
 
-    subgraph FastStack["FAST MODE (Local / Zero-Docker)"]
-        F_Cache["FakeRedis (In-Process)"]
-        F_Graph["NetworkX MultiDiGraph (Memory)"]
-        F_DB["SQLite (raise_local.db)"]
-        F_Vec["Local ChromaDB (Local Directory)"]
-    end
+    LLM["Neural Reasoning & LLM Engine<br/>Gemini 2.5 Flash / Groq / Local vLLM"]:::llm
 
-    subgraph DockerStack["DOCKER MODE (Enterprise Stack)"]
-        D_Cache["Docker Redis (:6379)"]
-        D_Graph["Docker Neo4j APOC (:7687)"]
-        D_DB["Docker PostgreSQL (:5432)"]
-        D_Vec["ChromaDB Container Volume"]
-    end
+    Fast -->|"Context & Triples"| LLM
+    Docker -->|"Context & Triples"| LLM
+    Cloud -->|"Context & Triples"| LLM
 
-    subgraph CloudStack["CLOUD MODE (Managed Cloud)"]
-        C_Cache["Upstash / Cloud Redis TLS"]
-        C_Graph["Neo4j AuraDB (neo4j+s://...)"]
-        C_DB["Managed Cloud PostgreSQL"]
-        C_Vec["Cloud Object Storage / S3 / R2"]
-    end
-
-    UI -->|REST & SSE Stream| Router
-    Router --> SubstrateRouter
-
-    SubstrateRouter -->|"fast"| FastStack
-    SubstrateRouter -->|"docker"| DockerStack
-    SubstrateRouter -->|"cloud"| CloudStack
+    LLM -->|"SSE Token Stream"| Gateway
+    Gateway -->|"Live Stream to UI"| UI
 ```
 
 ---
