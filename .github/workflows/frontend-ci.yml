@@ -15,8 +15,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -60,26 +58,3 @@ jobs:
 
       - name: Build Application Bundle with Vite
         run: npm run build
-
-      - name: Upload Build Artifacts
-        if: (github.ref == 'refs/heads/frontend' || github.ref == 'refs/heads/Frontend' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: './dist'
-
-  deploy:
-    name: Deploy to GitHub Pages
-    if: (github.ref == 'refs/heads/frontend' || github.ref == 'refs/heads/Frontend' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
-    needs: validate
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Setup GitHub Pages
-        id: setup-pages
-        uses: actions/configure-pages@v5
-
-      - name: Deploy Pages Artifact
-        id: deployment
-        uses: actions/deploy-pages@v4
