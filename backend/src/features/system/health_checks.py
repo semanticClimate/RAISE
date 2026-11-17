@@ -26,6 +26,7 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict
+from src.core.config import models as models_cfg
 
 logger = logging.getLogger("raise.system.health_checks")
 
@@ -203,8 +204,8 @@ class SystemHealthChecksMixin:
                 "status": "PASS",
                 "online": True,
                 "latency_ms": 1.5,
-                "model_loaded": "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4 (Fallback Engine)",
-                "all_models": ["Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"],
+                "model_loaded": f"{models_cfg.LLM_MODEL_NAME} (Fallback Engine)",
+                "all_models": [models_cfg.LLM_MODEL_NAME],
             }
 
         try:
@@ -213,13 +214,13 @@ class SystemHealthChecksMixin:
                 latency = round((time.time() - t0) * 1000, 2)
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
-                    models = [m.get("id") for m in data.get("data", [])]
+                    model_list = [m.get("id") for m in data.get("data", [])]
                     return {
                         "status": "PASS",
                         "online": True,
                         "latency_ms": latency,
-                        "model_loaded": models[0] if models else "Qwen2.5-14B",
-                        "all_models": models,
+                        "model_loaded": model_list[0] if model_list else models_cfg.LLM_MODEL_NAME,
+                        "all_models": model_list,
                     }
         except Exception:
             pass
@@ -228,8 +229,8 @@ class SystemHealthChecksMixin:
             "status": "PASS",
             "online": True,
             "latency_ms": 1.5,
-            "model_loaded": "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4 (Fallback Engine)",
-            "all_models": ["Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"],
+            "model_loaded": f"{models_cfg.LLM_MODEL_NAME} (Fallback Engine)",
+            "all_models": [models_cfg.LLM_MODEL_NAME],
         }
 
     def check_cloudflare(self) -> Dict[str, Any]:

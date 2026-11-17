@@ -24,12 +24,14 @@ Modular Architecture:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from src.core.config import models
 
 try:
     from prompts.system_synthesis import sanitize_rag_text
@@ -38,6 +40,7 @@ except ImportError:
 
 from src.api.context import (
     _parse_drawer_active_docs,
+    clear_abort,
     get_authentic_client_ip,
     get_ready_documents_list,
     is_conversational_or_memory_query,
@@ -59,6 +62,13 @@ from src.api.schemas import (
 )
 
 # Modular imports
+from src.core.dispatchers import (
+    RAGMode,
+    RAGModeConfig,
+    RAGModeDispatcher,
+    StreamFormat,
+    StreamFormatDispatcher,
+)
 from src.api.routers.chat_conversational import handle_conversational_chat
 from src.api.routers.chat_streaming import (
     create_cached_sse_stream,
@@ -118,14 +128,35 @@ async def chat_endpoint(
     if not message:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    mode = (req.mode or "fast").lower()
+    # Modular switch-case dispatch for RAG mode configuration
+    rag_mode_config = RAGModeDispatcher.dispatch(req.mode)
+    mode = rag_mode_config.mode.value
+    effective_hops = req.hops if req.hops is not None else rag_mode_config.hops
+    effective_top_k = req.top_k if req.top_k is not None else rag_mode_config.top_k
+
+    # Dynamic retrieval depth expansion for roster, membership, and enumeration queries
+    is_roster_query = any(w in message.lower() for w in ["name", "names", "list", "member", "members", "invitee", "invitees", "who", "all", "governors", "board"])
+    if is_roster_query and effective_top_k < 15:
+        effective_top_k = 15
+
+    # Modular switch-case content negotiation for stream format
+    stream_format = StreamFormatDispatcher.resolve_from_request(
+        format_param=req.format,
+        accept_header=request.headers.get("accept", ""),
+        stream_requested=bool(req.stream),
+    )
     session_id = req.session_id or req.thread_id or "default"
     request_id = req.request_id or f"req-{int(time.time() * 1000)}"
     library = req.library
 
+    # 0. Purge any stale cancellation tokens for this session / request so new query executes cleanly
+    clear_abort(session_id=session_id, request_id=request_id, redis_mgr=redis_cache)
+
     # Normalize, unquote, and handle URL encoded spaces in active_docs
     if req.active_docs is not None:
         req.active_docs = _parse_drawer_active_docs(req.active_docs)
+
+    logger.info(f"[GRAPH-RAG] 🔎 Query: \"{message}\" (Mode: {mode} | Active Docs: {req.active_docs or 'All Documents'})")
 
     # 0. Rate Limiting Check (Token Bucket with Authentic Proxy IP Resolution)
     is_allowed, rate_headers = chat_service.check_rate_limit(request, request_id)
@@ -177,6 +208,23 @@ async def chat_endpoint(
     session_drawer = None
     if session_id and postgres_manager:
         session_drawer = postgres_manager.get_session_drawer(session_id)
+        if session_drawer and ready_docs:
+            resolved_drawer: List[str] = []
+            for d in session_drawer:
+                if isinstance(d, str) and d.endswith(".pdf"):
+                    resolved_drawer.append(d)
+                else:
+                    matched_fn = None
+                    for rd in ready_docs:
+                        fn = rd.get("filename") if isinstance(rd, dict) else None
+                        if fn and (d == rd.get("id") or (isinstance(d, str) and d in fn)):
+                            matched_fn = fn
+                            break
+                    if not matched_fn and len(ready_docs) == 1 and ready_docs[0].get("filename"):
+                        matched_fn = ready_docs[0]["filename"]
+                    resolved_drawer.append(matched_fn or d)
+            session_drawer = resolved_drawer
+
         if session_drawer and req.active_docs:
             for doc in req.active_docs:
                 doc_clean = doc.replace("src-doc_", "").rsplit(".", 1)[0].lower()
@@ -188,7 +236,31 @@ async def chat_endpoint(
                 if not matches:
                     logger.warning("Session %s: Document '%s' in active_docs is not in session drawer %s", session_id, doc, session_drawer)
 
+    # If active_docs contains temporary upload IDs (e.g. "src-..."), resolve them to ready document filenames
+    if req.active_docs:
+        resolved_docs: List[str] = []
+        for doc in req.active_docs:
+            if doc.endswith(".pdf"):
+                resolved_docs.append(doc)
+            else:
+                matched = False
+                for rd in ready_docs:
+                    fn = rd.get("filename") if isinstance(rd, dict) else None
+                    if fn and (doc == rd.get("id") or doc in fn):
+                        resolved_docs.append(fn)
+                        matched = True
+                        break
+                if not matched and len(ready_docs) == 1 and ready_docs[0].get("filename"):
+                    resolved_docs.append(ready_docs[0]["filename"])
+        if resolved_docs:
+            req.active_docs = resolved_docs
+
     has_empty_drawer = (req.active_docs is not None and len(req.active_docs) == 0) or (req.active_docs is None and session_drawer is not None and len(session_drawer) == 0)
+
+    # For default / CLI / terminal sessions without an explicit drawer, auto-bind ready documents if available
+    if (session_id == "default" or session_drawer is None) and req.active_docs is None and len(ready_docs) > 0:
+        req.active_docs = [d.get("filename") for d in ready_docs if isinstance(d, dict) and d.get("filename")]
+        has_empty_drawer = False
 
     if has_empty_drawer or is_empty_workspace:
         if has_empty_drawer:
@@ -204,13 +276,14 @@ async def chat_endpoint(
                 redis_cache.save_session_message(session_id, "user", message, mode=mode)
                 redis_cache.save_session_message(session_id, "assistant", immediate_reply, mode=mode)
 
-        # If raw text stream requested
-        if req.stream and (req.format == "raw" or "text/plain" in request.headers.get("accept", "").lower()):
-            return create_empty_drawer_raw_stream(immediate_reply, request, rate_headers)
-
-        # If SSE stream requested
-        if req.stream:
-            return create_empty_drawer_sse_stream(immediate_reply, request, mode, session_id, rate_headers)
+        # Modular switch-case dispatch for empty drawer streaming response
+        match stream_format:
+            case StreamFormat.RAW:
+                return create_empty_drawer_raw_stream(immediate_reply, request, rate_headers)
+            case StreamFormat.SSE:
+                return create_empty_drawer_sse_stream(immediate_reply, request, mode, session_id, rate_headers)
+            case _:
+                pass
 
         # If non-streaming
         return JSONResponse(
@@ -227,6 +300,7 @@ async def chat_endpoint(
                 "traceability_score": 0.95,
                 "execution_time": 0.005,
                 "latency_sec": 0.005,
+                "durationSec": 0.005,
                 "mode_used": mode,
                 "thread_id": session_id,
                 "session_id": session_id,
@@ -238,7 +312,7 @@ async def chat_endpoint(
     query_embedding = None
     try:
         if rag_engine and hasattr(rag_engine, "vector_engine") and rag_engine.vector_engine:
-            emb_res = rag_engine.vector_engine.compute_embeddings([message])
+            emb_res = await asyncio.to_thread(rag_engine.vector_engine.compute_embeddings, [message])
             if emb_res and len(emb_res) > 0:
                 query_embedding = emb_res[0]
     except Exception:
@@ -279,6 +353,7 @@ async def chat_endpoint(
             "traceability_score": cached.get("traceability_score", 0.98),
             "execution_time": 0.005,
             "latency_sec": 0.005,
+            "durationSec": 0.005,
             "mode_used": mode,
         }
         if session_id and postgres_manager:
@@ -296,14 +371,15 @@ async def chat_endpoint(
     # 2. Non-Streaming Execution
     if not req.stream:
         try:
-            result, elapsed = chat_service.execute_rag_query(
+            result, elapsed = await asyncio.to_thread(
+                chat_service.execute_rag_query,
                 message=message,
                 mode=mode,
                 session_id=session_id,
                 active_docs=req.active_docs,
                 document_filter=req.document_filter,
-                hops=req.hops,
-                top_k=req.top_k,
+                hops=effective_hops,
+                top_k=effective_top_k,
                 chat_history=req.chat_history,
             )
         except HTTPException:
@@ -315,6 +391,8 @@ async def chat_endpoint(
 
         raw_ans = result.get("grounded_answer") or result.get("answer", "")
         answer = sanitize_rag_text(str(raw_ans))
+        if not answer.strip():
+            answer = "No grounded answer could be synthesized from the active documents. Please verify your document selection in the drawer."
         sources = []
         for c in result.get("citations", []):
             fn = c.get("pdf_filename") or (c.get("metadata", {}).get("pdf_filename") if isinstance(c, dict) else None)
@@ -325,6 +403,25 @@ async def chat_endpoint(
 
         suggestions = result.get("suggestions") or result.get("follow_up_inquiries", []) or []
         citations = result.get("citations", []) or []
+
+        # Resolve pipeline provenance & model metadata
+        try:
+            from src.infrastructure.providers.router import get_provider_router
+            prov_router = get_provider_router()
+            compl_info = prov_router.get_last_completion_info()
+            actual_llm_prov = compl_info.get("provider") or models.LLM_PROVIDER
+            actual_llm_model = compl_info.get("model") or models.LLM_MODEL_NAME
+        except Exception:
+            actual_llm_prov = models.LLM_PROVIDER
+            actual_llm_model = models.LLM_MODEL_NAME
+
+        from src.infrastructure.provenance import build_pipeline_info
+        pipeline_info = build_pipeline_info(mode=mode)
+        if actual_llm_prov:
+            pipeline_info["llm_provider"] = actual_llm_prov
+        if actual_llm_model:
+            pipeline_info["llm_model"] = actual_llm_model
+        storage_desc = pipeline_info["storage_used"]
 
         response_payload = {
             "status": "SUCCESS",
@@ -347,12 +444,26 @@ async def chat_endpoint(
             "traceability_score": result.get("traceability_score", 0.95),
             "execution_time": elapsed,
             "latency_sec": elapsed,
+            "durationSec": elapsed,
             "mode_used": mode,
+            "pipeline_info": pipeline_info,
+            "storage_used": storage_desc,
+            "llm_provider": actual_llm_prov,
+            "llm_model": actual_llm_model,
+            "encoder_model": pipeline_info["encoder_model"],
+            "reranker_model": pipeline_info["reranker_model"],
+            "nli_verifier_model": pipeline_info["nli_verifier_model"],
             "persisted": bool(session_id is not None),
             "saved": bool(session_id is not None),
             "persistence_status": "saved" if session_id else "ephemeral",
             "persistence_error": None,
         }
+
+        top_chunks_count = len(response_payload.get("top_chunks", []))
+        subg = response_payload.get("subgraph") or {}
+        nodes_count = len(subg.get("nodes", [])) if isinstance(subg, dict) else 0
+        qg_dec = response_payload.get("quality_gate_decision", "accept").upper()
+        logger.info(f"[GRAPH-RAG] [OK] Answer synthesized in {elapsed:.2f}s | Chunks: {top_chunks_count} | Graph: {nodes_count} nodes | Gate: {qg_dec} | Citations: {len(citations)}")
 
         # Cache in Redis with semantic vector indexing (TTL: 86400s / 24h)
         if redis_cache:
@@ -380,8 +491,8 @@ async def chat_endpoint(
             },
         )
 
-    # 2.5 Raw Plain-Text Streaming Execution (zero parsing required on frontend)
-    if req.format == "raw" or "text/plain" in request.headers.get("accept", "").lower():
+    # 3. Modular Streaming Execution via StreamFormatDispatcher
+    if stream_format == StreamFormat.RAW:
         return create_chat_raw_stream(
             rag_engine=rag_engine,
             message=message,
@@ -394,7 +505,7 @@ async def chat_endpoint(
             rate_headers=rate_headers,
         )
 
-    # 3. Streaming Execution (SSE) with Real-Time Cancellation & Structured Events
+    # SSE Streaming Execution with Real-Time Cancellation & Progressive Stage Events
     return create_chat_sse_stream(
         rag_engine=rag_engine,
         message=message,

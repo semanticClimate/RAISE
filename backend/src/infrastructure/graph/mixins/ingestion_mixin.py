@@ -68,13 +68,36 @@ class Neo4jIngestionMixin:
 
         # Group nodes by type for parameterized batch insertion
         node_groups: Dict[str, List[Dict[str, Any]]] = {}
+        valid_node_ids = set()
+
+        def _clean_node_name(val: str, n_type: str) -> str:
+            if n_type in ("Chunk", "Section"):
+                return val.strip()
+            # Collapse whitespace and newlines into single spaces
+            s = re.sub(r"\s+", " ", str(val)).strip(" ,.:;-–\t\r\n")
+            lower = s.lower()
+            if len(s) < 3 or lower in {"the committee", "rs", "metric: rs", "coordination", "the governing council"}:
+                return ""
+            if lower.endswith((" held on", " of the", " and", " in", " on", " with", " for", " by", " to", " at")):
+                return ""
+            if lower.startswith(("metric:", "rs,", "held on")):
+                return ""
+            return s
+
         for n in nodes:
             raw_type = str(n.get("type", "Entity"))
             node_type = re.sub(r"[^a-zA-Z0-9_]", "_", raw_type) or "Entity"
+            raw_name = str(n.get("name", n.get("label", n.get("id"))))
+            cleaned_name = _clean_node_name(raw_name, node_type)
+            if not cleaned_name:
+                continue
+
+            nid = str(n.get("id"))
+            valid_node_ids.add(nid)
             node_groups.setdefault(node_type, []).append({
-                "id": str(n.get("id")),
-                "label": str(n.get("label", n.get("name", n.get("id")))),
-                "name": str(n.get("name", n.get("label", n.get("id")))),
+                "id": nid,
+                "label": cleaned_name,
+                "name": cleaned_name,
                 "page": int(n.get("page", 1)),
                 "document_id": str(n.get("document_id") or n.get("properties", {}).get("document_id") or "global_doc"),
                 "source": str(n.get("source", "")),
@@ -85,11 +108,16 @@ class Neo4jIngestionMixin:
         # Group edges by relation type for parameterized batch insertion
         edge_groups: Dict[str, List[Dict[str, Any]]] = {}
         for e in edges:
+            src_id = str(e.get("source"))
+            tgt_id = str(e.get("target"))
+            # Only ingest edges between valid, non-discarded nodes
+            if valid_node_ids and (src_id not in valid_node_ids or tgt_id not in valid_node_ids):
+                continue
             raw_rel = str(e.get("relation") or e.get("type") or "RELATED_TO")
             rel_type = re.sub(r"[^a-zA-Z0-9_]", "_", raw_rel.upper()) or "RELATED_TO"
             edge_groups.setdefault(rel_type, []).append({
-                "source_id": str(e.get("source")),
-                "target_id": str(e.get("target")),
+                "source_id": src_id,
+                "target_id": tgt_id,
                 "document_id": str(e.get("document_id") or "global_doc"),
                 "run_id": run_id,
             })

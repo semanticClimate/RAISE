@@ -61,16 +61,22 @@ class SessionCacheMixin:
         mode: str = "fast",
         sources: Optional[List[str]] = None,
         max_turns: int = 20,
-        ttl: int = 86400
+        ttl: int = 86400,
+        latency_sec: float = 0.0,
+        duration_sec: float = 0.0,
     ) -> bool:
         """
         Atomic push of turn into Redis session cache with bounded size (LTRIM) and 24h TTL.
         """
+        lat = float(latency_sec or duration_sec or 0.0)
         msg_payload = {
             "role": role,
             "content": content,
             "mode": mode,
             "sources": sources or [],
+            "latency_sec": lat,
+            "durationSec": lat,
+            "execution_time": lat,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         key = self._make_session_messages_key(session_id)

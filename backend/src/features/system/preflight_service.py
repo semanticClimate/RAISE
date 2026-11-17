@@ -1,37 +1,157 @@
 """
 Pre-Flight Neural Assets & Background Download Service
 ======================================================
-Manages verification and background parallel acquisition of required on-device
-neural weights and execution substrates (~4.6 GB Total Footprint):
-1. Docling & PyMuPDF Parsers (~350 MB)
-2. GGAHC Chunking Engine (In-Process)
-3. BAAI/bge-large-en-v1.5 (1.34 GB)
-4. BAAI/bge-reranker-large (2.24 GB)
-5. FineCat-ModernBERT-NLI (~700 MB)
-6. Vector Database ChromaDB (~200 MB)
+Manages dynamic verification and background parallel acquisition of required on-device
+neural weights and execution substrates with live measured disk footprints.
 """
 
 from __future__ import annotations
 
+import os
 import json
 import asyncio
 import logging
 import threading
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from .schemas import PreflightDownloadRequest
+from src.core.config import models, resolve_local_model_path
 
 logger = logging.getLogger("raise.features.system.preflight")
 
 _ASSET_DOWNLOAD_LOCK = threading.Lock()
 _IS_DOWNLOADING_ASSETS: bool = False
 _ASSET_DOWNLOAD_PROGRESS: float = 0.0
-_ASSET_DOWNLOAD_SPEED: str = "~48 MB/s"
+_ASSET_DOWNLOAD_SPEED: str = "Operational"
+
+
+def format_byte_size(num_bytes: int) -> str:
+    """Formats bytes into human-readable MB / GB string dynamically."""
+    if num_bytes <= 0:
+        return "0 MB"
+    if num_bytes >= 1024 * 1024 * 1024:
+        return f"{num_bytes / (1024 ** 3):.2f} GB"
+    return f"{num_bytes / (1024 ** 2):.1f} MB"
+
+
+def get_hf_model_disk_footprint(repo_id: str) -> int:
+    """Calculates actual on-disk byte footprint for a cached Hugging Face model repository or local directory."""
+    if not repo_id:
+        return 0
+
+    # 1. Check local model directory first (e.g. backend/models/google/embeddinggemma-2)
+    try:
+        resolved = resolve_local_model_path(repo_id)
+        if resolved and Path(resolved).is_dir():
+            total = 0
+            for root, _, files in os.walk(resolved):
+                for f in files:
+                    try:
+                        total += (Path(root) / f).resolve().stat().st_size
+                    except Exception:
+                        pass
+            if total > 0:
+                return total
+    except Exception:
+        pass
+
+    candidate_hubs = []
+    try:
+        from huggingface_hub.constants import HF_HUB_CACHE
+        candidate_hubs.append(Path(HF_HUB_CACHE))
+    except Exception:
+        pass
+
+    env_hf = os.getenv("HUGGINGFACE_HUB_CACHE") or os.getenv("HF_HOME")
+    if env_hf:
+        p = Path(env_hf)
+        candidate_hubs.append(p / "hub" if not str(p).endswith("hub") else p)
+    candidate_hubs.append(Path.home() / ".cache" / "huggingface" / "hub")
+
+    repo_dir = "models--" + repo_id.replace("/", "--")
+    for hub in candidate_hubs:
+        target = hub / repo_dir
+        if target.exists():
+            total = 0
+            for root, _, files in os.walk(target):
+                for f in files:
+                    try:
+                        total += (Path(root) / f).resolve().stat().st_size
+                    except Exception:
+                        pass
+            if total > 0:
+                return total
+    return 0
+
+
+def get_chromadb_disk_footprint() -> int:
+    """Calculates actual on-disk byte footprint for ChromaDB vector store."""
+    try:
+        from src.core.config import settings
+        chroma_cfg = getattr(settings.database, "chroma_path", "")
+    except Exception:
+        chroma_cfg = ""
+
+    chroma_dir_name = Path(chroma_cfg).name if chroma_cfg else f".chromadb_{models.EMBEDDING_MODEL_NAME.split('/')[-1]}"
+    candidate_paths = [
+        Path(chroma_cfg) if chroma_cfg else None,
+        Path(__file__).resolve().parents[3] / "backend" / chroma_dir_name,
+        Path(__file__).resolve().parents[3] / chroma_dir_name,
+        Path("backend") / chroma_dir_name,
+        Path(chroma_dir_name),
+    ]
+    for p in candidate_paths:
+        if p and p.exists():
+            total = 0
+            for root, _, files in os.walk(p):
+                for f in files:
+                    try:
+                        total += (Path(root) / f).resolve().stat().st_size
+                    except Exception:
+                        pass
+            if total > 0:
+                return total
+    return 0
+
+
+def get_package_disk_footprint(pkg_name: str) -> int:
+    """Calculates actual on-disk byte footprint for an installed Python package."""
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec(pkg_name)
+        if spec and spec.origin:
+            p = Path(spec.origin).parent
+            if p.is_dir():
+                total = 0
+                for root, _, files in os.walk(p):
+                    for f in files:
+                        try:
+                            total += (Path(root) / f).resolve().stat().st_size
+                        except Exception:
+                            pass
+                return total
+    except Exception:
+        pass
+    return 0
 
 
 def check_hf_model_cached(repo_id: str) -> bool:
-    """Verifies whether model weights exist in local HuggingFace cache."""
+    """Verifies whether model weights exist in local model directory or HuggingFace cache."""
+    if not repo_id:
+        return False
+
+    # 1. Check local model directory first (e.g. backend/models/<repo_id>)
+    try:
+        resolved = resolve_local_model_path(repo_id)
+        if resolved and Path(resolved).is_dir():
+            p = Path(resolved)
+            # Verify required model files exist
+            if (p / "config.json").exists() or any(p.glob("*.safetensors")) or any(p.glob("*.bin")):
+                return True
+    except Exception:
+        pass
+
     try:
         from huggingface_hub import try_to_load_from_cache
         res = try_to_load_from_cache(repo_id=repo_id, filename="config.json")
@@ -39,15 +159,42 @@ def check_hf_model_cached(repo_id: str) -> bool:
             return True
     except Exception:
         pass
+
+    # Check candidate Hugging Face hub cache directories
+    candidate_hubs = []
     try:
-        hf_hub = Path.home() / ".cache" / "huggingface" / "hub"
-        repo_dir = f"models--{repo_id.replace('/', '--')}"
-        target = hf_hub / repo_dir
-        if target.exists() and any(target.glob("snapshots/*")):
-            return True
+        from huggingface_hub.constants import HF_HUB_CACHE
+        candidate_hubs.append(Path(HF_HUB_CACHE))
     except Exception:
         pass
+
+    env_hf = os.getenv("HUGGINGFACE_HUB_CACHE") or os.getenv("HF_HOME")
+    if env_hf:
+        p = Path(env_hf)
+        candidate_hubs.append(p / "hub" if not str(p).endswith("hub") else p)
+    candidate_hubs.append(Path.home() / ".cache" / "huggingface" / "hub")
+
+    repo_dir = f"models--{repo_id.replace('/', '--')}"
+    for hub in candidate_hubs:
+        try:
+            target = hub / repo_dir
+            if target.exists():
+                snapshots = list(target.glob("snapshots/*"))
+                if snapshots and any(s.is_dir() and any(s.iterdir()) for s in snapshots):
+                    return True
+        except Exception:
+            continue
     return False
+
+
+def check_sentence_transformers_installed() -> bool:
+    """Verifies that sentence-transformers and modern transformers are installed."""
+    try:
+        import sentence_transformers
+        import transformers
+        return True
+    except ImportError:
+        return False
 
 
 def check_docling_pymupdf() -> bool:
@@ -80,12 +227,13 @@ def _background_download_worker(repo_ids: List[str]):
     try:
         _IS_DOWNLOADING_ASSETS = True
         _ASSET_DOWNLOAD_SPEED = "~48 MB/s"
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or None
         total = len(repo_ids) or 1
         for idx, repo_id in enumerate(repo_ids):
             try:
                 from huggingface_hub import snapshot_download
-                logger.info(f"Pre-flight downloading {repo_id}...")
-                snapshot_download(repo_id=repo_id, resume_download=True)
+                logger.info(f"Pre-flight downloading {repo_id} with authentication...")
+                snapshot_download(repo_id=repo_id, token=hf_token)
             except Exception as e:
                 logger.warning(f"Failed to snapshot download {repo_id}: {e}")
             _ASSET_DOWNLOAD_PROGRESS = round(((idx + 1) / total) * 100, 1)
@@ -99,24 +247,37 @@ def _background_download_worker(repo_ids: List[str]):
 
 def get_preflight_assets() -> Dict[str, Any]:
     """
-    Returns live verification status and footprint for all 6 required
-    neural assets and runtime engines (~4.6 GB Total Footprint).
+    Returns live verification status and dynamically calculated footprint for all
+    required neural assets and runtime engines.
     """
     docling_ok = check_docling_pymupdf()
     ggahc_ok = True  # In-process token-budgeted python engine
-    emb_model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
-    rerank_model = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
-    nli_model = os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l")
+    st_ok = check_sentence_transformers_installed()
+    emb_model = models.EMBEDDING_MODEL_NAME
+    rerank_model = models.RERANKER_MODEL_NAME
+    nli_model = models.NLI_MODEL_NAME
 
     bge_large_ok = check_hf_model_cached(emb_model)
+    emb_ok = bge_large_ok and st_ok
     bge_reranker_ok = check_hf_model_cached(rerank_model)
     finecat_ok = check_hf_model_cached(nli_model)
     chroma_ok = check_chromadb_substrate()
 
+    # Dynamically measure actual on-disk byte footprints
+    parser_bytes = get_package_disk_footprint("pymupdf") + get_package_disk_footprint("docling")
+    emb_bytes = get_hf_model_disk_footprint(emb_model)
+    rerank_bytes = get_hf_model_disk_footprint(rerank_model)
+    nli_bytes = get_hf_model_disk_footprint(nli_model)
+    chroma_bytes = get_chromadb_disk_footprint()
+
+    total_bytes = parser_bytes + emb_bytes + rerank_bytes + nli_bytes + chroma_bytes
+    total_gb = round(total_bytes / (1024 ** 3), 2)
+    total_footprint_str = f"{total_gb:.2f} GB Total Footprint" if total_gb >= 1.0 else f"{round(total_bytes / (1024 ** 2), 1)} MB Total Footprint"
+
     all_verified = (
         docling_ok
         and ggahc_ok
-        and bge_large_ok
+        and emb_ok
         and bge_reranker_ok
         and finecat_ok
         and chroma_ok
@@ -128,7 +289,7 @@ def get_preflight_assets() -> Dict[str, Any]:
         {
             "id": "docling_pymupdf",
             "name": "Docling & PyMuPDF Parsers",
-            "size": "~350 MB",
+            "size": format_byte_size(parser_bytes) if parser_bytes > 0 else ("Installed" if docling_ok else "Requires pip install"),
             "desc": "TableFormer AST reconstruction & font coordinate bounding boxes",
             "verified": docling_ok,
             "status": "Installed & Operational" if docling_ok else "Requires pip install",
@@ -141,29 +302,33 @@ def get_preflight_assets() -> Dict[str, Any]:
         {
             "id": "ggahc_chunker",
             "name": "GGAHC Chunking Engine",
-            "size": "In-Process",
+            "size": "In-Process Engine",
             "desc": "Graph-Guided Adaptive Hierarchical Chunking (token-budgeted)",
             "verified": ggahc_ok,
             "status": "Python Engine Active",
             "statusColor": "text-slate-300 bg-white/5 border-white/10",
         },
         {
-            "id": "bge_large",
+            "id": "dense_embedding",
             "name": emb_model,
-            "size": "1.34 GB",
+            "model_name": emb_model,
+            "size": format_byte_size(emb_bytes) if emb_bytes > 0 else "Pending Download",
             "desc": "Dense semantic vector embeddings for ChromaDB HNSW",
-            "verified": bge_large_ok,
-            "status": "Cached & Verified" if bge_large_ok else f"Requires Download ({emb_model})",
+            "verified": emb_ok,
+            "status": "Cached & Verified" if emb_ok else (
+                "Missing sentence-transformers" if not st_ok else f"Requires Download ({emb_model})"
+            ),
             "statusColor": (
                 "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                if bge_large_ok
+                if emb_ok
                 else "text-amber-400 bg-amber-500/10 border-amber-500/20"
             ),
         },
         {
-            "id": "bge_reranker",
+            "id": "cross_encoder_reranker",
             "name": rerank_model,
-            "size": "2.24 GB",
+            "model_name": rerank_model,
+            "size": format_byte_size(rerank_bytes) if rerank_bytes > 0 else "Pending Download",
             "desc": "Contextual Cross-Encoder neural reranker on CUDA / CPU",
             "verified": bge_reranker_ok,
             "status": "Cached & Verified" if bge_reranker_ok else f"Requires Download ({rerank_model})",
@@ -174,9 +339,10 @@ def get_preflight_assets() -> Dict[str, Any]:
             ),
         },
         {
-            "id": "finecat_nli",
+            "id": "nli_verifier",
             "name": nli_model,
-            "size": "~1.6 GB",
+            "model_name": nli_model,
+            "size": format_byte_size(nli_bytes) if nli_bytes > 0 else "Pending Download",
             "desc": "Runtime Faithfulness Quality Gate & zero-hallucination shield",
             "verified": finecat_ok,
             "status": "Cached & Verified" if finecat_ok else f"Requires Download ({nli_model})",
@@ -189,7 +355,7 @@ def get_preflight_assets() -> Dict[str, Any]:
         {
             "id": "chromadb",
             "name": "Vector Database",
-            "size": "~200 MB",
+            "size": format_byte_size(chroma_bytes) if chroma_bytes > 0 else ("Index Ready" if chroma_ok else "Requires Indexing"),
             "desc": "ChromaDB (Local) • In-Process persistent chunk embeddings & HNSW vector index",
             "verified": chroma_ok,
             "status": "Index Ready" if chroma_ok else "Requires Indexing",
@@ -202,9 +368,10 @@ def get_preflight_assets() -> Dict[str, Any]:
     ]
 
     return {
-        "total_footprint": "~4.6 GB Total Footprint",
-        "total_footprint_gb": 4.6,
+        "total_footprint": total_footprint_str,
+        "total_footprint_gb": total_gb,
         "all_assets_verified": all_verified,
+        "all_verified": all_verified,
         "download_progress": current_progress,
         "download_speed": (
             _ASSET_DOWNLOAD_SPEED
@@ -220,13 +387,15 @@ def trigger_asset_download(req: Optional[PreflightDownloadRequest] = None) -> Di
     """Triggers background parallel download of any missing neural model weights."""
     global _IS_DOWNLOADING_ASSETS
     missing: List[str] = []
-    emb_model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
-    rerank_model = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large")
-    nli_model = os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l")
+    emb_model = models.EMBEDDING_MODEL_NAME
+    rerank_model = models.RERANKER_MODEL_NAME
+    nli_model = models.NLI_MODEL_NAME
+    gliner_model = models.GLINER_MODEL_NAME
     models_to_check = [
         (emb_model, check_hf_model_cached(emb_model)),
         (rerank_model, check_hf_model_cached(rerank_model)),
         (nli_model, check_hf_model_cached(nli_model)),
+        (gliner_model, check_hf_model_cached(gliner_model)),
     ]
     for repo, cached in models_to_check:
         if not cached:
@@ -285,6 +454,7 @@ async def stream_model_pull(
                             except Exception:
                                 pass
                         yield f"data: {json.dumps({'percent': 100, 'status': f'Model {model_name} successfully downloaded and verified.'})}\n\n"
+                        yield "data: [DONE]\n\n"
                         return
                     else:
                         yield f"data: {json.dumps({'percent': 0, 'status': f'Ollama error: HTTP {resp.status_code}', 'error': True})}\n\n"
@@ -297,6 +467,7 @@ async def stream_model_pull(
     if check_hf_model_cached(model_name):
         payload = json.dumps({"percent": 100, "status": f"Model {model_name} verified in cache (100% ~48 MB/s)"})
         yield f"data: {payload}\n\n"
+        yield "data: [DONE]\n\n"
         return
 
     yield f"data: {json.dumps({'percent': 5, 'status': f'Initiating Hugging Face download for {model_name}...' })}\n\n"
@@ -308,7 +479,6 @@ async def stream_model_pull(
             lambda: snapshot_download(
                 repo_id=model_name,
                 token=token,
-                resume_download=True,
                 local_files_only=False,
             )
         )
@@ -321,5 +491,6 @@ async def stream_model_pull(
 
         target_dir = await download_task
         yield f"data: {json.dumps({'percent': 100, 'status': f'Model {model_name} cached at {target_dir}', 'disk_dir': str(target_dir)})}\n\n"
+        yield "data: [DONE]\n\n"
     except Exception as exc:
         yield f"data: {json.dumps({'percent': 0, 'status': f'Download failed: {str(exc)}', 'error': True})}\n\n"

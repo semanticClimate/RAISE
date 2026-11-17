@@ -1,4 +1,4 @@
-import type { Citation } from '../schemas/chat';
+import type { Citation, PipelineInfo } from '../schemas/chat';
 
 export * from '../schemas/chat';
 export * from '../schemas/commands';
@@ -6,6 +6,7 @@ export * from '../schemas/common';
 export * from '../schemas/graph';
 export * from '../schemas/sources';
 export * from '../schemas/system';
+export type { RoutingUpdateRequest, RoutingStatusResponse, ProviderRoutingInfo } from '../schemas/system';
 
 export type AppMode = 'mock' | 'connected' | 'degraded' | 'offline';
 export type ConfigMode = 'mock' | 'remote' | 'auto';
@@ -18,6 +19,7 @@ export interface ResponseVersion {
   error?: any;
   durationSec?: number;
   timestamp?: string;
+  created_at?: string;
   isStopped?: boolean;
 }
 
@@ -42,8 +44,14 @@ export interface ChatMessage {
   currentQuestionVersionIndex?: number;
   persistenceFailed?: boolean;
   isStopped?: boolean;
+  isThinking?: boolean;
+  timestamp?: string;
+  created_at?: string;
+  startedAtMs?: number;
   feedback?: 'thumbs_up' | 'thumbs_down' | null;
   id?: string;
+  pipeline_info?: PipelineInfo;
+  mode?: 'fast' | 'expert' | 'conversational';
 }
 
 export interface ChatSession {
@@ -60,6 +68,10 @@ export interface ChatSession {
   updated_at?: string;
   is_saved?: boolean;
   attached_docs?: string[];
+  forkedFromSessionId?: string;
+  forkedFromTitle?: string;
+  forkedAtTurnIndex?: number;
+  forkedAtTimestamp?: string;
 }
 
 export interface SourceDocument {

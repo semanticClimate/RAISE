@@ -3,6 +3,7 @@ export const ENDPOINTS = {
   INDEX: '/',
   HEALTH: '/api/health',
   HEALTH_ALT: '/health',
+  READY: '/api/ready',
   OPENAPI: '/openapi.json',
   SWAGGER: '/docs',
   REDOC: '/redoc',
@@ -46,6 +47,11 @@ export const ENDPOINTS = {
   UPLOAD: '/api/upload',
   DOCUMENTS: '/api/documents',
   DOCUMENTS_MANIFEST: '/api/documents/manifest',
+  DOCUMENTS_SCAN: '/api/documents/scan',
+  DOCUMENT_EXTRACTED_MD: (filename: string) =>
+    `/api/documents/${encodeURIComponent(filename)}/extracted-markdown`,
+  DOCUMENT_OKF_CATALOG: (filename: string) =>
+    `/api/documents/${encodeURIComponent(filename)}/okf-catalog`,
   UPLOAD_ACADEMIC_PDFS: '/api/upload-academic-pdfs',
   DELETE_DOCUMENT: '/api/documents/delete',
   DELETE_DOCUMENT_BY_ID: (id: string) => `/api/documents/${encodeURIComponent(id)}`,
@@ -72,14 +78,18 @@ export const ENDPOINTS = {
 
   // System Configuration, Hardware & Dynamic Models
   SYSTEM_CONFIG: '/api/system/config',
+  SYSTEM_ROUTING: '/api/system/routing',
   SYSTEM_HARDWARE: '/api/system/hardware',
   SYSTEM_TEST_CONNECTIONS: '/api/system/test-connections',
+  SYSTEM_MODELS: '/api/system/models',
   SYSTEM_MODELS_CATALOG: '/api/system/models/catalog',
   SYSTEM_DYNAMIC_LLMS: '/api/system/dynamic-llms',
   SYSTEM_MODELS_DISCOVERED: '/api/system/models/discovered',
   SYSTEM_MODELS_PULL: '/api/system/models/pull',
   SYSTEM_PREFLIGHT_ASSETS: '/api/system/preflight-assets',
   SYSTEM_DOWNLOAD_ASSETS: '/api/system/download-assets',
+  SYSTEM_MODELS_LOAD: '/api/system/models/load',
+  SYSTEM_PROVIDERS_VERIFY: '/api/system/providers/verify',
 
   // Future backend abstractions
   FUTURE_CHAT_STREAM: '/api/chat/stream',

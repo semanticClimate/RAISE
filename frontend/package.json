@@ -13,7 +13,8 @@
     "analyze": "ANALYZE=true vite build"
   },
   "engines": {
-    "node": ">=20.18.0"
+    "node": ">=20.18.0",
+    "npm": ">=10.0.0"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",

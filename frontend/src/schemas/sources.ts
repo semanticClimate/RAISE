@@ -12,23 +12,41 @@ export const DocumentItemSchema = z
     chunks: z.number().int().optional(),
     status: z.string().default('ready'),
     phase: z.string().optional(),
+    percent: z.number().optional(),
+    progress_percent: z.number().optional(),
+    progress_stage: z.string().optional(),
+    progress_detail: z.string().optional(),
+    status_breadcrumb: z.string().optional(),
+    is_ingesting: z.boolean().optional(),
     is_protected: z.boolean().optional(),
     can_delete: z.boolean().optional(),
     deletable: z.boolean().optional(),
     owner: z.string().optional(),
     uploaded_at: z.string().optional(),
     library: z.string().optional(),
+    has_extracted_md: z.boolean().optional(),
+    extracted_md_url: z.string().optional(),
+    has_okf_catalog: z.boolean().optional(),
+    okf_catalog_url: z.string().optional(),
   })
   .passthrough();
 
 export type DocumentItem = z.infer<typeof DocumentItemSchema>;
 
-export const DocumentListResponseSchema = z
-  .object({
-    documents: z.array(DocumentItemSchema).default([]),
-    total_count: z.number().int().nullish().default(0),
-  })
-  .passthrough();
+export const DocumentListResponseSchema = z.preprocess(
+  (val: any) => {
+    if (Array.isArray(val)) {
+      return { documents: val, total_count: val.length };
+    }
+    return val;
+  },
+  z
+    .object({
+      documents: z.array(DocumentItemSchema).catch([]),
+      total_count: z.number().int().nullish().default(0),
+    })
+    .passthrough()
+);
 
 export type DocumentListResponse = z.infer<typeof DocumentListResponseSchema>;
 
@@ -60,13 +78,15 @@ export const UploadReportItemSchema = z.preprocess(
 
 export type UploadReportItem = z.infer<typeof UploadReportItemSchema>;
 
-export const UploadResponseSchema = z.object({
-  status: z.string(),
-  uploaded_count: z.number().int().default(0),
-  reports: z.array(UploadReportItemSchema).default([]),
-  total_nodes: z.number().int().default(0),
-  total_edges: z.number().int().default(0),
-});
+export const UploadResponseSchema = z
+  .object({
+    status: z.string().catch('success'),
+    uploaded_count: z.number().int().default(0),
+    reports: z.array(UploadReportItemSchema).catch([]),
+    total_nodes: z.number().int().default(0),
+    total_edges: z.number().int().default(0),
+  })
+  .passthrough();
 
 export type UploadResponse = z.infer<typeof UploadResponseSchema>;
 
@@ -76,12 +96,14 @@ export const DeleteDocumentRequestSchema = z.object({
 
 export type DeleteDocumentRequest = z.infer<typeof DeleteDocumentRequestSchema>;
 
-export const DeleteDocumentResponseSchema = z.object({
-  status: z.string(),
-  filename: z.string(),
-  documents: z.array(DocumentItemSchema).default([]),
-  total_count: z.number().int().default(0),
-});
+export const DeleteDocumentResponseSchema = z
+  .object({
+    status: z.string().catch('success'),
+    filename: z.string(),
+    documents: z.array(DocumentItemSchema).catch([]),
+    total_count: z.number().int().default(0),
+  })
+  .passthrough();
 
 export type DeleteDocumentResponse = z.infer<typeof DeleteDocumentResponseSchema>;
 
@@ -94,8 +116,12 @@ export const DocumentIngestionPhaseSchema = z.enum([
   'parsing',
   'chunking',
   'embedding',
+  'vectorizing',
+  'graph_extraction',
+  'completed',
   'ready',
   'error',
+  'failed',
 ]);
 
 export type DocumentIngestionPhase = z.infer<typeof DocumentIngestionPhaseSchema>;

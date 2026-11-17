@@ -16,6 +16,11 @@ logger = logging.getLogger("RAISE.PortSweep")
 class PortSweep:
     """Probes ports for binding conflicts and safely terminates zombie processes."""
 
+    @classmethod
+    async def sweep_and_clean_async(cls, port: int, max_retries: int = 3) -> bool:
+        import asyncio
+        return await asyncio.to_thread(cls.sweep_and_clean, port, max_retries)
+
     @staticmethod
     def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
         """Returns True if the port is actively accepting connections."""

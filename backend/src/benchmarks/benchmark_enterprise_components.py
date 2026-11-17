@@ -235,10 +235,11 @@ def benchmark_kuzu() -> BenchmarkResult:
 # 4. LANCEDB + FASTEMBED BENCHMARK
 # =========================================================================
 def benchmark_lancedb() -> BenchmarkResult:
-    from src.infrastructure.vector.lancedb_store import LanceDBVectorStore
+    # Replaced LanceDB with LocalVectorEngine as single production vector engine
+    from src.infrastructure.vector.chroma import LocalVectorEngine
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        store = LanceDBVectorStore(db_path=tmp_dir, table_name="bench_vectors")
+        store = LocalVectorEngine()
         # Ingest 100 text chunks
         chunks = [
             {

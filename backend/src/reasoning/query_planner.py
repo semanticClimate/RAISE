@@ -211,6 +211,7 @@ class QueryPlanner:
         # Standard Multi-Entity / Multi-Clause Hop Generation
         elif len(entities) >= 2:
             req_rel = RelationResolver.detect_required_relation(query) or RelationType.RELATED_TO
+            is_parallel_lookup = bool(re.search(r"\b(compare|comparison|versus|vs|both|either|neither|between|and|or|each)\b", query, re.IGNORECASE))
             for idx, ent in enumerate(entities[:4], start=1):
                 plan.hops.append(QueryPlanHop(
                     hop_id=idx,
@@ -218,7 +219,7 @@ class QueryPlanner:
                     required_relation=req_rel,
                     source_entity=ent,
                     target_type="entity",
-                    dependencies=[idx - 1] if idx > 1 else [],
+                    dependencies=[] if is_parallel_lookup else ([idx - 1] if idx > 1 else []),
                     qualifying_constraints=qualifying_constraints,
                 ))
         elif len(entities) == 1:

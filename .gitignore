@@ -1,195 +1,64 @@
-# ==============================================================================
-# RAISE — Unified Root Git Ignore (origin/main)
-# Combines backend and frontend workspace hygiene rules.
-# Individual branch runners (START_RAISE_BACKEND / START_RAISE_FRONTEND) live exclusively
-# in origin/backend and origin/frontend and are strictly excluded from origin/main.
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# 1. Environment & Local Secrets (Never commit credentials)
-# ------------------------------------------------------------------------------
+# Environment files
 .env
 .env.*
-.env*.local
-!.env.example
-*.pem
-*.key
-*.cert
-*.token
-tokens.json
-credentials.json
+backend/.env
+backend/.env.*
 
-# ------------------------------------------------------------------------------
-# 2. Individual Branch Startup Launchers (Isolated strictly to backend & frontend branches)
-# ------------------------------------------------------------------------------
-START_RAISE_BACKEND*
-START_RAISE_FRONTEND*
-**/START_RAISE_BACKEND*
-**/START_RAISE_FRONTEND*
-
-
-
-# ------------------------------------------------------------------------------
-# 3. Docker Compose Local Overrides (Prevent committing credentials)
-# ------------------------------------------------------------------------------
-docker-compose*.yml
-!docker-compose.example.yml
-
-# ------------------------------------------------------------------------------
-# 4. Python Build, Caching & Virtual Environments (Backend)
-# ------------------------------------------------------------------------------
+# Python cache and compiled files
 __pycache__/
-**/**/__pycache__/
 *.py[cod]
 *$py.class
-.cache/
-**/.cache/
-.pytest_cache/
-**/.pytest_cache/
-.ruff_cache/
-**/.ruff_cache/
-.mypy_cache/
-**/.mypy_cache/
-*.egg-info/
-build/
-dist/
-RAISE_SRC/
-.venv/
-env/
-venv/
-**/.venv/
-.uv/
-**/.uv/
+*.pyc
 
-# ------------------------------------------------------------------------------
-# 5. Node.js & Frontend Dependencies / Build Artifacts (Frontend)
-# ------------------------------------------------------------------------------
+# Local runtime, vector databases and storage
+.runtime/
+backend/.runtime/
+.chromadb*
+backend/.chromadb*
+.pytest_cache/
+backend/.pytest_cache/
+backend/data/**/*.tmp
+logs/
+backend/logs/
+models/
+backend/models/
 node_modules/
 **/node_modules/
-.pnp
-.pnp.js
-dist-ssr/
-*.tsbuildinfo
+dist/
+**/dist/
 .vite/
-**/.vite/
-coverage/
-**/coverage/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-.node/
-**/.node/
-biome.json
-sheriff.config.ts
-
-# ------------------------------------------------------------------------------
-# 6. Vector Stores, Embeddings & Large Runtime Databases
-# ------------------------------------------------------------------------------
-models/
-**/models/
-backend/models/
-**/backend/models/
-*.safetensors
-*.bin
-*.onnx
-*.pt
-*.pth
-.chromadb*/
-**/.chromadb*/
-RAG/.chromadb_bge_large/
-.chromadb_bge_large/
-data/chromadb/
-data/processed/chroma/
-**/data/chromadb/
-**/data/processed/chroma/
-*.sqlite
-*.sqlite3
-*.db
-.runtime/
-**/.runtime/
-
-# ------------------------------------------------------------------------------
-# 7. Compiled Binaries, Executables & Rust Build Artifacts
-# ------------------------------------------------------------------------------
-bin/
-*.exe
-*.msi
-*.dll
-*.so
-*.dylib
-*.pyd
-target/
-**/target/
-wheels/
-**/wheels/
-
-# ------------------------------------------------------------------------------
-# 8. Temporary Scratch Scripts, Benchmarks & Dev Overrides
-# ------------------------------------------------------------------------------
-scratch/
-tmp/
-temp/
-.gemini/
-scripts/
-**/scripts/
-backend/scripts/
-backend/tests/
-tests/
-**/tests/
-test_*.py
-*_test.py
-backend/test_*.py
-pytest.ini
-**/pytest.ini
-**/README.md
-!README.md
-backend/evaluation/
-backend/src-tauri/
-backend/dev_main.py
-backend/data/
-
-# ------------------------------------------------------------------------------
-# 9. Logs & Runtime Telemetry
-# ------------------------------------------------------------------------------
-logs/
-**/logs/
-*.log
-*.zip
-*.tar.gz
-*.tgz
-
-# ------------------------------------------------------------------------------
-# 10. Pipeline Runtime Outputs & Handoff Deliverables
-# ------------------------------------------------------------------------------
-outputs/*
-!outputs/.gitkeep
-data/output/*
-!data/output/.gitkeep
-data/downloads/*
-!data/downloads/.gitkeep
-data/input/*
-!data/input/.gitkeep
-!data/schemas/*
-
-# ------------------------------------------------------------------------------
-# 11. Local Research & Offline Reference Data (Never commit PDFs)
-# ------------------------------------------------------------------------------
-*.pdf
-Artifacts/
-reference/
-helper/
+**/vite/
 RAG/
 
-# ------------------------------------------------------------------------------
-# 12. Operating System Files & Shell Scripts (Windows Focus)
-# ------------------------------------------------------------------------------
+# Rust build artifacts
+target/
+backend/rust/raise_engine/target/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
 .DS_Store
 Thumbs.db
-desktop.ini
-*.sh
-*.command
-.vscode/*
-!.vscode/extensions.json
-.idea/
+
+# Agent and AI Instructions (Local rules only, not published to git)
+AGENTS.md
+GEMINI.md
+scan_hardcoded_models.py
+backend/scan_hardcoded_models.py
+**/scan_hardcoded_models.py
+
+# Test runtime temporary artifacts
+*test_sample*
+**/test_sample*
+
+
+

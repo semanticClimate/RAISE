@@ -1,5 +1,4 @@
-import type React from 'react';
-import { useRef } from 'react';
+import React, { useRef } from 'react';
 import { useClickOutside } from '../../hooks';
 import type { ChatSession } from '../../types';
 import { ChatSessionList, NewChatButton } from './chat';
@@ -38,7 +37,7 @@ export interface SidebarProps {
   setIsUserMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
+const SidebarBase: React.FC<SidebarProps> = ({
   isDrawerOpen,
   onToggleDrawer,
   onNewChat,
@@ -73,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       id="pipelineDrawer"
-      className={`fixed inset-y-0 left-0 flex flex-col transition-all duration-300 ease-in-out ${
+      className={`fixed inset-y-0 left-0 flex flex-col transition-[width,transform,background-color] duration-300 ease-in-out ${
         isDrawerOpen
           ? 'w-[min(80vw,18rem)] z-50 shadow-2xl bg-white/98 dark:bg-[#12141d]/98 border-r border-slate-200 dark:border-white/10 backdrop-blur-2xl translate-x-0'
           : 'hidden sm:flex w-0 sm:w-16 z-30 bg-transparent border-r-0 shadow-none'
@@ -115,57 +114,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <SidebarSearchButton isDrawerOpen={isDrawerOpen} onClick={onOpenSearch} />
 
         {/* Middle Section: Chat sessions feature */}
-        <div
-          className={`flex-1 flex flex-col min-h-0 overflow-hidden transition-opacity duration-200 ${
-            isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          {/* Recents Section Header */}
-          <div className="px-3 pt-1 pb-1.5 flex items-center justify-between shrink-0">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Recents
-            </span>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-              ({sessions.length})
-            </span>
-          </div>
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {isDrawerOpen && (
+            <>
+              {/* Recents Section Header */}
+              <div className="px-3 pt-1 pb-1.5 flex items-center justify-between shrink-0">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Recents
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                  ({sessions.length})
+                </span>
+              </div>
 
-          {/* List of Chat Sessions */}
-          <ChatSessionList
-            displayedSessions={sessions}
-            currentSessionId={currentSessionId}
-            pinnedSessionIds={pinnedSessionIds}
-            activeSessionMenuId={activeSessionMenuId}
-            renamingSessionId={renamingSessionId}
-            newSessionTitle={newSessionTitle}
-            setNewSessionTitle={setNewSessionTitle}
-            onSelectSession={onSelectSession}
-            onTogglePinSession={onTogglePinSession}
-            setActiveSessionMenuId={setActiveSessionMenuId}
-            setRenamingSessionId={setRenamingSessionId}
-            handleSaveRename={handleSaveRename}
-            handleDeleteSession={handleDeleteSession}
-          />
+              {/* List of Chat Sessions */}
+              <ChatSessionList
+                displayedSessions={sessions}
+                currentSessionId={currentSessionId}
+                pinnedSessionIds={pinnedSessionIds}
+                activeSessionMenuId={activeSessionMenuId}
+                renamingSessionId={renamingSessionId}
+                newSessionTitle={newSessionTitle}
+                setNewSessionTitle={setNewSessionTitle}
+                onSelectSession={onSelectSession}
+                onTogglePinSession={onTogglePinSession}
+                setActiveSessionMenuId={setActiveSessionMenuId}
+                setRenamingSessionId={setRenamingSessionId}
+                handleSaveRename={handleSaveRename}
+                handleDeleteSession={handleDeleteSession}
+              />
+            </>
+          )}
         </div>
 
         {/* Bottom Row: Settings feature - User / Gateway Status Button & Popover */}
         <div
-          className="pt-2 border-t border-slate-200/80 dark:border-white/[0.06] shrink-0 relative"
+          className="mt-auto pt-2 border-t border-slate-200/80 dark:border-white/[0.06] shrink-0 relative"
           ref={userMenuRef}
         >
-          {isOnline &&
-            isTunnelConfigured &&
-            gatewayUsername &&
-            gatewayUsername.trim() !== '' &&
-            gatewayUsername !== 'Operator' && (
-              <UserProfileMenu
-                isOpen={isUserMenuOpen}
-                onClose={() => setIsUserMenuOpen(false)}
-                onOpenUsage={onOpenUsage}
-                onLogout={onLogout}
-                onOpenSettings={onOpenSettings}
-              />
-            )}
+          <UserProfileMenu
+            isOpen={isUserMenuOpen}
+            onClose={() => setIsUserMenuOpen(false)}
+            onOpenUsage={onOpenUsage}
+            onLogout={onLogout}
+            onOpenSettings={onOpenSettings}
+          />
 
           <SidebarSettingsTrigger
             gatewayUsername={gatewayUsername}
@@ -181,3 +174,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </aside>
   );
 };
+
+export const Sidebar = React.memo(SidebarBase);

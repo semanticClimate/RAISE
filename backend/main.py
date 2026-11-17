@@ -25,10 +25,12 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Ensure RAG project root is in sys.path
-BASE_DIR = Path(__file__).resolve().parent
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+# Ensure canonical backend root is in sys.path
+_resolved_path = Path(__file__).resolve().parent
+REPO_ROOT = _resolved_path
+BASE_DIR = _resolved_path
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Enable native ANSI color support on Windows
 try:
@@ -57,6 +59,17 @@ except Exception:
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "pipeline.log"
+
+# Automatically ensure canonical data directories exist at repository root
+DATA_DIR = BASE_DIR / "data"
+for _sub in ["documents", "library", "catalogs", "processed", "processed/chunks", "processed/graph_triples"]:
+    (DATA_DIR / _sub).mkdir(parents=True, exist_ok=True)
+_manifest_file = DATA_DIR / "processed" / "ingested_manifest.json"
+if not _manifest_file.exists():
+    try:
+        _manifest_file.write_text('{\n  "ready_documents": [],\n  "timestamp": ""\n}', encoding="utf-8")
+    except Exception:
+        pass
 
 logger = logging.getLogger("RAISE_Studio")
 log_level_str = os.getenv("RAISE_LOG_LEVEL", "INFO").upper()

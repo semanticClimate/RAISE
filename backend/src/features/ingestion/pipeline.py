@@ -82,9 +82,9 @@ class AcademicPipelineIngestor:
         download_dir: Optional[Path | str] = None,
         processed_dir: Optional[Path | str] = None,
     ):
-        base_rag_dir = Path(__file__).resolve().parents[3]
-        self.download_dir = Path(download_dir or base_rag_dir / "data" / "documents").resolve()
-        self.output_dir = Path(processed_dir or base_rag_dir / "data" / "processed").resolve()
+        from src.core.config import DOCUMENTS_DIR, PROCESSED_DIR
+        self.download_dir = Path(download_dir or DOCUMENTS_DIR).resolve()
+        self.output_dir = Path(processed_dir or PROCESSED_DIR).resolve()
 
         # Create output directories
         (self.output_dir / "chunks").mkdir(parents=True, exist_ok=True)
@@ -199,6 +199,10 @@ class AcademicPipelineIngestor:
         )
         doc.close()
 
+        # Determine optimal chunking strategy: if document is large (> 40 pages) and not full_potential,
+        # use recursive character chunking to ensure rapid, responsive ingestion without HTTP timeouts
+        strat_override = "recursive" if ((total_doc_pages > 40 and not full_potential) or engine.lower() == "fast") else None
+
         # Run Graph-Guided Adaptive Hierarchical Chunking (GGAHC)
         adaptive_result = self.adaptive_chunker.process_document(
             parsed_sections=parsed_sections,
@@ -207,6 +211,7 @@ class AcademicPipelineIngestor:
             university=institution_name,
             reporting_period=reporting_period,
             total_pages=total_doc_pages,
+            strategy_override=strat_override,
         )
         child_chunks = adaptive_result["child_chunks"]
         parent_chunks = adaptive_result["parent_chunks"]
@@ -220,67 +225,74 @@ class AcademicPipelineIngestor:
             json.dumps(adaptive_result["diagnostic_report"].to_dict(), indent=2), encoding="utf-8"
         )
 
-        for chunk_record in all_chunks:
-            pno = chunk_record.get("primary_page", 1)
-            doc_pno = chunk_record.get("printed_page")
-            cleaned_text = chunk_record.get("plain_text", "")
-            heading = chunk_record.get("heading", "")
-            chunk_id = chunk_record["chunk_id"]
+        orig_gliner = getattr(self.extractor, "enable_gliner", True)
+        if (total_doc_pages > 40 and not full_potential) or engine.lower() == "fast":
+            self.extractor.enable_gliner = False
 
-            # Register Chunk entity in Knowledge Graph for Dynamic Neighborhood Cypher Traversal
-            chunk_ent = AcademicEntity(
-                entity_id=chunk_id,
-                label="Chunk",
-                name=f"Chunk {chunk_id}",
-                properties={
-                    "document_id": doc_id,
-                    "primary_page": pno,
-                    "printed_page": doc_pno,
-                    "heading": heading,
-                    "pdf_filename": pdf_path.name,
-                    "parent_chunk_id": chunk_record.get("parent_chunk_id"),
-                },
-                provenance={"pdf_filename": pdf_path.name, "page_number": pno, "printed_page": doc_pno, "chunk_id": chunk_id},
-            )
-            all_entities.append(chunk_ent)
+        try:
+            for chunk_record in all_chunks:
+                pno = chunk_record.get("primary_page", 1)
+                doc_pno = chunk_record.get("printed_page")
+                cleaned_text = chunk_record.get("plain_text", "")
+                heading = chunk_record.get("heading", "")
+                chunk_id = chunk_record["chunk_id"]
 
-            # Extract Academic Entities & Relations
-            ents, rels = self.extractor.extract_academic_knowledge(
-                text=cleaned_text,
-                pdf_filename=pdf_path.name,
-                page_number=pno,
-                section_heading=heading,
-                chunk_id=chunk_id,
-                university_name=institution_name,
-            )
-            all_entities.extend(ents)
-            all_relations.extend(rels)
+                # Register Chunk entity in Knowledge Graph for Dynamic Neighborhood Cypher Traversal
+                chunk_ent = AcademicEntity(
+                    entity_id=chunk_id,
+                    label="Chunk",
+                    name=f"Chunk {chunk_id}",
+                    properties={
+                        "document_id": doc_id,
+                        "primary_page": pno,
+                        "printed_page": doc_pno,
+                        "heading": heading,
+                        "pdf_filename": pdf_path.name,
+                        "parent_chunk_id": chunk_record.get("parent_chunk_id"),
+                    },
+                    provenance={"pdf_filename": pdf_path.name, "page_number": pno, "printed_page": doc_pno, "chunk_id": chunk_id},
+                )
+                all_entities.append(chunk_ent)
 
-            # Link Chunk to extracted Academic Entities
-            for e in ents:
-                all_relations.append(AcademicRelation(
-                    relation_id=f"rel_{chunk_id}_{e.entity_id}_mentions",
-                    source_id=chunk_id,
-                    source_label="Chunk",
-                    relation_type="MENTIONS",
-                    target_id=e.entity_id,
-                    target_label=e.label,
-                    provenance={"pdf_filename": pdf_path.name, "page_number": pno, "chunk_id": chunk_id},
-                ))
+                # Extract Academic Entities & Relations
+                ents, rels = self.extractor.extract_academic_knowledge(
+                    text=cleaned_text,
+                    pdf_filename=pdf_path.name,
+                    page_number=pno,
+                    section_heading=heading,
+                    chunk_id=chunk_id,
+                    university_name=institution_name,
+                )
+                all_entities.extend(ents)
+                all_relations.extend(rels)
 
-            # Extract Quantitative Facts via FactEngine
-            extract_and_link_facts(
-                fact_engine=self.fact_engine,
-                cleaned_text=cleaned_text,
-                doc_id=doc_id,
-                institution_name=institution_name,
-                pno=pno,
-                doc_pno=doc_pno,
-                chunk_id=chunk_id,
-                pdf_filename=pdf_path.name,
-                all_entities=all_entities,
-                all_relations=all_relations,
-            )
+                # Link Chunk to extracted Academic Entities
+                for e in ents:
+                    all_relations.append(AcademicRelation(
+                        relation_id=f"rel_{chunk_id}_{e.entity_id}_mentions",
+                        source_id=chunk_id,
+                        source_label="Chunk",
+                        relation_type="MENTIONS",
+                        target_id=e.entity_id,
+                        target_label=e.label,
+                        provenance={"pdf_filename": pdf_path.name, "page_number": pno, "chunk_id": chunk_id},
+                    ))
+
+                # Extract Quantitative Facts via FactEngine
+                extract_and_link_facts(
+                    fact_engine=self.fact_engine,
+                    cleaned_text=cleaned_text,
+                    doc_id=doc_id,
+                    institution_name=institution_name,
+                    pno=pno,
+                    doc_pno=doc_pno,
+                    chunk_id=chunk_id,
+                    pdf_filename=pdf_path.name,
+                    all_entities=all_entities,
+                    all_relations=all_relations,
+                )
+        finally:
+            self.extractor.enable_gliner = orig_gliner
 
         # Persist artifacts and sync ChromaDB, Neo4j, and Postgres
         (
@@ -300,6 +312,8 @@ class AcademicPipelineIngestor:
             neo4j_db=self.neo4j_db,
             postgres=self.postgres,
             t0=t0,
+            institution=institution_name,
+            reporting_period=reporting_period,
         )
         facts_count = len([e for e in unique_entities.values() if e.label == "MetricFact"])
 

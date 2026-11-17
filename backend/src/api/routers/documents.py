@@ -28,11 +28,14 @@ from src.api.routers.vault_batch import execute_load_vault_defaults, execute_ing
 logger = logging.getLogger("raise.router.documents")
 router = APIRouter(tags=["Documents & Ingestion"])
 
-BASE_DIR = Path(__file__).resolve().parents[3]
+from src.core.config import BACKEND_DIR
+
+BASE_DIR = BACKEND_DIR
 
 
 @router.post("/api/upload")
 @router.post("/api/documents/upload")
+@router.post("/api/sources/upload")
 async def upload_document_spec(
     request: Request,
     files: Optional[List[UploadFile]] = File(None),
@@ -56,13 +59,13 @@ async def upload_document_spec(
       uploading (15%) -> parsing (40%) -> chunking (65%) -> embedding (85%) -> ready (100%)
     """
     q_params = request.query_params
-    effective_parser = parser or q_params.get("parser") or engine or q_params.get("engine") or "docling"
+    effective_parser = parser or q_params.get("parser") or engine or q_params.get("engine") or "auto"
     effective_mode = mode or q_params.get("mode") or parse_mode or q_params.get("parse_mode") or "fast"
     effective_library = library or q_params.get("library") or "default"
     effective_full_potential = str(full_potential or q_params.get("full_potential") or "false").lower() in ("true", "1", "yes")
     effective_extract_tables = str(extract_tables or q_params.get("extract_tables") or "true").lower() in ("true", "1", "yes")
 
-    use_engine = "docling" if (effective_parser.lower() in ("docling", "deep") or effective_mode.lower() == "expert" or effective_full_potential) else "auto"
+    use_engine = "docling" if (effective_parser.lower() in ("docling", "deep") or effective_full_potential) else ("auto" if effective_mode.lower() == "expert" else "fast")
 
     upload_list: List[UploadFile] = []
     seen_filenames = set()
@@ -110,6 +113,16 @@ async def upload_document_spec(
         "chunks": first_rep.get("chunks_extracted", 0),
         "library": effective_library,
         "reports": reports,
+        "documents": [
+            {
+                "doc_id": r.get("doc_id"),
+                "document_id": r.get("doc_id"),
+                "filename": r.get("filename"),
+                "status": r.get("status", "ready"),
+                "chunks": r.get("chunks_extracted", 0),
+            }
+            for r in reports
+        ],
         "total_nodes": total_nodes,
         "total_edges": total_edges,
     }
@@ -164,10 +177,10 @@ async def upload_academic_pdfs(
         with open(dest_path, "wb") as buffer:
             shutil.copyfileobj(upload_file.file, buffer)
 
-        # Process the newly uploaded PDF
+        # Process the newly uploaded PDF without arbitrary page truncations
         res = academic_pipeline.process_pdf(
             dest_path,
-            max_pages=30,
+            max_pages=None,
             engine=use_engine,
             full_potential=effective_full_potential,
             extract_tables=effective_extract_tables,
@@ -244,7 +257,9 @@ def _resolve_document_file(doc_identifier: str) -> Optional[Path]:
 
 
 @router.get("/api/pdf/{filename}")
+@router.head("/api/pdf/{filename}")
 @router.get("/api/documents/{filename}/file")
+@router.head("/api/documents/{filename}/file")
 async def get_pdf_file(filename: str):
     """
     Serves physical PDF for deep-linked in-browser viewing with #page=N.
@@ -531,7 +546,7 @@ async def get_document_ingestion_events(
 @router.get("/api/documents/manifest")
 async def get_documents(document_service: Any = Depends(get_document_service)):
     """List only documents whose chunking and embedding are confirmed and ready for Q&A."""
-    return document_service.list_library_documents()
+    return await asyncio.to_thread(document_service.list_library_documents)
 
 
 @router.delete("/api/documents/{document_id}")
@@ -546,7 +561,7 @@ async def delete_document_by_id(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=msg_or_fn)
         raise HTTPException(status_code=500, detail=msg_or_fn)
 
-    updated_docs = document_service.list_library_documents().get("documents", [])
+    updated_docs = (await asyncio.to_thread(document_service.list_library_documents)).get("documents", [])
     logger.info(f"[DELETE] Successfully purged user document '{msg_or_fn}' from Library")
     return {
         "status": "success",
@@ -574,7 +589,7 @@ async def delete_document(
                 return JSONResponse(status_code=403, content={"status": "error", "error": msg_or_fn})
             return JSONResponse(status_code=500, content={"status": "error", "error": msg_or_fn})
 
-        updated_docs = document_service.list_library_documents().get("documents", [])
+        updated_docs = (await asyncio.to_thread(document_service.list_library_documents)).get("documents", [])
         logger.info(f"[DELETE] Successfully purged user document '{msg_or_fn}' from Library")
         return {
             "status": "success",
@@ -611,3 +626,161 @@ async def ingest_download_folder(
 ):
     """Batch-ingest all PDF reports from Download/ directory and record ready manifest and PostgreSQL metadata."""
     return execute_ingest_download_folder(postgres_manager, rag_engine)
+
+@router.get("/api/documents/scan")
+@router.post("/api/documents/scan")
+async def scan_documents_folder(document_service: Any = Depends(get_document_service)):
+    """
+    On-demand scan of data/documents/ directory.
+    Automatically registers any processed PDFs into the library and returns updated documents list.
+    """
+    docs_result = document_service.list_library_documents()
+    return {
+        "status": "success",
+        "message": "Scanned document directory and reconciled library artifacts.",
+        "documents": docs_result.get("documents", []),
+        "total_count": docs_result.get("total_count", 0),
+    }
+
+
+@router.get("/api/documents/{doc_identifier}/extracted-markdown")
+@router.get("/api/library/{doc_identifier}/markdown")
+async def get_extracted_markdown(
+    doc_identifier: str,
+    format: Optional[str] = None,
+    request: Request = None,
+):
+    """
+    Exposes full prAISED / extracted markdown for a document (data/library/{stem}_extracted.md).
+    Supports raw markdown streaming or structured JSON output.
+    """
+    import urllib.parse
+    clean_id = urllib.parse.unquote(doc_identifier).strip()
+    clean_stem = Path(clean_id).stem.replace("doc_", "")
+    
+    from src.core.config import DATA_DIR
+    lib_dir = DATA_DIR / "library"
+    
+    target_md = None
+    # 1. Multi-candidate stem match (supporting alphanumeric and hyphen/space sanitization)
+    for cand_name in [
+        f"{clean_stem}_extracted.md",
+        f"{re.sub(r'[^a-zA-Z0-9]', '_', clean_stem)}_extracted.md",
+        f"{re.sub(r'[^a-zA-Z0-9_-]', '_', clean_stem)}_extracted.md",
+        f"{re.sub(r'[ -]', '_', clean_stem)}_extracted.md",
+        f"{clean_id}_extracted.md",
+        f"{Path(clean_id).name}_extracted.md",
+    ]:
+        for d in [lib_dir, lib_dir.parent.parent / "backend" / "data" / "library"]:
+            cand = d / cand_name
+            if cand.exists() and cand.is_file():
+                target_md = cand
+                break
+        if target_md:
+            break
+            
+    # 2. Case-insensitive search
+    if not target_md and lib_dir.exists():
+        for f in lib_dir.glob("*_extracted.md"):
+            if f.stem.lower() == f"{clean_stem.lower()}_extracted" or f.stem.lower().startswith(clean_stem.lower()):
+                target_md = f
+                break
+
+    if not target_md or not target_md.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Extracted markdown for document '{doc_identifier}' not found in library.",
+        )
+
+    content = target_md.read_text(encoding="utf-8")
+    
+    accept_header = request.headers.get("accept", "").lower() if request else ""
+    if format == "json" or "application/json" in accept_header:
+        return {
+            "status": "success",
+            "document_id": doc_identifier,
+            "filename": f"{target_md.stem.replace('_extracted', '')}.pdf",
+            "artifact_type": "extracted_markdown",
+            "path": str(target_md),
+            "size_bytes": len(content.encode("utf-8")),
+            "content": content,
+        }
+
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'inline; filename="{target_md.name}"',
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+@router.get("/api/documents/{doc_identifier}/okf-catalog")
+@router.get("/api/catalogs/{doc_identifier}")
+async def get_okf_catalog(
+    doc_identifier: str,
+    format: Optional[str] = None,
+    request: Request = None,
+):
+    """
+    Exposes OKF (Open Knowledge Formulation) catalog markdown for a document (data/catalogs/{stem}.okf.md).
+    Supports raw markdown streaming or structured JSON output.
+    """
+    import urllib.parse
+    clean_id = urllib.parse.unquote(doc_identifier).strip()
+    clean_stem = Path(clean_id).stem.replace("doc_", "")
+    
+    from src.core.config import DATA_DIR
+    cat_dir = DATA_DIR / "catalogs"
+    
+    target_okf = None
+    for cand_name in [
+        f"{clean_stem}.okf.md",
+        f"{re.sub(r'[^a-zA-Z0-9]', '_', clean_stem)}.okf.md",
+        f"{re.sub(r'[^a-zA-Z0-9_-]', '_', clean_stem)}.okf.md",
+        f"{re.sub(r'[ -]', '_', clean_stem)}.okf.md",
+        f"{clean_id}.okf.md",
+    ]:
+        for d in [cat_dir, cat_dir.parent.parent / "backend" / "data" / "catalogs"]:
+            cand = d / cand_name
+            if cand.exists() and cand.is_file():
+                target_okf = cand
+                break
+        if target_okf:
+            break
+
+    if not target_okf and cat_dir.exists():
+        for f in cat_dir.glob("*.okf.md"):
+            if f.name.lower().startswith(clean_stem.lower()):
+                target_okf = f
+                break
+
+    if not target_okf or not target_okf.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"OKF catalog for document '{doc_identifier}' not found in catalogs.",
+        )
+
+    content = target_okf.read_text(encoding="utf-8")
+    
+    accept_header = request.headers.get("accept", "").lower() if request else ""
+    if format == "json" or "application/json" in accept_header:
+        return {
+            "status": "success",
+            "document_id": doc_identifier,
+            "filename": f"{target_okf.name.replace('.okf.md', '')}.pdf",
+            "artifact_type": "okf_catalog",
+            "path": str(target_okf),
+            "size_bytes": len(content.encode("utf-8")),
+            "content": content,
+        }
+
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'inline; filename="{target_okf.name}"',
+            "Cache-Control": "public, max-age=3600",
+        },
+    )

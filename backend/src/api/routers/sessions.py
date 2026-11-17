@@ -24,6 +24,7 @@ router = APIRouter(tags=["Sessions & History"])
 
 
 @router.get("/api/chat/history")
+@router.get("/api/chat/history/{session_id}")
 async def get_chat_history_spec(
     session_id: Optional[str] = None,
     thread_id: Optional[str] = None,
@@ -43,6 +44,10 @@ async def get_chat_history_spec(
                     txt = m.get("text") or m.get("content", "")
                     m["text"] = txt
                     m["content"] = txt
+                    lat = float(m.get("latency_sec") or m.get("durationSec") or m.get("execution_time") or m.get("duration_sec") or 0.0)
+                    m["latency_sec"] = lat
+                    m["durationSec"] = lat
+                    m["execution_time"] = lat
         return res
     except Exception as exc:
         logger.error(f"Error retrieving chat history for {target_id}: {exc}")
@@ -84,6 +89,7 @@ async def save_chat_history_spec(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/api/sessions", tags=["Sessions & History"], include_in_schema=False)
 @router.get("/api/chat/sessions")
 async def get_chat_sessions_spec(session_service: Any = Depends(get_session_service)):
     """

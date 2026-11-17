@@ -62,6 +62,8 @@ export interface UseBackendConnectionResult {
   backendVersion: string;
   isVersionAligned: boolean;
   isWsConnected: boolean;
+  isNeuralReady: boolean;
+  readinessMessage: string | null;
 
   // Actions
   connect: (targetUrl: string) => Promise<{ success: boolean; error?: string; latencyMs: number }>;
@@ -104,7 +106,7 @@ export function useBackendConnection(
     runCapabilityProbe,
   } = useModeStore();
 
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
   const isConnecting = isProbing || isScanning || isPendingTransition;
   const isOffline = appMode === 'offline';
   const isTunnelConfigured = Boolean(apiBaseUrl && apiBaseUrl.trim() !== '');
@@ -210,12 +212,66 @@ export function useBackendConnection(
     return found;
   }, [setBaseUrl, runCapabilityProbe]);
 
-  // Periodic heartbeat when connected to keep latency and liveness authoritative
+  // Neural model stack readiness state (/api/ready)
+  const [isNeuralReady, setIsNeuralReady] = useState(true);
+  const [readinessMessage, setReadinessMessage] = useState<string | null>(null);
+
+  // Poll /api/ready when connected to track neural pre-warming status
   useEffect(() => {
-    if (!enableHeartbeat || !isConnected || !apiBaseUrl) return;
+    if (!isConnected || !apiBaseUrl) {
+      setIsNeuralReady(true);
+      setReadinessMessage(null);
+      return;
+    }
+
+    let isMounted = true;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const probeReadiness = async () => {
+      try {
+        const readyRes = await systemService.checkReadiness(apiBaseUrl);
+        if (!isMounted) return;
+
+        if (readyRes.ready) {
+          setIsNeuralReady(true);
+          setReadinessMessage(null);
+        } else {
+          setIsNeuralReady(false);
+          setReadinessMessage(
+            readyRes.message || 'Warming up AI neural models (embeddings, reranker, NLI)...'
+          );
+          // Poll again in 2.5s while warming up
+          pollTimer = setTimeout(probeReadiness, 2500);
+        }
+      } catch {
+        if (!isMounted) return;
+        setIsNeuralReady(true); // Don't block if endpoint is not present on legacy backends
+      }
+    };
+
+    probeReadiness();
+
+    return () => {
+      isMounted = false;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [isConnected, apiBaseUrl]);
+
+  // Periodic heartbeat to keep latency and liveness authoritative, running as long as apiBaseUrl is configured
+  useEffect(() => {
+    if (!enableHeartbeat || !apiBaseUrl) return;
 
     const timer = setInterval(async () => {
       if (heartbeatInFlight.current) return;
+
+      // Suppress background ping if document upload or chat streaming is active
+      if (
+        typeof window !== 'undefined' &&
+        ((window as any).__RAISE_ACTIVE_OPS__ > 0 || (window as any).__RAISE_ACTIVE_STREAM__)
+      ) {
+        return;
+      }
+
       heartbeatInFlight.current = true;
       try {
         await testConnection(apiBaseUrl);
@@ -227,7 +283,7 @@ export function useBackendConnection(
     }, heartbeatIntervalMs);
 
     return () => clearInterval(timer);
-  }, [enableHeartbeat, isConnected, apiBaseUrl, heartbeatIntervalMs, testConnection]);
+  }, [enableHeartbeat, apiBaseUrl, heartbeatIntervalMs, testConnection]);
 
   // Auto-detect local backend on mount if requested and currently offline
   useEffect(() => {
@@ -370,6 +426,8 @@ export function useBackendConnection(
       backendVersion,
       isVersionAligned,
       isWsConnected,
+      isNeuralReady,
+      readinessMessage,
       connect,
       disconnect,
       scanLocalPorts,
@@ -393,6 +451,8 @@ export function useBackendConnection(
       backendVersion,
       isVersionAligned,
       isWsConnected,
+      isNeuralReady,
+      readinessMessage,
       connect,
       disconnect,
       scanLocalPorts,

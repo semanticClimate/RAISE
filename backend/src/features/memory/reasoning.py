@@ -131,8 +131,11 @@ class ReasoningMemory:
                 
             intersection = len(q_words.intersection(t_words))
             if intersection >= 2 and intersection > best_score:
-                best_score = intersection
-                best_match = t
+                # Prevent trajectory lock-in on follow-ups asking for specific names/details when prior trajectory did not
+                is_drilldown = any(w in q_words for w in ["names", "name", "list", "who", "members", "personnel", "invitees"]) and not any(w in t_words for w in ["names", "name", "list", "who", "members", "personnel", "invitees"])
+                if not is_drilldown:
+                    best_score = intersection
+                    best_match = t
 
         return best_match
 

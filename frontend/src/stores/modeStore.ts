@@ -30,6 +30,10 @@ interface ModeState {
   capabilities: BackendCapabilities | null;
   isProbing: boolean;
   probeError: string | null;
+  isNeuralReady: boolean;
+  readinessMessage: string | null;
+  consecutiveFailures: number;
+  isDegraded: boolean;
 
   setConfigMode: (mode: ConfigMode) => void;
   setBaseUrl: (url: string) => void;
@@ -37,6 +41,7 @@ interface ModeState {
   setApiKey: (key: string) => void;
   clearTunnelUrl: () => void;
   runCapabilityProbe: () => Promise<void>;
+  checkReadiness: () => Promise<boolean>;
   testConnection: (customUrl?: string) => Promise<{
     success: boolean;
     status: number;
@@ -77,12 +82,19 @@ export const useModeStore = create<ModeState>((set, get) => ({
   apiBaseUrl: getApiBaseUrl(),
   gatewayUsername: getStoredUsername(),
   apiKey: getStoredApiKey(),
-  isTunnelConfigured: Boolean(initialTunnel && initialTunnel.trim() !== ''),
+  isTunnelConfigured: Boolean(
+    (initialTunnel && initialTunnel.trim() !== '') ||
+    (config.apiBaseUrl && config.apiBaseUrl.trim() !== '')
+  ),
   latencyMs: 0,
   lastConnectedAt: getStoredLastConnectedAt(),
   capabilities: null,
   isProbing: false,
   probeError: null,
+  isNeuralReady: true,
+  readinessMessage: null,
+  consecutiveFailures: 0,
+  isDegraded: false,
 
   setConfigMode: (mode: ConfigMode) => {
     setApiMode(mode);
@@ -127,6 +139,8 @@ export const useModeStore = create<ModeState>((set, get) => ({
       capabilities: null,
       latencyMs: 0,
       probeError: null,
+      consecutiveFailures: 0,
+      isDegraded: false,
     });
   },
 
@@ -163,15 +177,34 @@ export const useModeStore = create<ModeState>((set, get) => ({
         details: `Target was: ${target}`,
       });
     }
-    if (result.success) {
+
+    const isSuccess = result.success;
+    const prevFailures = get().consecutiveFailures || 0;
+    const consecutiveFailures = isSuccess ? 0 : prevFailures + 1;
+
+    let computedMode: AppMode = get().appMode;
+    let isDegraded = false;
+
+    if (isSuccess) {
+      computedMode = 'connected';
       setStoredLastConnectedAt();
+    } else if (consecutiveFailures < 3 && (get().appMode === 'connected' || get().appMode === 'degraded')) {
+      // Keep workstation operational during transient Docling/RAG compute congestion
+      computedMode = 'connected';
+      isDegraded = true;
+    } else {
+      computedMode = 'offline';
+      isDegraded = false;
     }
+
     set({
       isProbing: false,
+      consecutiveFailures,
+      isDegraded,
       latencyMs: result.latencyMs,
-      appMode: result.success ? 'connected' : 'offline',
-      probeError: result.error || null,
-      lastConnectedAt: result.success ? Date.now() : get().lastConnectedAt,
+      appMode: computedMode,
+      probeError: isSuccess ? null : (result.error || null),
+      lastConnectedAt: isSuccess ? Date.now() : get().lastConnectedAt,
     });
     return result;
   },
@@ -206,7 +239,8 @@ export const useModeStore = create<ModeState>((set, get) => ({
       return;
     }
 
-    if (!isTunnelConfigured) {
+    const targetUrl = get().apiBaseUrl || config.apiBaseUrl;
+    if (!isTunnelConfigured && !targetUrl) {
       set({
         appMode: 'offline',
         capabilities: null,
@@ -225,7 +259,34 @@ export const useModeStore = create<ModeState>((set, get) => ({
       if (caps.apiReachable) {
         computedMode = 'connected';
         setStoredLastConnectedAt();
+        get().checkReadiness();
       } else {
+        // Fast fallback probe to local gateway if a remote/tunnel URL failed
+        const currentTarget = get().apiBaseUrl || config.apiBaseUrl;
+        if (
+          currentTarget &&
+          !currentTarget.includes('127.0.0.1:8000') &&
+          !currentTarget.includes('localhost:8000')
+        ) {
+          try {
+            const fallbackRes = await systemService.testConnection('http://127.0.0.1:8000');
+            if (fallbackRes.success) {
+              get().clearTunnelUrl();
+              const localCaps = await systemService.probeCapabilities();
+              if (localCaps.apiReachable) {
+                set({
+                  capabilities: localCaps,
+                  appMode: 'connected',
+                  latencyMs: localCaps.latencyMs,
+                  isProbing: false,
+                  lastConnectedAt: Date.now(),
+                });
+                get().checkReadiness();
+                return;
+              }
+            }
+          } catch {}
+        }
         computedMode = 'offline';
       }
 
@@ -237,12 +298,64 @@ export const useModeStore = create<ModeState>((set, get) => ({
         lastConnectedAt: caps.apiReachable ? Date.now() : get().lastConnectedAt,
       });
     } catch (err: unknown) {
+      // Fast fallback probe to local gateway on network error / timeout
+      const currentTarget = get().apiBaseUrl || config.apiBaseUrl;
+      if (
+        currentTarget &&
+        !currentTarget.includes('127.0.0.1:8000') &&
+        !currentTarget.includes('localhost:8000')
+      ) {
+        try {
+          const fallbackRes = await systemService.testConnection('http://127.0.0.1:8000');
+          if (fallbackRes.success) {
+            get().clearTunnelUrl();
+            const localCaps = await systemService.probeCapabilities();
+            if (localCaps.apiReachable) {
+              set({
+                capabilities: localCaps,
+                appMode: 'connected',
+                latencyMs: localCaps.latencyMs,
+                isProbing: false,
+                lastConnectedAt: Date.now(),
+              });
+              get().checkReadiness();
+              return;
+            }
+          }
+        } catch {}
+      }
+
       set({
         capabilities: null,
         appMode: 'offline',
         isProbing: false,
         probeError: err instanceof Error ? err.message : String(err ?? 'Capability probe failed'),
       });
+    }
+  },
+
+  checkReadiness: async () => {
+    const targetUrl = get().apiBaseUrl || config.apiBaseUrl;
+    if (!targetUrl) return true;
+    try {
+      const res = await systemService.checkReadiness(targetUrl);
+      if (res.ready) {
+        set({ isNeuralReady: true, readinessMessage: null });
+        return true;
+      }
+      set({
+        isNeuralReady: false,
+        readinessMessage: res.message || 'Warming up AI neural models (embeddings, reranker, NLI)...',
+      });
+      setTimeout(() => {
+        if (get().appMode === 'connected' || get().appMode === 'degraded') {
+          get().checkReadiness();
+        }
+      }, 2500);
+      return false;
+    } catch {
+      set({ isNeuralReady: true, readinessMessage: null });
+      return true;
     }
   },
 }));

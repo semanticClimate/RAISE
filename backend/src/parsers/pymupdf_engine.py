@@ -64,7 +64,7 @@ class PyMuPDFParserEngine:
                 for idx in indices:
                     if len(doc[idx].get_text("text").strip()) < 20:
                         scanned_count += 1
-                return scanned_count > 0
+                return scanned_count > (len(indices) // 2)
         except Exception:
             return True
 
@@ -72,6 +72,8 @@ class PyMuPDFParserEngine:
         self,
         pdf_path: Path | str,
         max_pages: Optional[int] = None,
+        extract_tables: bool = True,
+        do_ocr: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Executes high-speed geometric parsing on the target PDF.
@@ -93,17 +95,46 @@ class PyMuPDFParserEngine:
         for pno in range(pages_to_process):
             page = doc[pno]
             
-            # Extract blocks geometrically (x0, y0, x1, y1)
+            # Extract embedded tables geometrically
+            table_count = 0
+            table_blocks = []
+            table_bboxes = []
+            if extract_tables:
+                try:
+                    tables = page.find_tables()
+                    if tables and len(tables.tables) > 0:
+                        table_count = len(tables.tables)
+                        for t in tables:
+                            df = t.extract()
+                            if df and len(df) > 1:
+                                header = [str(c or '').replace('\n', ' ').strip() for c in df[0]]
+                                t_md = "\n| " + " | ".join(header) + " |\n"
+                                t_md += "| " + " | ".join(["---"] * len(header)) + " |\n"
+                                for row in df[1:]:
+                                    clean_row = [str(c or '').replace('\n', ' ').strip() for c in row]
+                                    t_md += "| " + " | ".join(clean_row) + " |\n"
+                                table_blocks.append((t.bbox[0], t.bbox[1], t.bbox[2], t.bbox[3], t_md.strip()))
+                                table_bboxes.append(t.bbox)
+                except Exception:
+                    pass
+
+            # Extract text blocks geometrically (x0, y0, x1, y1), filtering out cell fragments inside table bboxes
             blocks = page.get_text("blocks")
-            blocks.sort(key=lambda b: (b[1], b[0]))
-            block_texts = []
+            filtered_blocks = []
             for b in blocks:
                 if len(b) >= 5 and b[4] and b[4].strip():
-                    block_texts.append(b[4].strip())
-            raw_text = "\n\n".join(block_texts) if block_texts else page.get_text("text").strip()
+                    bx_center = (b[0] + b[2]) / 2
+                    by_center = (b[1] + b[3]) / 2
+                    in_table = any(tb[0] <= bx_center <= tb[2] and tb[1] <= by_center <= tb[3] for tb in table_bboxes)
+                    if not in_table:
+                        filtered_blocks.append(b)
+
+            all_items = filtered_blocks + table_blocks
+            all_items.sort(key=lambda item: (item[1], item[0]))
+            raw_text = "\n\n".join(item[4].strip() for item in all_items) if all_items else page.get_text("text").strip()
             
-            # 1. OCR fallback for scanned report pages BEFORE length filtering
-            if len(raw_text.strip()) < 80 and len(page.get_images()) > 0:
+            # 1. OCR fallback for scanned report pages BEFORE length filtering (only when requested)
+            if do_ocr and len(raw_text.strip()) < 80 and len(page.get_images()) > 0:
                 ocr_reader = self._get_ocr_reader()
                 if ocr_reader is not None:
                     try:
@@ -139,24 +170,6 @@ class PyMuPDFParserEngine:
                     if m_p:
                         doc_page_number = m_p.group(1)
                         break
-
-            # Extract embedded tables
-            table_count = 0
-            try:
-                tables = page.find_tables()
-                if tables and len(tables.tables) > 0:
-                    table_count = len(tables.tables)
-                    for t in tables:
-                        df = t.extract()
-                        if df and len(df) > 1:
-                            header = df[0]
-                            t_md = "\n| " + " | ".join(str(c or "") for c in header) + " |\n"
-                            t_md += "| " + " | ".join(["---"] * len(header)) + " |\n"
-                            for row in df[1:]:
-                                t_md += "| " + " | ".join(str(c or "") for c in row) + " |\n"
-                            raw_text += f"\n\n### Extracted Table Data:\n{t_md}"
-            except Exception:
-                pass
 
             has_table = table_count > 0 or ("| --- |" in raw_text)
             lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
@@ -206,23 +219,43 @@ class PyMuPDFParserEngine:
             heading = "Table of Contents" if is_toc else f"Section (Page {pno+1})"
 
             # Numbered section headers
-            sec_num_match = re.search(r"\b(\d+\.\d+\s+[A-Z][A-Za-z\s&–—,()]{3,55})\b", raw_text)
+            sec_num_match = re.search(r"\b([1-9]\d{0,1}\.\d{1,2}(?:\.\d{1,2})?\s+[A-Z][A-Za-z\s&–—,()]{3,55})\b", raw_text)
+            if sec_num_match and any(kw in sec_num_match.group(0).lower() for kw in ("fee", "payment", "rupee", "inr", "usd", "amount", "paid", "due", "total", "confirm", "declaration")):
+                sec_num_match = None
             if not is_toc and sec_num_match:
                 heading = re.sub(r"\s+", " ", sec_num_match.group(1)).strip()[:70]
             elif not is_toc:
                 ocr_sec_match = re.search(r"\b1([1-9])\s+((?:Board of Governors|Finance Committee|The Senate|Administration|Historical Purview|List of the Departments)[A-Za-z\s&–—,()]*)\b", raw_text, re.IGNORECASE)
+                gov_match = re.search(r"\b((?:Board of Governors|Finance Committee|The Senate|Council Nominees|Senate Nominees|Administration|Historical Purview))\b", raw_text, re.IGNORECASE)
                 if ocr_sec_match:
                     clean_sec_name = re.sub(r"\s+", " ", ocr_sec_match.group(2)).strip()[:60]
                     heading = f"1.{ocr_sec_match.group(1)} {clean_sec_name}"
+                elif gov_match and any(lead in raw_text.lower() for lead in ("the visitor", "board of governors", "council nominees")):
+                    clean_gov = gov_match.group(1).strip()
+                    first_l = lines[0].strip()[:30] if lines else ""
+                    if first_l.lower() != clean_gov.lower() and len(first_l) > 3:
+                        heading = f"{first_l} & {clean_gov}"[:70]
+                    else:
+                        heading = clean_gov
                 elif lines:
                     if lines[0].startswith("#"):
                         heading = lines[0].lstrip("#").strip()[:70]
                     else:
                         detected_h = None
-                        for line in lines[:5]:
-                            if line.isupper() and 4 <= len(line) <= 65 and not re.match(r"^PAGE\s*\d+$", line) and not line.startswith("ANNUAL REPORT"):
-                                detected_h = line[:70]
-                                break
+                        first_line = lines[0].strip() if lines else ""
+                        if (
+                            3 <= len(first_line) <= 65
+                            and not first_line.lower().startswith("annual report")
+                            and not re.match(r"^PAGE\s*\d+$", first_line, re.IGNORECASE)
+                            and not first_line.startswith(("-", "•", "–", "—", "&", "and "))
+                            and not (first_line.startswith("(") and first_line.endswith(")"))
+                        ):
+                            detected_h = first_line[:70]
+                        else:
+                            for line in lines[:5]:
+                                if (line.isupper() or line.istitle()) and 4 <= len(line) <= 65 and not re.match(r"^PAGE\s*\d+$", line) and not line.startswith("ANNUAL REPORT") and not (line.startswith("(") and line.endswith(")")):
+                                    detected_h = line[:70]
+                                    break
                         
                         first_line = lines[0]
                         is_frag = (
@@ -268,8 +301,8 @@ class PyMuPDFParserEngine:
                             "heading": sub_h,
                             "text": p_chunk,
                             "engine": "PyMuPDF High-Speed Parser",
-                            "tables_count": table_count if s_i == 0 else 0,
-                            "has_table": has_table if s_i == 0 else False
+                            "tables_count": 1 if ("| --- |" in p_chunk) else 0,
+                            "has_table": bool("| --- |" in p_chunk)
                         })
                     continue
 

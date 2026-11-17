@@ -25,16 +25,20 @@ class SynthesisNodesMixin:
         if telemetry:
             telemetry.start_stage("SYNTHESIS")
 
-        query = state.get("reformulated_query") or state.get("standalone_query") or state.get("original_query") or state.get("query", "")
+        # Always synthesize against the user's resolved standalone/original question, NOT the keyword-stuffed search string
+        query = state.get("standalone_query") or state.get("original_query") or state.get("query", "")
         active_docs = state.get("active_docs")
         doc_filter = state.get("document_filter")
         subgraph = state.get("subgraph", {})
+        relevant_chunks = list(state.get("relevant_chunks", []))
 
         plan = self.rag_engine.agent_router.analyze_query(query, active_docs=active_docs, doc_filter=doc_filter)
         if doc_filter:
             plan.retrieved_evidence["target_doc_filter"] = doc_filter
         plan.retrieved_evidence["subgraph"] = subgraph
-        plan.retrieved_evidence["chunks"] = state.get("relevant_chunks", [])
+        plan.retrieved_evidence["chunks"] = relevant_chunks
+        if state.get("accumulated_context"):
+            plan.retrieved_evidence["hop_observations"] = state.get("accumulated_context")
         executed_plan = self.rag_engine.agent_router.execute_plan(plan, active_docs=active_docs)
 
         plan_chunks = executed_plan.retrieved_evidence.get("chunks", [])

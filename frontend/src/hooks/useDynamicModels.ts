@@ -10,6 +10,9 @@ export interface DynamicModelItem {
   status: string;
   isActive: boolean;
   tier?: string;
+  id?: string;
+  downloadSizeGb?: number;
+  minRamGb?: number;
 }
 
 export interface UseDynamicModelsResult {
@@ -24,35 +27,41 @@ export interface UseDynamicModelsResult {
 }
 
 /**
- * Dynamic Model Catalog Hook
- * =========================
- * Subscribes to live backend endpoints (/api/system/dynamic-llms and /api/system/models/discovered)
- * backed by ModelDiscoveryEngine.
- * Model options update in real time based on active API keys without hardcoding model lists.
+ * Dynamic Model Registry Hook
+ * ============================
+ * Consumes /api/system/models dynamically from the live backend provider router
+ * and catalog services. Zero hardcoded labels or static model lists.
  */
 export function useDynamicModels(): UseDynamicModelsResult {
-  const isConnected = useModeStore((s) => s.appMode === 'connected');
+  const isConnected = useModeStore((s) => s.appMode === 'connected' || s.appMode === 'degraded');
   const queryClient = useQueryClient();
 
-  // Query 1: Actively configured LLM providers & their preferred models
-  const dynamicLLMsQuery = useQuery({
-    queryKey: ['system', 'dynamic-llms'],
+  // Query 1: Dynamic Models Registry (/api/system/models)
+  const systemModelsQuery = useQuery({
+    queryKey: ['system', 'models'],
     queryFn: async ({ signal }) => {
-      const res = await systemService.getDynamicLLMs(signal);
-      if (res.data && Array.isArray(res.data)) {
-        return (res.data as unknown[]).map((m: unknown) => {
-          const item = m && typeof m === 'object' ? (m as Record<string, unknown>) : {};
-          return {
-            provider: String(item.provider || 'unknown'),
-            displayName: String(item.displayName || item.display_name || item.provider || 'Model'),
-            model: String(item.model || 'default'),
-            status: String(item.status || 'READY'),
-            isActive: Boolean(item.isActive ?? item.is_active),
-            tier: item.tier ? String(item.tier) : undefined,
-          };
-        }) as DynamicModelItem[];
+      // Primary: /api/system/models?include_catalog=true
+      const res = await systemService.getSystemModels(true, signal);
+      const raw = res.data;
+
+      // Extract array of active models from either list or dictionary response
+      const list: any[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as any)?.models)
+          ? (raw as any).models
+          : Array.isArray((raw as any)?.dynamic_llms)
+            ? (raw as any).dynamic_llms
+            : [];
+
+      // If /api/system/models returned nothing, try fallback to /api/system/dynamic-llms
+      if (list.length === 0) {
+        const fallbackRes = await systemService.getDynamicLLMs(signal);
+        if (Array.isArray(fallbackRes.data)) {
+          return fallbackRes.data.map(parseDynamicModelItem);
+        }
       }
-      return [] as DynamicModelItem[];
+
+      return list.map(parseDynamicModelItem);
     },
     enabled: isConnected,
     refetchInterval: 30_000,
@@ -63,6 +72,12 @@ export function useDynamicModels(): UseDynamicModelsResult {
   const discoveredQuery = useQuery({
     queryKey: ['system', 'models-discovered'],
     queryFn: async ({ signal }) => {
+      // Check if primary query already cached providers
+      const cached = queryClient.getQueryData<any>(['system', 'models']);
+      if (cached && typeof cached === 'object' && cached.providers && typeof cached.providers === 'object') {
+        return cached.providers as Record<string, string[]>;
+      }
+
       const res = await systemService.getDiscoveredModels(undefined, signal);
       const resData = res.data && typeof res.data === 'object' ? (res.data as Record<string, unknown>) : null;
       if (resData?.providers && typeof resData.providers === 'object') {
@@ -75,19 +90,24 @@ export function useDynamicModels(): UseDynamicModelsResult {
     staleTime: 30_000,
   });
 
-  const models = useMemo(() => dynamicLLMsQuery.data ?? [], [dynamicLLMsQuery.data]);
+  const models = useMemo(() => systemModelsQuery.data ?? [], [systemModelsQuery.data]);
   const discoveredProviders = useMemo(() => discoveredQuery.data ?? {}, [discoveredQuery.data]);
 
-  const activeItem = useMemo(() => {
-    return models.find((m) => m.isActive) || (models.length > 0 ? models[0] : null);
+  const readyModels = useMemo(() => {
+    return models.filter((m) => m.status === 'READY');
   }, [models]);
+
+  const activeItem = useMemo(() => {
+    return readyModels.find((m) => m.isActive) || (readyModels.length > 0 ? readyModels[0] : null);
+  }, [readyModels]);
 
   const activeModel = activeItem?.model ?? null;
   const activeProvider = activeItem?.provider ?? null;
-  const hasActiveModel = models.some((m) => m.status === 'READY' || m.isActive);
+  const hasActiveModel = readyModels.length > 0;
 
   const refetch = useCallback(async () => {
     await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['system', 'models'] }),
       queryClient.invalidateQueries({ queryKey: ['system', 'dynamic-llms'] }),
       queryClient.invalidateQueries({ queryKey: ['system', 'models-discovered'] }),
     ]);
@@ -99,8 +119,42 @@ export function useDynamicModels(): UseDynamicModelsResult {
     activeModel,
     activeProvider,
     hasActiveModel,
-    isLoading: dynamicLLMsQuery.isLoading,
-    isError: dynamicLLMsQuery.isError,
+    isLoading: systemModelsQuery.isLoading,
+    isError: systemModelsQuery.isError,
     refetch,
+  };
+}
+
+/**
+ * Pure dynamic mapper: extracts fields directly from backend response without hardcoded labels.
+ */
+function parseDynamicModelItem(item: any): DynamicModelItem {
+  const obj = item && typeof item === 'object' ? item : {};
+  const provider = String(obj.provider || obj.provider_id || obj.service || 'unknown');
+  const model = String(obj.model || obj.id || obj.model_name || obj.name || '');
+  const displayName = String(
+    obj.displayName ||
+    obj.display_name ||
+    obj.name ||
+    obj.title ||
+    model ||
+    provider
+  );
+  const status = String(obj.status || (obj.online ? 'READY' : 'LOCAL_OFFLINE'));
+  const isActive = Boolean(obj.isActive ?? obj.is_active ?? obj.active);
+  const tier = obj.tier ? String(obj.tier) : undefined;
+  const downloadSizeGb = typeof obj.download_size_gb === 'number' ? obj.download_size_gb : undefined;
+  const minRamGb = typeof obj.min_ram_gb === 'number' ? obj.min_ram_gb : undefined;
+
+  return {
+    provider,
+    displayName,
+    model,
+    status,
+    isActive,
+    tier,
+    id: obj.id ? String(obj.id) : model,
+    downloadSizeGb,
+    minRamGb,
   };
 }

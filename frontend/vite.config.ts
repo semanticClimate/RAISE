@@ -45,6 +45,16 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     host: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:8000',
+        ws: true,
+      },
+    },
     watch: {
       ignored: [
         '**/*.md',
@@ -75,6 +85,9 @@ export default defineConfig({
           }
           if (id.includes('node_modules/lucide-react/')) {
             return 'vendor-icons';
+          }
+          if (id.includes('node_modules/katex/')) {
+            return 'vendor-katex';
           }
           if (id.includes('node_modules/zod/') || id.includes('node_modules/zustand/')) {
             return 'vendor-utils';

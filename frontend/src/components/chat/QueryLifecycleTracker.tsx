@@ -1,29 +1,41 @@
 import { Sparkles } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
+import { formatThoughtDuration } from './thoughtDurationUtils';
 
 /**
  * Mapping table from backend stages to user-friendly thoughts.
  */
-export const STAGE_THOUGHT_MAP: Record<string, string> = {
+const STAGE_THOUGHT_MAP: Record<string, string> = {
   RECEIVED: 'Thinking...',
-  ROUTING: 'Thinking...',
-  QUERY_DECOMPOSITION: 'Thinking...',
-  VECTOR_RETRIEVAL: 'Searching documents...',
-  GRAPH_RETRIEVAL: 'Searching documents...',
-  FUSION: 'Reviewing sources...',
-  RERANKING: 'Reviewing sources...',
-  SYNTHESIS: 'Generating response...',
+  QUERY_INTAKE: 'Analyzing query intent & entities...',
+  INTAKE: 'Analyzing query intent & entities...',
+  ROUTING: 'Routing query strategy...',
+  CONVERSATIONAL: 'Conversational dialogue...',
+  PERSONA: 'Persona memory synthesis...',
+  COREFERENCE_RESOLUTION: 'Resolving entities & context...',
+  QUERY_DECOMPOSITION: 'Decomposing sub-questions...',
+  VECTOR_RETRIEVAL: 'Dense vector retrieval...',
+  VECTOR: 'Dense vector retrieval...',
+  RETRIEVAL: 'Dense vector retrieval...',
+  RETRIEVE: 'Dense vector retrieval...',
+  BM25_RETRIEVAL: 'Keyword & lexical indexing...',
+  BM25: 'Keyword & lexical indexing...',
+  GRAPH_RETRIEVAL: 'Traversing knowledge graph...',
+  GRAPH: 'Traversing knowledge graph...',
+  FUSION: 'Reciprocal rank fusion...',
+  RERANKING: 'Cross-encoder reranking...',
+  RERANK: 'Cross-encoder reranking...',
+  RERANKER: 'Cross-encoder reranking...',
+  SYNTHESIS: 'Synthesizing verified response...',
+  SYNTHESIZE: 'Synthesizing verified response...',
+  GENERATE: 'Synthesizing verified response...',
+  GENERATION: 'Synthesizing verified response...',
+  QUALITY_GATE: 'Verifying factual grounding...',
+  EVALUATION: 'Verifying factual grounding...',
+  NLI_VERIFIER: 'Verifying factual grounding...',
+  COMPLETED: 'Response finalized',
 };
-
-export const RESEARCH_STEPS = [
-  { key: 'ROUTING', label: 'Thinking...' },
-  { key: 'QUERY_DECOMPOSITION', label: 'Thinking...' },
-  { key: 'VECTOR_RETRIEVAL', label: 'Searching documents...' },
-  { key: 'GRAPH_RETRIEVAL', label: 'Searching documents...' },
-  { key: 'FUSION', label: 'Reviewing sources...' },
-  { key: 'SYNTHESIS', label: 'Generating response...' },
-];
 
 export interface QueryLifecycleTrackerProps {
   query?: string;
@@ -38,7 +50,7 @@ export interface QueryLifecycleTrackerProps {
  * Resolves the active friendly status phrase from either an explicit stage
  * or the elapsed time during autonomous pipeline execution.
  */
-export function getFriendlyThought(stage?: string, elapsedSec = 0): string {
+function getFriendlyThought(stage?: string, elapsedSec = 0): string {
   if (stage) {
     const normalized = stage.toUpperCase().trim();
     if (STAGE_THOUGHT_MAP[normalized]) {
@@ -64,30 +76,6 @@ export function getFriendlyThought(stage?: string, elapsedSec = 0): string {
   return STAGE_THOUGHT_MAP.ROUTING;
 }
 
-/**
- * Formats elapsed duration into human-readable seconds or milliseconds based strictly
- * on actual measured execution time (never hardcoded):
- * - When durationSec is invalid or <= 0, returns null
- * - When < 1s, outputs e.g. "450ms"
- * - When >= 1s and < 60s, outputs e.g. "1.8s"
- * - When >= 60s, outputs e.g. "1m 12s"
- */
-export function formatThoughtDuration(durationSec?: number | null): string | null {
-  if (typeof durationSec !== 'number' || Number.isNaN(durationSec) || durationSec <= 0) {
-    return null;
-  }
-  if (durationSec < 1) {
-    const ms = Math.round(durationSec * 1000);
-    return `${Math.max(ms, 1)}ms`;
-  }
-  if (durationSec >= 60) {
-    const mins = Math.floor(durationSec / 60);
-    const secs = Math.round(durationSec % 60);
-    return `${mins}m ${secs}s`;
-  }
-  return `${durationSec.toFixed(1)}s`;
-}
-
 export interface ThoughtDurationProps {
   executionTimeSec?: number | null;
   decomposedQueries?: string[];
@@ -101,27 +89,81 @@ export interface ThoughtDurationProps {
 
 /**
  * Clean Thought Badge (Gemini / ChatGPT style):
- * Displays above the AI response card: `✦ Thought for {X}s` (or `✦ Thought` if no duration recorded).
- * Does not show any expandable accordion or fake hardcoded durations.
+ * Displays above the AI response card: `✦ Thought for {X}s` based strictly on genuine measured duration.
  */
 export const ThoughtDuration: React.FC<ThoughtDurationProps> = ({
   executionTimeSec,
+  decomposedQueries: _decomposedQueries,
   className = '',
 }) => {
-  const formattedTime = formatThoughtDuration(executionTimeSec) || '1.4s';
+  const formattedTime = formatThoughtDuration(executionTimeSec);
+  if (!formattedTime) return null;
 
   return (
     <div
       className={`thought-duration-container mb-2 ml-0.5 select-none ${className}`}
       data-testid="thought-duration"
+      role="status"
     >
       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/10 shadow-2xs">
+        <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
+        <span>Thought for {formattedTime}</span>
+      </div>
+    </div>
+  );
+};
+
+export interface LiveThoughtDurationProps {
+  startTimeMs: number;
+  stage?: string;
+  stageLabel?: string;
+  className?: string;
+}
+
+/**
+ * Live Thought Duration:
+ * Renders immediately when query begins, ticking live elapsed seconds in active present tense
+ * with dynamic stage phrasing matching the active execution pipeline phase.
+ */
+export const LiveThoughtDuration: React.FC<LiveThoughtDurationProps> = ({
+  startTimeMs,
+  stage,
+  stageLabel,
+  className = '',
+}) => {
+  const [elapsed, setElapsed] = useState<number>(() =>
+    Math.max(0.1, Number(((performance.now() - startTimeMs) / 1000).toFixed(1)))
+  );
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed(
+        Math.max(0.1, Number(((performance.now() - startTimeMs) / 1000).toFixed(1)))
+      );
+    }, 100);
+    return () => clearInterval(timer);
+  }, [startTimeMs]);
+
+  const activeLabel =
+    stageLabel?.trim() ||
+    (stage && STAGE_THOUGHT_MAP[stage.toUpperCase().trim()]) ||
+    getFriendlyThought(stage, elapsed) ||
+    'Thinking...';
+
+  return (
+    <div
+      className={`thought-duration-container mb-2 ml-0.5 select-none ${className}`}
+      data-testid="live-thought-duration"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-500/10 border border-indigo-200/80 dark:border-indigo-500/20 shadow-2xs">
         <Sparkles
-          className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0"
+          className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 animate-spin"
           aria-hidden="true"
         />
         <span className="font-medium tracking-tight">
-          Thought for {formattedTime}
+          {activeLabel} ({elapsed.toFixed(1)}s)
         </span>
       </div>
     </div>

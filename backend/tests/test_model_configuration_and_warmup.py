@@ -19,7 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from src.core.config import Settings, VectorConfig, RerankerConfig, NLIConfig
+from src.core.config import Settings, VectorConfig, RerankerConfig, NLIConfig, models
 from src.retrieval.reranker import CrossEncoderReranker
 from src.features.evaluation.nli_verifier import FineCatNLIVerifier
 from src.infrastructure.model_warmup import warmup_all_neural_models
@@ -32,21 +32,22 @@ def test_typed_configuration_defaults_and_env():
     assert hasattr(cfg, "reranker")
     assert hasattr(cfg, "nli")
 
-    assert cfg.vector.embedding_model == os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2")
+    assert cfg.vector.embedding_model == os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME)
     assert cfg.vector.embedding_device == os.getenv("EMBEDDING_DEVICE", "cuda")
-    assert cfg.reranker.model_name == os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5")
+    assert cfg.reranker.model_name == os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME)
     assert cfg.reranker.device == os.getenv("RERANKER_DEVICE", "cuda")
-    assert cfg.nli.model_name == os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l")
+    assert cfg.nli.model_name == os.getenv("NLI_MODEL", models.NLI_MODEL_NAME)
     assert cfg.nli.device == os.getenv("NLI_DEVICE", "cuda")
 
 
 def test_cross_encoder_reranker_dynamic_model_selection(monkeypatch):
     """Verify that CrossEncoderReranker respects custom model names and devices."""
-    monkeypatch.setenv("RERANKER_MODEL", "custom-org/my-custom-reranker")
+    custom_test_model = "custom_test_checkpoint"
+    monkeypatch.setenv("RERANKER_MODEL", custom_test_model)
     monkeypatch.setenv("RERANKER_DEVICE", "cpu")
 
     reranker = CrossEncoderReranker()
-    assert reranker.model_name == "custom-org/my-custom-reranker"
+    assert reranker.model_name == custom_test_model
     assert reranker.device == "cpu"
 
 
@@ -114,3 +115,20 @@ def test_warmup_all_neural_models_execution():
     assert isinstance(latencies, dict)
     # At least embedding or reranker should be pre-warmed
     assert any(k in latencies for k in ["embedding", "reranker", "nli"])
+
+
+def test_readiness_probe_and_endpoint():
+    """Verify that is_neural_stack_ready() reflects state and /api/ready endpoint responds correctly."""
+    from src.infrastructure.model_warmup import is_neural_stack_ready
+    from app import app
+    from fastapi.testclient import TestClient
+
+    ready = is_neural_stack_ready()
+    assert isinstance(ready, bool)
+
+    client = TestClient(app)
+    resp = client.get("/api/ready")
+    assert resp.status_code in [200, 503]
+    data = resp.json()
+    assert "ready" in data
+    assert "status" in data

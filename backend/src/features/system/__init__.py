@@ -1,7 +1,7 @@
 """RAISE System Feature Package."""
 from .service import DeveloperOperator
 from .optimization import ContextBudgetManager, ContextBudgetPlan, TieredQueryResultCache
-from .schemas import SystemConfigRequest, ModelPullRequest, PreflightDownloadRequest
+from .schemas import SystemConfigRequest, ModelPullRequest, PreflightDownloadRequest, RoutingUpdateRequest
 from .telemetry_service import get_hardware_telemetry
 from .connection_service import (
     test_all_connections,
@@ -23,6 +23,7 @@ from .model_catalog_service import get_dynamic_model_catalog
 from .config_service import (
     get_current_configuration,
     save_configuration,
+    persist_routing_env,
     mask_secret,
 )
 

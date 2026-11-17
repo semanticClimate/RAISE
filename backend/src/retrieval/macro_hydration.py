@@ -39,12 +39,11 @@ def get_parent_chunks_cache() -> Dict[str, Dict[str, Any]]:
     if _PARENT_CHUNKS_CACHE is not None:
         return _PARENT_CHUNKS_CACHE
 
+    from src.core.config import CHUNKS_DIR
     cache: Dict[str, Dict[str, Any]] = {}
     base_dirs = [
+        CHUNKS_DIR,
         Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "chunks",
-        Path(__file__).resolve().parent.parent / "data" / "processed" / "chunks",
-        Path("backend/data/processed/chunks"),
-        Path("data/processed/chunks"),
     ]
     for bdir in base_dirs:
         if bdir.exists():
@@ -111,6 +110,11 @@ def hydrate_macro_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                         cur_pages = meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else [])
                         meta["source_pages"] = sorted(list(set(cur_pages + next_pages)))
 
+            child_text = c.get("plain_text") or c.get("text") or ""
+            # If child chunk contains a structured markdown table and parent does not, preserve the structured table
+            if ("|" in child_text and ("| :---" in child_text or "-|-" in child_text or c.get("is_table"))) and ("| :---" not in parent_text and "-|-" not in parent_text):
+                parent_text = f"{parent_text}\n\n{child_text}".strip()
+
             c_copy["text"] = parent_text
             c_copy["plain_text"] = parent_text
             meta["parent_chunk_id"] = parent_id
@@ -122,22 +126,31 @@ def hydrate_macro_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if "printed_page" not in meta and p_obj.get("printed_page"):
                 meta["printed_page"] = p_obj["printed_page"]
 
-            # Also check for embedded folio headers (e.g. document title/folio pipes: "Title | 43" or "43 | Title")
-            folio_matches = re.findall(
-                r"(?:[A-Za-z0-9\s\-–]{2,40}\s*\|\s*(\d{1,4})|(\d{1,4})\s*\|\s*[A-Za-z0-9\s\-–]{2,40}|\|\s*(\d{1,4})\s*\|)",
-                parent_text,
-                re.IGNORECASE,
-            )
-            if folio_matches:
-                cur_pages = meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else [])
-                for fm in folio_matches:
-                    for g in fm:
-                        if g and g.isdigit():
-                            p_val = int(g)
-                            if 1 <= p_val <= 400:
-                                cur_pages.append(p_val)
-                meta["source_pages"] = sorted(list(set(cur_pages)))
+            # Ensure source_pages is preserved from the parent section
+            if p_obj.get("source_pages"):
+                meta["source_pages"] = list(p_obj["source_pages"])
                 c_copy["source_pages"] = meta["source_pages"]
+
+            # Also check for embedded folio headers on non-table header lines (skip TOC and markdown table grids)
+            is_toc = any(kw in str(meta.get("heading", "")).lower() for kw in ("contents", "index", "table of contents"))
+            if not is_toc and "### Table:" not in parent_text:
+                non_table_lines = [l for l in parent_text.splitlines() if not l.strip().startswith("|") and l.count("|") == 1]
+                if non_table_lines:
+                    folio_matches = re.findall(
+                        r"(?:^[A-Za-z0-9\s\-–]{2,40}\s*\|\s*(\d{1,4})$|^(\d{1,4})\s*\|\s*[A-Za-z0-9\s\-–]{2,40}$)",
+                        "\n".join(non_table_lines),
+                        re.IGNORECASE | re.MULTILINE,
+                    )
+                    if folio_matches:
+                        cur_pages = list(meta.get("source_pages") or ([meta.get("primary_page")] if meta.get("primary_page") else []))
+                        for fm in folio_matches:
+                            for g in fm:
+                                if g and g.isdigit():
+                                    p_val = int(g)
+                                    if 1 <= p_val <= 400:
+                                        cur_pages.append(p_val)
+                        meta["source_pages"] = sorted(list(set(cur_pages)))
+                        c_copy["source_pages"] = meta["source_pages"]
 
             c_copy["metadata"] = meta
             hydrated.append(c_copy)

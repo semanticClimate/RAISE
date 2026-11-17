@@ -18,6 +18,7 @@ import os
 import re
 import urllib.request
 from typing import Any, List, Optional
+from src.core.config import models
 
 try:
     from llama_index.core.question_gen.types import SubQuestion
@@ -67,13 +68,17 @@ class QueryDecomposerNode:
             return llm_subqueries[:3]
 
         # 2. Rule-Based Deterministic Decomposition
-        parts = re.split(r"(?i)\s+(?:and|as well as|along with)\s+|;\s*|\?\s*", q_clean)
-        sub_queries = [p.strip() for p in parts if p.strip() and len(p.strip()) > 8]
+        # Only split on semicolons, multiple question marks, or conjunctions followed by an interrogative/imperative
+        # e.g., "What is X? What is Y?" or "What is X; what is Y?" or "What is X and what is Y?"
+        # Never split compound noun phrases like "global and India position", "science and technology", or "revenue and expenses"
+        interrogative_pattern = r"(?i)\s+(?:;\s*|\?\s+|(?:and|as well as|along with)\s+(?=(?:who|what|which|where|when|why|how|list|find|show|calculate|compare)\b))"
+        parts = re.split(interrogative_pattern, q_clean)
+        sub_queries = [p.strip(" ?;.") for p in parts if len(p.strip()) > 10]
 
         if len(sub_queries) > 1:
             reconstructed = []
             for sq in sub_queries[:3]:
-                if not re.match(r"^(who|what|when|where|why|how|list|find)\b", sq, re.IGNORECASE):
+                if not re.match(r"^(who|what|when|where|why|how|which|list|find)\b", sq, re.IGNORECASE):
                     reconstructed.append(f"Find details on {sq}")
                 else:
                     reconstructed.append(sq if sq.endswith("?") else f"{sq}?")
@@ -102,7 +107,7 @@ class QueryDecomposerNode:
                 "[\"sub query 1\", \"sub query 2\"]. If not compound, return [\"original query\"]."
             )
             payload = json.dumps({
-                "model": os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"),
+                "model": os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME),
                 "messages": [
                     {"role": "system", "content": sys_msg},
                     {"role": "user", "content": query}

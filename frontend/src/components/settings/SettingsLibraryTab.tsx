@@ -1,7 +1,10 @@
+import { FolderSync } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { sourceService } from '../../services/SourceService';
 import { formatBytes } from '../../utils/formatters';
+import { getDocumentStageLabel } from '../../utils/documentStageUtils';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
+import { ExtractedDocumentModal } from '../library/ExtractedDocumentModal';
 
 export interface LibraryItem {
   id: string;
@@ -16,10 +19,16 @@ export interface LibraryItem {
   status: 'ready' | 'indexed' | 'processing' | 'error';
   color: 'rose' | 'indigo' | 'amber' | 'emerald';
   uploadProgress?: number;
+  phase?: string;
+  status_breadcrumb?: string;
   can_delete?: boolean;
   is_protected?: boolean;
   is_prebaked?: boolean;
   ownership?: string;
+  has_extracted_md?: boolean;
+  extracted_md_url?: string;
+  has_okf_catalog?: boolean;
+  okf_catalog_url?: string;
 }
 
 export const INITIAL_LIBRARY_ITEMS: LibraryItem[] = [];
@@ -45,6 +54,10 @@ export function documentItemToLibraryItem(doc: {
   is_protected?: boolean;
   can_delete?: boolean;
   deletable?: boolean;
+  has_extracted_md?: boolean;
+  extracted_md_url?: string;
+  has_okf_catalog?: boolean;
+  okf_catalog_url?: string;
 }): LibraryItem {
   const fname = doc.filename || doc.name || 'document';
   const ext = fname.split('.').pop()?.toLowerCase() || '';
@@ -98,11 +111,22 @@ export function documentItemToLibraryItem(doc: {
     pages: resolvedPages,
     chunks: resolvedChunks,
     status: isReady ? 'indexed' : isProcessing ? 'processing' : 'ready',
+    uploadProgress: typeof (doc as any).percent === 'number'
+      ? (doc as any).percent
+      : typeof (doc as any).progress_percent === 'number'
+        ? (doc as any).progress_percent
+        : undefined,
+    phase: (doc as any).phase,
+    status_breadcrumb: (doc as any).status_breadcrumb,
     color,
     ownership: doc.ownership || doc.owner || (isProtected ? 'system' : 'user'),
     is_prebaked: doc.is_prebaked || doc.is_prebuilt || isProtected,
     is_protected: isProtected,
     can_delete: canDelete,
+    has_extracted_md: doc.has_extracted_md,
+    extracted_md_url: doc.extracted_md_url,
+    has_okf_catalog: doc.has_okf_catalog,
+    okf_catalog_url: doc.okf_catalog_url,
   };
 }
 
@@ -158,7 +182,9 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   // Authoritative sync with GraphRAG backend: fetch live documents from GET /api/documents
   const fetchLibraryDocuments = React.useCallback(async () => {
     if (!isMountedRef.current) return;
-    setIsLoading(true);
+    if (items.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const resp = await sourceService.getDocuments();
       if (!isMountedRef.current) return;
@@ -204,10 +230,56 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, durationMs: number = 2500) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    if (durationMs > 0) {
+      toastTimeoutRef.current = setTimeout(() => {
+        setToastMessage(null);
+        toastTimeoutRef.current = null;
+      }, durationMs);
+    }
+  };
+
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [artifactModal, setArtifactModal] = useState<{
+    isOpen: boolean;
+    documentName: string;
+    type: 'markdown' | 'okf';
+    url?: string;
+  }>({
+    isOpen: false,
+    documentName: '',
+    type: 'markdown',
+  });
+
+  const handleViewPdf = (item: LibraryItem) => {
+    if (typeof window !== 'undefined') {
+      const pdfUrl = sourceService.getPdfUrl(item.name, 1);
+      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleScanFolder = async () => {
+    if (isScanning) return;
+    setIsScanning(true);
+    showToast('Scanning data/documents/ for newly added documents...', 0);
+    try {
+      await sourceService.scanDocuments();
+      await fetchLibraryDocuments();
+      showToast('Disk scan completed & library reconciled with data/documents/', 3000);
+    } catch (err: any) {
+      console.warn('Folder scan request completed:', err);
+      await fetchLibraryDocuments();
+      showToast('Folder scan completed', 2500);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   // Filter and sort items
@@ -313,14 +385,17 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
     }, 300);
 
     try {
-      const pdfFiles = files.filter((f) => f.name.endsWith('.pdf'));
-      if (pdfFiles.length > 0) {
-        const uploadRes = await sourceService.uploadPdfs(pdfFiles);
+      const validFiles = files.filter((f) => {
+        const ext = f.name.toLowerCase().split('.').pop() || '';
+        return ['pdf', 'txt', 'docx', 'csv', 'md', 'json', 'xlsx'].includes(ext);
+      });
+      if (validFiles.length > 0) {
+        const uploadRes = await sourceService.uploadPdfs(validFiles);
         if (uploadRes.error || uploadRes.status >= 400) {
           throw new Error(uploadRes.error?.message || 'Upload failed');
         }
       } else {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
       clearInterval(progressTimer);
       setItems((prev) =>
@@ -370,14 +445,25 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   };
 
   const handleDownloadItem = (item: LibraryItem) => {
+    if (item.type === 'pdf') {
+      const pdfUrl = sourceService.getPdfUrl(item.name);
+      const a = document.createElement('a');
+      a.href = pdfUrl;
+      a.download = item.name;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast(`Downloading "${item.name}"`);
+      return;
+    }
     const content = `RAISE Knowledge Base Document\n\nFilename: ${item.name}\nSize: ${item.size}\nUploaded: ${item.uploadedAt}\nPages: ${item.pages || 1}\n\nStatus: ${item.status}\nGrounding: GraphRAG Knowledge Base`;
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = item.name.endsWith('.pdf')
-      ? item.name.replace('.pdf', '_metadata.txt')
-      : item.name;
+    a.download = item.name.endsWith('.txt') ? item.name : `${item.name}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -503,8 +589,19 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
           </p>
         </div>
 
-        {/* Upload file trigger - Premium Gray */}
+        {/* Upload file trigger & Scan Folder */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleScanFolder}
+            disabled={isScanning}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10 active:scale-95 text-xs font-medium transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+            title="Scan data/documents/ to immediately discover any PDFs dropped onto disk"
+          >
+            <FolderSync className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin text-indigo-500' : ''}`} />
+            <span>{isScanning ? 'Scanning...' : 'Scan Folder'}</span>
+          </button>
+
           <input
             type="file"
             ref={fileInputRef}
@@ -697,7 +794,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                 key={item.id}
                 className={`group relative p-3.5 rounded-2xl border transition-all flex flex-col justify-between shadow-2xs hover:shadow-md ${
                   !indexed
-                    ? 'filter blur-[1.5px] opacity-65 bg-slate-50/50 dark:bg-white/[0.01] border-slate-200/60 dark:border-white/5 cursor-not-allowed select-none'
+                    ? 'bg-amber-50/60 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 cursor-wait select-none'
                     : 'bg-slate-50/70 dark:bg-white/[0.03] border-slate-200/80 dark:border-white/10 hover:border-slate-400 dark:hover:border-white/30 hover:bg-white dark:hover:bg-[#232631]'
                 }`}
                 title={
@@ -744,11 +841,11 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                 <div className="pt-2 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between">
                   {!indexed ? (
                     <span
-                      className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium"
-                      title="Parsing in GraphRAG..."
+                      className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate max-w-[150px]"
+                      title={`Pipeline stage: ${getDocumentStageLabel(progress, item.phase)}${item.status_breadcrumb ? ` (${item.status_breadcrumb})` : ''}`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                      <span>Parsing...</span>
+                      <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
+                      <span className="truncate">{getDocumentStageLabel(progress, item.phase)}</span>
                     </span>
                   ) : (
                     <span className="text-[10px] text-slate-400 dark:text-[#a8a8a8] font-mono">
@@ -770,6 +867,19 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                       </div>
                     ) : (
                       <>
+                        {item.type === 'pdf' && (
+                          <button
+                            type="button"
+                            onClick={() => handleViewPdf(item)}
+                            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/15 transition-colors cursor-pointer"
+                            title="Open PDF in browser default viewer"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleDownloadItem(item)}
@@ -870,7 +980,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                       key={item.id}
                       className={`transition-colors group ${
                         !indexed
-                          ? 'filter blur-[1.5px] opacity-65 bg-slate-50/40 dark:bg-white/[0.01]'
+                          ? 'bg-amber-50/50 dark:bg-amber-500/10'
                           : 'hover:bg-slate-50/70 dark:hover:bg-white/[0.03]'
                       }`}
                     >
@@ -898,9 +1008,9 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                       </td>
                       <td className="py-2.5 px-3">
                         {!indexed ? (
-                          <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                            <span>Parsing...</span>
+                          <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
+                            <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
+                            <span>{getDocumentStageLabel(progress, item.phase)}</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
@@ -922,6 +1032,19 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                             </div>
                           ) : (
                             <>
+                              {item.type === 'pdf' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewPdf(item)}
+                                  className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                                  title="Open PDF in browser default viewer"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleDownloadItem(item)}
@@ -1020,7 +1143,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                 key={item.id}
                 className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs ${
                   !indexed
-                    ? 'filter blur-[1.5px] opacity-65 bg-slate-50/50 dark:bg-white/[0.01] border-slate-200/60 dark:border-white/5 cursor-not-allowed select-none'
+                    ? 'bg-amber-50/60 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 cursor-wait select-none'
                     : 'bg-slate-50/70 dark:bg-white/[0.03] border-slate-200/80 dark:border-white/10 hover:border-slate-400 dark:hover:border-white/30'
                 }`}
               >
@@ -1072,8 +1195,8 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                   {!indexed ? (
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-500/20 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                        <span>Parsing in GraphRAG...</span>
+                        <span className="w-2 h-2 rounded-full border border-amber-500 border-t-transparent animate-spin shrink-0" />
+                        <span>{getDocumentStageLabel(progress, item.phase)}</span>
                       </span>
                       <div className="p-1" title={`Uploading: ${Math.round(progress)}%`}>
                         <CircularUploadProgress
@@ -1106,6 +1229,21 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
                             />
                           </svg>
                           <span>Attach</span>
+                        </button>
+                      )}
+
+                      {item.type === 'pdf' && (
+                        <button
+                          type="button"
+                          onClick={() => handleViewPdf(item)}
+                          className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#18191a] hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                          title="Open PDF in browser default viewer"
+                        >
+                          <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          <span>View PDF</span>
                         </button>
                       )}
 
@@ -1183,6 +1321,15 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
           })}
         </div>
       )}
+
+      {/* Extracted Document / OKF Overview Modal */}
+      <ExtractedDocumentModal
+        isOpen={artifactModal.isOpen}
+        onClose={() => setArtifactModal((prev) => ({ ...prev, isOpen: false }))}
+        documentName={artifactModal.documentName}
+        type={artifactModal.type}
+        url={artifactModal.url}
+      />
     </div>
   );
 };

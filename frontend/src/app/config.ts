@@ -18,8 +18,33 @@ const envMode = import.meta.env.VITE_API_MODE as ConfigMode | undefined;
 export const EXPECTED_BACKEND_VERSION =
   (import.meta.env.VITE_BACKEND_VERSION as string | undefined) || '1.0.0';
 
+/**
+ * Resolves the default backend API base URL:
+ * 1. Explicit environment variable (VITE_API_URL / VITE_API_BASE_URL)
+ * 2. If running in a browser and served via the unified FastAPI production SPA mount
+ *    (e.g. port 8000, 443, Docker container, or reverse proxy), dynamically uses window.location.origin
+ *    for zero-CORS latency and zero preflight overhead.
+ * 3. Fallback to standard local gateway URL (http://127.0.0.1:8000) for Vite dev server (port 5173).
+ */
+export const resolveDefaultBaseUrl = (): string => {
+  if (envBaseUrl && envBaseUrl.trim() !== '') {
+    return envBaseUrl.trim();
+  }
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    const port = window.location.port;
+    if (port === '5173' || port === '3000') {
+      return 'http://127.0.0.1:8000';
+    }
+    const origin = window.location.origin;
+    if (origin && origin !== 'null' && !origin.startsWith('file:')) {
+      return origin;
+    }
+  }
+  return 'http://127.0.0.1:8000';
+};
+
 export const config: AppConfig = {
-  apiBaseUrl: envBaseUrl && envBaseUrl.trim() !== '' ? envBaseUrl.trim() : 'http://127.0.0.1:8000',
+  apiBaseUrl: resolveDefaultBaseUrl(),
   apiMode: envMode === 'mock' || envMode === 'remote' || envMode === 'auto' ? envMode : 'remote',
   defaultTimeoutMs: 30000,
   uploadTimeoutMs: 120000, // Large PDFs require 120s for synchronous IBM Docling parsing

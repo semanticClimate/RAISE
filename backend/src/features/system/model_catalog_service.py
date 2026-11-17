@@ -9,11 +9,17 @@ Zero hardcoded model catalogs.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 import logging
 from typing import Any, Dict, List, Optional
 import requests
+from src.core.config import (
+    SUPPORTED_FAMILY_KEYWORDS,
+    OPENROUTER_FAMILY_KEYWORDS,
+    OFFLINE_CATALOG_FALLBACK,
+)
 
 logger = logging.getLogger("raise.features.system.model_catalog")
 
@@ -21,6 +27,50 @@ logger = logging.getLogger("raise.features.system.model_catalog")
 _CATALOG_CACHE: List[Dict[str, Any]] = []
 _CATALOG_CACHE_TIME: float = 0.0
 _CATALOG_CACHE_TTL: float = 900.0  # 15 minutes
+
+
+def _fetch_from_local_vllm() -> List[Dict[str, Any]]:
+    """Probes local vLLM OpenAI-compatible endpoint for currently loaded/downloaded models."""
+    local_models = []
+    base_env = os.getenv("VLLM_BASE_URL", os.getenv("VLLM_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
+    candidates = [base_env]
+    for alt in ["http://localhost:8002", "http://127.0.0.1:8002", "http://localhost:8000"]:
+        if alt not in candidates:
+            candidates.append(alt)
+
+    for cand_base in candidates:
+        if cand_base.endswith("/v1"):
+            endpoint = f"{cand_base}/models"
+        else:
+            endpoint = f"{cand_base}/v1/models"
+        try:
+            r = requests.get(endpoint, timeout=2.5)
+            if r.status_code == 200:
+                data = r.json()
+                for m in data.get("data", []):
+                    m_id = m.get("id", "local-vllm-model")
+                    max_len = m.get("max_model_len", 8192)
+                    param_match = re.search(r"(\d+(?:\.\d+)?)[bB]", m_id)
+                    param_val = float(param_match.group(1)) if param_match else 14.0
+                    size_gb = round(param_val * 0.6, 1) if any(k in m_id.lower() for k in ("gptq", "int4", "awq", "int8")) else round(param_val * 1.5, 1)
+                    min_ram = 16 if size_gb <= 12 else 32
+
+                    local_models.append({
+                        "id": m_id,
+                        "name": f"{m_id} ({int(param_val)}B - {max_len} ctx)",
+                        "download_size_gb": size_gb,
+                        "min_ram_gb": min_ram,
+                        "tier": "Installed (Local Engine)",
+                        "status": "READY",
+                        "downloads": "On-Device (vLLM GPU)",
+                        "source": "vllm_local",
+                        "isInstalled": True,
+                    })
+                if local_models:
+                    break
+        except Exception:
+            pass
+    return local_models
 
 
 def _fetch_from_local_ollama() -> List[Dict[str, Any]]:
@@ -76,7 +126,7 @@ def _fetch_from_huggingface(limit: int = 15) -> List[Dict[str, Any]]:
                 m_lower = m_id.lower()
 
                 # Filter for recognized open-weight instruct architectures
-                if not any(k in m_lower for k in ["llama", "qwen", "mistral", "phi", "gemma", "deepseek"]):
+                if not any(k in m_lower for k in SUPPORTED_FAMILY_KEYWORDS):
                     continue
 
                 # Parse parameter count (e.g. 1B, 3B, 7B, 8B, 14B)
@@ -136,7 +186,7 @@ def _fetch_from_openrouter(limit: int = 10) -> List[Dict[str, Any]]:
             for item in data:
                 m_id = item.get("id", "")
                 m_lower = m_id.lower()
-                if not any(k in m_lower for k in ["llama-3", "qwen-2.5", "mistral-7b", "phi-3", "gemma-2"]):
+                if not any(k in m_lower for k in OPENROUTER_FAMILY_KEYWORDS):
                     continue
 
                 param_match = re.search(r"(\d+(?:\.\d+)?)[bB]", m_id)
@@ -191,7 +241,13 @@ def get_dynamic_model_catalog(total_ram_gb: float = 16.0) -> List[Dict[str, Any]
     aggregated: List[Dict[str, Any]] = []
     seen_ids = set()
 
-    # 1. Prioritize locally installed models if Ollama or local engine is running
+    # 1. Prioritize locally installed models if vLLM or Ollama is running
+    vllm_installed = _fetch_from_local_vllm()
+    for m in vllm_installed:
+        if m["id"] not in seen_ids:
+            seen_ids.add(m["id"])
+            aggregated.append(m)
+
     local_installed = _fetch_from_local_ollama()
     for m in local_installed:
         if m["id"] not in seen_ids:
@@ -219,11 +275,7 @@ def get_dynamic_model_catalog(total_ram_gb: float = 16.0) -> List[Dict[str, Any]
 
     # 4. Safe offline fallback if machine is completely air-gapped with zero internet
     if not aggregated:
-        aggregated = [
-            {"id": "meta-llama/Llama-3.2-3B-Instruct", "name": "Llama 3.2 3B Instruct", "download_size_gb": 2.0, "min_ram_gb": 8, "tier": "Fast & Light", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
-            {"id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen 2.5 7B Instruct", "download_size_gb": 4.7, "min_ram_gb": 16, "tier": "Balanced Reasoning", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
-            {"id": "meta-llama/Meta-Llama-3.1-8B-Instruct", "name": "Llama 3.1 8B Instruct", "download_size_gb": 4.9, "min_ram_gb": 16, "tier": "High Fidelity", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
-        ]
+        aggregated = [dict(item) for item in OFFLINE_CATALOG_FALLBACK]
 
     _CATALOG_CACHE = aggregated
     _CATALOG_CACHE_TIME = now

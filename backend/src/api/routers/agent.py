@@ -37,6 +37,9 @@ async def agent_query(
         if session_id and session_memory_manager:
             resolved_query, resolved_entity = session_memory_manager.resolve_coreference(query, session_id)
 
+        from src.infrastructure.provenance import build_pipeline_info
+        pipeline_info = build_pipeline_info(mode="expert")
+
         ready_docs = get_ready_documents_list()
         if not ready_docs:
             empty_msg = "Please upload an academic PDF to begin your research."
@@ -51,6 +54,13 @@ async def agent_query(
                 "citations": [],
                 "verified_claims": [],
                 "traceability_score": 1.0,
+                "pipeline_info": pipeline_info,
+                "storage_used": pipeline_info["storage_used"],
+                "llm_provider": pipeline_info["llm_provider"],
+                "llm_model": pipeline_info["llm_model"],
+                "encoder_model": pipeline_info["encoder_model"],
+                "reranker_model": pipeline_info["reranker_model"],
+                "nli_verifier_model": pipeline_info["nli_verifier_model"],
             }
             if session_id:
                 resp["session_id"] = session_id
@@ -59,6 +69,14 @@ async def agent_query(
 
         active_filenames = [d["filename"] for d in ready_docs if "filename" in d]
         agent_result = rag_engine.ask_agent(resolved_query, active_docs=active_filenames)
+        if isinstance(agent_result, dict):
+            agent_result["pipeline_info"] = pipeline_info
+            agent_result["storage_used"] = pipeline_info["storage_used"]
+            agent_result["llm_provider"] = pipeline_info["llm_provider"]
+            agent_result["llm_model"] = pipeline_info["llm_model"]
+            agent_result["encoder_model"] = pipeline_info["encoder_model"]
+            agent_result["reranker_model"] = pipeline_info["reranker_model"]
+            agent_result["nli_verifier_model"] = pipeline_info["nli_verifier_model"]
         if session_id and session_memory_manager:
             session_memory_manager.record_turn(
                 thread_id=session_id,

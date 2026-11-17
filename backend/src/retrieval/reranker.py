@@ -30,13 +30,17 @@ from __future__ import annotations
 import logging
 import os
 import re
+import math
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.retrieval.entity_filtering import filter_entity_mismatches
+from src.core.config import models, AVAILABLE_RERANKER_MODELS
 
 logger = logging.getLogger("raise.retrieval.reranker")
 
 _CROSS_ENCODER_MODEL_CACHE: Dict[str, Any] = {}
+_RERANKER_LOCK = threading.Lock()
 _GLOBAL_FLASHRANKER: Optional[Any] = None
 
 
@@ -52,7 +56,7 @@ def _get_global_flashranker() -> Optional[Any]:
 
 
 def is_table_candidate(candidate: Dict[str, Any] | Any) -> bool:
-    """Detects whether candidate contains tabular, markdown schedule, or financial grid structure."""
+    """Detects whether candidate contains tabular, markdown schedule, scientific data, or financial grid structure."""
     if hasattr(candidate, "page_content"):
         txt = str(candidate.page_content or "")
         meta = getattr(candidate, "metadata", {}) or {}
@@ -60,15 +64,27 @@ def is_table_candidate(candidate: Dict[str, Any] | Any) -> bool:
         txt = str(candidate.get("plain_text") or candidate.get("text") or "")
         meta = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else candidate
 
-    financial_keywords = (
-        "balance sheet" in txt.lower()
-        or "income & expenditure" in txt.lower()
-        or "income and expenditure" in txt.lower()
-        or "schedule forming part" in txt.lower()
-        or "receipts and payments" in txt.lower()
-        or "corpus/capital fund" in txt.lower()
-        or "earmarked / endowment" in txt.lower()
-        or "establishment expenses" in txt.lower()
+    txt_lower = txt.lower()
+    structural_keywords = (
+        "balance sheet" in txt_lower
+        or "income & expenditure" in txt_lower
+        or "income and expenditure" in txt_lower
+        or "schedule forming part" in txt_lower
+        or "receipts and payments" in txt_lower
+        or "corpus/capital fund" in txt_lower
+        or "earmarked / endowment" in txt_lower
+        or "establishment expenses" in txt_lower
+        or "figure " in txt_lower
+        or "fig. " in txt_lower
+        or "appendix" in txt_lower
+        or "exhibit" in txt_lower
+        or "supplementary" in txt_lower
+        or "dataset" in txt_lower
+        or "benchmark" in txt_lower
+        or "methodology" in txt_lower
+        or "equation" in txt_lower
+        or "theorem" in txt_lower
+        or "algorithm" in txt_lower
     )
 
     return (
@@ -76,7 +92,7 @@ def is_table_candidate(candidate: Dict[str, Any] | Any) -> bool:
         or "|:---" in txt
         or "| ---:" in txt
         or "### Extracted Table" in txt
-        or financial_keywords
+        or structural_keywords
         or bool(meta.get("has_table"))
         or bool(meta.get("is_table"))
         or int(meta.get("tables_count", 0) or 0) > 0
@@ -90,85 +106,83 @@ class CrossEncoderReranker:
     Loads weights lazily on first rerank() call and caches as singleton in memory for instant reuse.
     """
 
-    AVAILABLE_RERANKERS = {
-        "jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
-        "jina-reranker": "jinaai/jina-reranker-v3.5",
-        "bge-reranker-large": "BAAI/bge-reranker-large",
-        "bge-reranker-base": "BAAI/bge-reranker-base",
-        "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    }
+    AVAILABLE_RERANKERS = AVAILABLE_RERANKER_MODELS
 
     def __init__(self, model_name: Optional[str] = None, device: Optional[str] = None):
-        target_name = model_name or os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5")
+        target_name = model_name or os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME)
         self.model_name = self.AVAILABLE_RERANKERS.get(target_name, target_name)
         self.device = device or os.getenv("RERANKER_DEVICE")
         self.model = _CROSS_ENCODER_MODEL_CACHE.get(self.model_name)
         self._loaded = self.model is not None
 
     def _ensure_model_loaded(self):
-        """Lazy-loads CrossEncoder model and weights once into singleton GPU cache."""
+        """Thread-safe lazy singleton loader for CrossEncoder / Jina Reranker."""
         if self.model is not None:
             return
-        if self.model_name in _CROSS_ENCODER_MODEL_CACHE:
-            self.model = _CROSS_ENCODER_MODEL_CACHE[self.model_name]
+        with _RERANKER_LOCK:
+            if self.model is not None:
+                return
+            if self.model_name in _CROSS_ENCODER_MODEL_CACHE:
+                self.model = _CROSS_ENCODER_MODEL_CACHE[self.model_name]
+                self._loaded = True
+                return
+            if self._loaded and self.model is None:
+                return
             self._loaded = True
-            return
-        if self._loaded and self.model is None:
-            return
-        self._loaded = True
         try:
             from sentence_transformers import CrossEncoder
             import torch
             import warnings
 
-            dev = self.device or os.getenv("RERANKER_DEVICE")
+            dev = self.device or os.getenv("RERANKER_DEVICE") or os.getenv("NEURAL_DEVICE")
             if dev:
                 dev = str(dev).lower()
-                if "cuda" in dev and not torch.cuda.is_available():
+                if dev in ("auto", "none", "", "default"):
+                    dev = "cuda" if torch.cuda.is_available() else "cpu"
+                elif "cuda" in dev and not torch.cuda.is_available():
                     logger.warning("CUDA requested for reranker (%s) but torch.cuda.is_available() is False. Using CPU.", self.model_name)
                     dev = "cpu"
             else:
                 dev = "cuda" if torch.cuda.is_available() else "cpu"
 
-            token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            orig_requested_model = self.model_name
             try:
                 from src.core.config import resolve_local_model_path
                 resolved_name = resolve_local_model_path(self.model_name)
+                target_model = resolved_name
 
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", category=UserWarning)
-                    if "jina-reranker-v3" in self.model_name.lower() or "jina-reranker-v3" in resolved_name.lower():
-                        from transformers import AutoModel
-                        loaded_model = AutoModel.from_pretrained(
-                            resolved_name,
-                            torch_dtype=torch.float16 if "cuda" in dev else torch.float32,
-                            token=token,
-                            trust_remote_code=True,
-                            device_map=dev,
-                        ).eval()
-                    else:
-                        try:
-                            loaded_model = CrossEncoder(
-                                resolved_name,
-                                device=dev,
-                                token=token,
-                                trust_remote_code=True,
-                                local_files_only=True,
-                            )
-                        except Exception:
-                            loaded_model = CrossEncoder(
-                                resolved_name,
-                                device=dev,
-                                token=token,
-                                trust_remote_code=True,
-                            )
-                    self.model = loaded_model
-                    _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
-                    logger.info("Reranker (%s) initialized successfully on %s.", self.model_name, dev)
+                target_dtype = (
+                    torch.bfloat16
+                    if ("cuda" in dev and torch.cuda.is_bf16_supported())
+                    else (torch.float16 if "cuda" in dev else torch.float32)
+                )
+                try:
+                    loaded_model = CrossEncoder(
+                        target_model,
+                        device=dev,
+                        token=token,
+                        trust_remote_code=True,
+                        model_kwargs={"dtype": target_dtype},
+                    )
+                except Exception:
+                    loaded_model = CrossEncoder(
+                        target_model,
+                        device=dev,
+                        token=token,
+                        trust_remote_code=True,
+                    )
+                self.model = loaded_model
+                self.model_name = target_model
+                _CROSS_ENCODER_MODEL_CACHE[self.model_name] = loaded_model
+                _CROSS_ENCODER_MODEL_CACHE[orig_requested_model] = loaded_model
+                _CROSS_ENCODER_MODEL_CACHE[models.RERANKER_MODEL_NAME] = loaded_model
+                _CROSS_ENCODER_MODEL_CACHE["default"] = loaded_model
+                logger.info("Cross-Attention Reranker (%s) initialized successfully on %s.", target_model, dev)
             except Exception as e:
                 logger.warning("Could not load primary reranker (%s): %s. Attempting fallback.", self.model_name, e)
                 try:
-                    fallback_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+                    fallback_name = models.RERANKER_FALLBACK_MODEL_NAME
                     if fallback_name in _CROSS_ENCODER_MODEL_CACHE:
                         self.model = _CROSS_ENCODER_MODEL_CACHE[fallback_name]
                         self.model_name = fallback_name
@@ -181,6 +195,9 @@ class CrossEncoderReranker:
                         self.model = loaded_model
                         self.model_name = fallback_name
                         _CROSS_ENCODER_MODEL_CACHE[fallback_name] = loaded_model
+                    # Crucial: Cache under the original requested model key so future queries don't retry & reload
+                    _CROSS_ENCODER_MODEL_CACHE[orig_requested_model] = self.model
+                    _CROSS_ENCODER_MODEL_CACHE["default"] = self.model
                     logger.info("CrossEncoder fallback reranker (%s) loaded.", fallback_name)
                 except Exception as fe:
                     logger.warning("Could not load fallback reranker: %s. Using heuristic cross-scoring.", fe)
@@ -238,8 +255,14 @@ class CrossEncoderReranker:
                     all_queries.append(sq_clean)
 
         stop_words = {"what", "which", "where", "when", "that", "this", "from", "with", "have", "does", "about", "into"}
+        structural_pattern = (
+            r"(?:table\s*\d+(?:\.\d+)?|figure\s*\d+|fig\.\s*\d+|appendix\s*[a-z0-9]+|exhibit\s*[a-z0-9]+|"
+            r"algorithm\s*\d+|schedule\s*\d+|section\s*\d+|equation\s*\d+|theorem\s*\d+|"
+            r"supplementary|dataset|benchmark|methodology|"
+            r"balance\s*sheet|income\s*(?:and|&)\s*expenditure|corpus|endowment|grants|signatories|establishment\s*expenses)"
+        )
         global_structural_terms = re.findall(
-            r"(?:table\s*\d+(?:\.\d+)?|schedule\s*\d+|section\s*\d+|balance\s*sheet|income\s*(?:and|&)\s*expenditure|corpus|endowment|grants|signatories|establishment\s*expenses)",
+            structural_pattern,
             query,
             re.IGNORECASE,
         )
@@ -247,7 +270,7 @@ class CrossEncoderReranker:
         all_pairs: List[Tuple[str, str]] = []
         for q in all_queries:
             q_structural = re.findall(
-                r"(?:table\s*\d+(?:\.\d+)?|schedule\s*\d+|section\s*\d+|balance\s*sheet|income\s*(?:and|&)\s*expenditure|corpus|endowment|grants|signatories|establishment\s*expenses)",
+                structural_pattern,
                 q,
                 re.IGNORECASE,
             )
@@ -257,7 +280,7 @@ class CrossEncoderReranker:
                 if hasattr(c, "page_content"):
                     text = str(c.page_content or "")
                 else:
-                    text = str(c.get(text_key) or c.get("text") or c.get("plain_text") or c.get("heading") or "")
+                    text = str(c.get("enriched_text") or c.get(text_key) or c.get("text") or c.get("plain_text") or c.get("heading") or "")
                 snippet = text[:3000]
 
                 all_matches = []
@@ -319,10 +342,6 @@ class CrossEncoderReranker:
                 entry = dict(c)
 
             cand_raw = str(entry.get(text_key) or entry.get("text") or entry.get("plain_text") or entry.get("heading") or "")
-            table_bonus = 3.5 if (
-                any(re.search(re.escape(qt), cand_raw, re.IGNORECASE) for qt in global_structural_terms)
-                or (is_table_candidate(entry) and bool(global_structural_terms))
-            ) else 0.0
 
             best_q_score = -999.0
             best_matched_q = query
@@ -332,8 +351,36 @@ class CrossEncoderReranker:
                     best_q_score = score_val
                     best_matched_q = q_str
 
-            entry["cross_encoder_score"] = round(best_q_score + table_bonus, 6)
-            entry["raw_cross_encoder_score"] = round(all_scores[idx], 6)
+            # Normalize raw logit score to [0.0, 1.0] if model returned uncalibrated logits
+            prob_score = (
+                1.0 / (1.0 + math.exp(-max(min(best_q_score, 10.0), -10.0)))
+                if (best_q_score < 0.0 or best_q_score > 1.0)
+                else best_q_score
+            )
+
+            # Exact institutional role & modifier boost (e.g. 'nominees', 'appointed', 'positions', 'senate nominees')
+            # Prevents generic large membership rosters from displacing targeted governance/administrative sections
+            query_words = [w.lower() for w in re.findall(r"\b[a-zA-Z]{4,}\b", query) if w.lower() not in stop_words]
+            target_keywords = [
+                kw for kw in query_words
+                if kw in {"nominee", "nominees", "appointed", "positions", "visitor", "governors",
+                          "chairman", "chancellor", "director", "registrar", "scientific", "technical"}
+            ]
+            cand_lower = cand_raw.lower()
+            if target_keywords:
+                matched_kw = sum(1 for kw in target_keywords if kw in cand_lower)
+                if matched_kw > 0:
+                    prob_score = min(1.0, prob_score + 0.10 * (matched_kw / len(target_keywords)))
+
+            # Convex monotonic table boost (preserves strict ordering in [0.0, 1.0])
+            has_table_match = (
+                any(re.search(re.escape(qt), cand_raw, re.IGNORECASE) for qt in global_structural_terms)
+                or (is_table_candidate(entry) and bool(global_structural_terms))
+            )
+            calibrated_score = prob_score + (0.08 * (1.0 - prob_score) if has_table_match else 0.0)
+
+            entry["cross_encoder_score"] = round(calibrated_score, 6)
+            entry["raw_cross_encoder_score"] = round(prob_score, 6)
             entry["matched_subquery"] = best_matched_q
             reranked.append(entry)
 
@@ -341,10 +388,8 @@ class CrossEncoderReranker:
         reranked.sort(key=lambda x: x["cross_encoder_score"], reverse=True)
 
         if reranked:
-            best_score = reranked[0]["cross_encoder_score"]
-            is_logits = (best_score > 1.0 or best_score < -1.0)
-            score_cutoff = (best_score - 7.5) if is_logits else 0.15
-            filtered_by_score = [c for c in reranked if c["cross_encoder_score"] >= score_cutoff]
+            # All scores are now strictly calibrated in [0.0, 1.0]
+            filtered_by_score = [c for c in reranked if c["cross_encoder_score"] >= 0.05]
             top_candidates = (filtered_by_score if filtered_by_score else reranked)[:top_n]
 
             top_rrf = sorted([c for c in reranked if c.get("rrf_rank", 99) <= 2], key=lambda x: x.get("rrf_rank", 99))
@@ -422,15 +467,7 @@ class CrossEncoderReranker:
         return scores
 
 
-class EvidenceReranker(CrossEncoderReranker):
-    """
-    Evidence-grounded reranker supporting entity resolution context.
-    Acts as specialized alias for CrossEncoderReranker.
-    """
-
-    def __init__(self, entity_resolver: Optional[Any] = None, model_name: Optional[str] = None):
-        super().__init__(model_name=model_name)
-        self.entity_resolver = entity_resolver
+EvidenceReranker = CrossEncoderReranker
 
 
 __all__ = ["CrossEncoderReranker", "EvidenceReranker", "is_table_candidate"]

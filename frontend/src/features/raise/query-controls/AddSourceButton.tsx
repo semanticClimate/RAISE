@@ -1,4 +1,5 @@
 import type React from 'react';
+import { useEffect, useRef } from 'react';
 import { FastExpertToggle } from './FastExpertToggle';
 
 export interface AddSourceButtonProps {
@@ -26,16 +27,49 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
   conversationLength = 0,
   className = '',
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown, true);
+    document.addEventListener('touchstart', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown, true);
+      document.removeEventListener('touchstart', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   return (
     <>
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.txt,.docx,.md,.csv"
+        multiple
+        accept=".pdf,.txt,.docx,.md,.csv,.xlsx,.json"
         onChange={onFileUpload}
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = '';
+        }}
         className="hidden"
       />
       <div
+        ref={containerRef}
         className={`relative shrink-0 select-none z-30 ${className}`}
         data-add-source-container="input"
       >
@@ -91,10 +125,13 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
 
         {isOpen && (
           <>
-            {/* Mobile WhatsApp-style backdrop overlay */}
+            {/* Viewport backdrop overlay (handles mobile bottom sheet and desktop outside clicks) */}
             <div
-              className="fixed inset-0 bg-black/45 backdrop-blur-xs z-[65] sm:hidden animate-in fade-in duration-200"
-              onClick={onClose}
+              className="fixed inset-0 bg-black/40 backdrop-blur-2xs sm:bg-transparent sm:backdrop-blur-none z-[65] animate-in fade-in duration-150"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               aria-hidden="true"
             />
 
@@ -161,7 +198,7 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
                   }}
                   className="w-full text-left px-3.5 py-3 sm:px-3 sm:py-2 rounded-2xl sm:rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-800 dark:text-slate-200 text-xs font-medium flex items-center gap-3.5 sm:gap-2.5 transition-colors cursor-pointer group bg-slate-50/70 dark:bg-white/[0.03] sm:bg-transparent mt-1 sm:mt-0.5"
                 >
-                  <div className="w-10 h-10 sm:w-7 sm:h-7 rounded-xl sm:rounded-lg bg-emerald-500 text-white sm:bg-indigo-50 sm:text-indigo-600 sm:dark:bg-indigo-500/15 sm:dark:text-[#a8c7fa] flex items-center justify-center shrink-0 shadow-xs group-hover:bg-emerald-600 sm:group-hover:bg-indigo-100 transition-colors">
+                  <div className="w-10 h-10 sm:w-7 sm:h-7 rounded-xl sm:rounded-lg bg-indigo-500 text-white sm:bg-indigo-50 sm:text-indigo-600 dark:sm:bg-indigo-500/15 dark:sm:text-indigo-400 flex items-center justify-center shrink-0 shadow-xs group-hover:bg-indigo-600 sm:group-hover:bg-indigo-100 dark:sm:group-hover:bg-indigo-500/25 sm:group-hover:text-indigo-700 dark:sm:group-hover:text-indigo-300 transition-colors">
                     <svg
                       className="w-5 h-5 sm:w-4 sm:h-4"
                       fill="none"
@@ -177,9 +214,9 @@ export const AddSourceButton: React.FC<AddSourceButtonProps> = ({
                     </svg>
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400 sm:text-indigo-600 sm:dark:text-[#a8c7fa] text-[13px] sm:text-xs">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100 text-[13px] sm:text-xs group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                       <span>Attach from Library</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono">
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-mono">
                         Instant
                       </span>
                     </div>

@@ -25,7 +25,7 @@ import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
@@ -46,18 +46,83 @@ _GLOBAL_PG_LOCK = threading.Lock()
 _HAS_LOGGED_PG_CONNECTION = False
 
 
+@event.listens_for(Engine, "connect")
+def _set_sqlite_pragmas(dbapi_connection, connection_record):
+    """Enforce WAL mode and concurrency PRAGMAs for all SQLite connections."""
+    import sqlite3
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA cache_size=-64000")
+            cursor.execute("PRAGMA temp_store=MEMORY")
+        finally:
+            cursor.close()
+
+
+def _fast_port_open(host: str, port: int, timeout: float = 0.03) -> bool:
+    """Fast loopback TCP probe to eliminate multi-second socket timeout stalls."""
+    try:
+        import socket
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
 def get_database_engine(
     local_url: Optional[str] = None,
     cloud_url: Optional[str] = None,
     memory_url: str = "sqlite:///:memory:",
 ) -> Engine:
     """
-    Creates and returns a SQLAlchemy Engine following a sequential 3-tier fallback:
-      Tier 1: Localhost PostgreSQL
-      Tier 2: Cloud PostgreSQL
-      Tier 3: Python In-Memory SQLite Database (sqlite:///:memory:)
+    Creates and returns a SQLAlchemy Engine following the 3-tier storage architecture:
+      Tier 1: Localhost PostgreSQL (probed via fast 30ms TCP check)
+      Tier 2: Cloud PostgreSQL (TLS ready, ?sslmode=require)
+      Tier 3: SQLite 3 in WAL mode (sqlite:///data/raise_local.db or :memory: for pytest)
     """
     global _HAS_LOGGED_PG_CONNECTION
+
+    import sys
+    storage_mode = os.getenv("RAISE_STORAGE_MODE", "auto").lower()
+    is_testing = os.getenv("TESTING", "").lower() in ("true", "1") or "pytest" in sys.modules
+
+    # Helper: Build SQLite fallback engine
+    def _create_sqlite_engine() -> Engine:
+        global _HAS_LOGGED_PG_CONNECTION
+        sqlite_path = os.getenv("SQLITE_DB_PATH")
+        if not sqlite_path and not is_testing and memory_url == "sqlite:///:memory:":
+            try:
+                from src.core.config import DATA_DIR
+                data_dir = str(DATA_DIR)
+            except Exception:
+                data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data")
+            try:
+                os.makedirs(data_dir, exist_ok=True)
+                sqlite_path = os.path.join(data_dir, "raise_local.db")
+            except Exception:
+                sqlite_path = None
+
+        if sqlite_path and memory_url == "sqlite:///:memory:":
+            norm_path = sqlite_path.replace(os.sep, "/")
+            actual_url = f"sqlite:///{norm_path}"
+        else:
+            actual_url = memory_url
+
+        eng = create_engine(actual_url)
+        if not _HAS_LOGGED_PG_CONNECTION:
+            if "sqlite:///:memory:" in actual_url:
+                logger.info("Connected to In-Memory SQLite Database")
+            else:
+                logger.info("Connected to Persistent Local SQLite Database (%s)", actual_url)
+            _HAS_LOGGED_PG_CONNECTION = True
+        return eng
+
+    # Fast / In-Memory Tier: Zero socket probing, instant SQLite WAL return
+    if storage_mode in ("fast", "memory", "test") or is_testing:
+        return _create_sqlite_engine()
 
     # 1. Resolve connection URLs
     if not local_url:
@@ -72,33 +137,16 @@ def get_database_engine(
 
     cloud_url = cloud_url or os.getenv("CLOUD_DB_URL") or os.getenv("POSTGRES_CLOUD_URL") or os.getenv("DATABASE_CLOUD_URL")
 
-    # Tier 1: Attempt Local PostgreSQL
-    try:
-        engine = create_engine(
-            local_url,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=5,
-            connect_args={"connect_timeout": 2},
-        )
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        if not _HAS_LOGGED_PG_CONNECTION:
-            logger.info("Connected to PostgreSQL at Localhost (%s)", local_url.split("@")[-1] if "@" in local_url else local_url)
-            _HAS_LOGGED_PG_CONNECTION = True
-        return engine
-    except (OperationalError, Exception) as exc:
-        logger.debug("Local PostgreSQL connection failed: %s. Falling back to Cloud...", exc)
-
-    # Tier 2: Attempt Cloud PostgreSQL
-    if cloud_url:
+    # Tier 2: Cloud PostgreSQL Preference
+    if storage_mode == "cloud" and cloud_url:
         try:
             engine = create_engine(
                 cloud_url,
                 pool_pre_ping=True,
                 pool_size=10,
                 max_overflow=5,
-                connect_args={"connect_timeout": 4},
+                pool_recycle=300,
+                connect_args={"connect_timeout": 3},
             )
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
@@ -107,36 +155,59 @@ def get_database_engine(
                 _HAS_LOGGED_PG_CONNECTION = True
             return engine
         except (OperationalError, Exception) as exc:
-            logger.debug("Cloud PostgreSQL connection failed: %s. Falling back to In-Memory SQLite...", exc)
-    else:
-        logger.debug("Cloud PostgreSQL URL not configured. Falling back to In-Memory SQLite...")
+            logger.debug("Cloud PostgreSQL connection failed: %s. Falling back to SQLite...", exc)
 
-    # Tier 3: Local SQLite Database (persistent file-backed by default, or memory if in test environment)
-    import sys
-    is_testing = os.getenv("TESTING", "").lower() in ("true", "1") or "pytest" in sys.modules
-    sqlite_path = os.getenv("SQLITE_DB_PATH")
-    if not sqlite_path and not is_testing and memory_url == "sqlite:///:memory:":
-        data_dir = os.path.join(os.getcwd(), "data")
+    # Tier 1: Local PostgreSQL (probed via 30ms TCP check)
+    local_host = "127.0.0.1"
+    local_port = 5432
+    if local_url and "://" in local_url:
         try:
-            os.makedirs(data_dir, exist_ok=True)
-            sqlite_path = os.path.join(data_dir, "raise_local.db")
+            parsed = urlparse(local_url)
+            local_host = parsed.hostname or "127.0.0.1"
+            local_port = parsed.port or 5432
         except Exception:
-            sqlite_path = None
+            pass
 
-    if sqlite_path and memory_url == "sqlite:///:memory:":
-        norm_path = sqlite_path.replace(os.sep, "/")
-        actual_url = f"sqlite:///{norm_path}"
-    else:
-        actual_url = memory_url
+    if _fast_port_open(local_host, local_port, timeout=0.03):
+        try:
+            engine = create_engine(
+                local_url,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=5,
+                connect_args={"connect_timeout": 2},
+            )
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            if not _HAS_LOGGED_PG_CONNECTION:
+                logger.info("Connected to PostgreSQL at Localhost (%s)", local_url.split("@")[-1] if "@" in local_url else local_url)
+                _HAS_LOGGED_PG_CONNECTION = True
+            return engine
+        except (OperationalError, Exception) as exc:
+            logger.debug("Local PostgreSQL connection failed: %s. Falling back...", exc)
 
-    engine = create_engine(actual_url)
-    if not _HAS_LOGGED_PG_CONNECTION:
-        if "sqlite:///:memory:" in actual_url:
-            logger.info("Connected to In-Memory SQLite Database")
-        else:
-            logger.info("Connected to Persistent Local SQLite Database (%s)", actual_url)
-        _HAS_LOGGED_PG_CONNECTION = True
-    return engine
+    # Tier 2: Cloud PostgreSQL Fallback (if not tried yet)
+    if cloud_url and storage_mode != "cloud":
+        try:
+            engine = create_engine(
+                cloud_url,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=5,
+                pool_recycle=300,
+                connect_args={"connect_timeout": 3},
+            )
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            if not _HAS_LOGGED_PG_CONNECTION:
+                logger.info("Connected to PostgreSQL at Cloud")
+                _HAS_LOGGED_PG_CONNECTION = True
+            return engine
+        except (OperationalError, Exception) as exc:
+            logger.debug("Cloud PostgreSQL fallback failed: %s. Falling back to SQLite...", exc)
+
+    # Tier 3: Local SQLite Database in WAL mode
+    return _create_sqlite_engine()
 
 
 class PostgresManager(
@@ -216,6 +287,10 @@ class PostgresManager(
             logger.debug("ThreadedConnectionPool init skipped/failed: %s", e)
 
     def _get_connection(self):
+        storage_mode = os.getenv("RAISE_STORAGE_MODE", "auto").lower()
+        if storage_mode in ("fast", "memory", "test") or os.getenv("TESTING", "").lower() in ("true", "1"):
+            return None
+
         if not self.is_connected:
             return None
 
@@ -229,11 +304,7 @@ class PostgresManager(
         self._last_pg_probe = now
 
         probe_host = "127.0.0.1" if self.host in ("localhost", "127.0.0.1") else self.host
-        try:
-            import socket
-            with socket.create_connection((probe_host, self.port), timeout=0.05):
-                pass
-        except Exception:
+        if not _fast_port_open(probe_host, self.port, timeout=0.03):
             return None
 
         try:
@@ -269,19 +340,26 @@ class PostgresManager(
         # 1. Initialize SQLAlchemy Engine via 3-Tier Fallback
         self.engine = get_database_engine()
 
+        storage_mode = os.getenv("RAISE_STORAGE_MODE", "auto").lower()
+        import sys
+        is_testing = os.getenv("TESTING", "").lower() in ("true", "1") or "pytest" in sys.modules
+        if storage_mode in ("fast", "memory", "test") or is_testing:
+            self.tier = "memory"
+            self.is_connected = False
+            return
+
         # 2. Probe psycopg2 connection for direct fast connection pooling
         conn = None
         probe_host = "127.0.0.1" if self.host in ("localhost", "127.0.0.1") else self.host
-        try:
-            import socket
-            with socket.create_connection((probe_host, self.port), timeout=0.1):
+        if _fast_port_open(probe_host, self.port, timeout=0.03):
+            try:
                 self._init_pool(self.host, self.port, self.dbname, self.user, self.password)
                 if self._pool:
                     conn = self._pool.getconn()
                     self.tier = "local"
                     self.is_connected = True
-        except Exception:
-            conn = None
+            except Exception:
+                conn = None
 
         # 3. If local direct connection failed, probe Cloud URL
         if not conn:

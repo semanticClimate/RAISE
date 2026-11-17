@@ -12,11 +12,12 @@ from typing import Any, AsyncGenerator, Optional
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 from src.infrastructure.providers.http_client import safe_http_request, ProviderHTTPError
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.gemini")
 
 DEFAULT_GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai"
-DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
+DEFAULT_GEMINI_MODEL = models.GEMINI_MODEL_NAME
 
 
 class GeminiProvider(LLMProvider):
@@ -52,31 +53,61 @@ class GeminiProvider(LLMProvider):
         if not key:
             raise ProviderHTTPError("Gemini API key is not configured.", classification="NOT_CONFIGURED")
 
-        # Try native GenerativeLanguage API first with multiple candidate model names
-        candidate_models = [self.model_name, "gemini-flash-latest", "gemini-2.5-flash", "gemini-pro-latest"]
+        # Try native GenerativeLanguage API first with prioritized models
+        raw_candidates = [
+            self.model_name,
+            models.GEMINI_MODEL_NAME,
+            *models.GEMINI_FALLBACK_CANDIDATES,
+        ]
+        # Deduplicate while preserving order
+        candidate_models = []
+        for m in raw_candidates:
+            if m and m not in candidate_models:
+                candidate_models.append(m)
+
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
         payload = {
             "contents": [{"parts": [{"text": full_prompt}]}],
             "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}
         }
 
+        last_error = None
         for cand_m in candidate_models:
             try:
-                native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_m}:generateContent?key={key}"
-                resp, _ = safe_http_request(native_url, payload=payload, timeout=kwargs.get("timeout", 12.0), max_retries=1)
+                native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_m}:generateContent"
+                resp, _ = safe_http_request(
+                    native_url,
+                    payload=payload,
+                    headers={"x-goog-api-key": key},
+                    timeout=kwargs.get("timeout", 8.0),
+                    max_retries=1,
+                )
                 parts = resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                 text_parts = [p.get("text", "") for p in parts if "text" in p]
                 if text_parts:
                     self.model_name = cand_m
                     return "".join(text_parts).strip()
             except ProviderHTTPError as pe:
-                if pe.status_code in (429, 401, 403, 402):
+                last_error = pe
+                if pe.status_code in (401, 403):
+                    # Hard auth failure: don't loop on invalid credentials
                     raise pe
-                logger.debug(f"Gemini model {cand_m} failed: {pe}")
+                if pe.classification == "ENDPOINT_UNREACHABLE" or "timed out" in str(pe).lower():
+                    # Network unreachable or connection timed out: fail fast so router falls back to local vLLM instantly
+                    raise pe
+                # For 404 (deprecated), 503 (high demand), 429 (rate limited on that model): try next model
+                logger.debug(f"Gemini model {cand_m} failed (HTTP {pe.status_code}): {pe}. Falling back to next candidate.")
                 continue
             except Exception as native_err:
-                logger.debug(f"Gemini model {cand_m} failed: {native_err}")
+                last_error = native_err
+                if "timed out" in str(native_err).lower() or isinstance(native_err, TimeoutError):
+                    raise native_err
+                logger.debug(f"Gemini model {cand_m} error: {native_err}. Falling back to next candidate.")
                 continue
+
+        # If candidate models exhausted with error (429 rate limit, 404 deprecated, or timeout), fail fast so router can switch to local vLLM immediately
+        if last_error:
+            raise last_error
 
         messages = []
         if system_prompt:
@@ -128,24 +159,50 @@ class GeminiProvider(LLMProvider):
                 cost_mode=self.cost_mode,
             )
 
-        # Try native endpoint first
-        try:
-            native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={key}"
-            payload_native = {"contents": [{"parts": [{"text": "Hello"}]}], "generationConfig": {"maxOutputTokens": 5}}
-            resp, latency_ms = safe_http_request(native_url, payload=payload_native, timeout=timeout, max_retries=0)
-            return ProviderHealth(
-                provider=self.name,
-                configured=True,
-                credential_valid=True,
-                endpoint_reachable=True,
-                model_available=True,
-                functional_test=True,
-                status="READY",
-                latency_ms=round(latency_ms, 1),
-                cost_mode=self.cost_mode,
-            )
-        except Exception as _native_e:
-            pass
+        # Try native generateContent endpoint first across prioritized models
+        raw_candidates = [
+            self.model_name,
+            models.GEMINI_MODEL_NAME,
+            *models.GEMINI_FALLBACK_CANDIDATES,
+        ]
+        candidate_models = []
+        for m in raw_candidates:
+            if m and m not in candidate_models:
+                candidate_models.append(m)
+
+        for cand_m in candidate_models:
+            try:
+                native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{cand_m}:generateContent"
+                payload_native = {"contents": [{"parts": [{"text": "Hello"}]}], "generationConfig": {"maxOutputTokens": 5}}
+                resp, latency_ms = safe_http_request(native_url, payload=payload_native, headers={"x-goog-api-key": key}, timeout=timeout, max_retries=0)
+                self.model_name = cand_m
+                return ProviderHealth(
+                    provider=self.name,
+                    configured=True,
+                    credential_valid=True,
+                    endpoint_reachable=True,
+                    model_available=True,
+                    functional_test=True,
+                    status="READY",
+                    latency_ms=round(latency_ms, 1),
+                    cost_mode=self.cost_mode,
+                )
+            except ProviderHTTPError as pe:
+                if pe.classification == "AUTH_FAILED" or getattr(pe, "status_code", None) == 403:
+                    return ProviderHealth(
+                        provider=self.name,
+                        configured=True,
+                        credential_valid=False,
+                        endpoint_reachable=True,
+                        model_available=False,
+                        functional_test=False,
+                        status="AUTH_FAILED",
+                        error_message="Gemini API authentication rejected. Please verify your Google AI Studio API key.",
+                        cost_mode=self.cost_mode,
+                    )
+                continue
+            except Exception:
+                continue
 
         payload = {
             "model": self.model_name,

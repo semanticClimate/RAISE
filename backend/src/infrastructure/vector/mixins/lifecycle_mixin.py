@@ -45,7 +45,7 @@ class VectorLifecycleMixin:
         try:
             # 1. Check by pdf_filename metadata
             try:
-                res1 = self.collection.get(where={"pdf_filename": pdf_filename})
+                res1 = self.collection.get(where={"pdf_filename": pdf_filename}, include=[])
                 if res1 and res1.get("ids"):
                     self.collection.delete(ids=res1["ids"])
                     deleted_count += len(res1["ids"])
@@ -54,7 +54,7 @@ class VectorLifecycleMixin:
 
             # 2. Check by doc_id metadata
             try:
-                res2 = self.collection.get(where={"doc_id": target_doc_id})
+                res2 = self.collection.get(where={"doc_id": target_doc_id}, include=[])
                 if res2 and res2.get("ids"):
                     self.collection.delete(ids=res2["ids"])
                     deleted_count += len(res2["ids"])
@@ -63,7 +63,7 @@ class VectorLifecycleMixin:
 
             # 3. Check by chunk ID prefix
             try:
-                all_res = self.collection.get()
+                all_res = self.collection.get(include=[])
                 matching_ids = [cid for cid in all_res.get("ids", []) if cid.startswith(target_doc_id)]
                 if matching_ids:
                     self.collection.delete(ids=matching_ids)

@@ -1,6 +1,10 @@
+import { useEffect, useRef } from 'react';
 import type React from 'react';
+import { GitBranch } from 'lucide-react';
 import type { ChatSession } from '../../../types';
 import { formatSessionDate } from '../../../utils/uuid';
+import { exportSessionAsPdf } from '../../../utils/exportFormats';
+import { useClickOutside } from '../../../hooks';
 
 export interface ChatSessionItemProps {
   session: ChatSession;
@@ -8,11 +12,13 @@ export interface ChatSessionItemProps {
   isMenuOpen: boolean;
   isRenaming: boolean;
   isPinned: boolean;
+  hasBranches?: boolean;
   newSessionTitle: string;
   setNewSessionTitle: (title: string) => void;
   onSelect: (session: ChatSession) => void;
   onTogglePin: (id: string) => void;
   onToggleMenu: (id: string) => void;
+  onCloseMenu?: () => void;
   onStartRename: (session: ChatSession) => void;
   onSaveRename: (id: string) => void;
   onCancelRename: () => void;
@@ -25,16 +31,44 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
   isMenuOpen,
   isRenaming,
   isPinned,
+  hasBranches,
   newSessionTitle,
   setNewSessionTitle,
   onSelect,
   onTogglePin,
   onToggleMenu,
+  onCloseMenu,
   onStartRename,
   onSaveRename,
   onCancelRename,
   onDeleteSession,
 }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown menu when clicking outside
+  useClickOutside(
+    menuRef,
+    () => {
+      if (isMenuOpen) {
+        if (onCloseMenu) onCloseMenu();
+        else onToggleMenu(session.id);
+      }
+    },
+    isMenuOpen
+  );
+
+  // Close dropdown on Escape key
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (onCloseMenu) onCloseMenu();
+        else onToggleMenu(session.id);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMenuOpen, onCloseMenu, onToggleMenu, session.id]);
   return (
     <div
       onClick={() => onSelect(session)}
@@ -76,8 +110,24 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
               </p>
               <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                 <span>
-                  {session.timestamp || formatSessionDate(session.updated_at || session.created_at)}
+                  {formatSessionDate(session.updated_at || session.created_at, session.timestamp)}
                 </span>
+                {session.forkedFromSessionId ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.2 rounded font-medium bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-500/30"
+                    title={`Forked from: ${session.forkedFromTitle || 'Original chat'}`}
+                  >
+                    <GitBranch className="w-2.5 h-2.5" />
+                    <span>Branch</span>
+                  </span>
+                ) : hasBranches ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.2 rounded font-medium bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-500/30"
+                    title="Original chat thread with branched hypotheses"
+                  >
+                    <span>Original</span>
+                  </span>
+                ) : null}
               </div>
             </div>
           )}
@@ -115,7 +165,7 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
         </button>
 
         {/* Three-dots menu button */}
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => onToggleMenu(session.id)}
@@ -159,7 +209,38 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
 
               <button
                 type="button"
-                onClick={() => onDeleteSession(session.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  exportSessionAsPdf(session);
+                  if (onCloseMenu) onCloseMenu();
+                  else onToggleMenu(session.id);
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
+                title="Download full conversation transcript as PDF"
+              >
+                <svg
+                  className="w-3.5 h-3.5 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <span>Download PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteSession(session.id);
+                  if (onCloseMenu) onCloseMenu();
+                  else onToggleMenu(session.id);
+                }}
                 className="w-full text-left px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

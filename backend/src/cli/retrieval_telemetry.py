@@ -25,6 +25,7 @@ from src.cli.models import (
     RerankMetrics,
     RetrievalMetrics,
 )
+from src.core.config import models
 
 
 def build_retrieval_metrics(
@@ -67,7 +68,7 @@ def build_retrieval_metrics(
     dist_max_m = MetricValue.measured(max(distances)) if distances else MetricValue.unavailable()
 
     vec_m = VectorRetrievalMetrics(
-        model=meta.get("embedding_model", "BAAI/bge-large-en-v1.5"),
+        model=meta.get("embedding_model", models.EMBEDDING_MODEL_NAME),
         collection=meta.get("vector_collection", "raise_graphrag_chunks"),
         candidates=MetricValue.measured(int(vec_candidates)) if vec_candidates is not None else MetricValue.unavailable(),
         top_k=MetricValue.measured(int(top_k)) if top_k is not None else MetricValue.unavailable(),

@@ -115,34 +115,44 @@ class ProvenanceTracker:
     ) -> Optional[Dict[str, Any]]:
         """
         Resolves a 1-based citation index to its chunk metadata: chunk_id, pages, document.
+        Inspects both top-level chunk dictionaries and nested chunk["metadata"] objects.
         """
-        # 1-based index into context_chunks
         idx_0 = citation_index - 1
         if 0 <= idx_0 < len(context_chunks):
             chunk = context_chunks[idx_0]
         else:
-            # Check if any chunk explicitly has "citation_index" == citation_index
             matched = [c for c in context_chunks if c.get("citation_index") == citation_index]
-            if matched:
-                chunk = matched[0]
-            else:
+            if not matched:
                 return None
+            chunk = matched[0]
 
-        # Extract primary page and source pages
+        meta = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+
         pages: List[int] = []
-        p_prim = (
-            chunk.get("primary_page")
-            or chunk.get("page_number")
-            or chunk.get("page")
-            or chunk.get("pdf_page")
-        )
-        if p_prim is not None:
-            try:
-                pages.append(int(p_prim))
-            except (ValueError, TypeError):
-                pass
+        for p_candidate in (
+            chunk.get("primary_page"),
+            meta.get("primary_page"),
+            chunk.get("printed_page"),
+            meta.get("printed_page"),
+            chunk.get("page_number"),
+            meta.get("page_number"),
+            chunk.get("page"),
+            meta.get("page"),
+            chunk.get("pdf_page"),
+            meta.get("pdf_page"),
+        ):
+            if p_candidate is not None and str(p_candidate).strip().isdigit():
+                p_int = int(str(p_candidate).strip())
+                if p_int not in pages:
+                    pages.append(p_int)
 
-        src_pages = chunk.get("source_pages") or chunk.get("pages") or []
+        src_pages = (
+            chunk.get("source_pages")
+            or meta.get("source_pages")
+            or chunk.get("pages")
+            or meta.get("pages")
+            or []
+        )
         for sp in src_pages:
             try:
                 isp = int(sp)
@@ -153,18 +163,23 @@ class ProvenanceTracker:
 
         doc_name = (
             chunk.get("pdf_filename")
+            or meta.get("pdf_filename")
             or chunk.get("document_id")
-            or chunk.get("source")
+            or meta.get("document_id")
             or chunk.get("doc_id")
-            or chunk.get("document")
+            or meta.get("doc_id")
+            or chunk.get("filename")
+            or meta.get("filename")
+            or chunk.get("source")
+            or meta.get("source")
             or ""
         )
 
         return {
-            "chunk_id": str(chunk.get("chunk_id") or chunk.get("id") or f"chunk_{citation_index}"),
+            "chunk_id": str(chunk.get("chunk_id") or meta.get("chunk_id") or chunk.get("id") or f"chunk_{citation_index}"),
             "pages": pages,
             "document": str(doc_name),
-            "text": str(chunk.get("plain_text") or chunk.get("text") or "")[:200],
+            "text": str(chunk.get("plain_text") or chunk.get("text") or meta.get("text") or "")[:200],
         }
 
     @classmethod

@@ -1,14 +1,20 @@
-import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, X, Zap } from 'lucide-react';
+import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, RotateCcw, X, Zap } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
-import { platformAdapter } from '../services/platformAdapter';
+import { platformAdapter, type ConnectionTestResult } from '../services/platformAdapter';
 import { detectEnvCredentials } from '../services/envDetector';
 import { useControlCenterStore } from '../store/useControlCenterStore';
+import type { SubstrateMode } from '../types';
 
 export const DatabaseStep: React.FC = () => {
-  const { config, updateSubstrate, setAllSubstratesMode } = useControlCenterStore();
+  const { config, updateSubstrate, setAllSubstratesMode, syncBackendConfig } = useControlCenterStore();
   const envData = detectEnvCredentials();
+
+  // Test live substrate connectivity state
+  const [isTestingSubstrates, setIsTestingSubstrates] = useState(false);
+  const [testResults, setTestResults] = useState<ConnectionTestResult | null>(null);
+  const [testNotice, setTestNotice] = useState<string | null>(null);
 
   // Cloud credentials modal state
   const [activeCloudSubstrate, setActiveCloudSubstrate] = useState<
@@ -21,31 +27,175 @@ export const DatabaseStep: React.FC = () => {
   const [isConnectingCloud, setIsConnectingCloud] = useState(false);
   const [cloudModalError, setCloudModalError] = useState<string | null>(null);
 
+  const handleTestAllSubstrates = async () => {
+    setIsTestingSubstrates(true);
+    setTestNotice('Testing substrates...');
+    try {
+      const cur = useControlCenterStore.getState().config;
+      const results = await platformAdapter.testConnections({
+        neo4j_mode: cur.knowledgeGraph?.mode || cur.neo4jMode,
+        neo4j_uri: cur.knowledgeGraph?.uri || cur.neo4jUri,
+        neo4j_user: cur.knowledgeGraph?.user,
+        neo4j_password: cur.knowledgeGraph?.password || cur.neo4jPassword,
+        postgres_mode: cur.sessionMemory?.mode || cur.postgresMode,
+        postgres_uri: cur.sessionMemory?.uri,
+        redis_mode: cur.cacheAndSignals?.mode || cur.redisMode,
+        redis_uri: cur.cacheAndSignals?.uri,
+      });
+      setTestResults(results);
+
+      // Keep substrate status in store aligned with honest probe results
+      if (results.neo4j) {
+        updateSubstrate('knowledgeGraph', {
+          tested: true,
+          online: results.neo4j.online,
+          latencyMs: results.neo4j.latency_ms,
+        });
+      }
+      if (results.postgres) {
+        updateSubstrate('sessionMemory', {
+          tested: true,
+          online: results.postgres.online,
+          latencyMs: results.postgres.latency_ms,
+        });
+      }
+      if (results.redis) {
+        updateSubstrate('cacheAndSignals', {
+          tested: true,
+          online: results.redis.online,
+          latencyMs: results.redis.latency_ms,
+        });
+      }
+
+      setTestNotice('Connection probes complete.');
+    } catch {
+      setTestNotice('Connection probe encountered offline endpoints.');
+    } finally {
+      setIsTestingSubstrates(false);
+      setTimeout(() => setTestNotice(null), 3500);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const init = async () => {
+      try {
+        await syncBackendConfig();
+      } catch {
+        // Backend offline or unreachable
+      }
+      if (isMounted) {
+        await handleTestAllSubstrates();
+      }
+    };
+    init();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSelectSubstrateMode = (
+    key: 'knowledgeGraph' | 'sessionMemory' | 'cacheAndSignals',
+    targetMode: SubstrateMode
+  ) => {
+    updateSubstrate(key, { mode: targetMode });
+    const tierName =
+      targetMode === 'in_memory_fallback'
+        ? 'Fast Local'
+        : targetMode === 'local'
+        ? 'Docker Local'
+        : 'Cloud Managed';
+    const subLabel =
+      key === 'knowledgeGraph'
+        ? 'Knowledge Graph'
+        : key === 'sessionMemory'
+        ? 'Session Memory'
+        : 'Response Cache';
+    setTestNotice(`Selected ${tierName} for ${subLabel}. Click Next and Start to apply.`);
+    setTimeout(() => setTestNotice(null), 3000);
+  };
+
+  const handleSetAllSubstrates = (targetMode: SubstrateMode) => {
+    setAllSubstratesMode(targetMode);
+    const tierNotice =
+      targetMode === 'in_memory_fallback'
+        ? 'Fast Local (Zero-Dependency In-Memory)'
+        : targetMode === 'local'
+        ? 'Docker Local (auto-falls back to Fast Local if Docker is offline)'
+        : 'Cloud Managed';
+    setTestNotice(`Selected ${tierNotice}. Click Next and Start to apply.`);
+    setTimeout(() => setTestNotice(null), 4500);
+  };
+
+  const isNeo4jOnline = Boolean(
+    testResults?.neo4j?.online &&
+    testResults?.neo4j?.provider &&
+    !testResults?.neo4j?.provider?.toLowerCase().includes('in-memory')
+  );
+
+  const isRedisOnline = Boolean(
+    testResults?.redis?.online &&
+    testResults?.redis?.provider &&
+    !testResults?.redis?.provider?.toLowerCase().includes('in-memory')
+  );
+
+  const isPostgresOnline = Boolean(
+    testResults?.postgres?.online &&
+    testResults?.postgres?.provider &&
+    !testResults?.postgres?.provider?.toLowerCase().includes('in-memory')
+  );
+
+  const getEffectiveMode = (key: 'knowledgeGraph' | 'sessionMemory' | 'cacheAndSignals'): SubstrateMode => {
+    const storeMode =
+      key === 'knowledgeGraph'
+        ? config.knowledgeGraph?.mode || config.neo4jMode
+        : key === 'sessionMemory'
+        ? config.sessionMemory?.mode || config.postgresMode
+        : config.cacheAndSignals?.mode || config.redisMode;
+
+    if (storeMode && ['in_memory_fallback', 'local', 'cloud'].includes(storeMode)) {
+      return storeMode as SubstrateMode;
+    }
+    return 'in_memory_fallback';
+  };
+
   const substrates = [
     {
       key: 'knowledgeGraph' as const,
       name: 'Knowledge Graph',
-      role: 'Neo4j Graph Engine',
+      getRole: (mode: SubstrateMode) => {
+        if (mode === 'in_memory_fallback') return testResults?.neo4j?.provider || 'NetworkX In-Memory';
+        if (mode === 'local') return isNeo4jOnline ? (testResults?.neo4j?.provider || 'Neo4j Graph Database (:7687)') : 'Neo4j Local Container (Docker Offline)';
+        return isNeo4jOnline ? (testResults?.neo4j?.provider || 'Neo4j AuraDB Cloud') : 'Neo4j AuraDB (Remote)';
+      },
       icon: Layers,
-      info: 'Neo4j Graph Database for semantic citations, concept nodes, and multi-hop reasoning.',
+      info: 'Property graph database for semantic citations, concept nodes, and multi-hop reasoning.',
       defaultUri: 'neo4j+s://your-instance.databases.neo4j.io',
       presetName: 'Neo4j AuraDB',
     },
     {
       key: 'sessionMemory' as const,
       name: 'Session Memory',
-      role: 'PostgreSQL Store',
+      getRole: (mode: SubstrateMode) => {
+        if (mode === 'in_memory_fallback') return testResults?.postgres?.provider || 'Local SQLite Storage';
+        if (mode === 'local') return isPostgresOnline ? (testResults?.postgres?.provider || 'PostgreSQL Store (:5432)') : 'PostgreSQL Local Container (Docker Offline)';
+        return isPostgresOnline ? (testResults?.postgres?.provider || 'Neon Serverless Postgres') : 'PostgreSQL Cloud (Remote)';
+      },
       icon: Database,
-      info: 'PostgreSQL with pgvector for cross-session chat persistence.',
+      info: 'Relational & vector persistence for cross-session chat persistence.',
       defaultUri: 'postgresql://user:password@ep-cool-fog.neon.tech/neondb',
       presetName: 'Neon Serverless Postgres',
     },
     {
       key: 'cacheAndSignals' as const,
       name: 'Response Cache',
-      role: 'Redis Fast Bus',
+      getRole: (mode: SubstrateMode) => {
+        if (mode === 'in_memory_fallback') return testResults?.redis?.provider || 'In-Memory State & Signals';
+        if (mode === 'local') return isRedisOnline ? (testResults?.redis?.provider || 'Redis Fast Bus (:6379)') : 'Redis Local Container (Docker Offline)';
+        return isRedisOnline ? (testResults?.redis?.provider || 'Upstash Redis Cloud') : 'Redis Cloud (Remote)';
+      },
       icon: Zap,
-      info: 'Redis for ephemeral streaming state and semantic query caching.',
+      info: 'Sub-millisecond ephemeral streaming state and semantic query caching.',
       defaultUri: 'rediss://default:token@your-cluster.upstash.io:6379',
       presetName: 'Upstash Redis',
     },
@@ -57,11 +207,12 @@ export const DatabaseStep: React.FC = () => {
       key === 'knowledgeGraph'
         ? envData.neo4j
         : key === 'sessionMemory'
-          ? envData.postgres
-          : envData.redis;
+        ? envData.postgres
+        : envData.redis;
 
     const initialUri = existing?.uri || (detected?.present ? detected.uri || '' : '');
-    const initialUser = existing?.user || (detected?.user || (key === 'knowledgeGraph' ? 'neo4j' : ''));
+    const initialUser =
+      existing?.user || (detected?.user || (key === 'knowledgeGraph' ? 'neo4j' : ''));
     const initialPass = existing?.password || (detected?.password || '');
 
     setCloudUri(initialUri);
@@ -119,7 +270,9 @@ export const DatabaseStep: React.FC = () => {
       }
 
       if (!isOnline) {
-        setCloudModalError(errorMsg || 'Connection failed: Unable to reach database endpoint. Check URI/credentials.');
+        setCloudModalError(
+          errorMsg || 'Connection failed: Unable to reach database endpoint. Check URI/credentials.'
+        );
         updateSubstrate(activeCloudSubstrate, {
           mode: 'cloud',
           uri: cloudUri.trim(),
@@ -143,6 +296,8 @@ export const DatabaseStep: React.FC = () => {
       });
 
       setActiveCloudSubstrate(null);
+      setTestNotice('Cloud endpoint configured. Click Next and Start to apply.');
+      setTimeout(() => setTestNotice(null), 3000);
     } catch (err: any) {
       setCloudModalError(err?.message || 'Connection test failed. Verify credentials.');
     } finally {
@@ -150,14 +305,19 @@ export const DatabaseStep: React.FC = () => {
     }
   };
 
-  const kgMode = config.knowledgeGraph?.mode || config.neo4jMode || 'in_memory_fallback';
-  const memMode = config.sessionMemory?.mode || config.postgresMode || 'in_memory_fallback';
-  const cacheMode = config.cacheAndSignals?.mode || config.redisMode || 'in_memory_fallback';
+  const kgMode = getEffectiveMode('knowledgeGraph');
+  const memMode = getEffectiveMode('sessionMemory');
+  const cacheMode = getEffectiveMode('cacheAndSignals');
 
   const isAllMemory =
     kgMode === 'in_memory_fallback' &&
     memMode === 'in_memory_fallback' &&
     cacheMode === 'in_memory_fallback';
+
+  const isAllLocal =
+    kgMode === 'local' &&
+    memMode === 'local' &&
+    cacheMode === 'local';
 
   const isAllCloud =
     kgMode === 'cloud' &&
@@ -168,58 +328,89 @@ export const DatabaseStep: React.FC = () => {
     envData.postgres.present || envData.redis.present || envData.neo4j.present;
 
   return (
-    <div className="space-y-4 animate-in fade-in-50 duration-150">
-      <div>
-        <h3 className="text-base font-bold text-white tracking-tight">
-          Storage Substrates
-        </h3>
+    <div className="space-y-3 animate-in fade-in-50 duration-150">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-white tracking-tight">
+            Storage Substrates
+          </h3>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Graph, memory, cache & vector stores with fallback.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {testNotice && (
+            <span className="text-xs font-mono text-white font-bold animate-in fade-in">
+              {testNotice}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleTestAllSubstrates}
+            disabled={isTestingSubstrates}
+            className="px-2.5 py-1 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            title="Probe live connectivity for all configured substrates"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingSubstrates ? 'animate-spin text-white' : ''}`} />
+            <span>Test Substrates</span>
+          </button>
+        </div>
       </div>
 
-      {/* Global Mode Quick-Toggle: Python In-Memory vs Cloud Infrastructure */}
-      <div className="p-1.5 rounded-xl bg-[#131622] border border-white/10 grid grid-cols-2 gap-2">
+      {/* Global Storage Tier Quick-Toggle: Fast Local vs Docker Local vs Cloud Managed */}
+      <div className="p-1 rounded-xl bg-[#111111] border border-[#292929] grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+        {/* Tier 1: Fast Local */}
         <button
           type="button"
-          onClick={() => setAllSubstratesMode('in_memory_fallback')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+          onClick={() => handleSetAllSubstrates('in_memory_fallback')}
+          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             isAllMemory
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
-              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
+              : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
+          title="Zero-dependency fast in-memory execution"
         >
-          <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-emerald-400" />
-            <span>In-Memory</span>
-          </div>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
-            0 GB • Instant
-          </span>
+          <Cpu className={`w-3.5 h-3.5 ${isAllMemory ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
+          <span>Fast Local</span>
         </button>
 
+        {/* Tier 2: Docker Local */}
         <button
           type="button"
-          onClick={() => setAllSubstratesMode('cloud')}
-          className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
-            isAllCloud
-              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
-              : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+          onClick={() => handleSetAllSubstrates('local')}
+          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            isAllLocal
+              ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
+              : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
           }`}
+          title="Local Docker container daemons"
         >
-          <div className="flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-sky-400" />
-            <span>Cloud</span>
-          </div>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400">
-            Remote Endpoints
-          </span>
+          <Database className={`w-3.5 h-3.5 ${isAllLocal ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
+          <span>Docker Local</span>
+        </button>
+
+        {/* Tier 3: Cloud Managed */}
+        <button
+          type="button"
+          onClick={() => handleSetAllSubstrates('cloud')}
+          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            isAllCloud
+              ? 'bg-[#FFFFFF] text-[#000000] font-bold shadow-sm'
+              : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-transparent'
+          }`}
+          title="Cloud-hosted database endpoints"
+        >
+          <Cloud className={`w-3.5 h-3.5 ${isAllCloud ? 'text-[#000000]' : 'text-[#FFFFFF]'}`} />
+          <span>Cloud Managed</span>
         </button>
       </div>
 
       {/* .env Detection Banner */}
       {hasAnyDbInEnv && (
-        <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-between text-xs">
+        <div className="p-2 rounded-xl bg-white/5 border border-white/15 flex items-center justify-between text-xs">
           <div>
-            <div className="font-semibold text-sky-300 flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-sky-400" />
+            <div className="font-semibold text-white flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-white" />
               <span>Endpoints found in .env:</span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex gap-2 flex-wrap">
@@ -230,35 +421,29 @@ export const DatabaseStep: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => setAllSubstratesMode('cloud')}
-            className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-semibold transition-all cursor-pointer shrink-0"
+            onClick={() => handleSetAllSubstrates('cloud')}
+            className="px-2 py-0.5 rounded bg-white hover:bg-zinc-200 text-black text-xs font-bold transition-all cursor-pointer shrink-0"
           >
             Apply
           </button>
         </div>
       )}
 
-      {/* Modern Table Format (Single unified view, zero internal scrollbar) */}
-      <div className="rounded-xl bg-[#131622] border border-white/10 overflow-hidden">
+      {/* Modern Table Format (Single unified view, click box and tick) */}
+      <div className="rounded-xl bg-[#111111] border border-[#292929] overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-white/10 bg-black/40 text-xs font-semibold text-slate-300">
-              <th className="py-2.5 px-4">Substrate</th>
-              <th className="py-2.5 px-3 text-center">In-Memory</th>
-              <th className="py-2.5 px-3 text-center">Local</th>
-              <th className="py-2.5 px-3 text-center">Cloud</th>
+            <tr className="border-b border-[#292929] bg-[#0A0A0A] text-xs font-semibold text-[#A3A3A3]">
+              <th className="py-2 px-3">Substrate</th>
+              <th className="py-2 px-3 text-center">Fast Local</th>
+              <th className="py-2 px-3 text-center">Docker Local</th>
+              <th className="py-2 px-3 text-center">Cloud Managed</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5 text-xs">
+          <tbody className="divide-y divide-[#292929]/60 text-xs">
             {substrates.map((sub) => {
-              const legacyMode =
-                sub.key === 'knowledgeGraph'
-                  ? config.neo4jMode
-                  : sub.key === 'sessionMemory'
-                    ? config.postgresMode
-                    : config.redisMode;
-              const cfg = config[sub.key] || { mode: legacyMode || 'in_memory_fallback' };
-              const currentMode = cfg.mode || 'in_memory_fallback';
+              const currentMode = getEffectiveMode(sub.key);
+              const cfg = config[sub.key] || { mode: currentMode };
               const Icon = sub.icon;
 
               const isMemory = currentMode === 'in_memory_fallback';
@@ -268,40 +453,40 @@ export const DatabaseStep: React.FC = () => {
               return (
                 <tr key={sub.key} className="hover:bg-white/[0.02] transition-colors">
                   {/* Row Header (Substrate with Tooltip) */}
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-white shrink-0">
-                        <Icon className="w-3.5 h-3.5 text-white" />
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-white/10 flex items-center justify-center text-white shrink-0">
+                        <Icon className="w-3 h-3 text-white" />
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-white text-xs">{sub.name}</span>
                           <Tooltip size="sm" content={sub.info} />
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          {sub.role}
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {sub.getRole(currentMode)}
                         </div>
                       </div>
                     </div>
                   </td>
 
-                  {/* Python Memory Cell */}
-                  <td className="py-3.5 px-3 text-center">
+                  {/* Fast Local Cell */}
+                  <td className="py-2 px-3 text-center">
                     <button
                       type="button"
-                      onClick={() => updateSubstrate(sub.key, { mode: 'in_memory_fallback' })}
-                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
+                      onClick={() => handleSelectSubstrateMode(sub.key, 'in_memory_fallback')}
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all cursor-pointer ${
                         isMemory
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                          ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
-                      title="Select Python In-Memory"
-                      aria-label={`Select Python In-Memory for ${sub.name}`}
+                      title="Select Fast Local"
+                      aria-label={`Select Fast Local for ${sub.name}`}
                     >
                       {isMemory ? (
                         <>
-                          <Check className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Python In-Memory</span>
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span className="sr-only">Fast Local</span>
                         </>
                       ) : (
                         <span>-</span>
@@ -309,23 +494,23 @@ export const DatabaseStep: React.FC = () => {
                     </button>
                   </td>
 
-                  {/* Local Cell */}
-                  <td className="py-3.5 px-3 text-center">
+                  {/* Docker Local Cell */}
+                  <td className="py-2 px-3 text-center">
                     <button
                       type="button"
-                      onClick={() => updateSubstrate(sub.key, { mode: 'local' })}
-                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
+                      onClick={() => handleSelectSubstrateMode(sub.key, 'local')}
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all cursor-pointer ${
                         isLocal
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                          ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
-                      title="Select Local Daemon"
-                      aria-label={`Select Local for ${sub.name}`}
+                      title="Select Docker Local"
+                      aria-label={`Select Docker Local for ${sub.name}`}
                     >
                       {isLocal ? (
                         <>
-                          <Check className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Local</span>
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span className="sr-only">Docker Local</span>
                         </>
                       ) : (
                         <span>-</span>
@@ -333,45 +518,45 @@ export const DatabaseStep: React.FC = () => {
                     </button>
                   </td>
 
-                  {/* Cloud Cell */}
-                  <td className="py-3.5 px-3 text-center">
+                  {/* Cloud Managed Cell */}
+                  <td className="py-2 px-3 text-center">
                     <button
                       type="button"
                       onClick={() => handleOpenCloudModal(sub.key)}
-                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all cursor-pointer ${
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all cursor-pointer ${
                         isCloud && cfg?.online === true
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                          : isCloud && cfg?.tested && cfg?.online === false
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 shadow-sm'
+                          ? 'bg-white text-black border border-white font-bold shadow-sm'
                           : isCloud
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-sm'
+                          ? 'bg-[#171717] hover:bg-[#292929] text-white border border-[#292929] hover:border-white shadow-sm active:scale-95 group'
                           : 'text-slate-500 hover:text-white hover:bg-white/5 font-mono text-base'
                       }`}
                       title={
                         isCloud && cfg?.online === true
                           ? 'Cloud connected (click to edit)'
+                          : isTestingSubstrates
+                          ? 'Testing connection...'
                           : isCloud && cfg?.tested && cfg?.online === false
-                          ? 'Cloud connection failed (click to retry)'
+                          ? 'Cloud connection failed (click to configure & retry)'
                           : isCloud
-                          ? 'Cloud configured, unverified (click to verify)'
+                          ? 'Cloud configured, unverified (click to configure & verify)'
                           : 'Click to configure Cloud connection'
                       }
-                      aria-label={`Select Cloud for ${sub.name}`}
+                      aria-label={`Select Cloud Managed for ${sub.name}`}
                     >
                       {isCloud && cfg?.online === true ? (
                         <>
-                          <Check className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Cloud</span>
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span className="sr-only">Cloud Managed</span>
                         </>
-                      ) : isCloud && cfg?.tested && cfg?.online === false ? (
+                      ) : isTestingSubstrates ? (
                         <>
-                          <X className="w-4 h-4 stroke-[2.5]" />
-                          <span className="sr-only">Connection Failed</span>
+                          <RefreshCw className="w-3 h-3 animate-spin text-white" />
+                          <span className="sr-only">Testing connection...</span>
                         </>
                       ) : isCloud ? (
                         <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span className="sr-only">Unverified</span>
+                          <RotateCcw className="w-3 h-3 text-white stroke-[2.5] transition-transform duration-300 group-hover:-rotate-45" />
+                          <span className="sr-only">Click to configure and connect</span>
                         </>
                       ) : (
                         <span>-</span>
@@ -385,6 +570,31 @@ export const DatabaseStep: React.FC = () => {
         </table>
       </div>
 
+      {/* ChromaDB Dense Vector Engine Substrate */}
+      <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-[#171717] text-[#FFFFFF] border border-[#292929] flex items-center justify-center shrink-0 font-mono font-bold text-xs">
+            V
+          </div>
+          <div>
+            <div className="font-bold text-[#FFFFFF] flex items-center gap-2">
+              <span>Vector Store</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#171717] text-[#FFFFFF] border border-[#292929] font-mono">
+                ChromaDB (Local Embedded)
+              </span>
+            </div>
+            <div className="text-[10.5px] text-[#A3A3A3] font-mono mt-0.5">
+              Dense document embeddings & semantic similarity • Fast embedded SQLite/Parquet vector persistence
+            </div>
+          </div>
+        </div>
+        {typeof testResults?.chroma?.total_chunks === 'number' && (
+          <span className="text-[11px] font-mono text-[#A3A3A3] shrink-0">
+            {testResults.chroma.total_chunks} chunks
+          </span>
+        )}
+      </div>
+
       {/* Cloud Connection Configuration Popup */}
       {activeCloudSubstrate &&
         (() => {
@@ -393,8 +603,8 @@ export const DatabaseStep: React.FC = () => {
           const Icon = sub.icon;
 
           return (
-            <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="w-full max-w-md bg-[#131622] border border-white/20 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="fixed inset-0 z-50 bg-[#000000]/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-md bg-[#111111] border border-[#292929] rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
                 <div className="flex items-center justify-between border-b border-white/10 pb-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white shrink-0">
@@ -415,7 +625,7 @@ export const DatabaseStep: React.FC = () => {
                 </div>
 
                 {cloudModalError && (
-                  <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
+                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/15 text-zinc-300 text-xs font-mono">
                     {cloudModalError}
                   </div>
                 )}
@@ -426,14 +636,14 @@ export const DatabaseStep: React.FC = () => {
                     activeCloudSubstrate === 'knowledgeGraph'
                       ? envData.neo4j
                       : activeCloudSubstrate === 'sessionMemory'
-                        ? envData.postgres
-                        : envData.redis;
+                      ? envData.postgres
+                      : envData.redis;
 
                   if (detected?.present) {
                     return (
-                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between text-[11px]">
-                        <span className="text-emerald-300 flex items-center gap-1 font-mono">
-                          <Check className="w-3 h-3" />
+                      <div className="p-2 rounded-lg bg-white/10 border border-white/20 flex items-center justify-between text-[11px]">
+                        <span className="text-white flex items-center gap-1 font-mono font-semibold">
+                          <Check className="w-3 h-3 text-white" />
                           Detected in root .env ({detected.source})
                         </span>
                         <button
@@ -443,7 +653,7 @@ export const DatabaseStep: React.FC = () => {
                             if (detected.user) setCloudUser(detected.user);
                             if (detected.password) setCloudPass(detected.password);
                           }}
-                          className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 font-semibold cursor-pointer"
+                          className="px-2 py-0.5 rounded bg-white hover:bg-zinc-200 text-black font-bold cursor-pointer"
                         >
                           Use .env Value
                         </button>

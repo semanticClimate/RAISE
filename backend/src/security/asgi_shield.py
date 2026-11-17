@@ -33,11 +33,15 @@ class PureASGISecurityShieldMiddleware:
     Provides sub-microsecond IP blacklisting, upload body bypass, and telemetry capture.
     """
 
-    def __init__(self, app: Any, redis_client: Optional[Any] = None):
+    def __init__(self, app: Any, redis_client: Optional[Any] = None, fastapi_app: Optional[Any] = None):
         self.app = app
+        self.fastapi_app = fastapi_app
         self.redis = redis_client
         self.telemetry_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self._worker_task: Optional[asyncio.Task] = None
+        target_app = fastapi_app or app
+        if hasattr(target_app, "state"):
+            target_app.state.asgi_shield = self
 
     def start_background_worker(self) -> None:
         """Starts background worker draining telemetry queue and broadcasting to Redis."""
@@ -58,9 +62,14 @@ class PureASGISecurityShieldMiddleware:
         while True:
             try:
                 frame = await self.telemetry_queue.get()
-                if self.redis:
+                redis_conn = self.redis or (
+                    getattr(self.fastapi_app.state, "redis", None)
+                    if self.fastapi_app and hasattr(self.fastapi_app, "state")
+                    else None
+                )
+                if redis_conn:
                     try:
-                        await self.redis.publish("channel:telemetry:updates", json.dumps(frame))
+                        await redis_conn.publish("channel:telemetry:updates", json.dumps(frame))
                     except Exception:
                         pass
                 self.telemetry_queue.task_done()
@@ -110,9 +119,16 @@ class PureASGISecurityShieldMiddleware:
             except Exception as err:
                 logger.debug(f"Redis blacklist check skipped: {err}")
 
-        # Bypass telemetry interception on static or WebSocket routes
+        # Bypass telemetry body buffering on static, WebSocket, or SSE stream routes
         path = scope.get("path", "")
-        if path.startswith("/ws") or path.startswith("/static") or scope_type == "websocket":
+        accept_hdr = headers_dict.get("accept", "").lower()
+        if (
+            path.startswith("/ws")
+            or path.startswith("/static")
+            or path.endswith("/stream")
+            or "text/event-stream" in accept_hdr
+            or scope_type == "websocket"
+        ):
             await self.app(scope, receive, send)
             return
 

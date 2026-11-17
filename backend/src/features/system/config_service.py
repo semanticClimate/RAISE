@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .schemas import SystemConfigRequest
+from src.core.config import models, AVAILABLE_EMBEDDING_MODELS, AVAILABLE_RERANKER_MODELS
+from .preflight_service import check_hf_model_cached
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -50,12 +52,36 @@ def get_current_configuration() -> Dict[str, Any]:
     llm_backend = os.getenv("LLM_BACKEND", "groq")
     neo4j_uri = os.getenv("NEO4J_URI", "")
     redis_url = os.getenv("REDIS_URL", "")
+    postgres_url = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL", "")
     privacy_mode = os.getenv("PRIVACY_MODE", "false").lower() in ("true", "1", "yes")
 
-    raw_model = os.getenv("LLM_MODEL_NAME", "llama-3.3-70b-versatile")
+    raw_model = os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME)
     last_model = p_router.last_used_model
     last_provider = p_router.last_used_provider
     available_provs = p_router.get_dynamic_available_providers()
+
+    storage_mode = (
+        os.getenv("RAISE_STORAGE_MODE")
+        or os.getenv("RAISE_SUBSTRATE_MODE")
+        or ("fast" if os.getenv("USE_FAKEREDIS", "false").lower() in ("true", "1") else "fast")
+    ).strip().lower()
+
+    if storage_mode == "fast":
+        default_neo4j = "in_memory_fallback"
+        default_postgres = "in_memory_fallback"
+        default_redis = "in_memory_fallback"
+    elif storage_mode == "docker":
+        default_neo4j = "local"
+        default_postgres = "local"
+        default_redis = "local"
+    elif storage_mode == "cloud":
+        default_neo4j = "cloud"
+        default_postgres = "cloud"
+        default_redis = "cloud"
+    else:
+        default_neo4j = "in_memory_fallback" if not neo4j_uri else "cloud"
+        default_postgres = "in_memory_fallback" if not postgres_url else "cloud"
+        default_redis = "in_memory_fallback" if not redis_url else "cloud"
 
     if privacy_mode:
         raw_model = "RAISE-Neural-Engine"
@@ -64,11 +90,14 @@ def get_current_configuration() -> Dict[str, Any]:
         available_provs = ["RAISE-Cloud-Mesh"]
 
     return {
+        "storage_mode": storage_mode,
         "llm_mode": "local_vllm" if llm_backend == "vllm" else ("local_ollama" if llm_backend == "ollama" else f"cloud_{llm_backend}"),
+        "llm_backend": llm_backend,
         "llm_model_name": raw_model,
         "last_used_provider": last_provider,
         "last_used_model": last_model,
         "available_providers": available_provs,
+        "routing": p_router.get_routing_status(),
         "privacy_mode": privacy_mode,
         "groq_configured": cm.get_credential_status("groq") == "configured",
         "groq_masked": mask_secret(cm.get_credential("groq")),
@@ -96,14 +125,17 @@ def get_current_configuration() -> Dict[str, Any]:
         "neo4j_database": os.getenv("NEO4J_DATABASE", "neo4j"),
         "neo4j_is_cloud": "databases.neo4j.io" in neo4j_uri,
         "redis_is_cloud": "upstash.io" in redis_url,
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"),
+        "embedding_model": os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME),
         "embedding_device": os.getenv("EMBEDDING_DEVICE", "auto"),
-        "reranker_model": os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"),
+        "reranker_model": os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME),
         "reranker_device": os.getenv("RERANKER_DEVICE", "auto"),
-        "nli_model": os.getenv("NLI_MODEL", "FineCat-NLI-DeBERTa"),
-        "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL") or os.getenv("NLI_MODEL", "FineCat-NLI-DeBERTa"),
+        "nli_model": os.getenv("NLI_MODEL", models.NLI_MODEL_NAME),
+        "nli_verifier_model": os.getenv("NLI_VERIFIER_MODEL", os.getenv("NLI_MODEL", models.NLI_MODEL_NAME)),
         "nli_device": os.getenv("NLI_DEVICE", "auto"),
         "neural_device": os.getenv("NEURAL_DEVICE") or os.getenv("EMBEDDING_DEVICE", "auto"),
+        "neo4j_mode": os.getenv("NEO4J_MODE", default_neo4j),
+        "postgres_mode": os.getenv("POSTGRES_MODE", default_postgres),
+        "redis_mode": os.getenv("REDIS_MODE", default_redis),
         "huggingface_configured": bool(os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")),
         "huggingface_masked": mask_secret(os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")),
         "first_run_completed": bool(
@@ -119,6 +151,69 @@ def get_current_configuration() -> Dict[str, Any]:
             or (BACKEND_DIR / ".runtime" / "setup_completed").exists()
             or (ROOT_DIR / ".runtime" / "setup_completed").exists()
         ),
+        "neural_registry": {
+            "embedding": [
+                {
+                    "id": repo,
+                    "name": repo.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(repo),
+                    "status": "Cached & Ready" if check_hf_model_cached(repo) else "Requires Download",
+                    "specifications": (
+                        "768-dim • 8,192 tokens context"
+                        if any(token in repo.lower() for token in models.EMBEDDING_MODEL_NAME.lower().split("/"))
+                        else (
+                            "1024-dim • 512 tokens max"
+                            if any(token in repo.lower() for token in ("1024", "large", "m3"))
+                            else (
+                                "384-dim • 256 tokens max"
+                                if "minilm" in repo.lower()
+                                else "768-dim • Dense Embeddings"
+                            )
+                        )
+                    ),
+                }
+                for repo in dict.fromkeys(AVAILABLE_EMBEDDING_MODELS.values())
+            ],
+            "reranker": [
+                {
+                    "id": repo,
+                    "name": repo.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(repo),
+                    "status": "Cached & Ready" if check_hf_model_cached(repo) else "Requires Download",
+                    "specifications": (
+                        "8,192 tokens max • Cross-Attention (matches 8k embedder context)"
+                        if "v2-m3" in repo
+                        else "512 tokens max • Cross-Attention"
+                    ),
+                }
+                for repo in dict.fromkeys(AVAILABLE_RERANKER_MODELS.values())
+            ] + [
+                {
+                    "id": "In-Memory Heuristic Reranker",
+                    "name": "In-Memory Heuristic Reranker",
+                    "cached": True,
+                    "status": "Built-in (Zero-Dependency)",
+                    "specifications": "In-process lexical overlap & contextual co-occurrence fallback",
+                }
+            ],
+            "verifier": [
+                {
+                    "id": models.NLI_MODEL_NAME,
+                    "name": models.NLI_MODEL_NAME.split("/")[-1].replace("-", " ").title(),
+                    "cached": check_hf_model_cached(models.NLI_MODEL_NAME),
+                    "status": "Cached & Ready" if check_hf_model_cached(models.NLI_MODEL_NAME) else "Requires Download",
+                    "specifications": "RoBERTa / Cross-Attention • Pairwise citation chunk verification",
+                },
+                {
+                    "id": "In-Memory Verifier",
+                    "name": "In-Memory Verifier",
+                    "cached": True,
+                    "status": "Built-in (Zero-Dependency)",
+                    "specifications": "Zero-dependency local verification fallback",
+                }
+            ],
+            "custom_model_supported": True,
+        },
     }
 
 
@@ -130,6 +225,8 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         source_path = ENV_FILE_PATH
     elif ROOT_ENV_FILE_PATH.exists():
         source_path = ROOT_ENV_FILE_PATH
+    elif (BACKEND_DIR / ".env.example").exists():
+        source_path = BACKEND_DIR / ".env.example"
     elif (ROOT_DIR / ".env.example").exists():
         source_path = ROOT_DIR / ".env.example"
 
@@ -144,98 +241,126 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
             k, v = line_str.split("=", 1)
             env_map[k.strip()] = v.strip()
 
-    # Update LLM Backend
-    if cfg.llm_mode == "local_ollama":
+    # Determine desired backend and mode from either llm_backend or llm_mode
+    target_backend = (cfg.llm_backend or "").strip().lower()
+    raw_mode = (cfg.llm_mode or "").strip().lower()
+
+    has_explicit_llm_request = bool(target_backend or raw_mode)
+    if not has_explicit_llm_request:
+        # Preserve active environment configuration and pinned router primary
+        from src.infrastructure.providers.router import get_provider_router
+        active_router = get_provider_router()
+        pinned = getattr(active_router, "pinned_primary_provider", None) or os.getenv("PINNED_PRIMARY_PROVIDER", "").strip().lower()
+        existing_backend = pinned or env_map.get("LLM_BACKEND", "").strip().lower() or os.getenv("LLM_BACKEND", "").strip().lower()
+        target_backend = existing_backend or "vllm"
+        raw_mode = env_map.get("EXECUTION_MODE", "").strip().lower()
+
+    if not target_backend and raw_mode:
+        if raw_mode.startswith("cloud_"):
+            target_backend = raw_mode[6:]
+        elif raw_mode.startswith("local_"):
+            target_backend = raw_mode[6:]
+        elif raw_mode in ("ollama", "vllm", "local"):
+            target_backend = raw_mode
+
+    selected_local = (cfg.selected_local_model or cfg.ollama_model or "").strip()
+
+    # Route desired LLM backend
+    if target_backend == "ollama" or raw_mode == "local_ollama":
         env_map["LLM_BACKEND"] = "ollama"
         env_map["LLM_PROVIDER"] = "ollama"
         env_map["EXECUTION_MODE"] = "LOCAL"
-        env_map["LLM_MODEL_NAME"] = cfg.selected_local_model or "llama3.2:3b"
+        env_map["LLM_MODEL_NAME"] = selected_local or "llama3.2:3b"
         env_map["LLM_BASE_URL"] = "http://localhost:11434/v1"
-    elif cfg.llm_mode in ("local_vllm", "vllm", "local"):
+    elif target_backend in ("vllm", "local") or raw_mode in ("local_vllm", "vllm", "local"):
         env_map["LLM_BACKEND"] = "vllm"
         env_map["LLM_PROVIDER"] = "vllm"
         env_map["EXECUTION_MODE"] = "LOCAL"
-        if cfg.selected_local_model and cfg.selected_local_model != "llama3.2:3b":
-            env_map["LLM_MODEL_NAME"] = cfg.selected_local_model
+        if selected_local and selected_local != "llama3.2:3b":
+            env_map["LLM_MODEL_NAME"] = selected_local
         else:
-            env_map["LLM_MODEL_NAME"] = os.getenv("VLLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
+            env_map["LLM_MODEL_NAME"] = os.getenv("VLLM_MODEL_NAME", models.LLM_MODEL_NAME)
         env_map["VLLM_BASE_URL"] = os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")
-    elif cfg.llm_mode == "cloud_gemini":
+    elif target_backend == "gemini" or raw_mode == "cloud_gemini":
         env_map["LLM_BACKEND"] = "gemini"
         env_map["LLM_PROVIDER"] = "gemini"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "gemini-2.0-flash"
+        env_map["LLM_MODEL_NAME"] = models.GEMINI_MODEL_NAME
         if cfg.gemini_api_key and not is_masked_secret(cfg.gemini_api_key):
             env_map["GEMINI_API_KEY"] = cfg.gemini_api_key.strip()
-    elif cfg.llm_mode == "cloud_nvidia":
+    elif target_backend == "nvidia" or raw_mode == "cloud_nvidia":
         env_map["LLM_BACKEND"] = "nvidia"
         env_map["LLM_PROVIDER"] = "nvidia"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "meta/llama-3.2-11b-vision-instruct"
-    elif cfg.llm_mode == "cloud_cohere":
+        env_map["LLM_MODEL_NAME"] = models.NVIDIA_MODEL_NAME
+    elif target_backend == "cohere" or raw_mode == "cloud_cohere":
         env_map["LLM_BACKEND"] = "cohere"
         env_map["LLM_PROVIDER"] = "cohere"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "command-r-plus-08-2024"
-    elif cfg.llm_mode == "cloud_mistral":
+        env_map["LLM_MODEL_NAME"] = models.COHERE_MODEL_NAME
+    elif target_backend == "mistral" or raw_mode == "cloud_mistral":
         env_map["LLM_BACKEND"] = "mistral"
         env_map["LLM_PROVIDER"] = "mistral"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "open-mistral-nemo"
-    elif cfg.llm_mode == "cloud_deepseek":
+        env_map["LLM_MODEL_NAME"] = models.MISTRAL_MODEL_NAME
+    elif target_backend == "deepseek" or raw_mode == "cloud_deepseek":
         env_map["LLM_BACKEND"] = "deepseek"
         env_map["LLM_PROVIDER"] = "deepseek"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "deepseek-chat"
+        env_map["LLM_MODEL_NAME"] = models.DEEPSEEK_MODEL_NAME
         if cfg.deepseek_api_key and not is_masked_secret(cfg.deepseek_api_key):
             env_map["DEEPSEEK_API_KEY"] = cfg.deepseek_api_key.strip()
-    elif cfg.llm_mode == "cloud_openrouter":
+    elif target_backend == "openrouter" or raw_mode == "cloud_openrouter":
         env_map["LLM_BACKEND"] = "openrouter"
         env_map["LLM_PROVIDER"] = "openrouter"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "anthropic/claude-3.5-sonnet"
+        env_map["LLM_MODEL_NAME"] = models.OPENROUTER_MODEL_NAME
         if cfg.openrouter_api_key and not is_masked_secret(cfg.openrouter_api_key):
             env_map["OPENROUTER_API_KEY"] = cfg.openrouter_api_key.strip()
-    elif cfg.llm_mode == "cloud_openai":
+    elif target_backend in ("openai", "gpt") or raw_mode == "cloud_openai":
         env_map["LLM_BACKEND"] = "universal"
         env_map["LLM_PROVIDER"] = "openai"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "gpt-4o-mini"
+        env_map["LLM_MODEL_NAME"] = models.OPENAI_MODEL_NAME
         env_map["CUSTOM_LLM_BASE_URL"] = "https://api.openai.com/v1"
         if cfg.openai_api_key and not is_masked_secret(cfg.openai_api_key):
             env_map["OPENAI_API_KEY"] = cfg.openai_api_key.strip()
-    elif cfg.llm_mode == "cloud_anthropic":
+    elif target_backend in ("anthropic", "claude") or raw_mode == "cloud_anthropic":
         env_map["LLM_BACKEND"] = "universal"
         env_map["LLM_PROVIDER"] = "anthropic"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "claude-3-5-sonnet"
+        env_map["LLM_MODEL_NAME"] = models.ANTHROPIC_MODEL_NAME
         if cfg.anthropic_api_key and not is_masked_secret(cfg.anthropic_api_key):
             env_map["ANTHROPIC_API_KEY"] = cfg.anthropic_api_key.strip()
-    elif cfg.llm_mode == "cloud_vercel":
+    elif target_backend == "vercel" or raw_mode == "cloud_vercel":
         env_map["LLM_BACKEND"] = "vercel"
         env_map["LLM_PROVIDER"] = "vercel"
         env_map["EXECUTION_MODE"] = "CLOUD"
         env_map["LLM_MODEL_NAME"] = "typesafe-ai/jev"
-    elif cfg.llm_mode == "cloud_custom":
+    elif target_backend in ("custom", "universal") or raw_mode == "cloud_custom":
         env_map["LLM_BACKEND"] = "universal"
         env_map["LLM_PROVIDER"] = "custom"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = cfg.custom_model_name or "gpt-4o-mini"
+        env_map["LLM_MODEL_NAME"] = cfg.custom_model_name or models.OPENAI_MODEL_NAME
         if cfg.custom_base_url:
             env_map["CUSTOM_LLM_BASE_URL"] = cfg.custom_base_url
             os.environ["CUSTOM_LLM_BASE_URL"] = cfg.custom_base_url
-    elif cfg.llm_mode == "automatic":
+    elif raw_mode == "automatic":
         env_map["EXECUTION_MODE"] = "AUTOMATIC"
         env_map["LLM_BACKEND"] = "groq"
         env_map["LLM_PROVIDER"] = "groq"
-        env_map["LLM_MODEL_NAME"] = "llama-3.3-70b-versatile"
-    else:  # cloud_groq default
+        env_map["LLM_MODEL_NAME"] = models.GROQ_MODEL_NAME
+    elif has_explicit_llm_request:  # cloud_groq explicit fallback
         env_map["LLM_BACKEND"] = "groq"
         env_map["LLM_PROVIDER"] = "groq"
         env_map["EXECUTION_MODE"] = "CLOUD"
-        env_map["LLM_MODEL_NAME"] = "llama-3.3-70b-versatile"
+        env_map["LLM_MODEL_NAME"] = models.GROQ_MODEL_NAME
         if cfg.groq_api_key and not is_masked_secret(cfg.groq_api_key):
             env_map["GROQ_API_KEY"] = cfg.groq_api_key.strip()
+    else:
+        # Preserve active backend and execution mode without forcing cloud overwrite
+        if "LLM_BACKEND" not in env_map and target_backend:
+            env_map["LLM_BACKEND"] = target_backend
 
     # Update provider credentials if provided (ignoring masked placeholders)
     from src.infrastructure.credentials.manager import get_credential_manager
@@ -276,7 +401,26 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         else:
             router.set_execution_mode(ExecutionMode.AUTOMATIC)
             router.set_cloud_allowed(True)
-        router._refresh_fallback_chain(env_map.get("LLM_BACKEND"))
+        primary_hint = (
+            getattr(router, "pinned_primary_provider", None)
+            or (cfg.primary_provider if cfg.primary_provider else None)
+            or env_map.get("LLM_BACKEND")
+        )
+        router._refresh_fallback_chain(primary_hint)
+        if cfg.fallback_order or cfg.disabled_providers is not None or cfg.primary_provider or cfg.routing_policy:
+            router.set_routing(
+                fallback_order=cfg.fallback_order,
+                disabled_providers=cfg.disabled_providers,
+                primary_provider=cfg.primary_provider,
+                routing_policy=cfg.routing_policy,
+            )
+            if cfg.fallback_order:
+                env_map["LLM_FALLBACK_ORDER"] = ",".join(cfg.fallback_order)
+            if cfg.routing_policy:
+                env_map["ROUTING_POLICY"] = cfg.routing_policy
+            if cfg.primary_provider:
+                env_map["RAISE_LLM_PROVIDER"] = cfg.primary_provider
+                env_map["LLM_PROVIDER"] = cfg.primary_provider
     except Exception as e:
         logger.warning(f"Could not refresh provider router: {e}")
 
@@ -320,27 +464,103 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         os.environ["HUGGINGFACE_TOKEN"] = hf_clean
         os.environ["HF_TOKEN"] = hf_clean
 
-    # Update Neo4j
+    # Update Neo4j Substrate
+    if cfg.neo4j_mode:
+        env_map["NEO4J_MODE"] = cfg.neo4j_mode
+        os.environ["NEO4J_MODE"] = cfg.neo4j_mode
     if cfg.neo4j_mode == "cloud" and cfg.neo4j_uri:
         env_map["NEO4J_URI"] = cfg.neo4j_uri
+        os.environ["NEO4J_URI"] = cfg.neo4j_uri
         if cfg.neo4j_user:
             env_map["NEO4J_USER"] = cfg.neo4j_user
+            os.environ["NEO4J_USER"] = cfg.neo4j_user
         if cfg.neo4j_password:
             env_map["NEO4J_PASSWORD"] = cfg.neo4j_password
+            os.environ["NEO4J_PASSWORD"] = cfg.neo4j_password
         if cfg.neo4j_database:
             env_map["NEO4J_DATABASE"] = cfg.neo4j_database
+            os.environ["NEO4J_DATABASE"] = cfg.neo4j_database
+    elif cfg.neo4j_mode == "local":
+        local_neo4j = cfg.neo4j_uri or "bolt://localhost:7687"
+        env_map["NEO4J_URI"] = local_neo4j
+        os.environ["NEO4J_URI"] = local_neo4j
+        local_user = cfg.neo4j_user or "neo4j"
+        env_map["NEO4J_USER"] = local_user
+        os.environ["NEO4J_USER"] = local_user
+        local_pass = cfg.neo4j_password or "raise_password"
+        env_map["NEO4J_PASSWORD"] = local_pass
+        os.environ["NEO4J_PASSWORD"] = local_pass
+        local_db = cfg.neo4j_database or "neo4j"
+        env_map["NEO4J_DATABASE"] = local_db
+        os.environ["NEO4J_DATABASE"] = local_db
 
-    # Update Redis
+    # Update Redis Substrate
+    if cfg.redis_mode:
+        env_map["REDIS_MODE"] = cfg.redis_mode
+        os.environ["REDIS_MODE"] = cfg.redis_mode
     redis_val = cfg.redis_url or cfg.redis_uri
     if cfg.redis_mode == "cloud" and redis_val:
         env_map["REDIS_URL"] = redis_val
+        os.environ["REDIS_URL"] = redis_val
+    elif cfg.redis_mode == "local":
+        local_redis = redis_val or "redis://localhost:6379/0"
+        env_map["REDIS_URL"] = local_redis
+        os.environ["REDIS_URL"] = local_redis
 
-    # Update Postgres
+    # Update Postgres Substrate (Session Memory)
+    if cfg.postgres_mode:
+        env_map["POSTGRES_MODE"] = cfg.postgres_mode
+        os.environ["POSTGRES_MODE"] = cfg.postgres_mode
     pg_val = cfg.postgres_url or cfg.postgres_uri
     if cfg.postgres_mode == "cloud" and pg_val:
         env_map["POSTGRES_URL"] = pg_val
+        env_map["DATABASE_URL"] = pg_val
+        os.environ["POSTGRES_URL"] = pg_val
+        os.environ["DATABASE_URL"] = pg_val
+    elif cfg.postgres_mode == "local":
+        local_pg = pg_val or "postgresql://raise_user:raise_password@localhost:5432/raise_db"
+        env_map["POSTGRES_URL"] = local_pg
+        env_map["DATABASE_URL"] = local_pg
+        os.environ["POSTGRES_URL"] = local_pg
+        os.environ["DATABASE_URL"] = local_pg
 
-    # Mark first-time workstation setup completed across runtime & filesystem
+    # Sync Storage & Substrate Mode for START_RAISE.bat runtime consistency
+    storage_mode_req = getattr(cfg, "storage_mode", None)
+    if storage_mode_req and storage_mode_req.strip():
+        resolved_storage = storage_mode_req.strip().lower()
+    else:
+        modes = [cfg.neo4j_mode, cfg.redis_mode, cfg.postgres_mode]
+        if any(m == "cloud" for m in modes):
+            resolved_storage = "cloud"
+        elif any(m == "local" for m in modes):
+            resolved_storage = "docker"
+        elif all(m == "in_memory_fallback" for m in modes if m):
+            resolved_storage = "fast"
+        else:
+            resolved_storage = os.getenv("RAISE_STORAGE_MODE", "fast")
+
+    env_map["RAISE_STORAGE_MODE"] = resolved_storage
+    os.environ["RAISE_STORAGE_MODE"] = resolved_storage
+    env_map["RAISE_SUBSTRATE_MODE"] = resolved_storage
+    os.environ["RAISE_SUBSTRATE_MODE"] = resolved_storage
+
+    if resolved_storage == "fast":
+        env_map["USE_FAKEREDIS"] = "true"
+        os.environ["USE_FAKEREDIS"] = "true"
+        env_map["USE_LOCAL_FALLBACKS"] = "true"
+        os.environ["USE_LOCAL_FALLBACKS"] = "true"
+    elif resolved_storage == "docker":
+        env_map["USE_FAKEREDIS"] = "false"
+        os.environ["USE_FAKEREDIS"] = "false"
+        env_map["USE_LOCAL_FALLBACKS"] = "false"
+        os.environ["USE_LOCAL_FALLBACKS"] = "false"
+    elif resolved_storage == "cloud":
+        env_map["USE_FAKEREDIS"] = "false"
+        os.environ["USE_FAKEREDIS"] = "false"
+        env_map["USE_CLOUD_STORAGE"] = "true"
+        os.environ["USE_CLOUD_STORAGE"] = "true"
+
+    # Mark first-time setup completed across runtime & filesystem
     env_map["SETUP_COMPLETED"] = "true"
     os.environ["SETUP_COMPLETED"] = "true"
     try:
@@ -357,11 +577,15 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
     # Write safely back to .env in both backend and root locations
     output_lines = [f"{k}={v}" for k, v in env_map.items()]
     content = "\n".join(output_lines) + "\n"
-    ENV_FILE_PATH.write_text(content, encoding="utf-8")
+    try:
+        ENV_FILE_PATH.write_text(content, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Could not persist to backend .env: {e}")
+
     try:
         ROOT_ENV_FILE_PATH.write_text(content, encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not persist to root .env: {e}")
 
     return {
         "status": "success",
@@ -369,3 +593,40 @@ def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         "active_mode": env_map.get("LLM_BACKEND"),
         "active_model": env_map.get("LLM_MODEL_NAME"),
     }
+
+
+def persist_routing_env(updates: Dict[str, str]) -> bool:
+    """
+    Fast direct key-value synchronization of routing and priority order to runtime os.environ
+    and .env files without triggering heavy neural model or database socket re-probing.
+    Ensures sub-millisecond response latency during UI drag-and-drop orchestrator interactions.
+    """
+    for k, v in updates.items():
+        os.environ[k] = str(v)
+
+    for env_path in (ENV_FILE_PATH, ROOT_ENV_FILE_PATH):
+        try:
+            if not env_path.exists():
+                continue
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+            new_lines = []
+            keys_updated = set()
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("#") or not stripped or "=" not in stripped:
+                    new_lines.append(line)
+                    continue
+                k, _ = stripped.split("=", 1)
+                k_clean = k.strip()
+                if k_clean in updates:
+                    new_lines.append(f"{k_clean}={updates[k_clean]}")
+                    keys_updated.add(k_clean)
+                else:
+                    new_lines.append(line)
+            for k, v in updates.items():
+                if k not in keys_updated:
+                    new_lines.append(f"{k}={v}")
+            env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Could not update routing in {env_path}: {e}")
+    return True

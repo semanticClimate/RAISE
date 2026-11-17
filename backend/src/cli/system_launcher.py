@@ -18,6 +18,7 @@ import urllib.request
 from typing import Any, Dict
 
 from src.cli.renderer import C
+from src.core.config import models
 
 logger = logging.getLogger("RAISE_Launcher")
 
@@ -144,44 +145,45 @@ def get_synthesizer_status() -> Dict[str, Any]:
     vllm_info = check_vllm_health()
     vllm_connected = bool(vllm_info.get("connected"))
 
-    env_backend = (os.getenv("LLM_BACKEND") or "").lower().strip()
+    env_backend = (os.getenv("LLM_BACKEND") or os.getenv("LLM_PROVIDER") or "").lower().strip()
+    routing_policy = (os.getenv("ROUTING_POLICY") or "").upper().strip()
 
     # Cloud providers map: key_env_vars, display_name, default_model
     cloud_candidates = {
         "groq": {
             "key_vars": ["GROQ_API_KEY"],
             "name": "Groq",
-            "model": os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
+            "model": models.GROQ_MODEL_NAME,
         },
         "gemini": {
             "key_vars": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
             "name": "Gemini",
-            "model": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+            "model": models.GEMINI_MODEL_NAME,
         },
         "deepseek": {
             "key_vars": ["DEEPSEEK_API_KEY"],
             "name": "DeepSeek",
-            "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+            "model": models.DEEPSEEK_MODEL_NAME,
         },
         "nvidia": {
             "key_vars": ["NVIDIA_API_KEY"],
             "name": "NVIDIA NIM",
-            "model": os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
+            "model": models.NVIDIA_MODEL_NAME,
         },
         "openrouter": {
             "key_vars": ["OPENROUTER_API_KEY"],
             "name": "OpenRouter",
-            "model": os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-haiku"),
+            "model": models.OPENROUTER_MODEL_NAME,
         },
         "cohere": {
             "key_vars": ["COHERE_API_KEY"],
             "name": "Cohere",
-            "model": os.getenv("COHERE_MODEL", "command-r-plus-08-2024"),
+            "model": models.COHERE_MODEL_NAME,
         },
         "mistral": {
             "key_vars": ["MISTRAL_API_KEY"],
             "name": "Mistral",
-            "model": os.getenv("MISTRAL_MODEL", "open-mistral-nemo"),
+            "model": models.MISTRAL_MODEL_NAME,
         },
     }
 
@@ -196,8 +198,13 @@ def get_synthesizer_status() -> Dict[str, Any]:
     model_name = None
     display_name = None
 
-    # Priority 1: User explicitly specified LLM_BACKEND
-    if env_backend:
+    # Priority 1: User explicitly specified local-first policy or local LLM_BACKEND
+    if (routing_policy == "LOCAL_FIRST" or env_backend in ("vllm", "local")) and vllm_connected:
+        active_provider = "vllm"
+        active_type = "local"
+        model_name = vllm_info["model_id"]
+        display_name = "Local vLLM"
+    elif env_backend:
         if env_backend == "vllm":
             if vllm_connected:
                 active_provider = "vllm"

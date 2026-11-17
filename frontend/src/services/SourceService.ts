@@ -38,89 +38,98 @@ export class SourceService {
     signal?: AbortSignal,
     options?: { parseMode?: 'fast' | 'expert'; parser?: string; sessionId?: string }
   ): Promise<ApiResponse<UploadResponse>> {
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append('files', file);
+    if (typeof window !== 'undefined') {
+      (window as any).__RAISE_ACTIVE_OPS__ = ((window as any).__RAISE_ACTIVE_OPS__ || 0) + 1;
     }
-    if (files.length > 0) {
-      formData.append('file', files[0]);
-    }
-    if (options?.sessionId) {
-      formData.append('session_id', options.sessionId);
-    }
+    try {
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('files', file);
+      }
+      if (options?.sessionId) {
+        formData.append('session_id', options.sessionId);
+      }
 
-    // Pass parser and mode parameters based on selected mode
-    const mode = options?.parseMode || 'expert';
-    const isExpert = mode === 'expert' || options?.parser === 'docling';
-    const parser = options?.parser || (isExpert ? 'docling' : 'fast');
-    formData.append('parser', parser);
-    formData.append('engine', parser);
-    formData.append('parse_mode', mode);
-    formData.append('mode', mode);
-    if (isExpert) {
-      formData.append('extract_tables', 'true');
-      formData.append('full_potential', 'true');
-    }
+      // Pass parser and mode parameters based on selected mode
+      const mode = options?.parseMode || 'fast';
+      const isExpert = mode === 'expert' || options?.parser === 'docling';
+      const parser = options?.parser || (isExpert ? 'docling' : 'fast');
+      formData.append('parser', parser);
+      formData.append('engine', parser);
+      formData.append('parse_mode', mode);
+      formData.append('mode', mode);
+      if (isExpert) {
+        formData.append('extract_tables', 'true');
+        formData.append('full_potential', 'true');
+      }
 
-    // 1. Try standard POST /api/upload with query parameters
-    const uploadUrl = isExpert
-      ? `${ENDPOINTS.UPLOAD}?parser=docling&mode=expert`
-      : ENDPOINTS.UPLOAD;
+      // 1. Try standard POST /api/upload with query parameters
+      const uploadUrl = isExpert
+        ? `${ENDPOINTS.UPLOAD}?parser=docling&mode=expert`
+        : ENDPOINTS.UPLOAD;
 
-    const uploadRes = await apiClient.request<any>(uploadUrl, undefined, {
-      method: 'POST',
-      body: formData,
-      signal,
-      timeoutMs: 120000,
-    });
+      const uploadRes = await apiClient.request<any>(uploadUrl, undefined, {
+        method: 'POST',
+        body: formData,
+        signal,
+        timeoutMs: 120000,
+      });
 
-    if (uploadRes.status === 200 && uploadRes.data) {
-      const data = uploadRes.data;
-      const parsedDirect = UploadResponseSchema.safeParse(data);
-      if (parsedDirect.success) {
+      if (uploadRes.status === 200 && uploadRes.data) {
+        const data = uploadRes.data;
+        const parsedDirect = UploadResponseSchema.safeParse(data);
+        if (parsedDirect.success) {
+          return {
+            data: parsedDirect.data,
+            error: null,
+            isMock: uploadRes.isMock,
+            status: 200,
+          };
+        }
+
+        const synthesized: UploadResponse = {
+          status: data.status || 'success',
+          uploaded_count: data.uploaded_count ?? files.length,
+          reports: Array.isArray(data.reports)
+            ? data.reports
+            : files.map((f) => ({
+                filename: f.name,
+                pages_processed: 1,
+                chunks_extracted: data.total_chunks ?? 1,
+                facts_extracted: data.total_entities ?? 0,
+                triples_extracted: 0,
+              })),
+          total_nodes: data.total_nodes ?? data.total_entities ?? 0,
+          total_edges: data.total_edges ?? 0,
+        };
+        const parsedSynth = UploadResponseSchema.safeParse(synthesized);
         return {
-          data: parsedDirect.data,
+          data: parsedSynth.success ? parsedSynth.data : synthesized,
           error: null,
           isMock: uploadRes.isMock,
           status: 200,
         };
       }
 
-      const synthesized: UploadResponse = {
-        status: data.status || 'success',
-        uploaded_count: data.uploaded_count ?? files.length,
-        reports: Array.isArray(data.reports)
-          ? data.reports
-          : files.map((f) => ({
-              filename: f.name,
-              pages_processed: 1,
-              chunks_extracted: data.total_chunks ?? 1,
-              facts_extracted: data.total_entities ?? 0,
-              triples_extracted: 0,
-            })),
-        total_nodes: data.total_nodes ?? data.total_entities ?? 0,
-        total_edges: data.total_edges ?? 0,
-      };
-      const parsedSynth = UploadResponseSchema.safeParse(synthesized);
-      return {
-        data: parsedSynth.success ? parsedSynth.data : synthesized,
-        error: null,
-        isMock: uploadRes.isMock,
-        status: 200,
-      };
+      // 2. Fallback to /api/upload-academic-pdfs with Docling query parameters
+      const fallbackUrl = isExpert
+        ? `${ENDPOINTS.UPLOAD_ACADEMIC_PDFS}?parser=docling&mode=expert`
+        : ENDPOINTS.UPLOAD_ACADEMIC_PDFS;
+
+      return await apiClient.request<UploadResponse>(fallbackUrl, UploadResponseSchema, {
+        method: 'POST',
+        body: formData,
+        signal,
+        timeoutMs: 120000,
+      });
+    } finally {
+      if (typeof window !== 'undefined') {
+        (window as any).__RAISE_ACTIVE_OPS__ = Math.max(
+          0,
+          ((window as any).__RAISE_ACTIVE_OPS__ || 1) - 1
+        );
+      }
     }
-
-    // 2. Fallback to /api/upload-academic-pdfs with Docling query parameters
-    const fallbackUrl = isExpert
-      ? `${ENDPOINTS.UPLOAD_ACADEMIC_PDFS}?parser=docling&mode=expert`
-      : ENDPOINTS.UPLOAD_ACADEMIC_PDFS;
-
-    return apiClient.request<UploadResponse>(fallbackUrl, UploadResponseSchema, {
-      method: 'POST',
-      body: formData,
-      signal,
-      timeoutMs: 120000,
-    });
   }
 
   /**
@@ -185,19 +194,10 @@ export class SourceService {
   }
 
   /**
-   * Standalone Google Drive-style PDF viewer tab route
+   * High-speed direct PDF URL opened in browser default viewer
    */
-  public getViewerUrl(filename: string, pageNumber: number = 1, excerpt?: string): string {
-    const cleanFilename = encodeURIComponent(filename);
-    const safePage = Math.max(1, pageNumber || 1);
-    const exc = excerpt ? `&excerpt=${encodeURIComponent(excerpt)}` : '';
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      const pathname = window.location.pathname.endsWith('/')
-        ? window.location.pathname
-        : `${window.location.pathname}/`;
-      return `${window.location.origin}${pathname}#/viewer?file=${cleanFilename}&page=${safePage}${exc}`;
-    }
-    return `#/viewer?file=${cleanFilename}&page=${safePage}${exc}`;
+  public getViewerUrl(filename: string, pageNumber: number = 1, _excerpt?: string): string {
+    return this.getPdfUrl(filename, pageNumber);
   }
 
   /**
@@ -349,6 +349,118 @@ export class SourceService {
     return () => {
       closed = true;
     };
+  }
+
+  /**
+   * Triggers instant disk scan to discover any PDFs dropped into data/documents/
+   */
+  public async scanDocuments(signal?: AbortSignal): Promise<ApiResponse<DocumentListResponse>> {
+    return apiClient.request<DocumentListResponse>(
+      ENDPOINTS.DOCUMENTS_SCAN,
+      undefined,
+      {
+        method: 'POST',
+        signal,
+      }
+    );
+  }
+
+  /**
+   * Resolved URL for Parsed Extracted Markdown
+   */
+  public getExtractedMarkdownUrl(filename: string): string {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    return `${base}${ENDPOINTS.DOCUMENT_EXTRACTED_MD(filename)}`;
+  }
+
+  /**
+   * Resolved URL for OKF Catalog
+   */
+  public getOkfCatalogUrl(filename: string): string {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    return `${base}${ENDPOINTS.DOCUMENT_OKF_CATALOG(filename)}`;
+  }
+
+  /**
+   * Fetches raw extracted markdown content for a document
+   * Seamlessly tries both /extracted-markdown and /markdown endpoints
+   */
+  public async fetchExtractedMarkdown(
+    filenameOrUrl: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const cleanDoc = filenameOrUrl
+      .replace(/^https?:\/\/[^/]+/i, '')
+      .replace(/^\/api\/documents\//i, '')
+      .replace(/\/(extracted-markdown|markdown)$/i, '');
+
+    const candidates = [
+      filenameOrUrl.startsWith('http://') || filenameOrUrl.startsWith('https://')
+        ? filenameOrUrl
+        : filenameOrUrl.startsWith('/')
+          ? `${base}${filenameOrUrl}`
+          : `${base}${ENDPOINTS.DOCUMENT_EXTRACTED_MD(filenameOrUrl)}`,
+      `${base}/api/documents/${encodeURIComponent(cleanDoc)}/extracted-markdown`,
+      `${base}/api/documents/${encodeURIComponent(cleanDoc)}/markdown`,
+    ];
+
+    const uniqueUrls = Array.from(new Set(candidates));
+    let lastError: Error | null = null;
+
+    for (const u of uniqueUrls) {
+      try {
+        const resp = await fetch(u, { method: 'GET', signal });
+        if (resp.ok) {
+          return await resp.text();
+        }
+        lastError = new Error(`Failed to load extracted markdown: ${resp.status} ${resp.statusText}`);
+      } catch (err: any) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Failed to load extracted markdown');
+  }
+
+  /**
+   * Fetches OKF catalog for a document (returns parsed JSON or raw markdown text)
+   */
+  public async fetchOkfCatalog(
+    filenameOrUrl: string,
+    signal?: AbortSignal
+  ): Promise<{ text: string; data?: any }> {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const rawUrl =
+      filenameOrUrl.startsWith('http://') || filenameOrUrl.startsWith('https://')
+        ? filenameOrUrl
+        : filenameOrUrl.startsWith('/')
+          ? `${base}${filenameOrUrl}`
+          : `${base}${ENDPOINTS.DOCUMENT_OKF_CATALOG(filenameOrUrl)}`;
+
+    const urlWithJson = rawUrl.includes('?') ? `${rawUrl}&format=json` : `${rawUrl}?format=json`;
+
+    try {
+      const resp = await fetch(urlWithJson, { method: 'GET', signal });
+      if (resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const json = await resp.json();
+          return { text: JSON.stringify(json, null, 2), data: json };
+        }
+        const text = await resp.text();
+        return { text };
+      }
+    } catch {
+      // fallback to raw URL
+    }
+
+    const fallbackResp = await fetch(rawUrl, { method: 'GET', signal });
+    if (!fallbackResp.ok) {
+      throw new Error(`Failed to load OKF catalog: ${fallbackResp.status} ${fallbackResp.statusText}`);
+    }
+    const text = await fallbackResp.text();
+    return { text };
   }
 }
 

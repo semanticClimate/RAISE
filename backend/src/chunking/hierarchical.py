@@ -183,6 +183,9 @@ class HierarchicalChunkAssembler:
             is_fig = any(c.is_figure for c in cluster)
 
             actual_pdf = filename or f"{document_id}.pdf"
+            p_heading = (heading or (first_c.heading if first_c else "")).strip()
+            p_enriched = f"[Document: {actual_pdf} | Section: {p_heading}]\n{combined_text}" if p_heading and not combined_text.startswith("[Document:") else combined_text
+
             parent_chunk = AdaptiveChunk(
                 chunk_id=parent_id,
                 document_id=document_id,
@@ -190,6 +193,7 @@ class HierarchicalChunkAssembler:
                 section_id=sec_id,
                 chunk_level=ChunkLevel.PARENT.value,
                 plain_text=combined_text,
+                contextualized_content=p_enriched,
                 heading=heading,
                 primary_page=p_start,
                 source_pages=pages,
@@ -217,6 +221,8 @@ class HierarchicalChunkAssembler:
                 child_text = c_unit.plain_text
                 c_tokens = c_unit.token_estimate
                 child_id = f"{document_id}_p{c_unit.page_start:03d}_c{p_idx:02d}_{c_sub_idx:02d}"
+                c_heading = (c_unit.heading or heading or "").strip()
+                c_enriched = f"[Document: {actual_pdf} | Section: {c_heading}]\n{child_text}" if c_heading and not child_text.startswith("[Document:") else child_text
 
                 child_chunk = AdaptiveChunk(
                     chunk_id=child_id,
@@ -225,6 +231,7 @@ class HierarchicalChunkAssembler:
                     section_id=c_unit.section_id,
                     chunk_level=ChunkLevel.CHILD.value,
                     plain_text=child_text,
+                    contextualized_content=c_enriched,
                     heading=c_unit.heading,
                     primary_page=c_unit.page_start,
                     source_pages=list(range(c_unit.page_start, c_unit.page_end + 1)),

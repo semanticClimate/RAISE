@@ -12,11 +12,12 @@ from typing import Any, AsyncGenerator, Optional
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 from src.infrastructure.providers.http_client import safe_http_request, ProviderHTTPError
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.nvidia")
 
 DEFAULT_NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1"
-DEFAULT_NVIDIA_MODEL = "meta/llama-3.2-11b-vision-instruct"
+DEFAULT_NVIDIA_MODEL = models.NVIDIA_MODEL_NAME
 
 
 class NvidiaNIMProvider(LLMProvider):

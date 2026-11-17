@@ -60,7 +60,7 @@ class VectorSearchMixin:
             return []
 
         formatted_query = self.format_query_for_embedding(query)
-        query_emb = self.compute_embeddings([formatted_query])[0]
+        query_emb = self.compute_embeddings([formatted_query], is_query=True)[0]
         results = []
 
         col = self._get_collection()
@@ -120,8 +120,7 @@ class VectorSearchMixin:
                         chroma_res = None
 
                 # Fallback search across collection ONLY if NO active_docs or doc_filter was specified
-                # or if scoped query returned 0 hits due to metadata mismatch
-                if not chroma_res or not chroma_res.get("ids") or len(chroma_res["ids"][0]) == 0:
+                if not where_clause and (not chroma_res or not chroma_res.get("ids") or len(chroma_res["ids"][0]) == 0):
                     chroma_res = col.query(
                         query_embeddings=[query_emb],
                         n_results=n_fetch,
@@ -287,15 +286,21 @@ class VectorSearchMixin:
     def get_active_workspace_documents(self) -> List[str]:
         """
         Returns the list of active documents registered in the system manifest.
+        Excludes synthetic test artifacts (e.g. test_sample.pdf).
         """
         try:
+            from src.api.context import is_test_document
             from src.core.config import settings
             manifest_file = settings.processed_dir / "ingested_manifest.json"
             if manifest_file.exists():
                 import json
                 data = json.loads(manifest_file.read_text(encoding="utf-8"))
                 docs = data.get("ready_documents", [])
-                return [d.get("filename", "") for d in docs if isinstance(d, dict) and d.get("filename")]
+                return [
+                    d.get("filename", "")
+                    for d in docs
+                    if isinstance(d, dict) and d.get("filename") and not is_test_document(d.get("filename", ""))
+                ]
         except Exception:
             pass
         return []

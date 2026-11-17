@@ -15,7 +15,7 @@ import type { TargetPlatform } from '../types';
 export const PlatformStep: React.FC = () => {
   const { hardware, config, updateConfig } = useControlCenterStore();
   const { appMode, latencyMs } = useModeStore();
-  const isConnected = appMode === 'connected';
+  const isConnected = appMode === 'connected' || appMode === 'degraded';
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
 
   const clientOSLabel =
@@ -57,13 +57,13 @@ export const PlatformStep: React.FC = () => {
   const CurrentIcon = currentPlatform.icon;
 
   return (
-    <div className="space-y-4 animate-in fade-in-50 duration-150">
+    <div className="space-y-2.5 animate-in fade-in-50 duration-150">
       <div>
-        <h3 className="text-base font-bold text-white tracking-tight">Device & Platform</h3>
+        <h3 className="text-sm font-bold text-white tracking-tight">Device & Platform</h3>
       </div>
 
       {/* Target Operating System Selector */}
-      <div className="rounded-xl bg-[#131622] border border-white/10 overflow-hidden">
+      <div className="rounded-xl bg-[#111111] border border-[#292929] overflow-hidden">
         <div
           role="button"
           tabIndex={0}
@@ -73,36 +73,36 @@ export const PlatformStep: React.FC = () => {
               setIsSelectorOpen(!isSelectorOpen);
             }
           }}
-          className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors"
+          className="p-2.5 sm:p-3 flex items-center justify-between cursor-pointer hover:bg-[#171717] transition-colors"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center text-white shrink-0">
-              <CurrentIcon className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center text-[#FFFFFF] shrink-0">
+              <CurrentIcon className="w-3.5 h-3.5 text-[#FFFFFF]" />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white">{currentPlatform.label}</span>
-              <span className="text-[11px] text-slate-400 font-mono">({currentPlatform.sub})</span>
+              <span className="text-xs font-bold text-[#FFFFFF]">{currentPlatform.label}</span>
+              <span className="text-[11px] text-[#A3A3A3] font-mono">({currentPlatform.sub})</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="text-xs font-semibold px-2.5 py-1 rounded-md border border-white/20 bg-white/10 hover:bg-white/15 text-white transition-all cursor-pointer"
+              className="text-xs font-semibold px-2 py-0.5 rounded-md border border-[#292929] bg-[#171717] hover:bg-[#292929] text-[#FFFFFF] transition-all cursor-pointer"
             >
               {isSelectorOpen ? 'Close' : 'Switch'}
             </button>
             {isSelectorOpen ? (
-              <ChevronUp className="w-4 h-4 text-slate-400" />
+              <ChevronUp className="w-3.5 h-3.5 text-[#A3A3A3]" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-slate-400" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#A3A3A3]" />
             )}
           </div>
         </div>
 
         {isSelectorOpen && (
-          <div className="border-t border-white/10 bg-[#0e1017] p-2.5 space-y-1.5 animate-in slide-in-from-top-2 duration-150">
-            <div className="text-[11px] font-mono text-slate-400 px-2 pb-1">
+          <div className="border-t border-[#292929] bg-[#0A0A0A] p-2 space-y-1 animate-in slide-in-from-top-2 duration-150">
+            <div className="text-[11px] font-mono text-[#A3A3A3] px-2 pb-0.5">
               Select deployment environment:
             </div>
             {platforms.map((p) => {
@@ -123,25 +123,25 @@ export const PlatformStep: React.FC = () => {
                       setIsSelectorOpen(false);
                     }
                   }}
-                  className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
+                  className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
                     isSelected
-                      ? 'bg-white text-black border-white font-bold'
-                      : 'bg-white/5 border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/10'
+                      ? 'bg-[#FFFFFF] text-[#000000] border-[#FFFFFF] font-bold'
+                      : 'bg-[#171717] border-[#292929] text-[#A3A3A3] hover:border-[#FFFFFF]/20 hover:text-[#FFFFFF]'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`w-4 h-4 ${isSelected ? 'text-black' : 'text-slate-300'}`} />
+                  <div className="flex items-center gap-2">
+                    <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-[#000000]' : 'text-[#A3A3A3]'}`} />
                     <div>
                       <div className="text-xs font-bold">{p.label}</div>
                       <div
-                        className={`text-[10px] ${isSelected ? 'text-slate-800' : 'text-slate-400'}`}
+                        className={`text-[10px] ${isSelected ? 'text-[#000000]/80' : 'text-[#A3A3A3]'}`}
                       >
                         {p.sub}
                       </div>
                     </div>
                   </div>
 
-                  {isSelected && <Check className="w-4 h-4 text-black stroke-[3]" />}
+                  {isSelected && <Check className="w-3.5 h-3.5 text-[#000000] stroke-[3]" />}
                 </div>
               );
             })}
@@ -150,55 +150,55 @@ export const PlatformStep: React.FC = () => {
       </div>
 
       {/* Hardware Telemetry Specs: Clean 2-Card Layout (Platform & Acceleration) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Laptop className="w-3.5 h-3.5 text-indigo-400" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-0.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-[#A3A3A3]">
+            <Laptop className="w-3.5 h-3.5 text-[#FFFFFF]" />
             <span>Platform</span>
           </div>
-          <div className="text-xs font-bold text-white truncate">
+          <div className="text-xs font-bold text-[#FFFFFF] truncate">
             {hardware?.osName || clientOSLabel}
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
+        <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] space-y-0.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-[#A3A3A3]">
+            <Zap className="w-3.5 h-3.5 text-[#FFFFFF]" />
             <span>Acceleration</span>
           </div>
-          <div className="text-xs font-bold text-white">
+          <div className="text-xs font-bold text-[#FFFFFF]">
             {config.targetPlatform === 'macos' ? 'Metal Active' : hardware?.hasMetalOrCuda ? 'CUDA / ROCm' : 'CPU'}
           </div>
         </div>
       </div>
 
-      {/* Local Backend Engine Service Card: Clean live status display */}
-      <div className="p-3.5 rounded-xl bg-[#131622] border border-white/10 flex items-center justify-between">
+      {/* Local Backend Engine Service Card */}
+      <div className="p-2.5 sm:p-3 rounded-xl bg-[#111111] border border-[#292929] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <span
             data-testid="connection-status-dot"
-            className={`relative inline-flex rounded-full h-2.5 w-2.5 shrink-0 transition-colors ${
+            className={`relative inline-flex rounded-full h-2 w-2 shrink-0 transition-colors ${
               isConnected
-                ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
-                : 'bg-rose-500 ring-2 ring-rose-500/20'
+                ? 'bg-[#FFFFFF] shadow-[0_0_8px_rgba(255,255,255,0.8)]'
+                : 'bg-[#292929] ring-1 ring-[#FFFFFF]/10'
             }`}
           />
           <div>
-            <div className="text-xs font-bold text-white flex items-center gap-2">
+            <div className="text-xs font-bold text-[#FFFFFF] flex items-center gap-2">
               <span>Backend Gateway</span>
-              <span className="text-[11px] font-mono text-slate-400 font-normal">
-                {isConnected ? '127.0.0.1:8000' : 'Offline (Port 8000)'}
+              <span className="text-[11px] font-mono text-[#A3A3A3] font-normal">
+                {isConnected ? '127.0.0.1:8000' : 'Offline (:8000)'}
               </span>
               {isConnected && latencyMs ? (
-                <span className="text-[10px] font-mono text-emerald-400">({latencyMs}ms)</span>
+                <span className="text-[10px] font-mono text-[#A3A3A3]">({latencyMs}ms)</span>
               ) : null}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 text-[11px] font-mono">
-          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-          <span className={isConnected ? 'text-emerald-300 font-semibold' : 'text-rose-400 font-semibold'}>
+          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[#FFFFFF] animate-pulse' : 'bg-[#292929]'}`} />
+          <span className={isConnected ? 'text-[#FFFFFF] font-semibold' : 'text-[#A3A3A3] font-semibold'}>
             {isConnected ? 'Connected' : 'Offline'}
           </span>
         </div>

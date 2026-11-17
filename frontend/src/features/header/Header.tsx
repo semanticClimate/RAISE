@@ -49,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Utility Icons: Sources Drawer Trigger */}
       <div
-        className={`relative flex items-center gap-2 pr-3 sm:pr-0 transition-opacity duration-200 ${
+        className={`relative flex items-center gap-1.5 sm:gap-2 pr-3 sm:pr-0 transition-opacity duration-200 ${
           isDrawerOpen ? 'opacity-0 pointer-events-none' : 'pointer-events-auto'
         }`}
         id="settingsContainer"
@@ -57,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
         <SpecialTooltip label="Drawer" position="bottom">
           <button
             id="navSourcesBtn"
+            type="button"
             onClick={onOpenSources}
             aria-label="Drawer"
             className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5 rounded-lg active:scale-95 transition-all flex items-center justify-center cursor-pointer relative"

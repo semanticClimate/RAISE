@@ -56,14 +56,18 @@ def build_evidence_citations(
     ordered_chunks: List[Dict[str, Any]],
     active_doc_list: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """Builds clean citation dictionaries from ordered evidence chunks, grouped by unique document page."""
+    """Builds clean citation dictionaries from ordered evidence chunks, 1-to-1 with evidence excerpts."""
     citations: List[Dict[str, Any]] = []
-    seen_pages: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    seen_cids = set()
 
     for idx, c in enumerate(ordered_chunks):
         meta = c.get("metadata", {})
         cid = str(meta.get("chunk_id") or c.get("id") or f"chk_{idx+1}")
-        raw_t = c.get("text", "")
+        if cid in seen_cids:
+            continue
+        seen_cids.add(cid)
+
+        raw_t = c.get("text", "") or c.get("plain_text", "")
         cleaned_excerpt = re.sub(r"\[Section Context:[^\]]*\]", "", raw_t, flags=re.IGNORECASE)
         cleaned_excerpt = re.sub(
             r"Institution:.*?\n|Document:.*?\n|Period:.*?\n|Page:.*?\n|Heading:.*?\n|Content:\s*",
@@ -71,7 +75,8 @@ def build_evidence_citations(
             cleaned_excerpt,
         ).strip()
         cleaned_excerpt = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", cleaned_excerpt)
-        cleaned_excerpt = re.sub(r"\s+", " ", cleaned_excerpt).strip()
+        cleaned_excerpt = re.sub(r"[ \t]+", " ", cleaned_excerpt)
+        cleaned_excerpt = re.sub(r"\n{3,}", "\n\n", cleaned_excerpt).strip()
 
         p_page = meta.get("primary_page") or meta.get("physical_page") or meta.get("page")
         if not p_page or int(p_page) < 1:
@@ -86,15 +91,6 @@ def build_evidence_citations(
         )
         pdf_name = Path(raw_pdf_name).name
         d_page = meta.get("printed_page")
-        page_key = (pdf_name, p_page)
-
-        if page_key in seen_pages:
-            existing = seen_pages[page_key]
-            if cid not in existing.get("chunk_ids", []):
-                existing.setdefault("chunk_ids", []).append(cid)
-            if cleaned_excerpt and cleaned_excerpt not in existing.get("plain_text", ""):
-                existing["plain_text"] = (existing.get("plain_text", "") + " " + cleaned_excerpt)[:1000]
-            continue
 
         import urllib.parse
         encoded_name = urllib.parse.quote(pdf_name)
@@ -117,14 +113,13 @@ def build_evidence_citations(
             "source_pages": [int(sp) for sp in source_pages if str(sp).isdigit()],
             "printed_page": d_page if (d_page and str(d_page).strip() != "") else None,
             "heading": meta.get("heading") or f"Section (Page {p_page})",
-            "plain_text": cleaned_excerpt[:500],
+            "plain_text": cleaned_excerpt[:4000],
             "university": meta.get("university", "Academic Institution"),
             "similarity": round(float(c.get("similarity", 0.88)), 3),
             "page_url": page_url,
             "page_image_url": page_image_url,
             "page_view_url": page_view_url,
         }
-        seen_pages[page_key] = cit
         citations.append(cit)
 
     return citations
@@ -203,12 +198,14 @@ def renumber_and_sanitize_citations(
                 seen_new.add(new_idx)
                 cit_copy = dict(matching[0])
                 cit_copy["citation_index"] = new_idx
+                import urllib.parse
+                pdf_fn = cit_copy.get("pdf_filename") or cit_copy.get("filename") or "Document.pdf"
+                encoded_name = urllib.parse.quote(pdf_fn)
+                p_page = cit_copy.get("primary_page", 1)
+                cit_copy["page_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/pdf"
+                cit_copy["page_image_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/image"
+                cit_copy["page_view_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/view"
                 filtered_cits.append(cit_copy)
-                for sp in cit_copy.get("source_pages", []):
-                    if sp != cit_copy.get("primary_page"):
-                        sp_copy = dict(cit_copy)
-                        sp_copy["primary_page"] = sp
-                        filtered_cits.append(sp_copy)
         final_cits = filtered_cits if filtered_cits else scoped_citations[:2]
     else:
         # Grounding fallback: Score citations by token and number match against cleaned_answer
@@ -228,16 +225,58 @@ def renumber_and_sanitize_citations(
         top_cits = [c for _, c in scored_cits[:max_budget]] if scored_cits else scoped_citations[:1]
         final_cits = []
         for c in top_cits:
-            final_cits.append(c)
-            for sp in c.get("source_pages", []):
-                if sp != c.get("primary_page"):
-                    sp_copy = dict(c)
-                    sp_copy["primary_page"] = sp
-                    final_cits.append(sp_copy)
+            cit_copy = dict(c)
+            import urllib.parse
+            pdf_fn = cit_copy.get("pdf_filename") or cit_copy.get("filename") or "Document.pdf"
+            encoded_name = urllib.parse.quote(pdf_fn)
+            p_page = cit_copy.get("primary_page", 1)
+            cit_copy["page_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/pdf"
+            cit_copy["page_image_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/image"
+            cit_copy["page_view_url"] = f"/api/pdf/{encoded_name}/pages/{p_page}/view"
+            final_cits.append(cit_copy)
 
-    # Re-index final citations to 1..N
+# Re-index final citations to 1..N
     for i, c in enumerate(final_cits, 1):
         c["citation_index"] = i
+
+    # Grounding Alignment: If the LLM omitted inline citation markers [1], [2],
+    # inject verified citations directly into the matching lines or summary
+    if final_cits and "[" not in cleaned_answer:
+        lines = cleaned_answer.split("\n")
+        annotated_lines = []
+        citations_injected = False
+
+        for line in lines:
+            l_strip = line.strip()
+            if not l_strip:
+                annotated_lines.append(line)
+                continue
+
+            l_lower = l_strip.lower()
+            l_words = set(re.findall(r"\b[a-z0-9]{3,}\b", l_lower))
+            matched_cit_idx = None
+            best_match_count = 0
+
+            for c in final_cits:
+                c_idx = c.get("citation_index", 1)
+                c_text = (c.get("plain_text") or c.get("text") or "").lower()
+                overlap = sum(1 for w in l_words if w in c_text)
+                min_thresh = 1 if len(l_words) <= 3 else 2
+                if overlap > best_match_count and overlap >= min_thresh:
+                    best_match_count = overlap
+                    matched_cit_idx = c_idx
+
+            if matched_cit_idx is not None and not l_strip.endswith(":"):
+                annotated_lines.append(f"{line} [{matched_cit_idx}]")
+                citations_injected = True
+            else:
+                annotated_lines.append(line)
+
+        if citations_injected:
+            cleaned_answer = "\n".join(annotated_lines)
+        else:
+            cit_tag = f" [{final_cits[0].get('citation_index', 1)}]"
+            cleaned_answer = f"{cleaned_answer.rstrip()}{cit_tag}"
 
     if cleaned_answer:
         try:

@@ -26,11 +26,14 @@ def identify_institution(pdf_path: Path, first_page_text: str) -> Tuple[str, str
 
     # Dynamic extraction: identify capitalized organizational entities from cover page
     inst_match = re.search(
-        r"\b([A-Z][a-zA-Z\s&]{4,60}?(?:University|Institute(?:\s+of\s+[A-Za-z\s]+)?|Council(?:\s+of\s+[A-Za-z\s]+)?|Research Park|Foundation|Center|Centre|Laboratory|College|Corporation|Board))\b",
-        first_page_text[:1500]
+        r"\b([A-Za-z][a-zA-Z\s&]{4,60}?(?:University|Institute(?:\s+of\s+[A-Za-z\s]+)?|Council(?:\s+of\s+[A-Za-z\s]+)?|Research Park|Foundation|Center|Centre|Laboratory|College|Corporation|Board))\b",
+        first_page_text[:1500],
+        re.IGNORECASE,
     )
     if inst_match and len(inst_match.group(1).strip()) > 5:
         uni = inst_match.group(1).strip()
+        if uni.isupper():
+            uni = uni.title()
         # Optional parenthetical acronym e.g. (NIPGR), (BRIC), (MIT)
         acro_match = re.search(rf"{re.escape(uni)}\s*\(([A-Z]{{2,8}})\)", first_page_text[:1800], re.IGNORECASE)
         if acro_match:

@@ -60,10 +60,13 @@ class RoutingPlannerNodesMixin:
 
     def _route_query_strategy(self, state: GraphRAGState) -> str:
         strategy = state.get("routing_strategy", "HYBRID_VECTOR")
+        mode = str(state.get("mode", "fast")).lower()
         hops = state.get("hops", 1)
         intent = str(state.get("query_intent", "")).upper()
-        # Activate cyclical multi-hop reasoning when hops > 1 or intent indicates multi-hop / comparative
-        if hops > 1 or intent in ("MULTI_HOP", "COMPARATIVE", "BRIDGE", "MULTI_HOP_REASONING"):
+
+        # Only activate cyclical multi-hop reasoning in expert mode with hops > 1 or explicit multi-hop intent.
+        # Fast mode queries strictly bypass iterative sub-query decomposition for sub-second responses.
+        if mode == "expert" and (hops > 1 or intent in ("MULTI_HOP", "COMPARATIVE", "BRIDGE", "MULTI_HOP_REASONING")):
             return "multi_hop_iterative"
         if strategy == "GLOBAL_COMMUNITY":
             return "global_community"
@@ -137,13 +140,13 @@ class RoutingPlannerNodesMixin:
         )
 
         try:
-            resp = router.generate(
+            resp = router.complete(
                 prompt=prompt,
                 task=InferenceTask.REASONING,
                 temperature=0.0,
                 max_tokens=150,
             )
-            raw_text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
+            raw_text = resp.strip() if isinstance(resp, str) else (resp.content.strip() if hasattr(resp, "content") else str(resp).strip())
             if "STATUS: RESOLVED" in raw_text.upper() or "STATUS:RESOLVED" in raw_text.upper():
                 if telemetry:
                     telemetry.complete_stage("QUERY_PLANNING", f"Resolved at hop {current_hops}")
@@ -200,18 +203,34 @@ class RoutingPlannerNodesMixin:
         if hasattr(self, "_get_bm25_index"):
             bm25_idx = self._get_bm25_index()
             if bm25_idx:
-                bm25_chunks = bm25_idx.search(sub_query, top_k=top_k, active_docs=active_docs, doc_filter=doc_filter)
+                raw_bm25 = bm25_idx.search(sub_query, top_k=top_k, active_docs=active_docs, doc_filter=doc_filter)
+                for b in raw_bm25:
+                    b_meta = dict(b.get("metadata") or {})
+                    b_meta.setdefault("pdf_filename", b.get("pdf_filename"))
+                    b_meta.setdefault("primary_page", b.get("primary_page", 1))
+                    b_meta.setdefault("heading", b.get("heading", ""))
+                    b_meta.setdefault("chunk_id", b.get("chunk_id"))
+                    bm25_chunks.append({
+                        "id": b.get("chunk_id"),
+                        "chunk_id": b.get("chunk_id"),
+                        "text": b.get("plain_text") or b.get("text") or "",
+                        "plain_text": b.get("plain_text") or b.get("text") or "",
+                        "similarity": round(float(b.get("bm25_score", 1.0)), 4),
+                        "metadata": b_meta,
+                    })
 
         from src.retrieval.fusion import reciprocal_rank_fusion
-        fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True) if bm25_chunks else dense_chunks
+        fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True, query=sub_query) if bm25_chunks else dense_chunks
 
         reranked = fused
         if hasattr(self.rag_engine, "agent_router") and hasattr(self.rag_engine.agent_router, "reranker"):
+            orig_q = state.get("original_query") or state.get("standalone_query") or sub_query
             reranked = self.rag_engine.agent_router.reranker.rerank(
-                query=sub_query,
+                query=orig_q,
                 candidates=fused,
                 text_key="text",
                 top_n=top_k,
+                subqueries=[sub_query],
             )
 
         hydrated = hydrate_macro_chunks(reranked)
@@ -272,6 +291,9 @@ class RoutingPlannerNodesMixin:
             "relevant_chunks": existing_chunks,
             "top_chunks": existing_chunks,
             "subgraph": updated_subgraph,
+            "vector_candidates_count": len(dense_chunks),
+            "bm25_candidates_count": len(bm25_chunks),
+            "fused_candidates_count": len(fused),
         }
 
     def _route_multi_hop(self, state: GraphRAGState) -> str:

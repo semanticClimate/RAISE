@@ -17,6 +17,7 @@ Modular Architecture:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
@@ -111,28 +112,6 @@ def _extract_id_and_dict(item: Any, id_key: str = "chunk_id") -> Tuple[str, Dict
         return doc_id, d
 
 
-def get_intent_modality_weights(intent: Optional[str] = None) -> List[float]:
-    """
-    Computes dynamic modality weights for Reciprocal Rank Fusion:
-    - Tabular / Financial / Metrics: w_dense=0.8, w_sparse=1.4, w_graph=1.0
-    - Multi-Hop / Relational / Governance: w_dense=1.1, w_sparse=0.7, w_graph=1.5
-    - General / Narrative: w_dense=1.3, w_sparse=1.0, w_graph=0.8
-    Channel order: [Dense Vector, Sparse BM25, Knowledge Graph]
-    """
-    if not intent:
-        return [1.0, 1.0, 1.0]
-
-    normalized = intent.strip().lower()
-    if any(k in normalized for k in ("table", "financial", "expenditure", "budget", "tabular", "numeric", "metric")):
-        return [0.8, 1.4, 1.0]
-    elif any(k in normalized for k in ("multihop", "multi-hop", "relation", "governance", "dean", "director", "graph", "hierarchy")):
-        return [1.1, 0.7, 1.5]
-    elif any(k in normalized for k in ("compare", "comparison")):
-        return [1.0, 1.2, 1.2]
-    else:
-        return [1.3, 1.0, 0.8]
-
-
 def reciprocal_rank_fusion(
     ranked_lists: List[List[Dict[str, Any] | Any]],
     k: int = 60,
@@ -141,6 +120,7 @@ def reciprocal_rank_fusion(
     table_boost: bool = True,
     min_score_threshold: Optional[float] = None,
     intent: Optional[str] = None,
+    query: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Computes Reciprocal Rank Fusion (RRF) over multiple ranked retrieval result sets.
@@ -150,14 +130,33 @@ def reciprocal_rank_fusion(
     - Input items as Python dicts or LangChain Documents.
     - Intent-aware modality weights (Dense, Sparse BM25, Knowledge Graph).
     - Hard minimum score threshold pruning (min_score_threshold).
-    - Table and schedule structural boosting (1.35x).
+    - Table and schedule structural boosting (1.35x), gated strictly by query intent.
     """
     if not ranked_lists:
         return []
 
     active_weights = weights
     if active_weights is None and intent:
-        active_weights = get_intent_modality_weights(intent)
+        from src.retrieval.intent import classify_retrieval_intent
+        _, active_weights = classify_retrieval_intent(intent)
+
+    # Determine whether table boost is active based on tabular/numerical/financial query intent
+    is_table_boost_active = False
+    if table_boost:
+        intent_str = (intent or "").lower()
+        valid_intents = ("financial", "tabular", "numerical", "comparison", "numerical_or_factual", "table", "stats", "audit")
+        if any(vi in intent_str for vi in valid_intents):
+            is_table_boost_active = True
+        elif query:
+            q_lower = query.lower()
+            tabular_cues = (
+                "table", "schedule", "balance sheet", "revenue", "income", "expenditure",
+                "budget", "profit", "loss", "ebitda", "margin", "ratio", "financial",
+                "statement", "metric", "allocation", "grant", "crore", "lakh", "inr", "$", "%",
+                "figures", "row", "column", "comparison", "compare", "breakdown", "versus", "vs"
+            )
+            if any(cue in q_lower for cue in tabular_cues) or bool(re.search(r"\b\d+(?:\.\d+)?%?\b", query)):
+                is_table_boost_active = True
 
     scores: Dict[str, float] = {}
     doc_map: Dict[str, Dict[str, Any]] = {}
@@ -170,7 +169,7 @@ def reciprocal_rank_fusion(
                 doc_map[doc_id] = entry_dict
 
             score_increment = (1.0 / (k + rank)) * w
-            if table_boost and is_table_candidate(entry_dict):
+            if is_table_boost_active and is_table_candidate(entry_dict):
                 score_increment *= 1.35
             scores[doc_id] = scores.get(doc_id, 0.0) + score_increment
 
@@ -189,33 +188,6 @@ def reciprocal_rank_fusion(
     return results
 
 
-def hybrid_fuse_and_rerank(
-    query: str,
-    dense_candidates: List[Dict[str, Any] | Any],
-    sparse_candidates: List[Dict[str, Any] | Any],
-    graph_candidates: Optional[List[Dict[str, Any] | Any]] = None,
-    top_n: int = 5,
-    rrf_k: int = 60,
-    as_documents: bool = False,
-    subqueries: Optional[List[str]] = None,
-) -> List[Dict[str, Any]] | List[Document]:
-    """
-    End-to-end Hybrid Fusion Pipeline:
-    1. Reciprocal Rank Fusion (RRF) across Dense, Sparse, and Graph candidate sets.
-    2. Cross-Encoder Contextual Reranking on Top-N merged candidates (with optional sub-query max-pooling).
-    3. Optional conversion to canonical LangChain Documents.
-    """
-    channel_lists = [dense_candidates, sparse_candidates]
-    if graph_candidates:
-        channel_lists.append(graph_candidates)
-
-    fused = reciprocal_rank_fusion(channel_lists, k=rrf_k)
-    reranker = CrossEncoderReranker()
-    final_passages = reranker.rerank(query=query, candidates=fused, top_n=top_n, subqueries=subqueries)
-
-    if as_documents:
-        return [chunk_to_document(p) for p in final_passages]
-    return final_passages
 
 
 # LangChain Core BaseRetriever Integration

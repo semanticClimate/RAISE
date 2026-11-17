@@ -32,8 +32,10 @@ How to Update or Tune:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List
+from src.core.config import models
 
 
 def should_ingest(file_path: str | Path) -> bool:
@@ -45,7 +47,7 @@ def should_ingest(file_path: str | Path) -> bool:
         "question_suite",
         "question suite",
         "raise-bench",
-        "gemini-notebook",
+        f"{models.LLM_PROVIDER}-notebook",
         "benchmark_qa",
     ]
     return not any(pattern in path_str for pattern in excluded_patterns)
@@ -135,7 +137,12 @@ class VectorIngestionMixin:
 
         return total_inserted
 
-    def ingest_chunks(self, chunks: List[Dict[str, Any]], doc_id: str = "default") -> int:
+    def ingest_chunks(
+        self,
+        chunks: List[Dict[str, Any]],
+        doc_id: str = "default",
+        index_propositions: bool = False,
+    ) -> int:
         """
         Add context-enriched document chunks into ChromaDB collection with full provenance metadata.
         Strictly rejects evaluation / benchmark files to prevent test contamination.
@@ -150,6 +157,7 @@ class VectorIngestionMixin:
         ids = []
         documents = []
         metadatas = []
+        index_props = index_propositions or os.getenv("RAISE_INDEX_PROPOSITIONS", "0").lower() in ("1", "true")
 
         for idx, chunk in enumerate(chunks):
             pdf_fname = str(chunk.get("pdf_filename", doc_id))
@@ -157,7 +165,10 @@ class VectorIngestionMixin:
                 continue
             cid = str(chunk.get("chunk_id") or f"{doc_id}_chk_{idx}")
             plain_text = chunk.get("plain_text") or chunk.get("text") or ""
+            heading_val = (chunk.get("heading") or "").strip()
             enriched_text = chunk.get("enriched_text") or plain_text
+            if heading_val and not enriched_text.startswith("[Document:"):
+                enriched_text = f"[Document: {pdf_fname} | Section: {heading_val}]\n{plain_text}"
             
             if not plain_text.strip():
                 continue
@@ -179,9 +190,9 @@ class VectorIngestionMixin:
                 "recommended_task": str(chunk.get("recommended_task", "general")),
             })
 
-            # Optional fine-grained proposition/atomic fact indexing with parent backlinks (applied for compact reports <= 400 chunks)
+            # Optional fine-grained proposition/atomic fact indexing with parent backlinks (applied when enabled for compact reports <= 400 chunks)
             props = chunk.get("propositions") or chunk.get("atomic_facts") or []
-            if isinstance(props, list) and len(chunks) <= 400:
+            if index_props and isinstance(props, list) and len(chunks) <= 400:
                 for p_idx, p_item in enumerate(props):
                     p_str = (p_item.get("text") or p_item.get("plain_text") or "") if isinstance(p_item, dict) else str(p_item)
                     p_str = p_str.strip()
@@ -227,21 +238,21 @@ class VectorIngestionMixin:
             except Exception as ex:
                 print(f"ChromaDB ID lookup notice: {ex}")
 
-        embeddings = self.compute_embeddings(documents)
-
         if col is not None:
             try:
-                batch_size = 2000
+                batch_size = 512
                 total_inserted = 0
                 for b_start in range(0, len(ids), batch_size):
                     b_end = b_start + batch_size
+                    b_docs = documents[b_start:b_end]
+                    b_embs = self.compute_embeddings(b_docs, is_query=False)
                     col.upsert(
                         ids=ids[b_start:b_end],
-                        documents=documents[b_start:b_end],
-                        embeddings=embeddings[b_start:b_end],
+                        documents=b_docs,
+                        embeddings=b_embs,
                         metadatas=metadatas[b_start:b_end],
                     )
-                    total_inserted += len(ids[b_start:b_end])
+                    total_inserted += len(b_docs)
                 return total_inserted
             except Exception as e:
                 print(f"ChromaDB upsert notice: {e}")

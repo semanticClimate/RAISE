@@ -1,4 +1,4 @@
-﻿"""
+"""
 RAISE System & Control Center API Router
 ========================================
 Modular API router for system telemetry, runtime configuration, dynamic LLM
@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Body
 from fastapi.responses import StreamingResponse
 
 from src.features.system import (
     SystemConfigRequest,
     ModelPullRequest,
     PreflightDownloadRequest,
+    RoutingUpdateRequest,
     get_hardware_telemetry as _probe_hardware_telemetry,
     test_all_connections as _probe_all_connections,
     get_preflight_assets as _get_preflight_assets,
@@ -56,12 +57,80 @@ async def save_configuration(cfg: SystemConfigRequest) -> Dict[str, Any]:
         )
 
 
+@router.get("/provenance")
+async def get_system_provenance(mode: Optional[str] = "expert") -> Dict[str, Any]:
+    """Returns real-time pipeline provenance, neural model states, and substrate descriptors."""
+    from src.infrastructure.provenance import build_pipeline_info
+    return build_pipeline_info(mode=mode)
+
+
 @router.get("/dynamic-llms")
 async def get_dynamic_llms() -> List[Dict[str, Any]]:
     """Returns list of dynamically available LLMs based on active hardware and configured API keys."""
     from src.infrastructure.providers.router import get_provider_router
     p_router = get_provider_router()
     return p_router.get_dynamic_available_providers()
+
+
+@router.get("/routing", operation_id="get_system_routing")
+async def get_system_routing() -> Dict[str, Any]:
+    """Returns the live LLM routing policy, fallback priority order, disabled providers, and health."""
+    from src.infrastructure.providers.router import get_provider_router
+    return get_provider_router().get_routing_status()
+
+
+@router.post("/routing", operation_id="post_system_routing")
+async def update_system_routing(req: RoutingUpdateRequest) -> Dict[str, Any]:
+    """
+    Applies user drag-and-drop fallback priority ordering, primary selection, and provider deactivation.
+    Updates the live ProviderRouter in memory immediately and persists changes to .env.
+    """
+    from src.infrastructure.providers.router import get_provider_router
+    p_router = get_provider_router()
+    result = p_router.set_routing(
+        fallback_order=req.fallback_order,
+        disabled_providers=req.disabled_providers,
+        primary_provider=req.primary_provider,
+        routing_policy=req.routing_policy,
+    )
+
+    # Persist priority order and provider choice directly to .env with zero socket timeouts
+    try:
+        from src.features.system.config_service import persist_routing_env
+        env_updates = {
+            "PINNED_PRIMARY_PROVIDER": result.get("primary_provider") or "",
+            "LLM_BACKEND": result.get("primary_provider") or "",
+            "RAISE_LLM_PROVIDER": result.get("primary_provider") or "",
+            "LLM_PROVIDER": result.get("primary_provider") or "",
+        }
+        if result.get("fallback_chain"):
+            env_updates["LLM_FALLBACK_ORDER"] = ",".join(result["fallback_chain"])
+        if result.get("disabled_providers") is not None:
+            env_updates["DISABLED_PROVIDERS"] = ",".join(result["disabled_providers"])
+        if result.get("routing_policy"):
+            env_updates["ROUTING_POLICY"] = result["routing_policy"]
+            if result["routing_policy"] == "LOCAL_FIRST":
+                env_updates["EXECUTION_MODE"] = "LOCAL"
+            elif result["routing_policy"] == "CLOUD_FIRST":
+                env_updates["EXECUTION_MODE"] = "CLOUD"
+
+        persist_routing_env(env_updates)
+    except Exception as e:
+        logger.warning(f"Could not persist routing to .env: {e}")
+
+    return {
+        "status": "success",
+        "success": True,
+        "message": f"LLM Routing Priority applied: '{result.get('primary_provider')}' is now Primary.",
+        "primary_provider": result.get("primary_provider"),
+        "pinned_primary_provider": result.get("pinned_primary_provider"),
+        "fallback_order": result.get("fallback_order") or result.get("fallback_chain"),
+        "fallback_chain": result.get("fallback_chain"),
+        "disabled_providers": result.get("disabled_providers"),
+        "routing_policy": result.get("routing_policy"),
+        "providers": result.get("providers"),
+        "routing": result,
+    }
 
 
 @router.get("/test-connections", operation_id="get_system_test_connections")
@@ -85,8 +154,8 @@ async def test_llm_key_endpoint(req: Optional[SystemConfigRequest] = None) -> Di
 @router.get("/preflight-assets")
 async def get_preflight_assets() -> Dict[str, Any]:
     """
-    Returns live verification status and disk footprint for all 6 required
-    neural assets and runtime engines (~4.6 GB Total Footprint).
+    Returns live verification status and dynamically calculated disk footprint
+    for all required neural assets and runtime engines.
     """
     return _get_preflight_assets()
 
@@ -111,6 +180,23 @@ async def pull_model_stream(req: ModelPullRequest):
         ),
         media_type="text/event-stream"
     )
+
+
+@router.get("/models", operation_id="get_system_models")
+async def get_system_models(include_catalog: bool = False) -> Dict[str, Any]:
+    """
+    Dynamic model registry endpoint consumed by frontend useDynamicModels.
+    Returns actively available live models and discovered models with zero hardcoding.
+    """
+    from src.infrastructure.providers.router import get_provider_router
+    p_router = get_provider_router()
+    avail = p_router.get_dynamic_available_providers()
+    return {
+        "status": "success",
+        "models": avail,
+        "dynamic_llms": avail,
+        "count": len(avail),
+    }
 
 
 @router.get("/models/discovered", operation_id="get_system_models_discovered")
@@ -161,3 +247,62 @@ async def get_system_status() -> Dict[str, Any]:
 # Backward compatibility aliases
 test_connections = test_system_connections
 _mask_secret = _mask_secret
+
+@router.post("/substrates/provision")
+@router.post("/provision-substrate")
+async def provision_substrate_endpoint(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """
+    On-demand substrate provisioning for Neo4j, Redis, or PostgreSQL.
+    Automatically checks and starts required Docker containers or cleanly falls back.
+    """
+    substrate = payload.get("substrate") or payload.get("name") or "neo4j"
+    from src.features.system.connection_service import auto_provision_substrate
+    return auto_provision_substrate(substrate)
+
+
+@router.api_route("/providers/verify", methods=["GET", "POST"])
+@router.api_route("/test-provider", methods=["GET", "POST"])
+@router.api_route("/test-key", methods=["GET", "POST"])
+async def verify_provider_key(
+    payload: Optional[Dict[str, Any]] = Body(None),
+    provider: Optional[str] = None,
+    key: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Live verification of a specific cloud LLM API key (Groq, Gemini, OpenAI, Anthropic, DeepSeek, OpenRouter).
+    Accepts payload via JSON Body (POST) or query parameters (GET/POST).
+    """
+    body = payload or {}
+    prov = body.get("provider") or provider or "gemini"
+    resolved_key = body.get("api_key") or body.get("key") or api_key or key or ""
+    from src.features.system.connection_service import probe_cloud_llm_key
+    return probe_cloud_llm_key(prov, resolved_key)
+
+
+@router.post("/models/load", operation_id="post_system_models_load")
+async def load_and_prewarm_neural_models(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """
+    Dynamically loads and prewarms requested embedding, reranker, and NLI verifier models.
+    """
+    try:
+        from core_registry import ModelConfigRequest, load_and_prewarm_models
+        from src.core.config import models
+        m_cfg = ModelConfigRequest(
+            embedder_id=payload.get("embedding_model") or payload.get("embedder_id") or models.EMBEDDING_MODEL_NAME,
+            reranker_id=payload.get("reranker_model") or payload.get("reranker_id") or models.RERANKER_MODEL_NAME,
+            verifier_id=payload.get("nli_verifier_model") or payload.get("verifier_id") or models.NLI_MODEL_NAME,
+            hf_token=payload.get("huggingface_token") or payload.get("hf_token"),
+        )
+        res = load_and_prewarm_models(m_cfg)
+        return {
+            "status": "success",
+            "message": "Models loaded and prewarmed successfully.",
+            "data": res,
+        }
+    except Exception as e:
+        logger.warning(f"Error loading and prewarming models: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to prewarm neural models: {str(e)}",
+        }

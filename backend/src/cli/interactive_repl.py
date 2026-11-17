@@ -140,9 +140,8 @@ def run_interactive_studio(
                     f"{C.WARN}⚠️  Clear custom workspace? This removes your custom uploads and resets chat memory while preserving institutional reports. (y/n): {C.RESET}"
                 ).strip().lower()
                 if confirm in ["y", "yes"]:
-                    main_mod = sys.modules.get("main")
-                    root = Path(main_mod.BASE_DIR) if main_mod and hasattr(main_mod, "BASE_DIR") else Path(__file__).resolve().parent.parent.parent
-                    manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+                    from src.core.config import MANIFEST_FILE
+                    manifest_file = MANIFEST_FILE
                     user_docs_to_remove = []
                     if manifest_file.exists():
                         try:
@@ -321,10 +320,14 @@ def run_interactive_studio(
             if prior_strat:
                 print(f"  🧠 {C.MAGENTA}Recalled Reasoning Trajectory{C.RESET} ({C.ACCENT}{prior_strat.trajectory_id}{C.RESET}) {C.MUTED}with confidence {prior_strat.confidence_score}{C.RESET}")
 
+            # Expand top_k on roster / entity queries or when prior trajectory recalled to prevent lock-in
+            is_roster_or_detail = any(w in query.lower() for w in ["name", "names", "list", "member", "members", "invitee", "invitees", "who", "all"])
+            effective_k = 15 if (is_roster_or_detail or prior_strat) else 8
+
             res = pipeline.query_subgraph_graphrag(
                 query=query,
                 hops=2,
-                top_k=6,
+                top_k=effective_k,
                 document_filter=focused_document,
                 active_docs=active_scoping,
             )

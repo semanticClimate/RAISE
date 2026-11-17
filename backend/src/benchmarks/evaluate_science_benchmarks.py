@@ -211,7 +211,7 @@ def evaluate_scifact(samples: int = 10, use_llm: bool = True) -> Dict[str, Any]:
                 f"Answer in ONE word ('SUPPORT' or 'REFUTE'):"
             )
             try:
-                verdict = router.complete(prompt, task=InferenceTask.REASONING, max_tokens=10, temperature=0.0).strip()
+                verdict = router.complete(prompt, task=InferenceTask.REASONING, max_tokens=256, temperature=0.0).strip()
             except Exception:
                 verdict = "SUPPORT"
         else:

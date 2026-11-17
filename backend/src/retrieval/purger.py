@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def purge_document(pipeline: "StandaloneRAGPipeline", doc_identifier: str) -> Dict[str, Any]:
+def purge_document(pipeline: "StandaloneRAGPipeline", doc_identifier: str, postgres_manager: Optional[Any] = None) -> Dict[str, Any]:
     """
     Completely deletes an ingested document and all its associated artifacts:
     1. Deletes embeddings & context chunks from ChromaDB vector store
@@ -102,7 +102,7 @@ def purge_document(pipeline: "StandaloneRAGPipeline", doc_identifier: str) -> Di
 
     # 6. Delete disk JSON artifacts
     removed_files = []
-    for sub in ["chunks", "graph_triples", "facts"]:
+    for sub in ["chunks", "graph_triples", "facts", "neo4j"]:
         sdir = settings.processed_dir / sub
         if sdir.exists():
             for f in sdir.glob(f"{target_doc_id}*"):
@@ -144,10 +144,12 @@ def purge_document(pipeline: "StandaloneRAGPipeline", doc_identifier: str) -> Di
         except Exception as e:
             logger.warning("Failed to update manifest during purge: %s", e)
 
-    # 7b. Delete from PostgreSQL
+    # 7b. Delete from PostgreSQL (reusing pooled singleton)
     try:
-        from src.infrastructure.database.postgres import PostgresManager
-        pm = PostgresManager()
+        pm = postgres_manager or getattr(pipeline, "postgres_manager", None)
+        if pm is None:
+            from src.infrastructure.database.postgres import PostgresManager
+            pm = PostgresManager()
         pm.delete_document(target_doc_id)
         pm.delete_document(target_filename)
     except Exception as e:
@@ -220,7 +222,7 @@ def purge_all_documents(
 
     # 6. Remove processed files
     removed_count = 0
-    for sub in ["chunks", "graph_triples", "facts"]:
+    for sub in ["chunks", "graph_triples", "facts", "neo4j"]:
         sdir = settings.processed_dir / sub
         if sdir.exists():
             for f in sdir.glob("*.json"):

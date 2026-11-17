@@ -14,8 +14,11 @@ from __future__ import annotations
 import logging
 import os
 import re
+import sys
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from src.core.config import models
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,7 @@ _CACHED_MODEL = None
 _CACHED_TOKENIZER = None
 _CACHED_DEVICE = None
 _LOAD_FAILED = False
+_NLI_LOCK = threading.Lock()
 
 
 class FineCatNLIVerifier:
@@ -33,7 +37,7 @@ class FineCatNLIVerifier:
     specifically fine-tuned on curated multi-source NLI benchmarks.
     """
 
-    MODEL_ID = "dleemiller/finecat-nli-ultra-l"
+    MODEL_ID = models.NLI_MODEL_NAME
     LABEL_MAPPING = {0: "ENTAILMENT", 1: "NEUTRAL", 2: "CONTRADICTION"}
 
     def __init__(self, model_id: Optional[str] = None, max_length: int = 4096, device: Optional[str] = None):
@@ -52,68 +56,81 @@ class FineCatNLIVerifier:
         if _LOAD_FAILED:
             return False
 
-        try:
-            import torch
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-            target_dev = device or os.getenv("NLI_DEVICE")
-            if target_dev:
-                target_dev = str(target_dev).lower()
-                if "cuda" in target_dev:
-                    if not torch.cuda.is_available():
-                        logger.warning("CUDA requested for NLI but torch.cuda.is_available() is False. Using CPU.")
-                        target_dev = "cpu"
-                    elif ":" not in target_dev:
-                        target_dev = "cuda:0"
-            else:
-                target_dev = "cuda:0" if torch.cuda.is_available() else "cpu"
-
-            model_dtype = torch.float16 if "cuda" in target_dev else torch.float32
-
-            from src.core.config import resolve_local_model_path
-            resolved_model = resolve_local_model_path(target_model)
-
-            token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+        with _NLI_LOCK:
+            if _CACHED_MODEL is not None and _CACHED_TOKENIZER is not None:
+                if getattr(_CACHED_MODEL, "_loaded_model_id", None) == target_model:
+                    return True
             try:
-                tokenizer = AutoTokenizer.from_pretrained(
-                    resolved_model,
-                    token=token,
-                    trust_remote_code=True,
-                    local_files_only=True,
-                )
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    resolved_model,
-                    dtype=model_dtype,
-                    token=token,
-                    trust_remote_code=True,
-                    local_files_only=True,
-                )
-            except Exception:
-                tokenizer = AutoTokenizer.from_pretrained(
-                    resolved_model,
-                    token=token,
-                    trust_remote_code=True,
-                )
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    resolved_model,
-                    dtype=model_dtype,
-                    token=token,
-                    trust_remote_code=True,
-                )
-            model = model.to(device=target_dev, dtype=model_dtype)
-            model.eval()
-            model._loaded_model_id = target_model
+                import torch
+                from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-            _CACHED_MODEL = model
-            _CACHED_TOKENIZER = tokenizer
-            _CACHED_DEVICE = target_dev
-            _LOAD_FAILED = False
-            logger.info("NLI Verifier (%s) loaded successfully on %s", target_model, target_dev)
-            return True
-        except Exception as exc:
-            logger.warning("Could not initialize NLI verifier (%s) locally: %s. Falling back to heuristic NLI.", target_model, exc)
-            _LOAD_FAILED = True
-            return False
+                raw_device = device or os.getenv("NLI_DEVICE") or os.getenv("NEURAL_DEVICE")
+                if raw_device:
+                    raw_str = str(raw_device).strip().lower()
+                    if raw_str in ("auto", "none", "", "default"):
+                        target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+                    elif "cuda" in raw_str and not torch.cuda.is_available():
+                        logger.warning("CUDA requested for NLI (%s) but torch.cuda.is_available() is False. Using CPU.", target_model)
+                        target_device = "cpu"
+                    else:
+                        target_device = raw_device
+                else:
+                    target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+                hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or None
+                torch_dtype = torch.float16 if "cuda" in str(target_device).lower() else torch.float32
+
+                # Fast path: attempt loading from local cache first (zero network latency)
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        target_model,
+                        local_files_only=True,
+                        trust_remote_code=True,
+                    )
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        target_model,
+                        local_files_only=True,
+                        torch_dtype=torch_dtype,
+                        trust_remote_code=True,
+                    ).to(target_device)
+                except Exception:
+                    # In test suites or CI, avoid downloading multi-gigabyte models over network
+                    is_testing = (
+                        "pytest" in sys.modules
+                        or os.getenv("TESTING", "").lower() in ("true", "1")
+                        or os.getenv("CI", "").lower() in ("true", "1")
+                    )
+                    if is_testing:
+                        logger.info("FineCat-NLI model (%s) not in local cache; skipping network download during test/CI.", target_model)
+                        return False
+
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        target_model,
+                        token=hf_token,
+                        trust_remote_code=True,
+                    )
+                    model = AutoModelForSequenceClassification.from_pretrained(
+                        target_model,
+                        token=hf_token,
+                        torch_dtype=torch_dtype,
+                        trust_remote_code=True,
+                    ).to(target_device)
+
+                model.eval()
+                model._loaded_model_id = target_model
+
+                _CACHED_MODEL = model
+                _CACHED_TOKENIZER = tokenizer
+                _CACHED_DEVICE = target_device
+                _LOAD_FAILED = False
+                logger.info("FineCat-NLI model (%s) loaded onto %s.", target_model, target_device)
+                return True
+            except Exception as exc:
+                logger.warning("Could not load FineCat-NLI model (%s): %s. Falling back to heuristic.", target_model, exc)
+                _LOAD_FAILED = True
+                return False
+
+
 
     @property
     def is_available(self) -> bool:
@@ -155,23 +172,30 @@ class FineCatNLIVerifier:
         t0 = time.perf_counter()
 
         try:
-            premises = [p for p, _ in pairs]
-            hypotheses = [h for _, h in pairs]
-
-            inputs = _CACHED_TOKENIZER(
-                premises,
-                hypotheses,
-                padding=True,
-                truncation=True,
-                max_length=self.max_length,
-                return_tensors="pt",
-            ).to(_CACHED_DEVICE)
+            batch_size = 8
+            all_logits_list = []
+            all_probs_list = []
 
             with torch.inference_mode():
-                outputs = _CACHED_MODEL(**inputs)
-                logits = outputs.logits
-                logits_np = logits.cpu().float().numpy()
-                probs = torch.softmax(logits, dim=-1).cpu().float().numpy()
+                for b_start in range(0, len(pairs), batch_size):
+                    batch_pairs = pairs[b_start : b_start + batch_size]
+                    b_premises = [p for p, _ in batch_pairs]
+                    b_hypotheses = [h for _, h in batch_pairs]
+                    inputs = _CACHED_TOKENIZER(
+                        b_premises,
+                        b_hypotheses,
+                        padding=True,
+                        truncation=True,
+                        max_length=self.max_length,
+                        return_tensors="pt",
+                    ).to(_CACHED_DEVICE)
+                    outputs = _CACHED_MODEL(**inputs)
+                    b_logits = outputs.logits
+                    all_logits_list.append(b_logits.cpu().float())
+                    all_probs_list.append(torch.softmax(b_logits, dim=-1).cpu().float())
+
+            logits_np = torch.cat(all_logits_list, dim=0).numpy()
+            probs = torch.cat(all_probs_list, dim=0).numpy()
 
             elapsed_ms = (time.perf_counter() - t0) * 1000.0 / max(len(pairs), 1)
 

@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 export const SubgraphQueryRequestSchema = z.object({
   query: z.string().min(1, 'Query cannot be empty'),
-  hops: z.number().int().min(1).max(3).default(2),
-  top_k: z.number().int().min(1).max(10).default(4),
-  mode: z.enum(['fast', 'expert']).optional(),
+  hops: z.number().int().min(0).max(3).default(2),
+  top_k: z.number().int().min(0).max(10).default(4),
+  mode: z.enum(['fast', 'expert', 'conversational', 'auto']).optional(),
   stream: z.boolean().optional(),
   document_filter: z.string().nullable().optional(),
   active_docs: z.array(z.string()).optional(),
@@ -145,10 +145,21 @@ export const GraphEdgeSchema = z.preprocess(
 
 export type GraphEdge = z.infer<typeof GraphEdgeSchema>;
 
-export const SubgraphDataSchema = z.object({
-  nodes: z.array(GraphNodeSchema).default([]),
-  edges: z.array(GraphEdgeSchema).default([]),
-});
+export const SubgraphDataSchema = z.preprocess(
+  (val: any) => {
+    if (!val || typeof val !== 'object') return { nodes: [], edges: [] };
+    return {
+      nodes: Array.isArray(val.nodes) ? val.nodes : [],
+      edges: Array.isArray(val.edges) ? val.edges : [],
+    };
+  },
+  z
+    .object({
+      nodes: z.array(GraphNodeSchema).catch([]),
+      edges: z.array(GraphEdgeSchema).catch([]),
+    })
+    .passthrough()
+);
 
 export type SubgraphData = z.infer<typeof SubgraphDataSchema>;
 
@@ -185,24 +196,37 @@ export const QualityGateDecisionSchema = z
 
 export type QualityGateDecision = z.infer<typeof QualityGateDecisionSchema>;
 
+export const PipelineInfoSchema = z
+  .object({
+    storage_used: z.string().default(''),
+    llm_provider: z.string().default(''),
+    llm_model: z.string().default(''),
+    encoder_model: z.string().default(''),
+    reranker_model: z.string().default(''),
+    nli_verifier_model: z.string().default(''),
+  })
+  .passthrough();
+
+export type PipelineInfo = z.infer<typeof PipelineInfoSchema>;
+
 export const SubgraphQueryResponseSchema = z
   .object({
-    query: z.string(),
+    query: z.string().catch(''),
     answer: z.string().nullish(),
     routing_strategy: z.string().nullish(),
     query_type: z.string().nullish(),
-    selected_tools: z.array(z.string()).default([]),
+    selected_tools: z.array(z.string()).catch([]),
     cypher_status: z.string().nullish(),
     cypher_repair_count: z.number().int().default(0),
     path_critic_expanded: z.boolean().default(false),
     grounded_answer: z.string().default(''),
     traceability_score: z.number().default(0),
-    verified_claims: z.array(VerifiedClaimSchema).default([]),
-    citations: z.array(CitationSchema).default([]),
+    verified_claims: z.array(VerifiedClaimSchema).catch([]),
+    citations: z.array(CitationSchema).catch([]),
     answer_contract: z.record(z.string(), z.any()).nullish(),
-    subgraph: SubgraphDataSchema.default({ nodes: [], edges: [] }),
-    top_chunks: z.array(TopChunkSchema).default([]),
-    quality_gate_decision: QualityGateDecisionSchema.default('accept'),
+    subgraph: SubgraphDataSchema.catch({ nodes: [], edges: [] }),
+    top_chunks: z.array(TopChunkSchema).catch([]),
+    quality_gate_decision: QualityGateDecisionSchema.catch('accept'),
     quality_gate_report: QualityGateReportSchema.nullish(),
     retry_count: z.number().int().default(0),
     execution_time: z.number().default(0),
@@ -210,13 +234,22 @@ export const SubgraphQueryResponseSchema = z
     command: z.string().nullish(),
     meta: z.record(z.string(), z.any()).nullish(),
 
+    // Pipeline Substrates & Neural Model Provenance
+    pipeline_info: PipelineInfoSchema.nullish(),
+    storage_used: z.string().nullish(),
+    llm_provider: z.string().nullish(),
+    llm_model: z.string().nullish(),
+    encoder_model: z.string().nullish(),
+    reranker_model: z.string().nullish(),
+    nli_verifier_model: z.string().nullish(),
+
     // Dynamic Follow-Up Inquiries & Suggestions from Gateway / LLM Node
     follow_up_inquiries: z.array(z.string()).nullish(),
     suggestions: z.array(z.string()).nullish(),
 
     // LangGraph Query Intake & Reformulation Pipeline State Fields
     standalone_query: z.string().nullish(),
-    decomposed_queries: z.array(z.string()).default([]),
+    decomposed_queries: z.array(z.string()).catch([]),
     intent_route: z.string().nullish(),
     latency_sec: z.number().nullish(),
     error_log: z.string().nullish(),
@@ -234,15 +267,22 @@ export const AgentQueryResponseSchema = z
   .object({
     query: z.string().nullish(),
     query_type: z.string().nullish(),
-    selected_tools: z.array(z.string()).default([]),
+    selected_tools: z.array(z.string()).catch([]),
     grounded_answer: z.string().default(''),
     answer: z.string().nullish(),
     response: z.string().nullish(),
     tool_calls: z.array(z.any()).nullish(),
     traceability_score: z.number().default(0),
-    verified_claims: z.array(VerifiedClaimSchema).default([]),
-    citations: z.array(CitationSchema).default([]),
+    verified_claims: z.array(VerifiedClaimSchema).catch([]),
+    citations: z.array(CitationSchema).catch([]),
     answer_contract: z.record(z.string(), z.any()).nullish(),
+    pipeline_info: PipelineInfoSchema.nullish(),
+    storage_used: z.string().nullish(),
+    llm_provider: z.string().nullish(),
+    llm_model: z.string().nullish(),
+    encoder_model: z.string().nullish(),
+    reranker_model: z.string().nullish(),
+    nli_verifier_model: z.string().nullish(),
   })
   .passthrough();
 
@@ -256,13 +296,17 @@ export const PersistedChatSessionSchema = z
     session_id: z.string().nullish(),
     username: z.string().default(''),
     title: z.string().default('New Chat'),
-    messages: z.array(z.any()).default([]),
+    messages: z.array(z.any()).catch([]),
     created_at: z.string().nullish(),
     updated_at: z.string().nullish(),
     selectedSourceIds: z.array(z.string()).nullish(),
     sources: z.array(z.any()).nullish(),
     attached_docs: z.array(z.string()).nullish(),
     is_saved: z.boolean().optional().default(false),
+    forkedFromSessionId: z.string().nullish(),
+    forkedFromTitle: z.string().nullish(),
+    forkedAtTurnIndex: z.number().int().nullish(),
+    forkedAtTimestamp: z.string().nullish(),
   })
   .passthrough();
 

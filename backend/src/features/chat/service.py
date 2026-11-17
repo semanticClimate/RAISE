@@ -18,6 +18,7 @@ from src.api.context import (
     record_query_metric,
 )
 from src.api.schemas import ChatMessageRequest
+from src.core.config import models
 
 logger = logging.getLogger("raise.services.chat")
 
@@ -98,7 +99,7 @@ class ChatService:
                 vllm_messages.append({"role": role, "content": content})
         vllm_messages.append({"role": "user", "content": message})
 
-        model_name = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
+        model_name = os.getenv("VLLM_MODEL", models.LLM_MODEL_NAME)
         vllm_candidates = [
             os.getenv("VLLM_URL", "http://127.0.0.1:8002/v1"),
             "http://127.0.0.1:8002/v1",
@@ -152,6 +153,11 @@ class ChatService:
         t_start = time.perf_counter()
         effective_hops = hops or (1 if mode == "fast" else 2)
         effective_top_k = top_k or (4 if mode == "fast" else 8)
+
+        # Dynamic retrieval depth expansion for roster, membership, and enumeration queries
+        is_roster_query = any(w in message.lower() for w in ["name", "names", "list", "member", "members", "invitee", "invitees", "who", "all", "governors", "board"])
+        if is_roster_query and effective_top_k < 15:
+            effective_top_k = 15
 
         result = self.rag_engine.query_subgraph_graphrag(
             query=message,

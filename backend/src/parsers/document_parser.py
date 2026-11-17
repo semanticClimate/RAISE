@@ -20,8 +20,11 @@ Author: RAISE Core Architecture Team
 """
 
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("raise.parsers.document_parser")
 
 # Re-export text quality and normalization primitives
 from src.parsers.text_quality import (
@@ -95,13 +98,35 @@ class SmartDocumentParser:
         pdf_path = Path(pdf_path)
         eng_lower = str(engine or "auto").lower()
 
+        total_pages = 0
+        if HAS_PYMUPDF:
+            try:
+                with pymupdf.open(str(pdf_path)) as _pdoc:
+                    total_pages = len(_pdoc)
+            except Exception:
+                pass
+
         use_docling = False
-        if eng_lower in ("deep", "docling") or full_potential:
+        if eng_lower in ("deep", "docling"):
+            if HAS_DOCLING:
+                use_docling = True
+            else:
+                logger.warning(
+                    "Deep Vision (Docling) requested for '%s', but docling is not installed. Falling back to PyMuPDF.",
+                    pdf_path.name,
+                )
+                use_docling = False
+        elif full_potential:
             use_docling = HAS_DOCLING
         elif eng_lower == "fast":
             use_docling = False
         else:  # auto
-            use_docling = self.should_use_docling(pdf_path)
+            if total_pages > 40 and not full_potential:
+                use_docling = False
+            else:
+                use_docling = self.should_use_docling(pdf_path)
+
+        effective_extract_tables = extract_tables
 
         if use_docling:
             pages = self._docling_engine.parse(pdf_path=pdf_path, max_pages=max_pages)
@@ -109,7 +134,12 @@ class SmartDocumentParser:
                 return pages
 
         # Fallback to high-speed PyMuPDF parser
-        return self._pymupdf_engine.parse(pdf_path=pdf_path, max_pages=max_pages)
+        return self._pymupdf_engine.parse(
+            pdf_path=pdf_path,
+            max_pages=max_pages,
+            extract_tables=effective_extract_tables,
+            do_ocr=False,
+        )
 
     # Expose helper static methods for backward compatibility
     @staticmethod

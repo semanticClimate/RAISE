@@ -97,12 +97,19 @@ class CorrectiveRAGEvaluator:
         return [w.lower() for w in words if w.lower() not in self.STOPWORDS]
 
     def extract_entity_mentions(self, text: str) -> List[str]:
-        """Identifies capitalized multi-word entity candidates or acronyms."""
-        acronyms = re.findall(r"\b[A-Z]{2,}\b", text)
-        proper_nouns = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text)
-        candidates = list(dict.fromkeys(acronyms + proper_nouns))
-        excluded = self.STOPWORDS | self.ENTITY_EXCLUDED_WORDS
-        return [c for c in candidates if c.lower() not in excluded]
+        """Identifies capitalized multi-word entity candidates, acronyms, and proper nouns using EntityResolver."""
+        try:
+            from src.graph.entity_resolver import EntityResolver
+            resolver = EntityResolver()
+            candidates = resolver.extract_candidate_entities(text)
+            excluded = self.STOPWORDS | self.ENTITY_EXCLUDED_WORDS
+            return [c for c in candidates if c.lower() not in excluded]
+        except Exception:
+            acronyms = re.findall(r"\b[A-Z]{2,}\b", text)
+            proper_nouns = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text)
+            candidates = list(dict.fromkeys(acronyms + proper_nouns))
+            excluded = self.STOPWORDS | self.ENTITY_EXCLUDED_WORDS
+            return [c for c in candidates if c.lower() not in excluded]
 
     def score_chunk_relevance(self, query_terms: List[str], chunk: Dict[str, Any]) -> float:
         """
@@ -317,6 +324,20 @@ class CorrectiveRAGEvaluator:
                     suggested_query=clean_query,
                 )
             else:
+                already_expanded = any(
+                    bool(c.get("is_graph_entity") or c.get("is_graph_fact") or "graph_" in str(c.get("chunk_id", "")))
+                    for c in chunks
+                )
+                if not already_expanded and chunks:
+                    return CRAGEvaluationResult(
+                        decision=CRAGDecision.AMBIGUOUS,
+                        action=CRAGAction.EXPAND_GRAPH,
+                        confidence=confidence,
+                        reason="Initial evidence confidence is low; expanding graph traversal to retrieve missing multi-hop bridge entities.",
+                        retained_chunks=retained,
+                        filtered_out_chunks=filtered,
+                        missing_entities=missing_entities,
+                    )
                 return CRAGEvaluationResult(
                     decision=CRAGDecision.INCORRECT,
                     action=CRAGAction.ABSTAIN_INSUFFICIENT,

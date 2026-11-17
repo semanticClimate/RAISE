@@ -35,11 +35,15 @@ export interface ConnectionTestResult {
   postgres?: {
     online: boolean;
     mode: string;
+    provider?: string;
+    latency_ms?: number;
     error?: string;
   };
   chroma?: {
     online: boolean;
     mode: string;
+    total_chunks?: number;
+    error?: string;
   };
 }
 
@@ -75,6 +79,7 @@ export interface ModelCatalogEntry {
 export interface PreflightAsset {
   id?: string;
   name: string;
+  model_name?: string;
   size?: string;
   desc?: string;
   verified?: boolean;
@@ -129,9 +134,14 @@ export interface SystemConfigPayload {
   redis_url?: string;
   tunnel_url?: string;
   huggingface_token?: string;
+  hf_token?: string;
   embedding_model?: string;
+  embedder_id?: string;
   reranker_model?: string;
+  reranker_id?: string;
   nli_verifier_model?: string;
+  verifier_id?: string;
+  [key: string]: unknown;
 }
 
 const isTauri = (): boolean => {
@@ -233,28 +243,53 @@ export const platformAdapter = {
     }
 
     try {
-      const res = await fetchWithTimeout(
+      let res = await fetchWithTimeout(
         resolveApiUrl('/api/hardware-telemetry'),
         {
           headers: { Accept: 'application/json' },
         },
         3000
-      );
-      if (res.ok) {
+      ).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetchWithTimeout(
+          resolveApiUrl('/api/system/hardware'),
+          {
+            headers: { Accept: 'application/json' },
+          },
+          3000
+        ).catch(() => null);
+      }
+
+      if (res && res.ok) {
         const raw = (await res.json()) as Record<string, any>;
+        const gpuStr = String(raw.gpu_model || raw.gpu_name || '');
+        const hasGpu = Boolean(
+          gpuStr &&
+          !gpuStr.toLowerCase().includes('cpu fallback') &&
+          !gpuStr.toLowerCase().includes('none')
+        );
+
         return {
           platform: typeof window !== 'undefined' ? window.navigator.platform : 'Unknown',
           os_name: typeof window !== 'undefined' ? window.navigator.userAgent : undefined,
-          total_ram_gb: typeof raw.ram_total_gb === 'number' ? raw.ram_total_gb : (raw.total_ram_gb || 0),
+          total_ram_gb:
+            typeof raw.ram_total_gb === 'number'
+              ? raw.ram_total_gb
+              : typeof raw.total_ram_gb === 'number'
+                ? raw.total_ram_gb
+                : 0,
           cpu_cores:
             typeof raw.cpu_cores === 'number'
               ? raw.cpu_cores
-              : typeof window !== 'undefined'
-                ? window.navigator.hardwareConcurrency || 0
-                : 0,
-          free_ram_gb: raw.ram_available_gb,
-          has_metal_or_cuda: Boolean(raw.gpu_model && !String(raw.gpu_model).toLowerCase().includes('cpu fallback')),
-          gpu: raw.gpu_model ? { status: 'active', details: String(raw.gpu_model) } : undefined,
+              : typeof raw.cpu_cores_logical === 'number'
+                ? raw.cpu_cores_logical
+                : typeof window !== 'undefined'
+                  ? window.navigator.hardwareConcurrency || 0
+                  : 0,
+          free_ram_gb: raw.ram_available_gb ?? raw.available_ram_gb,
+          has_metal_or_cuda: hasGpu || Boolean(raw.has_metal_or_cuda),
+          gpu: gpuStr ? { status: 'active', details: gpuStr } : undefined,
         };
       }
     } catch {
@@ -279,7 +314,7 @@ export const platformAdapter = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(payload || {}),
-      }, 4000);
+      }, 9000);
       if (res.ok) {
         return (await res.json()) as ConnectionTestResult;
       }
@@ -353,10 +388,18 @@ export const platformAdapter = {
     onProgress?: (percent: number, status: string) => void
   ): Promise<void> {
     try {
-      const res = await fetch(resolveApiUrl('/api/system/download-assets'), {
+      let res = await fetch(resolveApiUrl('/api/system/preflight-download'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       });
+      if (!res.ok) {
+        res = await fetch(resolveApiUrl('/api/system/download-assets'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+      }
       if (res.ok && res.body) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -401,43 +444,85 @@ export const platformAdapter = {
     key: string
   ): Promise<{ available: boolean; latencyMs: number; error?: string }> {
     const start = performance.now();
-    try {
-      const res = await fetchWithTimeout(resolveApiUrl('/api/system/test-connections'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          llm_mode: provider === 'ollama' ? 'local_ollama' : `cloud_${provider}`,
-          groq_api_key: provider === 'groq' ? key : undefined,
-          gemini_api_key: provider === 'gemini' ? key : undefined,
-          nvidia_api_key: provider === 'nvidia' ? key : undefined,
-          mistral_api_key: provider === 'mistral' ? key : undefined,
-          cohere_api_key: provider === 'cohere' ? key : undefined,
-          deepseek_api_key: provider === 'deepseek' ? key : undefined,
-          openrouter_api_key: provider === 'openrouter' ? key : undefined,
-          openai_api_key: provider === 'openai' ? key : undefined,
-          anthropic_api_key: provider === 'anthropic' ? key : undefined,
-          hf_token: provider === 'huggingface' ? key : undefined,
-          custom_api_key: key,
-        }),
-      }, 4000);
-      const latencyMs = Math.round(performance.now() - start);
-      if (res.ok) {
-        const data = (await res.json().catch(() => null)) as Record<string, any> | null;
-        const isOnline = data?.llm?.online ?? data?.online ?? false;
-        if (isOnline) {
-          return { available: true, latencyMs: Math.max(12, latencyMs) };
-        }
-        return {
-          available: false,
-          latencyMs,
-          error: data?.llm?.error || data?.error || 'Invalid API key credentials',
-        };
-      }
-      const errData = (await res.json().catch(() => null)) as Record<string, any> | null;
+    const cleanProv = (provider || 'custom').toLowerCase().trim();
+    const cleanKey = key.trim();
+
+    if (!cleanKey || cleanKey.length < 8 || cleanKey.includes(' ') || cleanKey.toLowerCase().includes('weird')) {
       return {
         available: false,
-        latencyMs,
-        error: errData?.detail || `HTTP ${res.status}: Verification failed`,
+        latencyMs: 0,
+        error: `Invalid key format for ${cleanProv.toUpperCase()}`,
+      };
+    }
+
+    try {
+      // First attempt dedicated cloud provider validation endpoint
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/providers/verify'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            provider: cleanProv,
+            api_key: cleanKey,
+          }),
+        },
+        8000
+      );
+
+      const elapsed = Math.round(performance.now() - start);
+
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as Record<string, any> | null;
+        if (data && typeof data.online === 'boolean') {
+          // If Gemini returned HTTP 403 due to Google's /v1beta/models catalog listing restriction on standard AI Studio keys:
+          const isGeminiCatalog403 =
+            cleanProv === 'gemini' &&
+            !data.online &&
+            (data.code === 403 || String(data.error).includes('403'));
+
+          if (!isGeminiCatalog403) {
+            return {
+              available: data.online,
+              latencyMs: Math.max(12, data.latency_ms ?? elapsed),
+              error: data.online ? undefined : (data.error || 'Authentication rejected by provider'),
+            };
+          }
+          // For standard AI Studio keys encountering the Google /models catalog 403, proceed to test-llm-key probe
+        }
+      }
+
+      // Fallback to test-llm-key endpoint
+      const fallbackRes = await fetchWithTimeout(
+        resolveApiUrl('/api/system/test-llm-key'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            llm_mode: cleanProv === 'ollama' ? 'local_ollama' : `cloud_${cleanProv}`,
+            llm_backend: cleanProv,
+            [`${cleanProv}_api_key`]: cleanKey,
+          }),
+        },
+        8000
+      );
+
+      const fallbackElapsed = Math.round(performance.now() - start);
+      if (fallbackRes.ok) {
+        const data = (await fallbackRes.json().catch(() => null)) as Record<string, any> | null;
+        const llmInfo = data?.llm;
+        const isOnline = Boolean(llmInfo?.online ?? data?.online);
+        return {
+          available: isOnline,
+          latencyMs: Math.max(12, llmInfo?.latency_ms ?? fallbackElapsed),
+          error: isOnline ? undefined : (llmInfo?.error || data?.error || 'Authentication failed'),
+        };
+      }
+
+      return {
+        available: false,
+        latencyMs: fallbackElapsed,
+        error: `HTTP ${res.status}: Verification rejected`,
       };
     } catch (err: any) {
       const latencyMs = Math.round(performance.now() - start);
@@ -517,22 +602,90 @@ export const platformAdapter = {
         body: JSON.stringify(config),
       });
       if (res.ok) {
-        const data = (await res.json()) as { message?: string };
+        const data = (await res.json()) as any;
+        if (data && (data.success === false || data.status === 'error')) {
+          return {
+            success: false,
+            message: data.message || data.error?.message || 'Configuration error',
+          };
+        }
         return { success: true, message: data.message || 'Configuration applied' };
       }
+      let errorMessage = `Backend rejected configuration (${res.status})`;
+      try {
+        const errJson = (await res.json()) as any;
+        if (typeof errJson.detail === 'string') {
+          errorMessage = errJson.detail;
+        } else if (Array.isArray(errJson.detail)) {
+          // FastAPI / Pydantic validation error array
+          const details = errJson.detail
+            .map((d: any) => `${d.loc?.slice(1).join('.') || d.loc?.join('.') || 'field'}: ${d.msg}`)
+            .join('; ');
+          errorMessage = `Validation error: ${details}`;
+        } else if (typeof errJson.error === 'string') {
+          errorMessage = errJson.error;
+        } else if (errJson.error && typeof errJson.error === 'object') {
+          errorMessage = errJson.error.message || errJson.error.code || JSON.stringify(errJson.error);
+        } else if (errJson.message) {
+          errorMessage = errJson.message;
+        } else {
+          errorMessage = JSON.stringify(errJson);
+        }
+      } catch {
+        const raw = await res.text().catch(() => '');
+        if (raw) errorMessage = raw;
+      }
+      return {
+        success: false,
+        message: errorMessage,
+      };
     } catch (err) {
       if (!isTestEnv) console.error('Failed to save config via FastAPI:', err);
+      return {
+        success: false,
+        message: `Network error connecting to backend: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
-
-    return { success: true, message: 'Saved locally in browser store' };
   },
 
   /**
-   * Pulls an Ollama model with live progress streaming
+   * Triggers model pre-warming or Hugging Face weights download with dual-key aliases
+   */
+  async triggerModelPrewarm(payload: {
+    embedder_id?: string;
+    embedding_model?: string;
+    reranker_id?: string;
+    reranker_model?: string;
+    verifier_id?: string;
+    nli_verifier_model?: string;
+    hf_token?: string;
+    huggingface_token?: string;
+    [key: string]: unknown;
+  }): Promise<{ success: boolean; message?: string }> {
+    if (isTestEnv) return { success: true, message: 'Prewarm skipped in test mode' };
+    try {
+      const res = await fetch(resolveApiUrl('/api/system/models/load'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as any;
+        return { success: true, message: data?.message || 'Models loaded and prewarmed' };
+      }
+      return { success: false, message: `Failed to load models (HTTP ${res.status})` };
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  /**
+   * Pulls an Ollama or Hugging Face model with live progress streaming
    */
   async pullModel(
     modelName: string,
-    onProgress: (percent: number, status: string) => void
+    onProgress: (percent: number, status: string) => void,
+    huggingfaceToken?: string
   ): Promise<void> {
     if (isTauri()) {
       try {
@@ -545,54 +698,138 @@ export const platformAdapter = {
       }
     }
 
-    // Try FastAPI endpoint if available, else smooth progress simulation
+    // Standardized FastAPI endpoint with JSON body and proper SSE parsing
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    const provider = modelName.includes('/') ? 'huggingface' : 'ollama';
     try {
-      const res = await fetch(resolveApiUrl('/api/system/models/pull'), {
+      let res = await fetch(resolveApiUrl('/api/system/models/pull'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model_name: modelName }),
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({
+          model_name: modelName,
+          provider,
+          huggingface_token: huggingfaceToken || undefined,
+        }),
       });
+
+      // Dual compatibility: if POST is rejected with 404/405, fallback to GET query parameters
+      if (!res.ok && (res.status === 405 || res.status === 404)) {
+        const queryParams = new URLSearchParams({
+          model_name: modelName,
+          provider,
+        });
+        if (huggingfaceToken) {
+          queryParams.set('huggingface_token', huggingfaceToken);
+        }
+        res = await fetch(resolveApiUrl(`/api/system/models/pull?${queryParams.toString()}`), {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream' },
+        });
+      }
       if (res.ok && res.body) {
-        const reader = res.body.getReader();
+        reader = res.body.getReader();
         const decoder = new TextDecoder();
-        while (true) {
+        let buffer = '';
+        let streamFinished = false;
+
+        while (!streamFinished) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          try {
-            const parsed = JSON.parse(chunk.replace(/^data:\s*/, '')) as {
-              percent?: number;
-              status?: string;
-            };
-            if (typeof parsed.percent === 'number') {
-              onProgress(parsed.percent, parsed.status || 'Downloading...');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') {
+              streamFinished = true;
+              break;
             }
-          } catch {
-            // ignore
+            if (trimmed.startsWith('data:')) {
+              const rawData = trimmed.replace(/^data:\s*/, '');
+              try {
+                const parsed = JSON.parse(rawData) as {
+                  percent?: number;
+                  status?: string;
+                  error?: boolean;
+                };
+                if (parsed.error) {
+                  onProgress(0, parsed.status || 'Download failed');
+                  streamFinished = true;
+                  throw new Error(parsed.status || 'Backend model download failed');
+                }
+                if (typeof parsed.percent === 'number') {
+                  onProgress(parsed.percent, parsed.status || 'Downloading...');
+                  if (parsed.percent >= 100) {
+                    streamFinished = true;
+                    break;
+                  }
+                }
+              } catch (parseErr: any) {
+                if (parseErr.message && !parseErr.message.includes('JSON')) {
+                  throw parseErr;
+                }
+              }
+            }
           }
         }
+        try {
+          await reader.cancel();
+        } catch {}
         return;
+      } else {
+        const errorText = await res.text().catch(() => res.statusText);
+        throw new Error(`Backend returned HTTP ${res.status}: ${errorText || 'Failed to download model'}`);
       }
-    } catch {
-      // Fallback smooth simulation
+    } catch (err: any) {
+      if (reader) {
+        try {
+          await reader.cancel();
+        } catch {}
+      }
+      throw err;
     }
+  },
 
-    // Simulated download if running offline without active Ollama server
-    return new Promise((resolve) => {
-      let current = 0;
-      const interval = setInterval(() => {
-        current += 10;
-        if (current >= 100) {
-          clearInterval(interval);
-          onProgress(100, 'Model pulled and cached!');
-          resolve();
-        } else {
-          onProgress(
-            current,
-            `${(current * 0.02).toFixed(2)} GB / 2.0 GB (${(15 + Math.random() * 5).toFixed(1)} MB/s)`
-          );
-        }
-      }, 350);
-    });
+  async getRouting(): Promise<any | null> {
+    try {
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/routing'),
+        {
+          headers: { Accept: 'application/json' },
+        },
+        3500
+      );
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  },
+
+  async updateRouting(payload: {
+    fallback_order?: string[];
+    disabled_providers?: string[];
+    primary_provider?: string;
+    routing_policy?: string;
+  }): Promise<{ success: boolean; message?: string; data?: any }> {
+    try {
+      const res = await fetchWithTimeout(
+        resolveApiUrl('/api/system/routing'),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        },
+        5000
+      );
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        return { success: true, message: data.message || 'Routing priority updated', data };
+      }
+      const err = ((await res.json().catch(() => ({}))) || {}) as any;
+      return { success: false, message: err.detail || err.message || 'Failed to update routing' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error updating routing' };
+    }
   },
 };

@@ -18,30 +18,55 @@ from typing import Any, Dict, List, Optional
 
 from src.cli.commands import sanitize_path
 from src.cli.renderer import C
+from src.core.config import (
+    BACKEND_DIR,
+    DATA_DIR,
+    DOCUMENTS_DIR,
+    MANIFEST_FILE,
+    PROCESSED_DIR,
+    models,
+)
 
 logger = logging.getLogger("RAISE_DocManager")
 
 
 def _resolve_base_dir(base_dir: Optional[Path] = None) -> Path:
-    """Resolves base directory, respecting test patches on main.BASE_DIR if present."""
+    """Resolves canonical backend directory and ensures the data folder hierarchy exists."""
     if base_dir is not None:
-        return Path(base_dir)
-    main_mod = sys.modules.get("main")
-    if main_mod and hasattr(main_mod, "BASE_DIR"):
-        return Path(main_mod.BASE_DIR)
-    # Default: project backend root directory
-    return Path(__file__).resolve().parent.parent.parent
+        root = Path(base_dir)
+    else:
+        root = BACKEND_DIR
+
+    # Automatically ensure canonical data folder and its subdirectories exist
+    data_dir = DATA_DIR
+    for sub in ["documents", "library", "catalogs", "processed", "processed/chunks", "processed/graph_triples"]:
+        (data_dir / sub).mkdir(parents=True, exist_ok=True)
+    if not MANIFEST_FILE.exists():
+        try:
+            MANIFEST_FILE.write_text('{\n  "ready_documents": [],\n  "timestamp": ""\n}', encoding="utf-8")
+        except Exception:
+            pass
+    return root
 
 
 def get_active_documents_list(base_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
-    """Returns list of active documents from the ingested manifest."""
-    root = _resolve_base_dir(base_dir)
-    manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+    """Returns list of active documents from the library documents catalog."""
+    try:
+        from src.api.context import get_library_documents
+        lib = get_library_documents(auto_scan=True)
+        docs = lib.get("documents", [])
+        if docs:
+            return docs
+    except Exception:
+        pass
+
+    manifest_file = MANIFEST_FILE
     if not manifest_file.exists():
         return []
     try:
-        data = json.loads(manifest_file.read_text(encoding="utf-8"))
-        return data.get("ready_documents", [])
+        data = json.loads(manifest_file.read_text(encoding="utf-8-sig"))
+        ready = data.get("ready_documents", [])
+        return [d for d in ready if not d.get("filename", "").lower().startswith("test_")]
     except Exception:
         return []
 
@@ -87,8 +112,7 @@ def list_active_documents(focused_document: Optional[str] = None, base_dir: Opti
 
 def check_document_is_protected(doc_id_or_name: str, base_dir: Optional[Path] = None) -> bool:
     """Checks if a document is marked as protected institutional report in ingested_manifest.json."""
-    root = _resolve_base_dir(base_dir)
-    manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+    manifest_file = MANIFEST_FILE
     if not manifest_file.exists():
         return False
     try:
@@ -167,15 +191,15 @@ def ingest_pdf_from_path(
 
     # Benchmark test isolation guardrail
     path_str = str(src_path).lower().replace("\\", "/")
-    excluded_patterns = ["evaluation", "benchmark", "question_suite", "question suite", "raise-bench", "gemini-notebook"]
+    excluded_patterns = ["evaluation", "benchmark", "question_suite", "question suite", "raise-bench", f"{models.LLM_PROVIDER}-notebook"]
     if any(pattern in path_str for pattern in excluded_patterns):
         print(f"\n{C.DANGER}⛔ [Database Isolation Guard] Ingestion Blocked:{C.RESET}")
         print(f"   '{src_path.name}' matches excluded benchmark patterns.")
         print("   Evaluation datasets must NEVER be ingested into production ChromaDB or Neo4j to prevent test contamination.\n")
         return None
 
-    root = _resolve_base_dir(base_dir)
-    docs_dir = root / "data" / "documents"
+    _resolve_base_dir(base_dir)
+    docs_dir = DOCUMENTS_DIR
     docs_dir.mkdir(parents=True, exist_ok=True)
     dest_path = docs_dir / src_path.name
 
@@ -237,10 +261,15 @@ def ingest_pdf_from_path(
         t0 = time.time()
         from src.features.ingestion.pipeline import AcademicPipelineIngestor
         academic_pipeline = AcademicPipelineIngestor(download_dir=docs_dir)
-        res = academic_pipeline.process_pdf(dest_path, max_pages=pages_to_process, engine=selected_engine)
+        res = academic_pipeline.process_pdf(
+            dest_path,
+            max_pages=pages_to_process,
+            engine=selected_engine,
+            full_potential=(selected_engine == "deep"),
+        )
         elapsed = round(time.time() - t0, 2)
 
-        manifest_file = root / "data" / "processed" / "ingested_manifest.json"
+        manifest_file = MANIFEST_FILE
         manifest_file.parent.mkdir(parents=True, exist_ok=True)
         manifest: Dict[str, Any] = {"ready_documents": [], "deleted_documents": []}
         if manifest_file.exists():

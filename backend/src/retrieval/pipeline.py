@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import json
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -78,15 +79,17 @@ class StandaloneRAGPipeline:
             reasoning_memory=self.reasoning_memory,
         )
 
+        self._indexing_thread: Optional[threading.Thread] = None
+
         # Load processed artifacts into memory on startup
         self._load_processed_data()
 
         # Initialize LangGraph cyclical StateGraph Workflow
         self.langgraph_workflow = AcademicGraphRAGWorkflow(self)
         self.reranker = self.agent_router.reranker
-        self.parallel_retriever = AsyncParallelRetriever(self)
+        self.parallel_retriever = AsyncParallelRetriever(self, reranker=self.reranker)
 
-    def _load_processed_data(self, force_reload: bool = False):
+    def _load_processed_data(self, force_reload: bool = False, background: bool = True):
         """Auto-load all processed academic chunks and triples into memory if not already indexed."""
         processed_chunks_dir = settings.processed_dir / "chunks"
         processed_triples_dir = settings.processed_dir / "graph_triples"
@@ -98,16 +101,27 @@ class StandaloneRAGPipeline:
         except Exception:
             pass
 
-        if force_reload or not already_indexed:
+        def _ingest_chunks_worker():
             if processed_chunks_dir.exists():
-                for pattern in ["*_chunks.json", "*_parent_chunks.json"]:
-                    for f in processed_chunks_dir.glob(pattern):
-                        try:
-                            chunks = json.loads(f.read_text(encoding="utf-8"))
-                            if isinstance(chunks, list) and chunks:
-                                self.vector_engine.ingest_chunks(chunks, doc_id=f.stem)
-                        except Exception:
-                            pass
+                for f in processed_chunks_dir.glob("*_chunks.json"):
+                    try:
+                        chunks = json.loads(f.read_text(encoding="utf-8"))
+                        if isinstance(chunks, list) and chunks:
+                            clean_doc_id = f.stem.removesuffix("_chunks")
+                            self.vector_engine.ingest_chunks(chunks, doc_id=clean_doc_id)
+                    except Exception:
+                        pass
+
+        if force_reload or not already_indexed:
+            if background:
+                self._indexing_thread = threading.Thread(
+                    target=_ingest_chunks_worker,
+                    daemon=True,
+                    name="ChromaAutoIndexer",
+                )
+                self._indexing_thread.start()
+            else:
+                _ingest_chunks_worker()
 
         if processed_triples_dir.exists():
             triples_list = []
@@ -124,6 +138,12 @@ class StandaloneRAGPipeline:
                         self.sync_to_neo4j()
                     except Exception:
                         pass
+
+    def ensure_data_indexed(self, timeout: float = 300.0) -> None:
+        """Wait for background chunk ingestion thread to complete if running."""
+        thread = getattr(self, "_indexing_thread", None)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=timeout)
 
     def set_evaluation_namespace(self, collection_name: str) -> None:
         """Dynamically routes vector search to an isolated evaluation collection."""
@@ -208,12 +228,13 @@ class StandaloneRAGPipeline:
         - Fast Mode: hops=1, top_k=4, sub-second to ~1.5s latency
         - Expert Mode: hops=3, top_k=8, deep graph traversal, table boosting
         """
+        self.ensure_data_indexed()
         if mode == "expert":
             effective_hops = max(hops, 3)
-            effective_top_k = max(top_k, 8)
+            effective_top_k = max(top_k, 12)
         else:
-            effective_hops = min(hops, 1)
-            effective_top_k = min(top_k, 4)
+            effective_hops = max(hops, 1)
+            effective_top_k = max(top_k, 8)
 
         res = self.langgraph_workflow.run(
             query=query,
@@ -235,10 +256,14 @@ class StandaloneRAGPipeline:
                 res["rerank_ms"] = timings.get("reranking_ms", 0.0)
             if "synthesis_ms" not in res:
                 res["synthesis_ms"] = timings.get("synthesis_ms", 0.0)
+            if "pipeline_info" not in res or not res["pipeline_info"]:
+                from src.infrastructure.provenance import build_pipeline_info
+                res["pipeline_info"] = build_pipeline_info(mode=mode)
         return res
 
     def run(self, query: str, active_docs: Optional[List[str]] = None, mode: Optional[str] = "fast") -> Dict[str, Any]:
         """Convenience execution method for automated test scripts and benchmarks."""
+        self.ensure_data_indexed()
         if active_docs is None:
             try:
                 from src.api.context import get_ready_documents_list
@@ -250,18 +275,20 @@ class StandaloneRAGPipeline:
         gate_rep = res.get("quality_gate_report") or {}
         subg = res.get("subgraph") or {}
         top_chunks = res.get("top_chunks") or []
-        
+        faithfulness_val = float(gate_rep.get("faithfulness", 0.00)) if gate_rep else 0.00
+        nodes_list = subg.get("nodes", []) if isinstance(subg, dict) else []
+
         return {
             "status": res.get("status", "SUCCESS"),
             "answer": res.get("grounded_answer"),
             "quality_decision": (res.get("quality_gate_decision") or "ACCEPT").upper(),
-            "faithfulness_score": f"{gate_rep.get('faithfulness', 1.00):.2f}",
+            "faithfulness_score": f"{faithfulness_val:.2f}",
             "retrieval_ms": res.get("retrieval_ms", 0.0),
             "rerank_ms": res.get("rerank_ms", 0.0),
             "synthesis_ms": res.get("synthesis_ms", 0.0),
-            "graph_hits": len(subg.get("nodes", [])) if isinstance(subg, dict) else 4,
-            "fused_candidates_count": max(len(top_chunks) * 4, 13),
-            "reranked_chunks_count": len(top_chunks) if top_chunks else 6,
+            "graph_hits": len(nodes_list),
+            "fused_candidates_count": res.get("fused_candidates_count", len(top_chunks)),
+            "reranked_chunks_count": len(top_chunks),
             "raw_result": res,
         }
 

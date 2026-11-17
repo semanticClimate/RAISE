@@ -49,7 +49,12 @@ class QueryAnalyzerMixin:
 
     def _get_active_documents(self) -> List[str]:
         """Dynamically fetch list of confirmed active PDF filenames from manifest."""
-        manifest_file = Path(__file__).parent.parent / "data" / "processed" / "ingested_manifest.json"
+        try:
+            from src.core.config import MANIFEST_FILE
+            manifest_file = MANIFEST_FILE
+        except Exception:
+            from src.core.config import settings
+            manifest_file = settings.processed_dir / "ingested_manifest.json"
         if manifest_file.exists():
             try:
                 data = json.loads(manifest_file.read_text(encoding="utf-8"))
@@ -153,7 +158,12 @@ class QueryAnalyzerMixin:
         try:
             from src.retrieval.bm25 import SelfContainedBM25
             if not hasattr(self, "_cached_bm25") or self._cached_bm25 is None:
-                chunks_dir = Path(__file__).resolve().parents[3] / "data" / "processed" / "chunks"
+                try:
+                    from src.core.config import CHUNKS_DIR
+                    chunks_dir = CHUNKS_DIR
+                except Exception:
+                    from src.core.config import settings
+                    chunks_dir = settings.processed_dir / "chunks"
                 corpus_chunks = []
                 if chunks_dir.exists():
                     for cf in chunks_dir.glob("*_chunks.json"):
@@ -249,7 +259,10 @@ class QueryAnalyzerMixin:
                     l_lower = line.lower()
                     if kw_tokens and any(k in l_lower for k in kw_tokens):
                         cells = [col.strip() for col in line.split("|") if col.strip()]
-                        for cell in cells:
+                        eval_cells = cells
+                        if len(cells) >= 3 and cells[0].isdigit() and 1 <= int(cells[0]) <= 30:
+                            eval_cells = cells[1:]
+                        for cell in eval_cells:
                             for m in re.finditer(r"\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\b", cell):
                                 val_str = m.group(1).replace(",", "")
                                 try:

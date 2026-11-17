@@ -6,11 +6,13 @@ Dynamically probes host CPU, RAM, GPU, disk storage, and local AI runtime socket
 
 from __future__ import annotations
 
+import os
 import platform
 import socket
 import shutil
 from pathlib import Path
 from typing import Any, Dict
+from src.core.config import models
 
 
 def get_hardware_telemetry() -> Dict[str, Any]:
@@ -82,17 +84,25 @@ def get_hardware_telemetry() -> Dict[str, Any]:
         "cpu_physical_cores": cpu_cores_physical,
         "cpu_usage_pct": cpu_percent,
         "total_ram_gb": total_ram_gb,
+        "ram_total_gb": total_ram_gb,
         "free_ram_gb": available_ram_gb,
+        "ram_available_gb": available_ram_gb,
         "total_disk_gb": total_disk_gb,
         "free_disk_gb": free_disk_gb,
         "gpu_detected": gpu_detected,
+        "has_metal_or_cuda": gpu_detected,
         "gpu_name": gpu_name,
+        "gpu": {
+            "status": "Online" if gpu_detected else "Standby",
+            "details": gpu_name,
+        },
         "vram_gb": vram_gb,
         "ollama_running": local_ai_running,
         "recommended_mode": recommended_mode,
         "recommendation_note": recommendation_note,
         "local_model_catalog": local_model_catalog,
-        "embedding_model": os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5"),
-        "reranker_model": os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-large"),
-        "nli_model": os.getenv("NLI_MODEL", "dleemiller/finecat-nli-l"),
+        "embedding_model": models.EMBEDDING_MODEL_NAME,
+        "reranker_model": models.RERANKER_MODEL_NAME,
+        "nli_model": models.NLI_MODEL_NAME,
+        "nli_verifier_model": models.NLI_MODEL_NAME,
     }

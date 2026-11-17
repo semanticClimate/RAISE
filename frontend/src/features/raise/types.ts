@@ -21,6 +21,7 @@ export interface ResponseVersion {
   error?: BackendErrorDetails;
   durationSec?: number;
   timestamp?: string;
+  created_at?: string;
   isStopped?: boolean;
 }
 
@@ -43,7 +44,12 @@ export interface ChatMessage {
   currentQuestionVersionIndex?: number;
   persistenceFailed?: boolean;
   isStopped?: boolean;
+  isThinking?: boolean;
+  timestamp?: string;
+  created_at?: string;
+  startedAtMs?: number;
   feedback?: 'thumbs_up' | 'thumbs_down' | null;
+  mode?: 'fast' | 'expert' | 'conversational';
   id?: string;
 }
 
@@ -61,6 +67,10 @@ export interface ChatSession {
   updated_at?: string;
   is_saved?: boolean;
   attached_docs?: string[];
+  forkedFromSessionId?: string;
+  forkedFromTitle?: string;
+  forkedAtTurnIndex?: number;
+  forkedAtTimestamp?: string;
 }
 
 export interface DynamicSuggestion {

@@ -5,16 +5,25 @@ RAISE Centralized Typed Configuration System — Core Module
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Literal, Optional
 from pydantic import BaseModel, Field
 
 
 # Base canonical paths inside RAG
-PROJECT_ROOT = Path(__file__).resolve().parents[2]  # .../RAG
+# Canonical backend directory
+_file_path = Path(__file__).resolve()
+# config.py is located at <BACKEND_ROOT>/src/core/config.py, so parents[2] is always the backend root
+BACKEND_DIR = _file_path.parents[2]
+PROJECT_ROOT = BACKEND_DIR
+REPO_ROOT = BACKEND_DIR
+
+# Canonical data directory inside backend
 DATA_DIR = PROJECT_ROOT / "data"
 DOCUMENTS_DIR = DATA_DIR / "documents"
 LIBRARY_DIR = DATA_DIR / "library"
+CATALOGS_DIR = DATA_DIR / "catalogs"
 PROCESSED_DIR = DATA_DIR / "processed"
 CHUNKS_DIR = PROCESSED_DIR / "chunks"
 GRAPH_DIR = PROCESSED_DIR / "graph_triples"
@@ -26,15 +35,26 @@ LOG_DIR = PROJECT_ROOT / "logs"
 TESTS_DIR = PROJECT_ROOT / "tests"
 FIXTURES_DIR = TESTS_DIR / "fixtures"
 
-# Ensure directories exist
+# Ensure canonical directories exist automatically upon import
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+CATALOGS_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
 GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 VECTOR_DB_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
+
+# Ensure ingested_manifest.json exists with valid structure
+MANIFEST_FILE = PROCESSED_DIR / "ingested_manifest.json"
+if not MANIFEST_FILE.exists():
+    try:
+        MANIFEST_FILE.write_text('{\n  "ready_documents": [],\n  "timestamp": ""\n}', encoding="utf-8")
+    except Exception:
+        pass
 
 
 # Load environment variables from .env if present immediately
@@ -95,6 +115,128 @@ def resolve_local_model_path(repo_or_path: str) -> str:
     return repo_or_path
 
 
+def _env_tuple(env_key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Parse comma-separated environment variable into a clean tuple of strings."""
+    raw = os.getenv(env_key, "").strip()
+    if not raw:
+        return default
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    # LLM Synthesis
+    LLM_PROVIDER: str = os.getenv("RAISE_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini"))
+    LLM_MODEL_NAME: str = os.getenv("RAISE_LLM_MODEL", os.getenv("LLM_MODEL_NAME", "gemini-2.5-flash"))
+    GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+    GEMINI_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "GEMINI_FALLBACK_CANDIDATES",
+        ("gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"),
+    )
+    OPENAI_MODEL_NAME: str = os.getenv("OPENAI_MODEL_NAME", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+    VLLM_MODEL_NAME: str = os.getenv("VLLM_MODEL_NAME", os.getenv("LOCAL_LLM_MODEL", "auto"))
+    OLLAMA_MODEL_NAME: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    OLLAMA_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "OLLAMA_FALLBACK_CANDIDATES",
+        ("qwen2.5:14b", "qwen2.5:7b", "llama3.1:8b", "mistral:7b"),
+    )
+    GROQ_MODEL_NAME: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    GROQ_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "GROQ_FALLBACK_CANDIDATES",
+        ("openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
+    )
+    DEEPSEEK_MODEL_NAME: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    NVIDIA_MODEL_NAME: str = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
+    OPENROUTER_MODEL_NAME: str = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3-haiku")
+    ANTHROPIC_MODEL_NAME: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet")
+    COHERE_MODEL_NAME: str = os.getenv("COHERE_MODEL", "command-r-plus-08-2024")
+    MISTRAL_MODEL_NAME: str = os.getenv("MISTRAL_MODEL", "open-mistral-nemo")
+    MISTRAL_FALLBACK_CANDIDATES: tuple[str, ...] = _env_tuple(
+        "MISTRAL_FALLBACK_CANDIDATES",
+        ("open-mistral-7b", "codestral-latest", "mistral-small-latest"),
+    )
+
+    # Retrieval & Reranking
+    EMBEDDING_MODEL_NAME: str = os.getenv("RAISE_EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"))
+    EMBEDDING_MODEL_KEYWORD: str = "embeddinggemma"
+    GEMMA_KEYWORD: str = "gemma"
+    EMBEDDING_FALLBACK_MODEL_NAME: str = os.getenv("EMBEDDING_FALLBACK_MODEL", "BAAI/bge-large-en-v1.5")
+    EMBEDDING_BASE_MODEL_NAME: str = os.getenv("EMBEDDING_BASE_MODEL", "BAAI/bge-base-en-v1.5")
+    EMBEDDING_M3_MODEL_NAME: str = os.getenv("EMBEDDING_M3_MODEL", "BAAI/bge-m3")
+    RERANKER_MODEL_NAME: str = os.getenv("RAISE_RERANKER_MODEL", os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"))
+    RERANKER_FALLBACK_MODEL_NAME: str = os.getenv("RERANKER_FALLBACK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+    # Ingestion / Entity Extraction
+    GLINER_MODEL_NAME: str = os.getenv("RAISE_GLINER_MODEL", os.getenv("GLINER_MODEL", "urchade/gliner_medium-v2.1"))
+
+    # NLI Entailment
+    NLI_MODEL_NAME: str = os.getenv("RAISE_NLI_MODEL", os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"))
+
+
+models = ModelConfig()
+
+AVAILABLE_EMBEDDING_MODELS: Dict[str, str] = {
+    "embeddinggemma-2": "google/embeddinggemma-2",
+    "embeddinggemma": "google/embeddinggemma-2",
+    "google/embeddinggemma-2": "google/embeddinggemma-2",
+    "bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
+    "bge-large": "BAAI/bge-large-en-v1.5",
+    "BAAI/bge-large-en-v1.5": "BAAI/bge-large-en-v1.5",
+    "bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+    "bge-base": "BAAI/bge-base-en-v1.5",
+    "BAAI/bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+    "all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
+    "sentence-transformers/all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
+    "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
+    "sentence-transformers/all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
+    "nomic-ai/nomic-embed-text-v1.5": "nomic-ai/nomic-embed-text-v1.5",
+    "nomic-embed-text-v1.5": "nomic-ai/nomic-embed-text-v1.5",
+    "bge-m3": "BAAI/bge-m3",
+    "BAAI/bge-m3": "BAAI/bge-m3",
+    "nomic-ai/nomic-embed-vision-v1.5": "nomic-ai/nomic-embed-vision-v1.5",
+    "nomic-embed-vision": "nomic-ai/nomic-embed-vision-v1.5",
+    "openai/clip-vit-base-patch32": "openai/clip-vit-base-patch32",
+    "clip-vit-base": "openai/clip-vit-base-patch32",
+    "meta/llama-3.2-11b-vision-instruct": "meta/llama-3.2-11b-vision-instruct",
+    "qwen-embedding-4b": "Qwen/Qwen3-Embedding-4B",
+}
+
+EMBEDDING_FALLBACKS_768: list[str] = [
+    "BAAI/bge-base-en-v1.5",
+    "sentence-transformers/all-mpnet-base-v2",
+    "nomic-ai/nomic-embed-text-v1.5",
+]
+
+EMBEDDING_FALLBACKS_1024: list[str] = [
+    "BAAI/bge-large-en-v1.5",
+    "BAAI/bge-m3",
+]
+
+AVAILABLE_RERANKER_MODELS: Dict[str, str] = {
+    "bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
+    "BAAI/bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
+    "bge-reranker-large": "BAAI/bge-reranker-large",
+    "BAAI/bge-reranker-large": "BAAI/bge-reranker-large",
+    "bge-reranker-base": "BAAI/bge-reranker-base",
+    "BAAI/bge-reranker-base": "BAAI/bge-reranker-base",
+    "ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
+    "jinaai/jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
+    "jina-reranker": "jinaai/jina-reranker-v3.5",
+    "default": models.RERANKER_MODEL_NAME,
+}
+
+SUPPORTED_FAMILY_KEYWORDS: tuple[str, ...] = ("llama", "qwen", "mistral", "phi", "gemma", "deepseek")
+OPENROUTER_FAMILY_KEYWORDS: tuple[str, ...] = ("llama-3", "qwen-2.5", "mistral-7b", "phi-3", "gemma-2")
+
+OFFLINE_CATALOG_FALLBACK: list[dict[str, Any]] = [
+    {"id": "meta-llama/Llama-3.2-3B-Instruct", "name": "Llama 3.2 3B Instruct", "download_size_gb": 2.0, "min_ram_gb": 8, "tier": "Fast & Light", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
+    {"id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen 2.5 7B Instruct", "download_size_gb": 4.7, "min_ram_gb": 16, "tier": "Balanced Reasoning", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
+    {"id": "meta-llama/Meta-Llama-3.1-8B-Instruct", "name": "Llama 3.1 8B Instruct", "download_size_gb": 4.9, "min_ram_gb": 16, "tier": "High Fidelity", "status": "READY", "downloads": "Offline Default", "source": "catalog_fallback"},
+]
+
+
 class Neo4jConfig(BaseModel):
     """Neo4j Graph Database Configuration."""
     uri: str = Field(default_factory=lambda: os.getenv("NEO4J_URI", "bolt://localhost:7687"))
@@ -109,13 +251,17 @@ class Neo4jConfig(BaseModel):
 class VectorConfig(BaseModel):
     persist_directory: Path = Field(
         default_factory=lambda: (
-            Path(os.getenv("CHROMA_PERSIST_DIRECTORY", str(PROJECT_ROOT / ".chromadb_embeddinggemma_2")))
-            if Path(os.getenv("CHROMA_PERSIST_DIRECTORY", "")).is_absolute()
-            else (PROJECT_ROOT / os.getenv("CHROMA_PERSIST_DIRECTORY", ".chromadb_embeddinggemma_2")).resolve()
+            Path(os.getenv("CHROMA_PERSIST_DIRECTORY"))
+            if os.getenv("CHROMA_PERSIST_DIRECTORY") and Path(os.getenv("CHROMA_PERSIST_DIRECTORY")).is_absolute()
+            else (
+                BACKEND_DIR / ".chromadb_embeddinggemma_2"
+                if not os.getenv("CHROMA_PERSIST_DIRECTORY") or os.getenv("CHROMA_PERSIST_DIRECTORY").endswith(".chromadb_embeddinggemma_2")
+                else (BACKEND_DIR / os.getenv("CHROMA_PERSIST_DIRECTORY")).resolve()
+            )
         )
     )
     collection_name: str = Field(default_factory=lambda: os.getenv("CHROMA_COLLECTION_NAME", "raise_docling_embeddinggemma_2"))
-    embedding_model: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "google/embeddinggemma-2"))
+    embedding_model: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", models.EMBEDDING_MODEL_NAME))
     embedding_device: str = Field(default_factory=lambda: os.getenv("EMBEDDING_DEVICE", "cuda"))
     embedding_dimension: int = Field(default_factory=lambda: int(os.getenv("EMBEDDING_DIMENSION", "768")))
     hnsw_space: str = Field(default_factory=lambda: os.getenv("CHROMA_HNSW_SPACE", "cosine"))
@@ -170,24 +316,42 @@ class VectorConfig(BaseModel):
 
 class RerankerConfig(BaseModel):
     """Contextual Cross-Encoder Reranker Configuration."""
-    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", "jinaai/jina-reranker-v3.5"))
+    model_name: str = Field(default_factory=lambda: os.getenv("RERANKER_MODEL", models.RERANKER_MODEL_NAME))
     device: str = Field(default_factory=lambda: os.getenv("RERANKER_DEVICE", "cuda"))
     top_n: int = Field(default_factory=lambda: int(os.getenv("RERANKER_TOP_N", "8")))
 
 
 class NLIConfig(BaseModel):
     """Natural Language Inference Verification Configuration."""
-    model_name: str = Field(default_factory=lambda: os.getenv("NLI_MODEL", "dleemiller/finecat-nli-ultra-l"))
+    model_name: str = Field(default_factory=lambda: os.getenv("NLI_MODEL", models.NLI_MODEL_NAME))
     device: str = Field(default_factory=lambda: os.getenv("NLI_DEVICE", "cuda"))
     max_length: int = Field(default_factory=lambda: int(os.getenv("NLI_MAX_LENGTH", "4096")))
 
 class LLMConfig(BaseModel):
     """Local & Remote Large Language Model Configuration."""
-    backend: Literal["ollama", "huggingface", "openai-compatible", "vllm", "cloud"] = Field(
-        default_factory=lambda: os.getenv("LLM_BACKEND", "vllm")  # type: ignore
-    )
-    model_name: str = Field(default_factory=lambda: os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"))
+    backend: str = Field(default_factory=lambda: os.getenv("LLM_BACKEND", os.getenv("LLM_PROVIDER", "groq")))
+    model_name: str = Field(default_factory=lambda: os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME))
     base_url: str = Field(default_factory=lambda: os.getenv("LLM_BASE_URL", os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1")))
+    vllm_candidate_urls: tuple[str, ...] = Field(
+        default_factory=lambda: _env_tuple(
+            "VLLM_CANDIDATE_URLS",
+            (
+                os.getenv("VLLM_BASE_URL", "http://localhost:8002/v1"),
+                "http://raise-vllm-prod:8000/v1",
+                "http://host.docker.internal:8002/v1",
+                "http://127.0.0.1:8002/v1",
+            ),
+        )
+    )
+    ollama_base_url: str = Field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+    fallback_order: tuple[str, ...] = Field(
+        default_factory=lambda: _env_tuple("LLM_FALLBACK_ORDER", ("groq", "gemini", "cohere"))
+    )
+    cooldown_seconds: float = Field(default_factory=lambda: float(os.getenv("LLM_COOLDOWN_SECONDS", "60.0")))
+    probe_timeout: float = Field(default_factory=lambda: float(os.getenv("LLM_PROBE_TIMEOUT", "0.5")))
+    discovery_cache_ttl: float = Field(default_factory=lambda: float(os.getenv("LLM_DISCOVERY_CACHE_TTL", "600.0")))
+    max_concurrent_workers: int = Field(default_factory=lambda: int(os.getenv("LLM_MAX_WORKERS", "6")))
+    routing_mode: str = Field(default_factory=lambda: os.getenv("LLM_ROUTING_MODE", "CLOUD_FIRST"))
     api_key: Optional[str] = Field(default_factory=lambda: os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY")))
     temperature: float = Field(default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.1")))
     max_tokens: int = Field(default_factory=lambda: int(os.getenv("LLM_MAX_TOKENS", "1024")))
@@ -232,6 +396,7 @@ class Settings(BaseModel):
     data_dir: Path = DATA_DIR
     documents_dir: Path = DOCUMENTS_DIR
     library_dir: Path = LIBRARY_DIR
+    catalogs_dir: Path = CATALOGS_DIR
     processed_dir: Path = PROCESSED_DIR
     chunks_dir: Path = CHUNKS_DIR
     graph_dir: Path = GRAPH_DIR

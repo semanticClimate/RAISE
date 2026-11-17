@@ -8,7 +8,7 @@ Implements:
 4. Hardware-aware dynamic loading (CUDA bfloat16/float16, Apple Silicon MPS float16, or CPU float32).
 5. Default Substrates:
    - Embedder: google/embeddinggemma-2 (+Vision toggle)
-   - Reranker: jinaai/jina-reranker-v3.5 (Listwise AutoModel / CrossEncoder)
+   - Reranker: BAAI/bge-reranker-v2-m3 (Contextual Cross-Attention / 8,192 Context)
    - NLI Verifier: dleemiller/finecat-nli-ultra-l (SDPA Attention)
 """
 
@@ -27,10 +27,16 @@ from fastapi import APIRouter, HTTPException
 from huggingface_hub import HfApi, snapshot_download
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from src.core.config import models
+
 logger = logging.getLogger("raise.core_registry")
 
-# 1. Enable Rust-accelerated parallel downloads (5x-10x faster)
-os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+# 1. Enable Rust-accelerated parallel downloads (5x-10x faster) if hf_transfer is installed
+try:
+    import hf_transfer  # noqa: F401
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+except ImportError:
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
 
 router = APIRouter(tags=["System & Models"])
 
@@ -61,15 +67,15 @@ class ModelConfigRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     embedder_id: str = Field(
-        "google/embeddinggemma-2",
+        default_factory=lambda: models.EMBEDDING_MODEL_NAME,
         validation_alias=AliasChoices("embedder_id", "embedderId", "encoder", "embedding_model"),
     )
     reranker_id: str = Field(
-        "jinaai/jina-reranker-v3.5",
+        default_factory=lambda: models.RERANKER_MODEL_NAME,
         validation_alias=AliasChoices("reranker_id", "rerankerId", "reranker", "reranker_model"),
     )
     verifier_id: str = Field(
-        "dleemiller/finecat-nli-ultra-l",
+        default_factory=lambda: models.NLI_MODEL_NAME,
         validation_alias=AliasChoices(
             "verifier_id", "verifierId", "nli", "verifier", "nli_verifier_model", "nli_model"
         ),
@@ -105,12 +111,13 @@ class RuntimeState:
         }
 
         # Auto-detect best hardware accelerator
+        # NEVER use float16 with EmbeddingGemma-2 (causes NaN overflow)
         if torch.cuda.is_available():
             self.device = "cuda"
-            self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            self.dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             self.device = "mps"
-            self.dtype = torch.float16
+            self.dtype = torch.bfloat16
         else:
             self.device = "cpu"
             self.dtype = torch.float32
@@ -120,9 +127,9 @@ class RuntimeState:
         self.reranker_type: str = "cross_encoder"  # "listwise" or "cross_encoder"
         self.verifier: Any = None
         self.active_config: Dict[str, Any] = {
-            "embedder_id": "google/embeddinggemma-2",
-            "reranker_id": "jinaai/jina-reranker-v3.5",
-            "verifier_id": "dleemiller/finecat-nli-ultra-l",
+            "embedder_id": models.EMBEDDING_MODEL_NAME,
+            "reranker_id": models.RERANKER_MODEL_NAME,
+            "verifier_id": models.NLI_MODEL_NAME,
             "use_vision": False,
         }
 
@@ -232,9 +239,9 @@ def _persist_key_to_env(key_name: str, key_val: str):
 # =====================================================================
 # ENDPOINT 1: REAL-TIME ZERO-TOKEN KEY VERIFIER (Cloud LLMs + HF)
 # =====================================================================
-@router.post("/api/v1/system/keys/verify")
-@router.post("/api/system/keys/verify")
-@router.post("/keys/verify")
+@router.post("/api/v1/system/keys/verify", operation_id="core_verify_api_keys_v1", include_in_schema=False)
+@router.post("/api/system/keys/verify", operation_id="core_verify_api_keys_system", include_in_schema=False)
+@router.post("/keys/verify", operation_id="core_verify_api_keys")
 async def verify_and_save_key(req: KeyVerificationRequest):
     provider = req.provider.lower().strip()
     clean_key = state.sanitize_key(req.api_key)
@@ -242,7 +249,8 @@ async def verify_and_save_key(req: KeyVerificationRequest):
     if not clean_key:
         raise HTTPException(status_code=400, detail="API key is empty after stripping whitespace.")
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    default_headers = {"User-Agent": "RAISE-Academic-Studio/1.0"}
+    async with httpx.AsyncClient(timeout=10.0, headers=default_headers) as client:
         try:
             if provider in ("huggingface", "hf"):
                 api = HfApi(token=clean_key)
@@ -267,16 +275,27 @@ async def verify_and_save_key(req: KeyVerificationRequest):
                 )
                 r.raise_for_status()
                 state.keys["openai"] = clean_key
+                os.environ["OPENAI_API_KEY"] = clean_key
                 _persist_key_to_env("OPENAI_API_KEY", clean_key)
+                os.environ["LLM_BACKEND"] = "openai"
+                _persist_key_to_env("LLM_BACKEND", "openai")
 
             elif provider in ("gemini", "google"):
-                r = await client.get(
-                    f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
-                )
-                r.raise_for_status()
+                from src.infrastructure.providers.gemini import GeminiProvider
+                gp = GeminiProvider(api_key=clean_key)
+                h = gp.health_check(timeout=5.0)
+                if h.status != "READY" or not h.functional_test:
+                    raise HTTPException(
+                        status_code=401,
+                        detail=h.error_message or "Gemini API authentication rejected. Please verify your Google AI Studio API key.",
+                    )
                 state.keys["gemini"] = clean_key
+                os.environ["GEMINI_API_KEY"] = clean_key
+                os.environ["GOOGLE_API_KEY"] = clean_key
                 _persist_key_to_env("GEMINI_API_KEY", clean_key)
                 _persist_key_to_env("GOOGLE_API_KEY", clean_key)
+                os.environ["LLM_BACKEND"] = "gemini"
+                _persist_key_to_env("LLM_BACKEND", "gemini")
 
             elif provider == "anthropic":
                 r = await client.get(
@@ -285,7 +304,10 @@ async def verify_and_save_key(req: KeyVerificationRequest):
                 )
                 r.raise_for_status()
                 state.keys["anthropic"] = clean_key
+                os.environ["ANTHROPIC_API_KEY"] = clean_key
                 _persist_key_to_env("ANTHROPIC_API_KEY", clean_key)
+                os.environ["LLM_BACKEND"] = "anthropic"
+                _persist_key_to_env("LLM_BACKEND", "anthropic")
 
             elif provider == "groq":
                 r = await client.get(
@@ -294,7 +316,10 @@ async def verify_and_save_key(req: KeyVerificationRequest):
                 )
                 r.raise_for_status()
                 state.keys["groq"] = clean_key
+                os.environ["GROQ_API_KEY"] = clean_key
                 _persist_key_to_env("GROQ_API_KEY", clean_key)
+                os.environ["LLM_BACKEND"] = "groq"
+                _persist_key_to_env("LLM_BACKEND", "groq")
 
             elif provider == "openrouter":
                 r = await client.get(
@@ -303,7 +328,10 @@ async def verify_and_save_key(req: KeyVerificationRequest):
                 )
                 r.raise_for_status()
                 state.keys["openrouter"] = clean_key
+                os.environ["OPENROUTER_API_KEY"] = clean_key
                 _persist_key_to_env("OPENROUTER_API_KEY", clean_key)
+                os.environ["LLM_BACKEND"] = "openrouter"
+                _persist_key_to_env("LLM_BACKEND", "openrouter")
 
             elif provider == "mistral":
                 r = await client.get(
@@ -312,7 +340,10 @@ async def verify_and_save_key(req: KeyVerificationRequest):
                 )
                 r.raise_for_status()
                 state.keys["mistral"] = clean_key
+                os.environ["MISTRAL_API_KEY"] = clean_key
                 _persist_key_to_env("MISTRAL_API_KEY", clean_key)
+                os.environ["LLM_BACKEND"] = "mistral"
+                _persist_key_to_env("LLM_BACKEND", "mistral")
 
             else:
                 raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
@@ -387,14 +418,24 @@ def resolve_local_model_path(repo_or_path: str) -> str:
 # =====================================================================
 # ENDPOINT 2: FAST DOWNLOAD + HOT-SWAP ANY ENCODER, RERANKER & NLI
 # =====================================================================
-@router.post("/api/v1/system/models/load")
-@router.post("/api/system/models/load")
-@router.post("/models/load")
+@router.post("/api/v1/system/models/load", operation_id="core_load_neural_model_v1", include_in_schema=False)
+@router.post("/api/system/models/load", operation_id="core_load_neural_model_system", include_in_schema=False)
+@router.post("/models/load", operation_id="core_load_neural_model")
 def load_and_prewarm_models(cfg: ModelConfigRequest):
-    from sentence_transformers import CrossEncoder, SentenceTransformer
-    from transformers import AutoModel
+    try:
+        from sentence_transformers import CrossEncoder, SentenceTransformer
+        from transformers import AutoModel
+    except ImportError as imp_err:
+        logger.warning(f"sentence_transformers or transformers not available for pre-warming: {imp_err}")
+        return {
+            "status": "degraded",
+            "message": f"Neural libraries not installed in active environment: {imp_err}. Lexical fallback active.",
+            "active_models": {"embedder": cfg.embedder_id, "reranker": cfg.reranker_id}
+        }
 
     hf_token = state.sanitize_key(cfg.hf_token) or state.keys.get("huggingface") or None
+    if hf_token:
+        state.keys["huggingface"] = hf_token
     state.unload_all()
 
     models_root = Path.cwd() / "models"
@@ -407,7 +448,11 @@ def load_and_prewarm_models(cfg: ModelConfigRequest):
             try:
                 snapshot_download(repo_id=repo, local_dir=str(dest), token=hf_token)
             except Exception as e:
-                logger.warning(f"Pre-download notice for {repo}: {e}")
+                err_msg = str(e)
+                if "401" in err_msg or "403" in err_msg or "GatedRepo" in err_msg or "gated" in err_msg.lower():
+                    logger.warning(f"Model '{repo}' requires Hugging Face authentication or acceptance of terms. If not configured, ungated fallback will be used.")
+                else:
+                    logger.warning(f"Pre-download notice for {repo}: {e}")
 
     embed_path = resolve_local_model_path(cfg.embedder_id)
     rerank_path = resolve_local_model_path(cfg.reranker_id)
@@ -422,53 +467,120 @@ def load_and_prewarm_models(cfg: ModelConfigRequest):
         if not cfg.use_vision:
             embed_cfg_kwargs["vision_config"] = None
 
-    state.embedder = SentenceTransformer(
-        embed_path,
-        device=state.device,
-        token=hf_token,
-        trust_remote_code=True,
-        config_kwargs=embed_cfg_kwargs if embed_cfg_kwargs else None,
-        model_kwargs={"torch_dtype": state.dtype, "attn_implementation": attn_impl},
-    )
-
-    # 2. Load ANY Reranker (Auto-detects Listwise Jina v3/v3.5 vs Pointwise CrossEncoder)
-    if "jina-reranker-v3" in cfg.reranker_id.lower() or "jina-reranker-v3" in rerank_path.lower():
-        state.reranker_type = "listwise"
-        state.reranker = AutoModel.from_pretrained(
-            rerank_path,
-            torch_dtype=state.dtype,
+    try:
+        state.embedder = SentenceTransformer(
+            embed_path,
+            device=state.device,
             token=hf_token,
             trust_remote_code=True,
-            attn_implementation=attn_impl,
-        ).to(state.device).eval()
-    else:
+            config_kwargs=embed_cfg_kwargs if embed_cfg_kwargs else None,
+            model_kwargs={"torch_dtype": state.dtype, "attn_implementation": attn_impl},
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not load primary embedder '{embed_path}' (likely gated repo without HF_TOKEN: {e}). "
+            f"Falling back to {models.EMBEDDING_FALLBACK_MODEL_NAME}."
+        )
+        cfg.embedder_id = models.EMBEDDING_FALLBACK_MODEL_NAME
+        state.embedder = SentenceTransformer(
+            models.EMBEDDING_FALLBACK_MODEL_NAME,
+            device=state.device,
+            model_kwargs={"torch_dtype": state.dtype},
+        )
+
+    # 2. Load ANY Reranker (Auto-detects Listwise Jina v3/v3.5 vs Pointwise CrossEncoder)
+    try:
+        if "jina-reranker-v3" in cfg.reranker_id.lower() or "jina-reranker-v3" in rerank_path.lower():
+            state.reranker_type = "listwise"
+            state.reranker = AutoModel.from_pretrained(
+                rerank_path,
+                torch_dtype=state.dtype,
+                token=hf_token,
+                trust_remote_code=True,
+                attn_implementation=attn_impl,
+            ).to(state.device).eval()
+        else:
+            state.reranker_type = "cross_encoder"
+            state.reranker = CrossEncoder(
+                rerank_path,
+                device=state.device,
+                token=hf_token,
+                trust_remote_code=True,
+                automodel_args={"torch_dtype": state.dtype, "attn_implementation": attn_impl},
+            )
+    except Exception as e:
+        logger.warning(f"Could not load primary reranker '{rerank_path}': {e}. Falling back to {models.RERANKER_FALLBACK_MODEL_NAME}.")
         state.reranker_type = "cross_encoder"
         state.reranker = CrossEncoder(
-            rerank_path,
+            models.RERANKER_FALLBACK_MODEL_NAME,
+            device=state.device,
+        )
+
+    # 3. Load ANY NLI Claim Verifier
+    try:
+        state.verifier = CrossEncoder(
+            verifier_path,
             device=state.device,
             token=hf_token,
             trust_remote_code=True,
             automodel_args={"torch_dtype": state.dtype, "attn_implementation": attn_impl},
         )
-
-    # 3. Load ANY NLI Claim Verifier
-    state.verifier = CrossEncoder(
-        verifier_path,
-        device=state.device,
-        token=hf_token,
-        trust_remote_code=True,
-        automodel_args={"torch_dtype": state.dtype, "attn_implementation": attn_impl},
-    )
+    except Exception as e:
+        logger.warning(f"Could not load primary NLI verifier '{verifier_path}': {e}. Using heuristic verification.")
+        state.verifier = None
 
     # 4. Pre-Warm All 3 Models Immediately
     with torch.inference_mode():
-        _ = state.embedder.encode(["warmup query"], normalize_embeddings=True)
-        if state.reranker_type == "listwise" and hasattr(state.reranker, "rerank"):
-            _ = state.reranker.rerank("warmup", ["warmup doc"])
-        elif hasattr(state.reranker, "predict"):
-            _ = state.reranker.predict([("warmup", "warmup doc")])
-        if hasattr(state.verifier, "predict"):
-            _ = state.verifier.predict([("warmup premise", "warmup claim")])
+        try:
+            if state.embedder is not None:
+                if state.device == "cuda" and state.dtype == torch.bfloat16:
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                        _ = state.embedder.encode(["warmup query"], normalize_embeddings=True)
+                else:
+                    _ = state.embedder.encode(["warmup query"], normalize_embeddings=True)
+        except Exception as _enc_err:
+            logger.warning(f"Embedder warmup notice: {_enc_err}")
+
+        try:
+            if state.reranker_type == "listwise" and hasattr(state.reranker, "rerank"):
+                _ = state.reranker.rerank("warmup", ["warmup doc"])
+            elif hasattr(state.reranker, "predict"):
+                _ = state.reranker.predict([("warmup", "warmup doc")])
+        except Exception as _rr_err:
+            logger.warning(f"Reranker warmup notice: {_rr_err}")
+
+        try:
+            if hasattr(state.verifier, "predict"):
+                _ = state.verifier.predict([("warmup premise", "warmup claim")])
+        except Exception as _ver_err:
+            logger.warning(f"Verifier warmup notice: {_ver_err}")
+
+    # 5. Direct Singleton Sync with Shared RAG Engine & NLI Verifier
+    try:
+        import sys
+        rag_engine = getattr(sys, "_raise_shared_rag_engine", None)
+        if rag_engine is None:
+            try:
+                import app as rag_app_module
+                rag_engine = getattr(rag_app_module, "rag_engine", None)
+            except Exception:
+                pass
+        if rag_engine is not None:
+            if hasattr(rag_engine, "vector_engine") and rag_engine.vector_engine is not None:
+                rag_engine.vector_engine._model = state.embedder
+                rag_engine.vector_engine.model_key = cfg.embedder_id
+            if hasattr(rag_engine, "reranker") and rag_engine.reranker is not None:
+                rag_engine.reranker.model = state.reranker
+                rag_engine.reranker.model_name = cfg.reranker_id
+    except Exception as e:
+        logger.debug(f"Notice syncing core_registry with rag_engine: {e}")
+
+    try:
+        from src.features.evaluation.nli_verifier import FineCatNLIVerifier
+        if state.verifier is not None:
+            FineCatNLIVerifier._shared_model = state.verifier
+    except Exception:
+        pass
 
     state.active_config = cfg.model_dump()
     mem_info = state.get_memory_telemetry()
@@ -488,9 +600,9 @@ def load_and_prewarm_models(cfg: ModelConfigRequest):
 # =====================================================================
 # ENDPOINT 3: LIVE SYSTEM STATUS
 # =====================================================================
-@router.get("/api/v1/system/status")
-@router.get("/api/system/status")
-@router.get("/status")
+@router.get("/api/v1/system/status", operation_id="core_system_status_v1", include_in_schema=False)
+@router.get("/api/system/status", operation_id="core_system_status_api", include_in_schema=False)
+@router.get("/status", operation_id="core_system_status")
 def get_system_status():
     mem_info = state.get_memory_telemetry()
     return {
@@ -502,9 +614,9 @@ def get_system_status():
         "system_ram_used_mb": mem_info.get("system_ram_used_mb"),
         "system_ram_total_mb": mem_info.get("system_ram_total_mb"),
         "active_models": {
-            "embedder_id": state.active_config.get("embedder_id", "google/embeddinggemma-2"),
-            "reranker_id": state.active_config.get("reranker_id", "jinaai/jina-reranker-v3.5"),
-            "verifier_id": state.active_config.get("verifier_id", "dleemiller/finecat-nli-ultra-l"),
+            "embedder_id": state.active_config.get("embedder_id", models.EMBEDDING_MODEL_NAME),
+            "reranker_id": state.active_config.get("reranker_id", models.RERANKER_MODEL_NAME),
+            "verifier_id": state.active_config.get("verifier_id", models.NLI_MODEL_NAME),
             "use_vision": state.active_config.get("use_vision", False),
         },
         "configured_providers": state.get_configured_providers(),

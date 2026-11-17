@@ -13,6 +13,7 @@ from typing import Any, AsyncGenerator, Optional
 from src.infrastructure.credentials.manager import get_credential_manager
 from src.infrastructure.providers.base import LLMProvider, ProviderHealth
 from src.infrastructure.providers.http_client import safe_http_request, ProviderHTTPError
+from src.core.config import models
 
 logger = logging.getLogger("raise.infrastructure.providers.universal")
 
@@ -33,7 +34,7 @@ class UniversalCloudProvider(LLMProvider):
         if custom_name:
             self.name = custom_name
         self.api_key = api_key
-        self.model_name = model_name or os.getenv("CUSTOM_LLM_MODEL", os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"))
+        self.model_name = model_name or os.getenv("CUSTOM_LLM_MODEL", os.getenv("OPENAI_MODEL_NAME", models.OPENAI_MODEL_NAME))
         self.base_url = (base_url or os.getenv("CUSTOM_LLM_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))).rstrip("/")
 
     def _resolve_api_key(self) -> Optional[str]:

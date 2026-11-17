@@ -26,6 +26,7 @@ import re
 import urllib.request
 from dataclasses import dataclass
 from typing import Optional
+from src.core.config import models
 
 logger = logging.getLogger("raise.query.intent_router")
 
@@ -201,7 +202,7 @@ class IntentRouterNode:
                 "Respond with only the category name."
             )
             payload = json.dumps({
-                "model": os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4"),
+                "model": os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME),
                 "messages": [
                     {"role": "system", "content": sys_msg},
                     {"role": "user", "content": query}

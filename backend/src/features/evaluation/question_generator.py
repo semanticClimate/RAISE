@@ -9,6 +9,7 @@ import json
 import re
 from pathlib import Path
 from typing import List, Optional
+from src.core.config import PROCESSED_DIR
 
 
 class DynamicQuestionGenerator:
@@ -18,9 +19,9 @@ class DynamicQuestionGenerator:
     """
 
     def __init__(self, processed_dir: Optional[Path | str] = None):
-        self.processed_dir = Path(processed_dir or Path(__file__).parent.parent / "data" / "processed").resolve()
+        self.processed_dir = Path(processed_dir or PROCESSED_DIR).resolve()
 
-    def generate_smart_questions(self, max_questions: int = 4) -> List[str]:
+    def generate_smart_questions(self, max_questions: int = 4, active_docs: Optional[List[str]] = None) -> List[str]:
         """
         Inspects extracted chunks and triples to generate tailored, grounded research questions.
         """
@@ -33,6 +34,11 @@ class DynamicQuestionGenerator:
         chunk_files = list(chunks_dir.glob("*_chunks.json"))
         if not chunk_files:
             return []
+        if active_docs:
+            clean_active = [re.sub(r'[^a-zA-Z0-9]', '', Path(d).stem.lower()) for d in active_docs]
+            filtered = [cf for cf in chunk_files if any(ca in re.sub(r'[^a-zA-Z0-9]', '', cf.name.lower()) for ca in clean_active)]
+            if filtered:
+                chunk_files = filtered
 
         questions: List[str] = []
         universities: List[str] = []

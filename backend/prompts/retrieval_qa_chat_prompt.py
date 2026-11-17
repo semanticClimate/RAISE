@@ -10,334 +10,259 @@ GRAPH SCHEMA DEFINITION
 
 1. NODE LABELS & PROPERTIES:
 
-   - Institution: 
-       • name: String (e.g., "NIPGR", "BRIC", "National Institute of Plant Genome Research", "NUS")
-       • type: String (e.g., "University", "Research Council", "Foundation")
+   - Institution:
+       • name: String (e.g., "Indian Institute of Science", "National Research Council")
+       • type: String (e.g., "University", "Research Institute", "Research Council", "Foundation")
        • location: String
 
-   - AnnualReport: 
-       • fiscal_year: String (e.g., "2024-25", "2025", "2016-17")
+   - AnnualReport:
+       • fiscal_year: String (e.g., "2024-25", "2023-24", "2025")
        • title: String
 
-   - Section: 
+   - Section:
        • parent_institution: String
-       • type: String (Allowed values: 
-           "Executive Summary", 
-           "Financial Statements & Budgets", 
-           "Sponsored Research Projects & Grants", 
-           "Patents & Intellectual Property", 
-           "Startups & Incubation", 
-           "Academic Programs & Degrees", 
-           "Governance & Strategic Initiatives", 
-           "Global Partnerships & MoUs", 
-           "Endowments & Investments", 
+       • type: String (Allowed values:
+           "Executive Summary",
+           "Financial Statements & Budgets",
+           "Sponsored Research Projects & Grants",
+           "Patents & Intellectual Property",
+           "Startups & Incubation",
+           "Academic Programs & Degrees",
+           "Governance & Strategic Initiatives",
+           "Global Partnerships & MoUs",
+           "Endowments & Investments",
            "Facilities & Infrastructure",
            "Audit & Compliance Reports")
 
-   - Chunk: 
+   - Chunk:
        • chunk_id: String
        • text: String
        • page_number: Integer
 
-   - Table: 
+   - Table:
        • table_id: String
        • caption: String
        • headers: List of Strings
 
-   - Department: 
-       • name: String (e.g., "Department of Computer Science", "Department of Chemistry")
+   - Department:
+       • name: String (e.g., "Department of Computer Science", "Department of Biotechnology")
 
-   - CentreOfExcellence: 
-       • name: String (e.g., "Hydrogen Valley Innovation Hub", "S Ramakrishnan Centre")
+   - CentreOfExcellence:
+       • name: String (e.g., "Centre for Clean Energy", "Advanced Computing Hub")
 
-   - BoardOfGovernors: 
+   - BoardOfGovernors:
        • name: String
 
-   - ExecutiveRole: 
-       • title: String (e.g., "Director", "Vice-Chancellor", "Dean", "Treasurer")
+   - ExecutiveRole:
+       • title: String (e.g., "Director", "Vice-Chancellor", "Dean", "Registrar", "Treasurer")
 
-   - Person: 
-       • name: String (e.g., "Dr. Sushanta Kumar Panigrahi", "Dr. Karthik Raman")
-       • designation: String (e.g., "Professor", "Principal Investigator", "Director General")
+   - Person:
+       • name: String (full name without honorific prefix)
+       • designation: String (e.g., "Professor", "Scientist", "Principal Investigator", "Director")
 
-   - Award: 
+   - Award:
        • title: String
        • year: String
 
-   - SponsorAgency: 
-       • name: String (e.g., "DST", "DBT", "MeitY", "Hyundai Motor", "Gates Foundation")
+   - SponsorAgency:
+       • name: String (e.g., "DST", "DBT", "CSIR", "MeitY", "Gates Foundation")
        • type: String (e.g., "Government", "Industry", "Foundation")
 
-   - Grant: 
+   - Grant:
        • title: String
        • grant_id: String
        • sponsor_agency: String
        • amount_inr_lakh: Float
 
-   - Equipment: 
-       • name: String (e.g., "Cryo-EM", "ESR", "XPS-UPS", "AFM")
+   - Equipment:
+       • name: String (e.g., "Cryo-EM", "Confocal Microscope", "HPC Cluster")
        • cost: Float
 
-   - Patent: 
+   - Patent:
        • title: String
        • patent_id: String
        • status: String (Allowed values: "Filed", "Granted")
        • filing_year: String
 
-   - Technology: 
-       • name: String (e.g., "ADVIKA", "SAATVIK", "IndRA 90K Array", "TMAP")
+   - Technology:
+       • name: String
 
-   - IndustryPartner: 
-       • name: String (e.g., "Cirkla Technologies", "Optum Technology", "Pfizer")
+   - IndustryPartner:
+       • name: String
 
-   - FinancialStream: 
+   - FinancialStream:
        • type: String
        • amount: Float
 
-   - Incubator: 
-       • name: String (e.g., "Bio-Incubator Hub", "Innovation Cell")
+   - Incubator:
+       • name: String (e.g., "Technology Business Incubator", "Bio-Incubator")
 
-   - Startup: 
-       • name: String (e.g., "Ather Energy", "The ePlane Company", "Mindgrove", "Xyma Analytics", "VinMax Biotech")
+   - Startup:
+       • name: String
        • valuation: String
-       • sector: String (e.g., "Deep-Tech", "Healthcare", "E-Mobility")
+       • sector: String (e.g., "Deep-Tech", "Healthcare", "Clean Energy", "Biotechnology")
 
-   - Investor: 
+   - Investor:
        • name: String
 
-   - Milestone: 
-       • description: String (e.g., "IPO Listing", "DGCA Certification", "Test Tapeout")
+   - Milestone:
+       • description: String (e.g., "Regulatory Approval", "Commercial Launch", "Patent Licensing")
 
-   - AcademicProgram: 
-       • name: String (e.g., "BS in Data Science", "Web MTech in E-Mobility", "Joint MSc in Sustainable Energy Systems")
+   - AcademicProgram:
+       • name: String (e.g., "B.Tech in Artificial Intelligence", "PhD in Computational Biology")
        • degree_level: String (e.g., "UG", "PG", "PhD", "Dual Degree")
 
-   - ForeignUniversity: 
-       • name: String (e.g., "University of Birmingham", "RWTH Aachen", "TU Dresden", "Arizona State University")
+   - ForeignUniversity:
+       • name: String
        • country: String
 
-   - Student: 
+   - Student:
        • student_id: String
 
-   - Fellowship: 
-       • name: String (e.g., "Bioentrepreneur-in-Residence (EIR)", "Pre-Doctoral Fellowship")
+   - Fellowship:
+       • name: String (e.g., "Prime Minister's Research Fellowship", "Post-Doctoral Fellowship")
 
-   - MoU: 
+   - MoU:
        • title: String
        • date_signed: String
 
-   - ResearchArea: 
-       • name: String (e.g., "Quantum Engineering", "Clean Energy", "Robotics", "E-Mobility")
+   - ResearchArea:
+       • name: String (e.g., "Genomics", "Quantum Computing", "Clean Energy", "Robotics")
 
-   - CorporateEntity: 
-       • name: String (e.g., "HSBC", "Hyundai Hope on Wheels Foundation", "Karkinos Healthcare")
+   - CorporateEntity:
+       • name: String
 
-   - EndowmentFund: 
+   - EndowmentFund:
        • name: String
        • corpus_value: Float
 
-   - FinancialStatement: 
+   - FinancialStatement:
        • type: String (Allowed values: "Balance Sheet", "Income & Expenditure", "Cash Flow")
        • fiscal_year: String
 
-   - RevenueStream: 
-       • source: String (e.g., "Sponsored Research", "Consultancy", "Tuition", "Govt Grants")
+   - RevenueStream:
+       • source: String (e.g., "Sponsored Research", "Consultancy", "Tuition", "Government Grants")
        • amount: Float
 
-   - ExpenseCategory: 
-       • category: String (e.g., "Salaries", "Equipment Maintenance", "Infrastructure")
+   - ExpenseCategory:
+       • category: String (e.g., "Salaries", "Equipment Maintenance", "Research & Development")
        • amount: Float
 
-   - Scholarship: 
+   - Scholarship:
        • name: String
 
-   - AuditFirm: 
+   - AuditFirm:
        • name: String
 
-   - Facility: 
+   - Facility:
        • name: String
 
-2. RELATIONSHIP TYPES:
+2. DIRECTED RELATIONSHIP TYPES & DESCRIPTIONS:
 
-   [Document Hierarchy & Chunking]
-   - (:Institution)-[:PUBLISHED]->(:AnnualReport)
-   - (:AnnualReport)-[:HAS_SECTION]->(:Section)
-   - (:Section)-[:HAS_SUBSECTION]->(:Section)
-   - (:Section)-[:HAS_CHUNK]->(:Chunk)
-   - (:Chunk)-[:CONTAINS_TABLE]->(:Table)
-   - (:Section)-[:MENTIONS]->(:Patent | :Startup | :Grant | :Person | :Facility)
+   [1. Document Hierarchy & Chunking]
+   • (:Institution)-[:PUBLISHED]->(:AnnualReport) — Links an institution to its annual report.
+   • (:AnnualReport)-[:HAS_SECTION]->(:Section) — Connects a report to its primary thematic sections.
+   • (:Section)-[:HAS_SUBSECTION]->(:Section) — Captures nested sub-sections within chapters.
+   • (:Section)-[:HAS_CHUNK]->(:Chunk) — Connects a section to indexed text chunks.
+   • (:Chunk)-[:CONTAINS_TABLE]->(:Table) — Connects a text chunk to extracted tabular data.
+   • (:Section)-[:MENTIONS]->(:Patent | :Startup | :Grant | :Person | :Facility) — Direct entity mentions in a section.
 
-   [Governance & Organizational Structure]
-   - (:Institution)-[:HAS_DEPARTMENT]->(:Department)
-   - (:Institution)-[:OPERATES_CENTRE]->(:CentreOfExcellence)
-   - (:Institution)-[:GOVERNED_BY]->(:BoardOfGovernors)
-   - (:Person)-[:SERVES_ON]->(:BoardOfGovernors)
-   - (:Person)-[:HOLDS_ROLE]->(:ExecutiveRole)
+   [2. Governance & Organizational Structure]
+   • (:Institution)-[:HAS_DEPARTMENT]->(:Department) — Links an institution to academic departments or schools.
+   • (:Institution)-[:OPERATES_CENTRE]->(:CentreOfExcellence) — Links an institution to interdisciplinary research centres.
+   • (:Institution)-[:GOVERNED_BY]->(:BoardOfGovernors) — Links an institution to its governing board or senate.
+   • (:Person)-[:SERVES_ON]->(:BoardOfGovernors) — Connects members, nominees, or trustees to governing boards.
+   • (:Person)-[:HOLDS_ROLE]->(:ExecutiveRole) — Associates personnel with leadership positions.
 
-   [Faculty & Personnel]
-   - (:Institution)-[:EMPLOYEES_FACULTY]->(:Person)
-   - (:Department)-[:AFFILIATED_WITH]->(:Person)
-   - (:Person)-[:SUPERVISES]->(:Person)
-   - (:Person)-[:AWARDED_HONOR]->(:Award)
+   [3. Faculty, Researchers & Human Capital]
+   • (:Institution)-[:EMPLOYEES_FACULTY]->(:Person) — Links faculty and scientists to their institution.
+   • (:Department)-[:AFFILIATED_WITH]->(:Person) — Maps researchers to their primary or joint department.
+   • (:Person)-[:SUPERVISES]->(:Person) — Captures supervision between PIs and PhD scholars/postdocs.
+   • (:Person)-[:AWARDED_HONOR]->(:Award) — Links personnel to academic, national, or international awards.
 
-   [Grants & Sponsored Research]
-   - (:Institution)-[:SECURED_GRANT]->(:Grant)
-   - (:SponsorAgency)-[:FUNDED_GRANT]->(:Grant)
-   - (:Person)-[:PRINCIPAL_INVESTIGATOR]->(:Grant)
-   - (:Person)-[:CO_INVESTIGATOR]->(:Grant)
-   - (:Department)-[:HOSTS_PROJECT]->(:Grant)
-   - (:Grant)-[:FUNDED_EQUIPMENT]->(:Equipment)
+   [4. Research Grants & Sponsored Projects]
+   • (:Institution)-[:SECURED_GRANT]->(:Grant) — Links an institution to externally funded projects.
+   • (:SponsorAgency)-[:FUNDED_GRANT]->(:Grant) — Connects funding agencies to sponsored grants.
+   • (:Person)-[:PRINCIPAL_INVESTIGATOR]->(:Grant) — Identifies the lead investigator of a grant.
+   • (:Person)-[:CO_INVESTIGATOR]->(:Grant) — Connects co-PIs to a grant.
+   • (:Department)-[:HOSTS_PROJECT]->(:Grant) — Maps a grant to its host department.
+   • (:Grant)-[:FUNDED_EQUIPMENT]->(:Equipment) — Connects grants to procured instruments.
 
-   [Patents & Tech Transfer]
-   - (:Institution)-[:FILED_PATENT]->(:Patent)
-   - (:Institution)-[:GRANTED_PATENT]->(:Patent)
-   - (:Person)-[:INVENTED]->(:Patent)
-   - (:Institution)-[:LICENSED_TECHNOLOGY]->(:Technology)
-   - (:Technology)-[:LICENSED_TO]->(:IndustryPartner)
-   - (:Institution)-[:EARNED_ROYALTY]->(:FinancialStream)
+   [5. Patents, Intellectual Property & Tech Transfer]
+   • (:Institution)-[:FILED_PATENT]->(:Patent) — Connects an institution to filed patent applications.
+   • (:Institution)-[:GRANTED_PATENT]->(:Patent) — Connects an institution to granted patents.
+   • (:Person)-[:INVENTED]->(:Patent) — Connects inventors to a patent.
+   • (:Institution)-[:LICENSED_TECHNOLOGY]->(:Technology) — Links an institution to licensed technologies.
+   • (:Technology)-[:LICENSED_TO]->(:IndustryPartner) — Connects technologies to commercial licensees.
+   • (:Institution)-[:EARNED_ROYALTY]->(:FinancialStream) — Links licensing to royalty revenue streams.
 
-   [Incubation & Startups]
-   - (:Institution)-[:OPERATES_INCUBATOR]->(:Incubator)
-   - (:Incubator)-[:INCUBATED]->(:Startup)
-   - (:Person)-[:FOUNDED]->(:Startup)
-   - (:Startup)-[:ORIGINATED_FROM]->(:Technology)
-   - (:Investor)-[:INVESTED_IN]->(:Startup)
-   - (:Startup)-[:ACHIEVED_MILESTONE]->(:Milestone)
+   [6. Entrepreneurship, Incubation & Spin-off Startups]
+   • (:Institution)-[:OPERATES_INCUBATOR]->(:Incubator) — Links an institution to its incubator or research park.
+   • (:Incubator)-[:INCUBATED]->(:Startup) — Connects an incubator to incubated startups.
+   • (:Person)-[:FOUNDED]->(:Startup) — Connects faculty, student, or alumni founders to startups.
+   • (:Startup)-[:ORIGINATED_FROM]->(:Technology) — Links a startup to institutional IP/technology.
+   • (:Investor)-[:INVESTED_IN]->(:Startup) — Captures seed, angel, or VC investments in startups.
+   • (:Startup)-[:ACHIEVED_MILESTONE]->(:Milestone) — Tracks key startup milestones.
 
-   [Academic Programs & Fellowships]
-   - (:Institution)-[:OFFERS_PROGRAM]->(:AcademicProgram)
-   - (:Department)-[:ADMINISTERS_DEGREE]->(:AcademicProgram)
-   - (:AcademicProgram)-[:PARTNERED_WITH]->(:ForeignUniversity)
-   - (:Student)-[:ENROLLED_IN]->(:AcademicProgram)
-   - (:Person)-[:AWARDED_FELLOWSHIP]->(:Fellowship)
+   [7. Academic Programs, Degrees & Fellowships]
+   • (:Institution)-[:OFFERS_PROGRAM]->(:AcademicProgram) — Links an institution to degree programs.
+   • (:Department)-[:ADMINISTERS_DEGREE]->(:AcademicProgram) — Maps degree offerings to managing departments.
+   • (:AcademicProgram)-[:PARTNERED_WITH]->(:ForeignUniversity) — Links joint/dual degrees to partner foreign universities.
+   • (:Student)-[:ENROLLED_IN]->(:AcademicProgram) — Connects students to degree programs.
+   • (:Person)-[:AWARDED_FELLOWSHIP]->(:Fellowship) — Links researchers or students to fellowships.
 
-   [Global Partnerships & Alliances]
-   - (:Institution)-[:COLLABORATED_WITH]->(:Institution)
-   - (:Institution)-[:ENTERED_MOU]->(:MoU)
-   - (:MoU)-[:FOCUSES_ON]->(:ResearchArea)
-   - (:Institution)-[:PARTNERED_INDUSTRY]->(:CorporateEntity)
+   [8. Global Alliances, Partnerships & MoUs]
+   • (:Institution)-[:COLLABORATED_WITH]->(:Institution) — Captures inter-institutional partnerships.
+   • (:Institution)-[:ENTERED_MOU]->(:MoU) — Connects institutions to signed MoUs.
+   • (:MoU)-[:FOCUSES_ON]->(:ResearchArea) — Connects MoUs to target research areas.
+   • (:Institution)-[:PARTNERED_INDUSTRY]->(:CorporateEntity) — Links institutions to corporate R&D/CSR partners.
 
-   [Financials, Endowments & Audit]
-   - (:Institution)-[:MANAGES_ENDOWMENT]->(:EndowmentFund)
-   - (:AnnualReport)-[:CONTAINS_FINANCIAL_STATEMENT]->(:FinancialStatement)
-   - (:FinancialStatement)-[:REPORTS_REVENUE]->(:RevenueStream)
-   - (:FinancialStatement)-[:REPORTS_EXPENSE]->(:ExpenseCategory)
-   - (:EndowmentFund)-[:ALLOCATED_TO]->(:Scholarship)
-   - (:AuditFirm)-[:AUDITED]->(:FinancialStatement)
+   [9. Financial Statements, Endowments & Budgets]
+   • (:Institution)-[:MANAGES_ENDOWMENT]->(:EndowmentFund) — Connects an institution to endowment funds.
+   • (:AnnualReport)-[:CONTAINS_FINANCIAL_STATEMENT]->(:FinancialStatement) — Links a report to financial statements.
+   • (:FinancialStatement)-[:REPORTS_REVENUE]->(:RevenueStream) — Maps reported income streams.
+   • (:FinancialStatement)-[:REPORTS_EXPENSE]->(:ExpenseCategory) — Maps reported expenditure categories.
+   • (:EndowmentFund)-[:ALLOCATED_TO]->(:Scholarship) — Connects endowments to funded scholarships/chairs.
+   • (:AuditFirm)-[:AUDITED]->(:FinancialStatement) — Links external auditors to financial statements.
 
-   [Facilities & Infrastructure]
-   - (:Institution)-[:HOUSES_EQUIPMENT]->(:Equipment)
-   - (:Department)-[:UTILIZES_FACILITY]->(:Facility)
-
-3. RELATIONSHIP MODULE DESCRIPTIONS:
-   1. Document Hierarchy & Vector Chunking Module:
-      • (:Institution)-[:PUBLISHED]->(:AnnualReport) — Links an educational/research institution to its published annual report.
-      • (:AnnualReport)-[:HAS_SECTION]->(:Section) — Connects an annual report to its primary thematic sections (e.g., Financial Statements, Research & Development, Incubation).
-      • (:Section)-[:HAS_SUBSECTION]->(:Section) — Captures nested sub-sections within complex report chapters.
-      • (:Section)-[:HAS_CHUNK]->(:Chunk) — Connects a section to indexed text passages or vector embeddings for semantic search.
-      • (:Chunk)-[:CONTAINS_TABLE]->(:Table) — Connects a text chunk to extracted structured tabular data.
-      • (:Section)-[:MENTIONS]->(:Patent | :Startup | :Grant | :Person | :Facility) — Represents direct semantic entity extractions from section text.
-
-   2. Governance, Administrative & Organizational Structure:
-      • (:Institution)-[:HAS_DEPARTMENT]->(:Department) — Links an institution to its academic departments, schools, or faculties.
-      • (:Institution)-[:OPERATES_CENTRE]->(:CentreOfExcellence) — Connects an institution to specialized interdisciplinary research centers or centers of excellence.
-      • (:Institution)-[:GOVERNED_BY]->(:BoardOfGovernors) — Links an institution to its governing board, board of trustees, or syndicate.
-      • (:Person)-[:SERVES_ON]->(:BoardOfGovernors) — Connects executive personnel, external advisors, or trustees to institutional boards.
-      • (:Person)-[:HOLDS_ROLE]->(:ExecutiveRole) — Associates personnel with administrative positions (e.g., Director, Vice-Chancellor, Dean, Treasurer).
-
-   3. Faculty, Researchers & Human Capital:
-      • (:Institution)-[:EMPLOYEES_FACULTY]->(:Person) — Links professors, scientists, and principal investigators to their employing institution.
-      • (:Department)-[:AFFILIATED_WITH]->(:Person) — Maps researchers and faculty members to their primary or joint department.
-      • (:Person)-[:SUPERVISES]->(:Person) — Captures thesis advisorship and mentorship between PIs and PhD candidates/Postdocs.
-      • (:Person)-[:AWARDED_HONOR]->(:Award) — Links faculty members or researchers to academic, national, or international honors received during the reporting year.
-
-   4. Research Grants & Sponsored Projects:
-      • (:Institution)-[:SECURED_GRANT]->(:Grant) — Links an institution to external sponsored research projects and research grants.
-      • (:SponsorAgency)-[:FUNDED_GRANT]->(:Grant) — Connects government bodies or private foundations (e.g., DST, DBT, MeitY, Gates Foundation) to funded projects.
-      • (:Person)-[:PRINCIPAL_INVESTIGATOR]->(:Grant) — Identifies the primary scientist or faculty member leading a funded research project.
-      • (:Person)-[:CO_INVESTIGATOR]->(:Grant) — Connects co-PIs and collaborating researchers to a grant.
-      • (:Department)-[:HOSTS_PROJECT]->(:Grant) — Maps a sponsored project to the department hosting its execution.
-      • (:Grant)-[:FUNDED_EQUIPMENT]->(:Equipment) — Connects specific grant allocations to procured high-value scientific instruments.
-
-   5. Patents, Intellectual Property & Tech Transfer:
-      • (:Institution)-[:FILED_PATENT]->(:Patent) — Connects an institution as an applicant to patent applications filed during the fiscal year.
-      • (:Institution)-[:GRANTED_PATENT]->(:Patent) — Identifies patents officially granted to an institution during the fiscal year.
-      • (:Person)-[:INVENTED]->(:Patent) — Connects inventors (faculty, students, scientists) to a patent.
-      • (:Institution)-[:LICENSED_TECHNOLOGY]->(:Technology) — Links an institution to patented technologies or inventions licensed out to industry.
-      • (:Technology)-[:LICENSED_TO]->(:IndustryPartner) — Connects institutional IP or tech transfers to commercial industry licensees.
-      • (:Institution)-[:EARNED_ROYALTY]->(:FinancialStream) — Links technology licensing actions to institutional royalty and IP revenue streams.
-
-   6. Entrepreneurship, Incubation & Spin-off Startups:
-      • (:Institution)-[:OPERATES_INCUBATOR]->(:Incubator) — Links an institution to its technology business incubator or research park (e.g., Bio-Incubator Hub).
-      • (:Incubator)-[:INCUBATED]->(:Startup) — Connects an incubator to deep-tech spin-off startups nurtured during the fiscal year.
-      • (:Person)-[:FOUNDED]->(:Startup) — Connects faculty, alumni, or student founders to spin-off ventures.
-      • (:Startup)-[:ORIGINATED_FROM]->(:Technology) — Links a deep-tech startup to the foundational core research or patent developed at the institution.
-      • (:Investor)-[:INVESTED_IN]->(:Startup) — Captures seed funding, angel, or venture capital investments made in incubated startups.
-      • (:Startup)-[:ACHIEVED_MILESTONE]->(:Milestone) — Tracks key startup growth events (e.g., IPO listing, regulatory certification, product launch).
-
-   7. Academic Programs, Degrees & Fellowships:
-      • (:Institution)-[:OFFERS_PROGRAM]->(:AcademicProgram) — Links an institution to degree/diploma programs (e.g., BS, MTech, Online BS, Joint PhD).
-      • (:Department)-[:ADMINISTERS_DEGREE]->(:AcademicProgram) — Maps academic degree offerings to their managing departments.
-      • (:AcademicProgram)-[:PARTNERED_WITH]->(:ForeignUniversity) — Links joint degree or dual-degree offerings to partner international universities.
-      • (:Student)-[:ENROLLED_IN]->(:AcademicProgram) — Connects student cohorts or scholarship recipients to specific programs.
-      • (:Person)-[:AWARDED_FELLOWSHIP]->(:Fellowship) — Links researchers or students to prestigious fellowships (e.g., EIR, PMRF, Post-doctoral Fellowships).
-
-   8. Global Alliances, Partnerships & MoUs:
-      • (:Institution)-[:COLLABORATED_WITH]->(:Institution) — Captures bilateral research or academic partnerships between universities and councils.
-      • (:Institution)-[:ENTERED_MOU]->(:MoU) — Connects institutions to formal Memoranda of Understanding signed during the reporting period.
-      • (:MoU)-[:FOCUSES_ON]->(:ResearchArea) — Connects MoUs to target fields (e.g., Quantum Computing, Clean Energy, Robotics).
-      • (:Institution)-[:PARTNERED_INDUSTRY]->(:CorporateEntity) — Links universities to corporate R&D partners and CSR program sponsors.
-
-   9. Financial Statements, Endowments & Budgets:
-      • (:Institution)-[:MANAGES_ENDOWMENT]->(:EndowmentFund) — Connects an institution to its permanent endowment pool or foundation.
-      • (:AnnualReport)-[:CONTAINS_FINANCIAL_STATEMENT]->(:FinancialStatement) — Links a report to detailed accounting statements (Balance Sheet, Income & Expenditure).
-      • (:FinancialStatement)-[:REPORTS_REVENUE]->(:RevenueStream) — Maps income sources (e.g., Tuition, Sponsored Research, Government Appropriations, Consultancy).
-      • (:FinancialStatement)-[:REPORTS_EXPENSE]->(:ExpenseCategory) — Maps expenditure categories (e.g., Salaries, Equipment Maintenance, R&D Infrastructure).
-      • (:EndowmentFund)-[:ALLOCATED_TO]->(:Scholarship) — Connects endowment yields to financial aid, student living support, or endowed faculty chairs.
-      • (:AuditFirm)-[:AUDITED]->(:FinancialStatement) — Links independent external auditors or state audit agencies to certified institutional accounts.
-
-   10. Facilities, Infrastructure & Shared Resources:
-      • (:Institution)-[:HOUSES_EQUIPMENT]->(:Equipment) — Connects an institution to major shared research infrastructure (e.g., Supercomputers, Cryo-EM, Cleanrooms).
-      • (:Department)-[:UTILIZES_FACILITY]->(:Facility) — Links specific research groups or departments to central instrumentation facilities.
+   [10. Facilities, Infrastructure & Shared Resources]
+   • (:Institution)-[:HOUSES_EQUIPMENT]->(:Equipment) — Connects an institution to major research instruments.
+   • (:Department)-[:UTILIZES_FACILITY]->(:Facility) — Links departments to central facilities.
 
 ==================================================
 INSTRUCTIONS & COMPLIANCE RULES
 ==================================================
 
 1. STRICT SCHEMA GROUNDING & ANTI-HALLUCINATION:
-   - Use ONLY the node labels, relationship types, and property keys explicitly defined in the provided schema.
-   - NEVER introduce, infer, or hallucinate node labels, relationship types, or properties not listed in the schema.
-   - If the user's question asks for an entity or concept not supported by the schema, fall back to matching Section or Chunk nodes that contain relevant text terms.
+   - Use ONLY the node labels, relationship types, and property keys explicitly defined in the schema above.
+   - NEVER introduce, infer, or hallucinate unlisted node labels, relationship types, or property keys.
+   - If the user's question asks for a concept not represented as a dedicated node label, fall back to matching `Section` or `Chunk` nodes containing relevant text terms.
 
 2. READ-ONLY SECURITY CONSTRAINTS:
-   - Generate STRICTLY READ-ONLY Cypher queries using MATCH, OPTIONAL MATCH, WITH, WHERE, RETURN, ORDER BY, and LIMIT clauses.
-   - ABSOLUTELY FORBIDDEN: Any mutating clauses such as CREATE, MERGE, SET, DELETE, REMOVE, DETACH DELETE, DROP, or CALL apoc.* procedures that alter data.
+   - Generate STRICTLY READ-ONLY Cypher queries using `MATCH`, `OPTIONAL MATCH`, `WITH`, `WHERE`, `UNWIND`, `RETURN`, `ORDER BY`, and `LIMIT`.
+   - ABSOLUTELY FORBIDDEN: Any mutating or administrative clauses (`CREATE`, `MERGE`, `SET`, `DELETE`, `REMOVE`, `DETACH`, `DROP`, `CALL dbms.*`, `CALL apoc.*`).
 
 3. DOCUMENT HIERARCHY & SECTION-BASED SCOPING:
-   - Annual reports contain diverse topics (e.g., finances, patents, faculty awards). To prevent context contamination across unrelated chapters, ALWAYS traverse through Section nodes to reach Chunk nodes when extracting free-text context.
-   - Filter Section nodes by `type` when the query domain is clear (e.g., `sec.type = 'Patents & Intellectual Property'`, `sec.type = 'Sponsored Research Projects & Grants'`, `sec.type = 'Startups & Incubation'`, `sec.type = 'Financial Statements & Budgets'`).
-   - If the target Section type is ambiguous or unspecified, traverse all Section nodes connected to the target AnnualReport without restricting `sec.type`.
+   - When extracting text chunks, traverse through `Section` nodes (`(:AnnualReport)-[:HAS_SECTION]->(sec:Section)-[:HAS_CHUNK]->(chk:Chunk)`).
+   - Filter `sec.type` when the query domain clearly maps to one of the 11 allowed `Section.type` values. If the target section is ambiguous, do not restrict `sec.type`.
 
-4. ENTITY RESOLUTION, TYPO CORRECTION & FUZZY MATCHING:
-   - Correct common entity typos, spelling errors, or name variants prior to matching.
-   - Standardize institutional abbreviations and acronyms (e.g., "NIPGR" -> "National Institute of Plant Genome Research", "BRIC" -> "Biotechnology Research and Innovation Council", "NUS" -> "National University of Singapore").
-   - Use CASE-INSENSITIVE and Partial Matching for string property comparisons using `toLower()` or regex matching. Example:
-     `WHERE toLower(p.name) CONTAINS toLower("panigrahi")` or `WHERE inst.name =~ '(?i).*nipgr.*'`
+4. CASE-INSENSITIVE & ACRONYM-AWARE ENTITY MATCHING:
+   - Strip leading titles/honorifics (`Dr.`, `Prof.`, `Mr.`, `Ms.`, `Shri`) when matching `Person.name`.
+   - When matching institution or agency names that may appear as either an acronym or full name, match against both forms using case-insensitive `CONTAINS` or `OR`:
+     `WHERE toLower(inst.name) CONTAINS toLower($inst_short) OR toLower(inst.name) CONTAINS toLower($inst_full)`
+   - Always use case-insensitive partial matching (`toLower(n.name) CONTAINS toLower(...)`) rather than exact equality (`=`) on free-text string properties.
 
 5. CYPHER SYNTAX, TRAVERSAL & PERFORMANCE GUARDRAILS:
-   - Respect Directed Edge Directions as defined in the schema. Do not reverse edge arrows.
-   - Always use `DISTINCT` in RETURN clauses or aggregation functions (`count(DISTINCT x)`, `collect(DISTINCT y)`) to prevent returning duplicate paths.
-   - Avoid unbounded variable-length path traversals (e.g., NEVER use `-[*]-`). If variable-length traversal is required, bound the depth strictly (e.g., `-[:HAS_SUBSECTION*1..3]->`).
-   - Use `OPTIONAL MATCH` when joining secondary attributes or related entities so that primary records are not dropped if an optional link is missing.
+   - Respect exact relationship arrow directions as defined in Section 2.
+   - Always use `DISTINCT` in `RETURN` clauses and aggregations (`count(DISTINCT n)`, `collect(DISTINCT n)`) to prevent duplicate path rows.
+   - Never use unbounded variable-length paths (`-[*]-`). Bound any variable-length path strictly (e.g., `-[:HAS_SUBSECTION*1..3]->`).
+   - Use `OPTIONAL MATCH` for secondary attributes so primary matches are not dropped when optional links are absent.
 
 6. AGGREGATION, TYPE CASTING & NULL SAFETY:
-   - When performing numeric operations, comparisons, or summaries (SUM, AVG, MIN, MAX), explicitly cast properties if needed using `toFloat()`, `toInteger()`, or `date()`.
-   - Handle NULL values gracefully using `coalesce()` or `IS NOT NULL` checks before arithmetic calculations.
+   - Cast numeric properties explicitly with `toFloat()` or `toInteger()` when aggregating (`SUM`, `AVG`, `MIN`, `MAX`), and guard against nulls using `coalesce(val, 0)`.
 
 7. OUTPUT FORMATTING & ZERO-COMMENTARY RULE:
-   - Output ONLY the raw executable Cypher query.
-   - Do NOT wrap the query in markdown commentary, explanations, preambles, or postscripts.
-   - Return the query directly or wrapped cleanly in `<query>` tags if required by the downstream parser.
+   - Output ONLY the raw executable Cypher query without markdown backticks, commentary, or explanations.
 """
 
 retrieval_qa_chat_prompt = RETRIEVAL_QA_CHAT_PROMPT

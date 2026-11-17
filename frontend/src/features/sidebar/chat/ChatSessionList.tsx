@@ -33,6 +33,12 @@ export const ChatSessionList: React.FC<ChatSessionListProps> = ({
   handleSaveRename,
   handleDeleteSession,
 }) => {
+  const branchedParentIds = new Set(
+    displayedSessions
+      .map((s) => s.forkedFromSessionId)
+      .filter((id): id is string => Boolean(id))
+  );
+
   return (
     <div className="flex-1 overflow-y-auto px-2 space-y-0.5" style={{ scrollbarWidth: 'thin' }}>
       {displayedSessions.map((s) => (
@@ -43,11 +49,13 @@ export const ChatSessionList: React.FC<ChatSessionListProps> = ({
           isMenuOpen={activeSessionMenuId === s.id}
           isRenaming={renamingSessionId === s.id}
           isPinned={pinnedSessionIds.includes(s.id)}
+          hasBranches={branchedParentIds.has(s.id)}
           newSessionTitle={newSessionTitle}
           setNewSessionTitle={setNewSessionTitle}
           onSelect={onSelectSession}
           onTogglePin={onTogglePinSession}
           onToggleMenu={(id) => setActiveSessionMenuId(activeSessionMenuId === id ? null : id)}
+          onCloseMenu={() => setActiveSessionMenuId(null)}
           onStartRename={(sess) => {
             setRenamingSessionId(sess.id);
             setNewSessionTitle(sess.title);

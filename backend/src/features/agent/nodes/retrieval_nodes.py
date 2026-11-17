@@ -61,8 +61,8 @@ class RetrievalNodesMixin:
         if not hasattr(self.rag_engine, "_cached_bm25") or self.rag_engine._cached_bm25 is None:
             try:
                 from src.retrieval.bm25 import SelfContainedBM25
-                base_rag_dir = Path(__file__).resolve().parents[4]
-                chunks_dir = base_rag_dir / "data" / "processed" / "chunks"
+                from src.core.config import CHUNKS_DIR
+                chunks_dir = CHUNKS_DIR
                 corpus_chunks = []
                 if chunks_dir.exists():
                     for cf in chunks_dir.glob("*_chunks.json"):
@@ -123,6 +123,7 @@ class RetrievalNodesMixin:
 
         # Active Sparse BM25 Search
         bm25_chunks = []
+        seen_bm25_keys = set()
         bm25_idx = self._get_bm25_index()
         if bm25_idx:
             for q_sub in queries_to_search:
@@ -155,8 +156,8 @@ class RetrievalNodesMixin:
                         "metadata": b_meta,
                     }
                     bkey = b_chunk.get("chunk_id")
-                    if bkey not in seen_chunk_keys:
-                        seen_chunk_keys.add(bkey)
+                    if bkey not in seen_bm25_keys:
+                        seen_bm25_keys.add(bkey)
                         bm25_chunks.append(b_chunk)
 
         if telemetry:
@@ -291,7 +292,8 @@ class RetrievalNodesMixin:
         table_intent_keywords = [
             "table", "schedule", "balance sheet", "revenue", "income", "expenditure",
             "budget", "enrollment", "admitted", "subcategories", "penalty",
-            "figures reported", "row", "financial accounts", "statement of", "breakdown"
+            "figures reported", "row", "financial accounts", "statement of", "breakdown",
+            "nature index", "ranking", "rankings", "position", "positions", "rank", "profile"
         ]
         has_table_intent = any(kw in q_text for kw in table_intent_keywords)
         has_exact_identifier = bool(re.search(r"\b[A-Za-z0-9\-_]{3,}\b", q_text) and any(c.isupper() or c.isdigit() for c in state.get("query", "")))
@@ -317,12 +319,13 @@ class RetrievalNodesMixin:
         rerank_query = state.get("standalone_query") or state.get("query", "")
         rerank_top_n = max(state.get("top_k", 10), 10)
         is_fast_mode = (state.get("mode") or "fast").lower() == "fast"
-        rerank_pool = fused_candidates[:16] if (is_fast_mode and len(fused_candidates) > 16) else fused_candidates
+        rerank_pool = fused_candidates[:24] if (is_fast_mode and len(fused_candidates) > 24) else fused_candidates
         reranked = self.rag_engine.agent_router.reranker.rerank(
             query=rerank_query,
             candidates=rerank_pool,
             text_key="text",
             top_n=rerank_top_n,
+            subqueries=decomp,
         )
 
         # GraphRAG Macro-Chunk Hydration: Expand small fragmented chunks into rich parent sections
@@ -416,8 +419,6 @@ class RetrievalNodesMixin:
 
         return {
             "reformulated_query": reformulated,
-            "standalone_query": reformulated,
-            "query": reformulated,
             "top_k": new_top_k,
             "hops": new_hops,
         }
@@ -437,7 +438,7 @@ class RetrievalNodesMixin:
         )
         bm25_idx = self._get_bm25_index()
         bm25_chunks = bm25_idx.search(search_query, top_k=state.get("top_k", 10), active_docs=state.get("active_docs")) if bm25_idx else []
-        fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True)
+        fused = reciprocal_rank_fusion([dense_chunks, bm25_chunks], k=60, table_boost=True, query=search_query)
 
         existing_chunks = state.get("relevant_chunks", [])
         combined_candidates = []
@@ -458,6 +459,7 @@ class RetrievalNodesMixin:
             candidates=combined_candidates,
             text_key="text",
             top_n=state.get("top_k", 8),
+            subqueries=[search_query],
         )
         hydrated_reranked = hydrate_macro_chunks(reranked)
         return {

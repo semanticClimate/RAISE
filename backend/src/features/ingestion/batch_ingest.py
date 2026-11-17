@@ -20,6 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.core.config import DOCUMENTS_DIR, models
+
 def should_ingest(file_path: str | Path) -> bool:
     """Enforces strict database isolation: ignores test suites, benchmarks, and evaluation files."""
     path_str = str(file_path).lower().replace("\\", "/")
@@ -29,7 +31,7 @@ def should_ingest(file_path: str | Path) -> bool:
         "question_suite",
         "question suite",
         "raise-bench",
-        "gemini-notebook",
+        f"{models.LLM_PROVIDER}-notebook",
         "benchmark_qa"
     ]
     return not any(pattern in path_str for pattern in excluded_patterns)
@@ -41,7 +43,7 @@ class BatchReportIngestor:
     """
 
     def __init__(self, download_dir: Optional[Path | str] = None, pipeline: Optional[Any] = None):
-        self.download_dir = Path(download_dir or Path(__file__).parent.parent / "data" / "documents").resolve()
+        self.download_dir = Path(download_dir or DOCUMENTS_DIR).resolve()
         if pipeline is not None:
             self.pipeline = pipeline
         else:

@@ -37,6 +37,8 @@ export interface DynamicLLMModel {
   tier?: string;
   sizeGb?: number;
   ramGb?: number;
+  isInstalled?: boolean;
+  source?: string;
 }
 
 export interface SystemHardwareInfo {
@@ -52,7 +54,20 @@ export interface SystemHardwareInfo {
 }
 
 // Backward-compatible alias types for existing references
-export type LLMMode = 'cloud_groq' | 'cloud_gemini' | 'local_ollama';
+export type LLMMode =
+  | 'cloud_groq'
+  | 'cloud_gemini'
+  | 'cloud_openai'
+  | 'cloud_anthropic'
+  | 'cloud_mistral'
+  | 'cloud_deepseek'
+  | 'cloud_nvidia'
+  | 'cloud_cohere'
+  | 'cloud_openrouter'
+  | 'cloud_universal'
+  | 'local_ollama'
+  | 'local_vllm'
+  | (string & {});
 export type DatabaseMode = SubstrateMode;
 
 export interface ControlCenterConfig {
@@ -62,6 +77,7 @@ export interface ControlCenterConfig {
   apiKeys: CloudApiKeyEntry[];
   selectedLocalModel: string;
   tunnelUrl?: string;
+  storageMode?: 'fast' | 'docker' | 'cloud';
 
   // Neural Pipeline Substrates
   embeddingModel?: string;
@@ -69,6 +85,8 @@ export interface ControlCenterConfig {
   nliVerifierModel?: string;
   neuralDevice?: 'auto' | 'mps' | 'cuda' | 'cpu';
   huggingfaceToken?: string;
+  huggingfaceConfigured?: boolean;
+  huggingfaceMasked?: string;
 
   // Architectural Substrates
   knowledgeGraph: SubstrateConfig; // Neo4j Property Graph

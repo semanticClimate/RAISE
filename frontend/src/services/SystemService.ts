@@ -9,6 +9,8 @@ import {
   Neo4jStatusSchema,
   type AuthHandshakeResponse,
   AuthHandshakeResponseSchema,
+  type RoutingStatusResponse,
+  type RoutingUpdateRequest,
 } from '../types';
 
 export class SystemService {
@@ -31,7 +33,7 @@ export class SystemService {
         body: JSON.stringify(payload || {}),
         signal,
         skipModeCheck: true,
-        timeoutMs: 4000,
+        timeoutMs: 9000,
       }
     );
   }
@@ -58,6 +60,25 @@ export class SystemService {
       method: 'GET',
       signal,
     });
+  }
+
+  /**
+   * Dynamic Model Registry: GET /api/system/models
+   * Live model registry consumed dynamically from backend without hardcoding.
+   */
+  public async getSystemModels(includeCatalog = false, signal?: AbortSignal): Promise<ApiResponse<unknown>> {
+    const url = includeCatalog
+      ? `${ENDPOINTS.SYSTEM_MODELS}?include_catalog=true`
+      : ENDPOINTS.SYSTEM_MODELS;
+    return apiClient.request(
+      url,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
   }
 
   /**
@@ -197,14 +218,14 @@ export class SystemService {
       let aliveRes = await apiClient.request(ENDPOINTS.HEALTH, undefined, {
         method: 'GET',
         skipModeCheck: true,
-        timeoutMs: 1800,
+        timeoutMs: 6000,
       });
 
       if (aliveRes.status !== 200) {
         aliveRes = await apiClient.request(ENDPOINTS.HEALTH_ALT, undefined, {
           method: 'GET',
           skipModeCheck: true,
-          timeoutMs: 1800,
+          timeoutMs: 6000,
         });
       }
 
@@ -240,12 +261,12 @@ export class SystemService {
           apiClient.request(ENDPOINTS.HARDWARE_TELEMETRY, undefined, {
             method: 'GET',
             skipModeCheck: true,
-            timeoutMs: 2000,
+            timeoutMs: 5000,
           }),
           apiClient.request(ENDPOINTS.NEO4J_STATUS, undefined, {
             method: 'GET',
             skipModeCheck: true,
-            timeoutMs: 2000,
+            timeoutMs: 5000,
           }),
         ]);
 
@@ -323,7 +344,7 @@ export class SystemService {
 
     // Fast-path 1: Probe /api/health
     try {
-      const { res, endpoint } = await fetchEndpoint('/api/health', 2000);
+      const { res, endpoint } = await fetchEndpoint('/api/health', 8000);
       const latencyMs = Math.round(performance.now() - startTime);
       if (res.status >= 200 && res.status < 300) {
         let parsedVersion: string | undefined;
@@ -356,7 +377,7 @@ export class SystemService {
     const fallbackEndpoints = ['/health', '/api/documents'];
     try {
       const probePromises = fallbackEndpoints.map(async (ep) => {
-        const result = await fetchEndpoint(ep, 2500);
+        const result = await fetchEndpoint(ep, 6000);
         if (result.res.status >= 200 && result.res.status < 300) {
           const body = await result.res.clone().json().catch(() => null);
           if (isBackendJson(result.res, body)) {
@@ -397,6 +418,147 @@ export class SystemService {
         error: `Cannot reach ${rawTarget}. Please verify that the backend server is running and accessible.`,
       };
     }
+  }
+
+  /**
+   * Checks neural model stack readiness (/api/ready)
+   * Returns 200 { ready: true } when models are fully loaded
+   * Returns 503 { ready: false, message: ... } when still warming up
+   */
+  public async checkReadiness(customUrl?: string): Promise<{
+    ready: boolean;
+    status: number;
+    message?: string;
+  }> {
+    const rawTarget = (customUrl || getApiBaseUrl()).trim().replace(/\/+$/, '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    try {
+      const res = await fetch(`${rawTarget}${ENDPOINTS.READY}`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'Cache-Control': 'no-cache',
+        },
+      });
+      clearTimeout(timer);
+      const data: any = await res.json().catch(() => null);
+      if (res.status === 200 && (data?.ready === true || data?.status === 'ready' || data?.status === 'healthy')) {
+        return { ready: true, status: 200, message: data?.message || 'Neural inference models ready' };
+      }
+      if (res.status === 404 || res.status === 405) {
+        return { ready: true, status: res.status, message: 'Readiness probe not implemented on backend' };
+      }
+      return {
+        ready: false,
+        status: res.status,
+        message: data?.message || 'Neural inference models are actively loading...',
+      };
+    } catch {
+      clearTimeout(timer);
+      return {
+        ready: false,
+        status: 0,
+        message: 'Unable to reach readiness probe',
+      };
+    }
+  }
+  /**
+   * Fetch runtime LLM fallback routing and per-provider status (GET /api/system/routing)
+   */
+  public async getRouting(signal?: AbortSignal): Promise<ApiResponse<RoutingStatusResponse>> {
+    return apiClient.request<RoutingStatusResponse>(
+      ENDPOINTS.SYSTEM_ROUTING,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
+  }
+
+  /**
+   * Update runtime LLM fallback routing order & primary assignment (POST /api/system/routing)
+   */
+  public async updateRouting(
+    payload: RoutingUpdateRequest,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<RoutingStatusResponse>> {
+    return apiClient.request<RoutingStatusResponse>(
+      ENDPOINTS.SYSTEM_ROUTING,
+      undefined,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal,
+        timeoutMs: 6000,
+      }
+    );
+  }
+
+  /**
+   * Prewarm neural models on demand via POST /api/system/models/load
+   */
+  public async loadModels(
+    payload: {
+      embedding_model?: string;
+      reranker_model?: string;
+      nli_verifier_model?: string;
+      huggingface_token?: string;
+      [key: string]: unknown;
+    },
+    signal?: AbortSignal
+  ): Promise<ApiResponse<{ status: string; message: string; data?: unknown }>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_MODELS_LOAD,
+      undefined,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal,
+        timeoutMs: 15000,
+      }
+    );
+  }
+
+  /**
+   * Verify provider API key directly via POST /api/system/providers/verify
+   */
+  public async verifyProvider(
+    provider: string,
+    key: string,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<{ online: boolean; latency_ms: number; status: string; error?: string }>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_PROVIDERS_VERIFY,
+      undefined,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, key, api_key: key }),
+        signal,
+        timeoutMs: 6000,
+      }
+    );
+  }
+
+  /**
+   * Get preflight assets status via GET /api/system/preflight-assets
+   */
+  public async getPreflightAssets(signal?: AbortSignal): Promise<ApiResponse<unknown>> {
+    return apiClient.request(
+      ENDPOINTS.SYSTEM_PREFLIGHT_ASSETS,
+      undefined,
+      {
+        method: 'GET',
+        signal,
+        timeoutMs: 4000,
+      }
+    );
   }
 }
 

@@ -85,6 +85,9 @@ class NumericalClaimVerifier:
             # Normalized OCR tokens (accounting for typical OCR letter-digit substitutions in scanned financial tables: S/s->5, O/o/U/u->0, I/l/|->1, C/c/J/j/L/()->0)
             for m in re.finditer(r"\b[0-9SOUulI][0-9SOUulICcJjL\(\),\. \t\-_/]+[0-9SOUulICcJjL\(\)]\b", line):
                 t = m.group(0)
+                # Must contain at least 2 real numeric digits to be considered a corrupted number (prevents converting English words)
+                if len(re.findall(r"\d", t)) < 2:
+                    continue
                 t_norm = (
                     t.replace('S', '5').replace('s', '5')
                     .replace('O', '0').replace('o', '0')

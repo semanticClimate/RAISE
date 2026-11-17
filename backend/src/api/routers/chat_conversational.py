@@ -42,6 +42,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.api.schemas import ChatMessageRequest
 from src.cli.persona_classifier import extract_conversational_persona
+from src.core.config import models
 
 logger = logging.getLogger("raise.router.chat.conversational")
 
@@ -130,7 +131,7 @@ async def handle_conversational_chat(
         "http://127.0.0.1:8002/v1",
         "http://raise-vllm-prod:8000/v1",
     ]
-    model_name = os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4")
+    model_name = os.getenv("LLM_MODEL_NAME", models.LLM_MODEL_NAME)
 
     # Conversational intent classifier matching main.py
     greeting_typo_regex = re.compile(
@@ -181,7 +182,13 @@ async def handle_conversational_chat(
         )
 
     # A. Plain-Text Stream Response
-    if req.stream and (req.format == "raw" or "text/plain" in request.headers.get("accept", "").lower()):
+    accept_hdr = request.headers.get("accept", "").lower()
+    is_explicit_raw = (req.format == "raw") or (
+        "text/plain" in accept_hdr
+        and "text/event-stream" not in accept_hdr
+        and req.format != "sse"
+    )
+    if req.stream and is_explicit_raw:
         async def conv_raw_stream():
             full_response_parts = []
             stream_succeeded = False
@@ -189,10 +196,11 @@ async def handle_conversational_chat(
             if is_persona_fastpath:
                 fb = get_fallback_reply()
                 yield fb
+                elapsed_fast = round(time.perf_counter() - t_start, 3)
                 if session_id:
                     if postgres_manager:
                         postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-                        postgres_manager.save_message(session_id, "assistant", fb, mode=mode, sources=[])
+                        postgres_manager.save_message(session_id, "assistant", fb, mode=mode, sources=[], latency_sec=elapsed_fast)
                     if redis_cache:
                         redis_cache.save_session_message(session_id, "user", message, mode=mode)
                         redis_cache.save_session_message(session_id, "assistant", fb, mode=mode)
@@ -268,11 +276,12 @@ async def handle_conversational_chat(
                     await asyncio.sleep(0.015)
 
             complete_text = "".join(full_response_parts).strip()
+            elapsed_raw = round(time.perf_counter() - t_start, 3)
             # Decoupled Dual-Write Persistence
             if session_id and complete_text:
                 if postgres_manager:
                     postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-                    postgres_manager.save_message(session_id, "assistant", complete_text, mode=mode, sources=[])
+                    postgres_manager.save_message(session_id, "assistant", complete_text, mode=mode, sources=[], latency_sec=elapsed_raw)
                 if redis_cache:
                     redis_cache.save_session_message(session_id, "user", message, mode=mode)
                     redis_cache.save_session_message(session_id, "assistant", complete_text, mode=mode)
@@ -300,10 +309,11 @@ async def handle_conversational_chat(
                     w = "".join(words[i:i + chunk_size])
                     yield f"event: token\ndata: {json.dumps({'token': w})}\n\n"
                     await asyncio.sleep(0.001)
+                elapsed_fast = round(time.perf_counter() - t_start, 3)
                 if session_id:
                     if postgres_manager:
                         postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-                        postgres_manager.save_message(session_id, "assistant", fb, mode=mode, sources=[])
+                        postgres_manager.save_message(session_id, "assistant", fb, mode=mode, sources=[], latency_sec=elapsed_fast)
                     if redis_cache:
                         redis_cache.save_session_message(session_id, "user", message, mode=mode)
                         redis_cache.save_session_message(session_id, "assistant", fb, mode=mode)
@@ -381,11 +391,12 @@ async def handle_conversational_chat(
                     await asyncio.sleep(0.015)
 
             complete_text = "".join(full_response_parts).strip()
+            elapsed_raw = round(time.perf_counter() - t_start, 3)
             # Decoupled Dual-Write Persistence
             if session_id and complete_text:
                 if postgres_manager:
                     postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-                    postgres_manager.save_message(session_id, "assistant", complete_text, mode=mode, sources=[])
+                    postgres_manager.save_message(session_id, "assistant", complete_text, mode=mode, sources=[], latency_sec=elapsed_raw)
                 if redis_cache:
                     redis_cache.save_session_message(session_id, "user", message, mode=mode)
                     redis_cache.save_session_message(session_id, "assistant", complete_text, mode=mode)
@@ -406,7 +417,7 @@ async def handle_conversational_chat(
         if session_id and full_reply:
             if postgres_manager:
                 postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-                postgres_manager.save_message(session_id, "assistant", full_reply, mode=mode, sources=[])
+                postgres_manager.save_message(session_id, "assistant", full_reply, mode=mode, sources=[], latency_sec=elapsed)
             if redis_cache:
                 redis_cache.save_session_message(session_id, "user", message, mode=mode)
                 redis_cache.save_session_message(session_id, "assistant", full_reply, mode=mode)
@@ -475,7 +486,7 @@ async def handle_conversational_chat(
     if session_id and full_reply:
         if postgres_manager:
             postgres_manager.save_message(session_id, "user", message, mode=mode, active_docs=req.active_docs)
-            postgres_manager.save_message(session_id, "assistant", full_reply, mode=mode, sources=[])
+            postgres_manager.save_message(session_id, "assistant", full_reply, mode=mode, sources=[], latency_sec=elapsed)
         if redis_cache:
             redis_cache.save_session_message(session_id, "user", message, mode=mode)
             redis_cache.save_session_message(session_id, "assistant", full_reply, mode=mode)

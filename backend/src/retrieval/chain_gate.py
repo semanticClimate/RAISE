@@ -257,51 +257,53 @@ class ChainCompletenessGate:
             status="VERIFIED",
         )
 
-        # Hop 2: Verify connection from bridge_entity to target_attribute
+        # Hop 2: Verify connection from bridge_entity to target_attribute (or seed terms fallback)
         hop2_verified = False
         hop2_supporting_chunks: List[str] = []
         hop2_conf = 0.0
 
-        if target_attr:
-            # Search if bridge entity AND target attribute appear together in any chunk
-            b_lower = bridge_entity.lower()
-            attr_kws = self.RELATION_KEYWORDS.get(target_attr, [target_attr])
-            
-            for c in retrieved_chunks:
-                c_text = (c.get("text") or c.get("plain_text") or "").lower()
-                cid = str(c.get("chunk_id") or c.get("id"))
-                
-                # Bridge entity must be mentioned
-                has_bridge = any(w in c_text for w in b_lower.split() if len(w) > 3)
-                if not has_bridge:
-                    continue
+        b_lower = bridge_entity.lower()
+        attr_kws = (
+            self.RELATION_KEYWORDS.get(target_attr, [target_attr])
+            if target_attr
+            else [w.lower() for w in requirements.get("seed_terms", []) if w.lower() not in b_lower]
+        )
 
-                # Target attribute keyword must be present
-                has_attr_kw = any(kw in c_text for kw in attr_kws)
-                if not has_attr_kw:
-                    continue
+        for c in retrieved_chunks:
+            c_text = (c.get("text") or c.get("plain_text") or "").lower()
+            cid = str(c.get("chunk_id") or c.get("id"))
 
-                # If attribute is quantitative (expenditure, revenue, enrollment), check for non-year numerical figures
-                if target_attr in ("expenditure", "revenue_profit", "enrollment_count"):
-                    # Find numbers that are NOT years 1990-2035
-                    num_matches = re.findall(r"\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\b", c_text)
-                    valid_nums = []
-                    for n in num_matches:
-                        clean_n = n.replace(",", "")
-                        try:
-                            f = float(clean_n)
-                            if 1990 <= f <= 2035 and "." not in clean_n:
-                                continue
-                            valid_nums.append(f)
-                        except ValueError:
-                            pass
-                    if not valid_nums:
-                        continue  # Only year was present, no actual quantitative figure!
+            # Bridge entity must be mentioned
+            has_bridge = any(w in c_text for w in b_lower.split() if len(w) > 3)
+            if not has_bridge:
+                continue
 
-                hop2_verified = True
-                hop2_supporting_chunks.append(cid)
-                hop2_conf = 0.88
-                break
+            # Target attribute keyword must be present (or seed terms if no hardcoded target_attr)
+            has_attr_kw = (not attr_kws) or any(kw in c_text for kw in attr_kws)
+            if not has_attr_kw:
+                continue
+
+            # If attribute is quantitative (expenditure, revenue, enrollment), check for non-year numerical figures
+            if target_attr in ("expenditure", "revenue_profit", "enrollment_count"):
+                # Find numbers that are NOT years 1990-2035
+                num_matches = re.findall(r"\b(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\b", c_text)
+                valid_nums = []
+                for n in num_matches:
+                    clean_n = n.replace(",", "")
+                    try:
+                        f = float(clean_n)
+                        if 1990 <= f <= 2035 and "." not in clean_n:
+                            continue
+                        valid_nums.append(f)
+                    except ValueError:
+                        pass
+                if not valid_nums:
+                    continue  # Only year was present, no actual quantitative figure!
+
+            hop2_verified = True
+            hop2_supporting_chunks.append(cid)
+            hop2_conf = 0.88
+            break
 
         if hop2_verified:
             hop2 = HopEvidenceItem(

@@ -1,6 +1,7 @@
 import type React from 'react';
 import { getApiBaseUrl } from '../../app/config';
 import { sourceService } from '../../services/SourceService';
+import { useDocumentViewerStore } from '../../stores/useDocumentViewerStore';
 import type { Citation } from '../../types';
 import { extractVerifiedPageNumber } from '../../utils/citationParser';
 
@@ -195,15 +196,15 @@ export function resolveCitationDetail(
       ? sourceService.getPdfUrl(rawFileName, pageNumber)
       : undefined;
 
-  // Sid says: Primary URL points to external web URL for web records or standalone viewer tab
+  // Sid says: Primary URL points to external web URL for web records or direct browser PDF viewer
   const candidatePrimaryUrl =
     (isWeb && webUrl
       ? webUrl
-      : (rawFileName
-          ? sourceService.getViewerUrl(rawFileName, safePage, cit?.plain_text)
+      : pdfUrl ||
+        (rawFileName
+          ? sourceService.getPdfUrl(rawFileName, safePage)
           : undefined) ||
-        singlePageViewUrl ||
-        pdfUrl);
+        singlePageViewUrl);
 
   const primaryUrl = isSafeUrl(candidatePrimaryUrl) ? (candidatePrimaryUrl as string) : '#';
 
@@ -232,9 +233,10 @@ const CitationSingleBadge: React.FC<CitationSingleBadgeProps> = ({ item, onViewP
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.stopPropagation();
     // Sid says: Open directly in a new browser tab, never as an in-page popup modal
-    if (!item.isWeb && onViewPdf && item.fileName && item.fileName !== 'Audited Document') {
+    if (!item.isWeb && item.fileName && item.fileName !== 'Audited Document') {
       e.preventDefault();
-      onViewPdf(item.fileName, item.pageNumber || 1, 'page');
+      useDocumentViewerStore.getState().openDocument(item.fileName, item.pageNumber || 1);
+      onViewPdf?.(item.fileName, item.pageNumber || 1, 'page');
       return;
     }
     const target = item.isWeb ? item.webUrl || item.primaryUrl : item.primaryUrl;
