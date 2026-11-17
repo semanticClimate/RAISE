@@ -143,6 +143,20 @@ Most critically, an in-depth code trace has identified a **fatal cascading failu
 
 ---
 
+### 2.6 Bug 6: Document Deletion Resurrection Bug (`auto_scan_and_reconcile_documents` Ignores `deleted_documents`)
+* **Location**: `src/api/context.py` (lines 82–120) & `src/features/documents/service.py` (lines 336–360)
+* **Description**:
+  When a user deletes a document via `DELETE /api/documents/{doc_id}`, `DocumentService.delete_document()` removes the entry from `ingested_manifest.json` and records the ID in `"deleted_documents"`.
+  However, on every `GET /api/documents` query, `context.py:get_library_documents()` calls `auto_scan_and_reconcile_documents()`.
+  This function scans `backend/data/documents/*.pdf`. If the physical PDF file or cached chunks (`data/cache/chunks/{stem}_chunks.json`) still exist on disk, it executes `record_ready_document()` without checking if the file is in `deleted_documents`!
+* **Impact**:
+  Deleted documents immediately get re-added to the manifest on the next page reload or library request, making documents appear "undeletable" to end-users.
+* **Recommended Fix**:
+  1. In `auto_scan_and_reconcile_documents()`, check `manifest.get("deleted_documents", [])` before reconciling. If the file stem or filename is in `deleted_documents`, skip re-registering it.
+  2. When `delete_document()` is called, physically delete or move the file from `data/documents/` and its chunk caches in `data/cache/chunks/` and `data/library/` so disk scans cannot revive it.
+
+---
+
 ## 3. High Priority: Missing Docker Availability Detection
 
 ### 3.1 Docker False-Assumption on Clean Developer Laptops
@@ -213,10 +227,20 @@ Following the user's instructions, the following improvements have been landed o
 3. **CI Pipeline Hardening**:
    In `frontend/.github/workflows/frontend-ci.yml`, pinned all jobs to `ubuntu-24.04` and verified Node 24 action compatibility. Fixed the Biome `useIterableCallbackReturn` lint error in `useSessionSources.ts`.
 
+4. **Strict Monochrome Popup Overhaul**:
+   Restyled the three primary popups—Sources Drawer (`SourcesDrawer.tsx`), Knowledge Base Library Picker (`LibraryPickerModal.tsx`), and Search All Chats (`SearchModal.tsx`)—into a strict black-and-white theme (`#000000`, `#0A0A0A`, `#111111`, `#171717`, `#292929`, `#A3A3A3`, `#FFFFFF`). Eliminated colorful badges, gradients, and icons to match the Control Center.
+
+5. **Dynamic Error Model Resolution**:
+   In `BackendErrorCard.tsx`, removed all hardcoded model names (`'google/embeddinggemma-2'`, `'BAAI/bge-reranker-v2-m3'`, `'dleemiller/finecat-nli-ultra-l'`). Now extracts model names dynamically from the raw error string or `useControlCenterStore` config, gracefully falling back to clean generic messaging.
+
+6. **Strict Authoritative Library Filtering**:
+   Updated the library picker to display only documents that have been parsed and indexed successfully (`status === 'ready' | 'indexed'`), and added instant query cache invalidation on document deletion.
+
 ---
 
 ## 6. Action Items for Backend Team
 
+- [ ] **Fix Document Deletion Resurrection**: In `src/api/context.py:auto_scan_and_reconcile_documents()`, do not re-register documents listed in `manifest["deleted_documents"]`. In `src/features/documents/service.py:delete_document()`, delete/archive physical files from `data/documents/` and `data/cache/chunks/`.
 - [ ] **Patch `postgres.py`**: Apply adaptive TCP probe timeout (`3.0s` for remote hosts, `0.03s` for local) and support `POSTGRES_URL` in cloud resolution.
 - [ ] **Patch `redis.py`**: Support `REDIS_URL` for Upstash/cloud endpoints when `REDIS_MODE == "cloud"`.
 - [ ] **Patch `config_service.py`**: Decouple substrate fallback flags so one cloud substrate does not disable local fallbacks for other substrates.
