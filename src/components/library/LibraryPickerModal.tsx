@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
   Check,
-  Eye,
+  ExternalLink,
   FileText,
   Loader2,
   Plus,
@@ -296,9 +296,6 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
               >
                 Attach from Knowledge Base Library
               </h3>
-              <p className="text-[11px] text-[#A3A3A3] truncate">
-                Pre-indexed library documents — ready for instant research
-              </p>
             </div>
           </div>
 
@@ -312,36 +309,18 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
           </button>
         </div>
 
-        {/* Search & Filter Bar */}
-        <div className="p-3 sm:px-5 sm:py-3 border-b border-[#292929] bg-[#0A0A0A] space-y-2.5">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-[#A3A3A3] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search library documents..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-[#111111] border border-[#292929] text-[#FFFFFF] placeholder-[#A3A3A3] focus:outline-none focus:border-[#FFFFFF]/40 transition-all shadow-2xs"
-            />
-          </div>
-
-          {/* Type Filter Pills & Attach All */}
-          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5">
-            <div className="flex items-center gap-1.5">
-              {(['all', 'pdf', 'csv', 'docx', 'other'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTypeFilter(t)}
-                  className={`px-2.5 py-1 rounded-full text-xs transition-colors whitespace-nowrap cursor-pointer ${
-                    typeFilter === t
-                      ? 'bg-[#FFFFFF] text-[#000000] font-semibold'
-                      : 'bg-[#111111] text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-[#292929]'
-                  }`}
-                >
-                  {t === 'all' ? 'All' : t.toUpperCase()}
-                </button>
-              ))}
+        {/* Search & Actions Bar - Seamlessly merged without extra line */}
+        <div className="pt-3.5 px-4 sm:px-6 pb-2 bg-[#0A0A0A] space-y-2.5 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex-1 min-w-0">
+              <Search className="w-3.5 h-3.5 text-[#A3A3A3] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search library documents..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-[#111111] border border-[#292929] text-[#FFFFFF] placeholder-[#A3A3A3] focus:outline-none focus:border-[#FFFFFF]/40 transition-all shadow-2xs"
+              />
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -354,24 +333,43 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                     onOpenUploadFromPC();
                   }
                 }}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF] transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 active:scale-95"
+                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000] transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 active:scale-95 shadow-xs"
                 title="Add new document from PC to library"
               >
-                <Plus className="w-3.5 h-3.5 text-[#FFFFFF]" />
-                <span>Add Document</span>
+                <Plus className="w-3.5 h-3.5 text-[#000000] stroke-[2.2]" />
+                <span className="hidden sm:inline">Add Document</span>
+                <span className="sm:hidden font-medium">Add</span>
               </button>
 
               {onAttachAll && unattachedReadyItems.length > 0 && (
                 <button
                   type="button"
                   onClick={() => onAttachAll(unattachedReadyItems)}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000] transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95"
+                  className="text-xs font-medium px-2.5 py-1.5 rounded-xl bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF] transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95"
                   title={`Attach all ${unattachedReadyItems.length} ready documents to current chat`}
                 >
                   Attach All ({unattachedReadyItems.length})
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Type Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            {(['all', 'pdf', 'csv', 'docx', 'other'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTypeFilter(t)}
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono transition-colors whitespace-nowrap cursor-pointer ${
+                  typeFilter === t
+                    ? 'bg-[#FFFFFF] text-[#000000] font-semibold'
+                    : 'bg-[#111111] text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-[#292929]'
+                }`}
+              >
+                {t === 'all' ? 'All' : t.toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -490,11 +488,11 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                           useDocumentViewerStore.getState().openDocument(item.name, 1);
                           onViewPdf?.(item.name, 1);
                         }}
-                        className="px-2.5 py-1 text-xs font-medium text-[#A3A3A3] hover:text-[#FFFFFF] bg-[#171717] hover:bg-[#292929] rounded-lg border border-[#292929] transition-all flex items-center gap-1 cursor-pointer"
-                        title={`Preview ${item.name}`}
+                        className="p-1.5 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] rounded-lg border border-transparent hover:border-[#292929] transition-all cursor-pointer flex items-center justify-center shrink-0"
+                        title={`Preview "${item.name}"`}
+                        aria-label={`Preview ${item.name}`}
                       >
-                        <Eye className="w-3.5 h-3.5 text-[#A3A3A3]" />
-                        <span className="hidden sm:inline">Preview</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-[#A3A3A3]" />
                       </button>
                     )}
 
@@ -546,10 +544,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="h-14 px-5 sm:px-6 border-t border-[#292929] bg-[#0A0A0A] flex items-center justify-between shrink-0">
-          <span className="text-xs font-mono text-[#A3A3A3]">
-            {filteredItems.length} parsed document{filteredItems.length === 1 ? '' : 's'} in library
-          </span>
+        <div className="h-14 px-5 sm:px-6 border-t border-[#292929] bg-[#0A0A0A] flex items-center justify-end shrink-0">
           <button
             type="button"
             onClick={onClose}

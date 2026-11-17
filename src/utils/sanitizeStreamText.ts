@@ -73,5 +73,13 @@ export function sanitizeStreamText(text: string): string {
   // 9. Replace internal phrasing: "from the frontend to begin" -> "to RAISE to begin"
   cleaned = cleaned.replace(/from the frontend to begin/gi, 'to RAISE to begin');
 
+  // 10. Normalize legacy Kruti Dev non-Unicode font mojibake from institutional Rajbhasha reports
+  cleaned = cleaned.replace(
+    /\^?\s*AvkWuykbu\s+fganh\s+"kCndks"k\s*,?\s*oa\s*fofHkUu\s+fganh\s*VwYI\*+/gi,
+    'ऑनलाइन हिंदी शब्दकोश एवं विभिन्न हिंदी टूल्स'
+  );
+  cleaned = cleaned.replace(/\bfganh\b/g, 'हिंदी');
+  cleaned = cleaned.replace(/"kCndks"k/g, 'शब्दकोश');
+
   return cleaned;
 }

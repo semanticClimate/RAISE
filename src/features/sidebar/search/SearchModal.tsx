@@ -1,4 +1,4 @@
-import { Plus, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import type React from 'react';
 import { useState } from 'react';
 import { useScrollLock } from '../../../hooks';
@@ -42,7 +42,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   handleTogglePinSession,
   handleDeleteSession,
   onSelectSession,
-  onNewChat,
 }) => {
   const [searchFilter, setSearchFilter] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
@@ -202,21 +201,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               No chats found matching &ldquo;{searchFilter}&rdquo;
             </div>
           )}
-        </div>
-
-        {/* Footer with New Chat Action */}
-        <div className="h-14 px-4 sm:px-5 border-t border-[#292929] bg-[#0A0A0A] flex items-center justify-between shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              if (onNewChat) onNewChat();
-              onClose();
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#FFFFFF] bg-[#171717] hover:bg-[#292929] border border-[#292929] transition-all cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5 text-[#FFFFFF]" />
-            <span>Create New Chat</span>
-          </button>
         </div>
       </div>
     </div>

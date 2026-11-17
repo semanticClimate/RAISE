@@ -187,6 +187,25 @@ Most critically, an in-depth code trace has identified a **fatal cascading failu
 
 ---
 
+### 2.8 Bug 8: Legacy Font Mojibake (Kruti Dev / Non-Unicode Hindi) Ingestion
+* **Location**: `src/parsers/text_quality.py` (`normalize_text`, `TextQualityGate`) & `src/parsers/document_parser.py`
+* **Description**:
+  In Indian governmental and institutional PDFs (such as NIPGR Annual Reports), sections detailing official language implementation (राजभाषा) are historically typed using legacy non-Unicode 8-bit fonts (e.g., Kruti Dev 010, Chanakya, Shusha, Walkman-Chanakya) without embedded Unicode CMaps.
+  When Docling or PyMuPDF extracts text, it maps glyph codes directly to ASCII characters instead of Devanagari Unicode. For example:
+  `^ AvkWuykbu fganh "kCndks"k ,oa fofHkUu fganh VwYI***`
+  is the raw ASCII glyph representation of:
+  `ऑनलाइन हिंदी शब्दकोश एवं विभिन्न हिंदी टूल्स` (*"Online Hindi Dictionary and various Hindi tools"*).
+* **Root Cause**:
+  `TextQualityGate.assess()` in `src/parsers/text_quality.py` evaluates `garbled_token_ratio` using standard non-printable ASCII checks. Because Kruti Dev strings consist of printable ASCII letters (`A-Z`, `a-z`, `"`, `,`), they pass the quality gate and are embedded into ChromaDB vectors.
+* **Impact**:
+  When users query institutional functioning or language sections, the RAG pipeline retrieves these raw ASCII chunks, and the LLM outputs gibberish text like `"titled '^ AvkWuykbu fganh "kCndks"k...'"`.
+* **Recommended Backend Fix**:
+  1. In `src/parsers/text_quality.py`, add a Kruti Dev detection heuristic (e.g., signature trigrams like `fganh`, `kCndks`, `AvkW`, `fofHkUu`).
+  2. Implement a standard KrutiDev-to-Unicode conversion mapping to transform ASCII glyphs back to clean Devanagari (`ऑनलाइन हिंदी शब्दकोश...`), OR
+  3. Filter out un-converted legacy font chunks before vector embedding so corrupted glyph strings do not contaminate retrieval indices.
+
+---
+
 ## 3. High Priority: Missing Docker Availability Detection
 
 ### 3.1 Docker False-Assumption on Clean Developer Laptops
@@ -281,6 +300,7 @@ Following the user's instructions, the following improvements have been landed o
 ## 6. Action Items for Backend Team
 
 - [ ] **Fix Document Deletion Resurrection**: In `src/api/context.py:auto_scan_and_reconcile_documents()`, do not re-register documents listed in `manifest["deleted_documents"]`. In `src/features/documents/service.py:delete_document()`, delete/archive physical files from `data/documents/` and `data/cache/chunks/`.
+- [ ] **Legacy Font Mojibake Handling**: In `src/parsers/text_quality.py`, intercept legacy Kruti Dev / non-Unicode Devanagari text patterns and map to clean Unicode before chunk vectorization.
 - [ ] **Fix Session Rename Fallback**: In `src/infrastructure/database/mixins/chat_mixin.py:sync_chat_history()`, allow metadata updates (`title`) even when `messages` is empty.
 - [ ] **Patch `postgres.py`**: Apply adaptive TCP probe timeout (`3.0s` for remote hosts, `0.03s` for local) and support `POSTGRES_URL` in cloud resolution.
 - [ ] **Patch `redis.py`**: Support `REDIS_URL` for Upstash/cloud endpoints when `REDIS_MODE == "cloud"`.
