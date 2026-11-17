@@ -257,7 +257,9 @@ export function useSessionSources({
 
           setApiReadyFilenames((prev) => {
             const next = new Set(prev);
-            fileNames.forEach((fn) => next.add(fn.toLowerCase()));
+            fileNames.forEach((fn) => {
+              next.add(fn.toLowerCase());
+            });
             return next;
           });
         } catch {
