@@ -79,10 +79,9 @@ jobs:
       - name: Setup GitHub Pages
         id: setup-pages
         uses: actions/configure-pages@v5
-        continue-on-error: true
+        with:
+          enablement: true
 
       - name: Deploy Pages Artifact
-        if: steps.setup-pages.outcome == 'success'
         id: deployment
         uses: actions/deploy-pages@v4
-        continue-on-error: true
