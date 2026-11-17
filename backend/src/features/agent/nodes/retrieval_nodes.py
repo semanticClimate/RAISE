@@ -292,7 +292,8 @@ class RetrievalNodesMixin:
         table_intent_keywords = [
             "table", "schedule", "balance sheet", "revenue", "income", "expenditure",
             "budget", "enrollment", "admitted", "subcategories", "penalty",
-            "figures reported", "row", "financial accounts", "statement of", "breakdown"
+            "figures reported", "row", "financial accounts", "statement of", "breakdown",
+            "nature index", "ranking", "rankings", "position", "positions", "rank", "profile"
         ]
         has_table_intent = any(kw in q_text for kw in table_intent_keywords)
         has_exact_identifier = bool(re.search(r"\b[A-Za-z0-9\-_]{3,}\b", q_text) and any(c.isupper() or c.isdigit() for c in state.get("query", "")))
