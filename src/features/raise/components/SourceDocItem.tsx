@@ -1,4 +1,4 @@
-import { Eye, FileText, Loader2, Trash2 } from 'lucide-react';
+import { Eye, FileText, Loader2, X } from 'lucide-react';
 import React from 'react';
 import { useDocumentViewerStore } from '../../../stores/useDocumentViewerStore';
 import type { SourceDocument } from '../../../types';
@@ -78,15 +78,7 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
                 Processing {Math.round(progress)}%
               </span>
             ) : (
-              <>
-                <span>{doc.pages || 1} pp.</span>
-                {doc.selected && (
-                  <span className="ml-1 inline-flex items-center gap-1 text-[#FFFFFF] font-medium text-[10px] bg-[#0A0A0A] border border-[#292929] px-1.5 py-0.2 rounded">
-                    <span className="w-1 h-1 rounded-full bg-[#FFFFFF]" />
-                    <span>Active</span>
-                  </span>
-                )}
-              </>
+              <span>{doc.pages || 1} pp.</span>
             )}
           </div>
         </div>
@@ -118,10 +110,10 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
             onDelete(doc.id, doc.name);
           }}
           className="p-1.5 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] rounded-lg transition-all cursor-pointer"
-          title="Delete source"
-          aria-label={`Delete source ${doc.name}`}
+          title={`Remove "${doc.name}" from drawer`}
+          aria-label={`Remove ${doc.name} from drawer`}
         >
-          <Trash2 className="w-3.5 h-3.5 text-[#A3A3A3]" />
+          <X className="w-3.5 h-3.5 text-[#A3A3A3]" />
         </button>
       </div>
     </div>
