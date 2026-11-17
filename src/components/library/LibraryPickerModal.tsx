@@ -13,10 +13,10 @@ import {
 } from 'lucide-react';
 import type React from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { getApiBaseUrl } from '../../app/config';
 import { documentsQueryOptions } from '../../api/queryOptions';
 import { useEscapeKey, useScrollLock } from '../../hooks';
 import { sourceService } from '../../services/SourceService';
-import { useDocumentViewerStore } from '../../stores/useDocumentViewerStore';
 import { documentItemToLibraryItem, type LibraryItem } from '../settings/SettingsLibraryTab';
 import { ExtractedDocumentModal } from './ExtractedDocumentModal';
 
@@ -48,7 +48,6 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   onSelectDocument,
   attachedDocNames,
   onOpenUploadFromPC,
-  onViewPdf,
   onAttachAll,
   onDocumentDeleted,
 }) => {
@@ -178,6 +177,15 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
     } finally {
       setDeletingName(null);
     }
+  };
+
+  const handleOpenDocumentInNewTab = (item: LibraryItem) => {
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    let targetUrl = sourceService.getPdfUrl(item.name);
+    if (item.type !== 'pdf' && item.extracted_md_url) {
+      targetUrl = `${base}${item.extracted_md_url}`;
+    }
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   const apiReadyFilenames = useMemo(() => {
@@ -480,21 +488,18 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
                   {/* Right Actions */}
                   <div className="shrink-0 flex items-center gap-1.5">
-                    {item.type === 'pdf' && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          useDocumentViewerStore.getState().openDocument(item.name, 1);
-                          onViewPdf?.(item.name, 1);
-                        }}
-                        className="p-1.5 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] rounded-lg border border-transparent hover:border-[#292929] transition-all cursor-pointer flex items-center justify-center shrink-0"
-                        title={`Preview "${item.name}"`}
-                        aria-label={`Preview ${item.name}`}
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 text-[#A3A3A3]" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenDocumentInNewTab(item);
+                      }}
+                      className="p-1.5 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] rounded-lg border border-transparent hover:border-[#292929] transition-all cursor-pointer flex items-center justify-center shrink-0"
+                      title={`Open "${item.name}" in new tab`}
+                      aria-label={`Open ${item.name} in new tab`}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-[#A3A3A3]" />
+                    </button>
 
                     <button
                       type="button"
