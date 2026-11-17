@@ -353,10 +353,11 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => onAttachAll(unattachedReadyItems)}
-                  className="text-xs font-medium px-2.5 py-1.5 rounded-xl bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF] transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95"
-                  title={`Attach all ${unattachedReadyItems.length} ready documents to current chat`}
+                  className="text-xs font-medium px-3 py-1.5 rounded-xl bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF] transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95"
+                  title="Attach all ready documents to current chat"
+                  aria-label="Attach all ready documents"
                 >
-                  Attach All ({unattachedReadyItems.length})
+                  All
                 </button>
               )}
             </div>
