@@ -409,10 +409,8 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                       onAttachAll(unattachedReadyItems.length > 0 ? unattachedReadyItems : items);
                     }
                   }}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95 ${
-                    areAllAttached
-                      ? 'bg-[#FFFFFF] text-[#000000] hover:bg-[#FFFFFF]/90 font-semibold shadow-xs'
-                      : 'bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF]'
+                  className={`text-xs font-medium px-3 py-1.5 rounded-xl bg-[#171717] hover:bg-[#292929] border transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95 text-[#FFFFFF] ${
+                    areAllAttached ? 'border-[#FFFFFF]/40' : 'border-[#292929]'
                   }`}
                   title={
                     areAllAttached
@@ -421,7 +419,9 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                   }
                   aria-label={areAllAttached ? 'Unselect all attached documents' : 'Attach all ready documents'}
                 >
-                  {areAllAttached ? 'Unselect All' : 'All'}
+                  <span className={areAllAttached ? 'line-through decoration-[#FFFFFF] decoration-[1.5px]' : ''}>
+                    All
+                  </span>
                 </button>
               )}
             </div>
