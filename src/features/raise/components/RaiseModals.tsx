@@ -165,6 +165,14 @@ export const RaiseModals: React.FC<RaiseModalsProps> = ({
                 onSelectLibraryDocument(item);
               });
             }}
+            onDocumentDeleted={(filename) => {
+              const matched = sourceDocs.find(
+                (d) => d.name.toLowerCase() === filename.toLowerCase() || d.id === filename
+              );
+              if (matched) {
+                onDeleteSourceDoc(matched.id, matched.name);
+              }
+            }}
           />
         </Suspense>
       )}

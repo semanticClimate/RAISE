@@ -39,6 +39,7 @@ export interface LibraryPickerModalProps {
   onOpenUploadFromPC: () => void;
   onViewPdf?: (filename: string, pageNumber?: number) => void;
   onAttachAll?: (items: LibraryItem[]) => void;
+  onDocumentDeleted?: (filename: string) => void;
 }
 
 export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
@@ -49,6 +50,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   onOpenUploadFromPC,
   onViewPdf,
   onAttachAll,
+  onDocumentDeleted,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'pdf' | 'csv' | 'docx' | 'other'>('all');
@@ -146,11 +148,33 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   const handleDeleteDocument = async (name: string) => {
     setDeletingName(name);
     try {
-      await sourceService.deleteDocument(name);
-      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      // Optimistically remove from TanStack Query document cache
+      queryClient.setQueryData(['documents'], (oldDocs: any) => {
+        if (!Array.isArray(oldDocs)) return oldDocs;
+        return oldDocs.filter(
+          (d: any) => (d.filename || d.name) !== name && d.id !== name && d.doc_id !== name
+        );
+      });
       setOptimisticUploads((prev) => prev.filter((o) => o.name !== name));
+
+      // Invoke authoritative backend purge (ChromaDB, Neo4j, PostgreSQL, filesystem, manifest)
+      const res = await sourceService.deleteDocument(name);
+      if (res.status === 403 || res.error) {
+        // Rollback / re-synchronize on refusal or failure
+        queryClient.invalidateQueries({ queryKey: ['documents'] });
+        return;
+      }
+
+      // Authoritative cache refresh
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+
+      // Notify parent to unattach if document was in active session drawer
+      if (onDocumentDeleted) {
+        onDocumentDeleted(name);
+      }
     } catch (err) {
       console.error('Delete error in LibraryPickerModal:', err);
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
     } finally {
       setDeletingName(null);
     }

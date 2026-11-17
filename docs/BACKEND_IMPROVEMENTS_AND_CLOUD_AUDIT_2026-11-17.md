@@ -144,16 +144,30 @@ Most critically, an in-depth code trace has identified a **fatal cascading failu
 ---
 
 ### 2.6 Bug 6: Document Deletion Resurrection Bug (`auto_scan_and_reconcile_documents` Ignores `deleted_documents`)
-* **Location**: `src/api/context.py` (lines 82–120) & `src/features/documents/service.py` (lines 336–360)
+* **Location**: `src/api/context.py` (lines 82–120), `src/features/documents/service.py` (lines 317–343), and `src/retrieval/purger.py` (lines 115–135)
 * **Description**:
-  When a user deletes a document via `DELETE /api/documents/{doc_id}`, `DocumentService.delete_document()` removes the entry from `ingested_manifest.json` and records the ID in `"deleted_documents"`.
-  However, on every `GET /api/documents` query, `context.py:get_library_documents()` calls `auto_scan_and_reconcile_documents()`.
-  This function scans `backend/data/documents/*.pdf`. If the physical PDF file or cached chunks (`data/cache/chunks/{stem}_chunks.json`) still exist on disk, it executes `record_ready_document()` without checking if the file is in `deleted_documents`!
+  When a user clicks the trash icon in the Library modal, the frontend issues `DELETE /api/documents/{doc_id}` (falling back to `POST /api/documents/delete`).
+  The deletion pipeline fails to permanently remove documents due to a cyclical resurrection loop:
+  1. **Delegation Failure without Direct Fallback**: In `DocumentService.delete_document()`, filesystem purging is delegated exclusively to `self.rag_engine.purge_document(filename)`. If `self.rag_engine` is `None` (e.g., lazy initialization or fast gateway boot without full neural pipelines), `purger.py` is skipped entirely. Neither the physical PDF in `data/documents/`, chunk JSONs in `data/processed/chunks/`, nor extracted markdown in `data/library/` are unlinked.
+  2. **Silent Unlink Failures**: In `purger.py:116-123`, `cand_path.unlink()` is wrapped in `try...except Exception: pass`. If an OS file lock (e.g., PyMuPDF/fitz handle open during page streaming) prevents unlinking, the error is swallowed and the file remains on disk.
+  3. **Auto-Scan Manifest Resurrection**: Immediately after deletion, `delete_document_by_id` calls `document_service.list_library_documents()`, which triggers `auto_scan_and_reconcile_documents()`. This function scans `data/documents/*.pdf`:
+     ```python
+     if pdf_file.name not in registered_files and (real_chunks_count > 0 or extracted_file.exists()):
+         record_ready_document(...)
+     ```
+     Because `auto_scan_and_reconcile_documents` **does not consult `manifest.get("deleted_documents", [])`**, it immediately classifies the remaining PDF/chunks as an unmanifested ready document and re-registers it into `manifest["ready_documents"]`.
+  4. **Active Session Drawer Desync**: The deletion routine never updates the `chat_sessions` table or in-memory session drawers. Sessions with the deleted document in `active_docs` retain dead pointers, triggering retrieval errors on subsequent user prompts.
 * **Impact**:
-  Deleted documents immediately get re-added to the manifest on the next page reload or library request, making documents appear "undeletable" to end-users.
-* **Recommended Fix**:
-  1. In `auto_scan_and_reconcile_documents()`, check `manifest.get("deleted_documents", [])` before reconciling. If the file stem or filename is in `deleted_documents`, skip re-registering it.
-  2. When `delete_document()` is called, physically delete or move the file from `data/documents/` and its chunk caches in `data/cache/chunks/` and `data/library/` so disk scans cannot revive it.
+  Documents appear to delete briefly in the UI, then immediately reappear upon page reload or library re-open. Sessions referencing deleted documents fail during retrieval synthesis.
+* **Recommended Backend Fix**:
+  1. In `auto_scan_and_reconcile_documents()`, parse `deleted_docs = set(manifest.get("deleted_documents", []))` and never re-register any filename in that set:
+     ```python
+     deleted_files = set(manifest.get("deleted_documents", []))
+     if pdf_file.name in deleted_files or stem in deleted_files:
+         continue
+     ```
+  2. In `DocumentService.delete_document()`, ensure direct unlinking of files from `self.documents_dir`, `CHUNKS_DIR`, `LIBRARY_DIR`, and `CATALOGS_DIR` regardless of whether `self.rag_engine` is populated.
+  3. Purge the deleted document name from `active_docs` across all active sessions in `postgres_manager` or session memory.
 
 ---
 
