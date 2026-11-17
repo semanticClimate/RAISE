@@ -199,7 +199,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <p className="hidden sm:block text-[11px] text-slate-500 dark:text-slate-400 truncate">
                           {activeTab === 'theme' && 'Appearance & visual styles'}
                           {activeTab === 'library' && 'Knowledge documents & datasets'}
-                          {activeTab === 'data-control' && 'Privacy, archives & export'}
+                          {activeTab === 'data-control' && 'Session persistence, cleanup & export'}
                           {activeTab === 'gateway' && 'Backend connection & routing'}
                           {activeTab === 'voice' && 'Speech synthesis & voices'}
                           {activeTab === 'help' && 'Shortcuts & documentation'}

@@ -1,15 +1,6 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import type { ChatSession } from '../../types';
-import { isLegacySession } from '../../utils/storageCleaner';
-
-export interface SharedLinkItem {
-  id: string;
-  title: string;
-  url: string;
-  createdAt: string;
-  views: number;
-}
 
 export interface SettingsDataControlTabProps {
   sessions: ChatSession[];
@@ -23,10 +14,7 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
   onSessionsChange,
   onDeleteAllChats,
 }) => {
-  // Modal states for the 5 actions
-  const [isSharedLinksOpen, setIsSharedLinksOpen] = useState(false);
-  const [isArchiveChatsOpen, setIsArchiveChatsOpen] = useState(false);
-  const [isArchiveAllOpen, setIsArchiveAllOpen] = useState(false);
+  // Modal states for the actions
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
 
@@ -52,63 +40,8 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
     );
   };
 
-  // Shared links state
-  const [sharedLinks, setSharedLinks] = useState<SharedLinkItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('raise_shared_links');
-      if (saved) {
-        const parsed = JSON.parse(saved) as unknown[];
-        if (Array.isArray(parsed)) {
-          // Cleanse legacy hardcoded mock items if any exist in localStorage
-          return (parsed as SharedLinkItem[]).filter(
-            (item: SharedLinkItem) =>
-              item.id !== 'share-1' &&
-              item.id !== 'share-2' &&
-              !item.url?.includes('raise.internal')
-          );
-        }
-      }
-    } catch {}
-    return [];
-  });
-
-  const saveSharedLinks = (links: SharedLinkItem[]) => {
-    setSharedLinks(links);
-    try {
-      localStorage.setItem('raise_shared_links', JSON.stringify(links));
-    } catch {}
-  };
-
-  // Archived chats state
-  const [archivedSessions, setArchivedSessions] = useState<ChatSession[]>(() => {
-    try {
-      const saved = localStorage.getItem('raise_archived_sessions');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const cleaned = (parsed as ChatSession[]).filter((s) => !isLegacySession(s));
-          if (cleaned.length !== parsed.length) {
-            try {
-              localStorage.setItem('raise_archived_sessions', JSON.stringify(cleaned));
-            } catch {}
-          }
-          return cleaned;
-        }
-      }
-    } catch {}
-    return [];
-  });
-
-  const saveArchivedSessions = (archived: ChatSession[]) => {
-    setArchivedSessions(archived);
-    try {
-      localStorage.setItem('raise_archived_sessions', JSON.stringify(archived));
-    } catch {}
-  };
-
   // Toast / feedback notifications
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<'json' | 'markdown'>('json');
 
   const showToast = (msg: string) => {
@@ -121,69 +54,12 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (isDeleteAllOpen) setIsDeleteAllOpen(false);
-        else if (isArchiveAllOpen) setIsArchiveAllOpen(false);
-        else if (isArchiveChatsOpen) setIsArchiveChatsOpen(false);
-        else if (isSharedLinksOpen) setIsSharedLinksOpen(false);
         else if (isExportOpen) setIsExportOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDeleteAllOpen, isArchiveAllOpen, isArchiveChatsOpen, isSharedLinksOpen, isExportOpen]);
-
-  // Handler: Copy shared link
-  const handleCopyLink = (item: SharedLinkItem) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(item.url).then(() => {
-        setCopiedLinkId(item.id);
-        showToast('Link copied to clipboard');
-        setTimeout(() => setCopiedLinkId(null), 2000);
-      });
-    }
-  };
-
-  // Handler: Revoke / Delete shared link
-  const handleRevokeLink = (id: string) => {
-    const updated = sharedLinks.filter((l) => l.id !== id);
-    saveSharedLinks(updated);
-    showToast('Shared link revoked');
-  };
-
-  // Handler: Restore archived session
-  const handleRestoreSession = (sessionToRestore: ChatSession) => {
-    const updatedArchived = archivedSessions.filter((s) => s.id !== sessionToRestore.id);
-    saveArchivedSessions(updatedArchived);
-
-    const updatedActive = [sessionToRestore, ...sessions];
-    onSessionsChange(updatedActive);
-
-    showToast(`Restored "${sessionToRestore.title}" to active chats`);
-  };
-
-  // Handler: Delete permanently from archive
-  const handleDeleteArchivedPermanently = (sessionId: string) => {
-    const updated = archivedSessions.filter((s) => s.id !== sessionId);
-    saveArchivedSessions(updated);
-    showToast('Session permanently deleted from archive');
-  };
-
-  // Handler: Archive all active chats
-  const handleConfirmArchiveAll = () => {
-    if (sessions.length === 0) {
-      setIsArchiveAllOpen(false);
-      showToast('No active chats to archive');
-      return;
-    }
-
-    const updatedArchived = [...sessions, ...archivedSessions];
-    saveArchivedSessions(updatedArchived);
-
-    // Clear active sessions
-    onSessionsChange([]);
-    onDeleteAllChats(); // Resets active conversation
-    setIsArchiveAllOpen(false);
-    showToast(`Archived ${sessions.length} chat session(s)`);
-  };
+  }, [isDeleteAllOpen, isExportOpen]);
 
   // Handler: Delete all chats permanently
   const handleConfirmDeleteAll = () => {
@@ -200,8 +76,6 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
       activeSessions: sessions,
-      archivedSessions: archivedSessions,
-      sharedLinks: sharedLinks,
       settings: {
         theme: localStorage.getItem('raise_theme_mode') || 'dark',
         gatewayUrl: localStorage.getItem('raise_gateway_url') || '',
@@ -249,7 +123,7 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[150] pointer-events-none animate-in fade-in zoom-in-95 duration-150">
-          <div className="px-4 py-2 rounded-xl bg-white/95 dark:bg-[#181a20]/95 text-slate-900 dark:text-white text-xs font-medium shadow-2xl backdrop-blur-md flex items-center gap-2 border border-slate-200/90 dark:border-white/15">
+          <div className="px-4 py-2 rounded-xl bg-white/95 dark:bg-[#171717]/95 text-slate-900 dark:text-[#FFFFFF] text-xs font-medium shadow-2xl backdrop-blur-md flex items-center gap-2 border border-slate-200/90 dark:border-[#292929]">
             <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
             <span>{toastMessage}</span>
           </div>
@@ -258,33 +132,32 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
 
       {/* Header section */}
       <div>
-        <h3 className="text-base font-semibold text-slate-900 dark:text-white">Data Control</h3>
-        <p className="text-xs text-slate-500 dark:text-[#a8a8a8] mt-1">
-          Manage your shared links, archived chats, data retention, export options, and conversation
-          history.
+        <h3 className="text-base font-semibold text-slate-900 dark:text-[#FFFFFF]">Data Control</h3>
+        <p className="text-xs text-slate-500 dark:text-[#A3A3A3] mt-1">
+          Manage your session persistence, export options, and conversation history.
         </p>
       </div>
 
       {/* Data Control Options */}
-      <div className="divide-y divide-slate-200/80 dark:divide-white/10 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] overflow-hidden">
+      <div className="divide-y divide-slate-200/80 dark:divide-[#292929] rounded-2xl border border-slate-200/80 dark:border-[#292929] bg-slate-50/50 dark:bg-[#0A0A0A] overflow-hidden">
         {/* Toggle: Restore chat on reload */}
-        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-[#111111] transition-colors">
           <div className="space-y-0.5 min-w-0">
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-[#FFFFFF]">
                 Restore last active chat on page reload
               </h4>
               <span
                 className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
                   persistOnReload
                     ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                    : 'bg-slate-200/70 dark:bg-white/10 text-slate-600 dark:text-slate-400'
+                    : 'bg-slate-200/70 dark:bg-[#171717] border dark:border-[#292929] text-slate-600 dark:text-[#A3A3A3]'
                 }`}
               >
                 {persistOnReload ? 'Enabled' : 'Fresh Start'}
               </span>
             </div>
-            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#a8a8a8]">
+            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#A3A3A3]">
               When disabled, refreshing the browser (F5) starts with a clean query landing page while keeping your chat history safely in the sidebar.
             </p>
           </div>
@@ -294,91 +167,25 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
             aria-checked={persistOnReload}
             onClick={handleTogglePersistOnReload}
             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              persistOnReload ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-white/20'
+              persistOnReload ? 'bg-[#FFFFFF]' : 'bg-slate-300 dark:bg-[#292929]'
             }`}
           >
             <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                persistOnReload ? 'translate-x-5' : 'translate-x-0'
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-lg ring-0 transition duration-200 ease-in-out ${
+                persistOnReload ? 'translate-x-5 bg-[#000000]' : 'translate-x-0 bg-white dark:bg-[#A3A3A3]'
               }`}
             />
           </button>
         </div>
 
-        {/* 1. Shared links */}
-        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
-          <div className="space-y-0.5 min-w-0">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Shared links</h4>
-              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-200/70 dark:bg-white/10 text-slate-600 dark:text-slate-300">
-                {sharedLinks.length} active
-              </span>
-            </div>
-            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#a8a8a8]">
-              Manage public links created to share specific conversation threads with collaborators.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsSharedLinksOpen(true)}
-            className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-white dark:bg-[#282a2c] hover:bg-slate-100 dark:hover:bg-[#34373a] text-slate-800 dark:text-slate-100 border border-slate-200/90 dark:border-white/10 transition-all shadow-2xs active:scale-98 cursor-pointer shrink-0"
-          >
-            Manage
-          </button>
-        </div>
-
-        {/* 2. Archive chats */}
-        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
-          <div className="space-y-0.5 min-w-0">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-                Archive chats
-              </h4>
-              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-slate-200/70 dark:bg-white/10 text-slate-600 dark:text-slate-300">
-                {archivedSessions.length} archived
-              </span>
-            </div>
-            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#a8a8a8]">
-              View and restore conversations you have previously moved to your archive.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsArchiveChatsOpen(true)}
-            className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-white dark:bg-[#282a2c] hover:bg-slate-100 dark:hover:bg-[#34373a] text-slate-800 dark:text-slate-100 border border-slate-200/90 dark:border-white/10 transition-all shadow-2xs active:scale-98 cursor-pointer shrink-0"
-          >
-            Manage
-          </button>
-        </div>
-
-        {/* 3. Archive all chats */}
-        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
-          <div className="space-y-0.5 min-w-0">
-            <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-              Archive all chats
-            </h4>
-            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#a8a8a8]">
-              Move all active chat conversations to your archive to clean up your recents sidebar.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsArchiveAllOpen(true)}
-            className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-white dark:bg-[#282a2c] hover:bg-slate-100 dark:hover:bg-[#34373a] text-slate-800 dark:text-slate-100 border border-slate-200/90 dark:border-white/10 transition-all shadow-2xs active:scale-98 cursor-pointer shrink-0"
-          >
-            Archive all
-          </button>
-        </div>
-
-        {/* 4. Delete all chats */}
+        {/* Delete all chats */}
         <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-rose-50/40 dark:hover:bg-rose-500/5 transition-colors">
           <div className="space-y-0.5 min-w-0">
             <h4 className="text-sm font-semibold text-rose-600 dark:text-rose-400">
               Delete all chats
             </h4>
-            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#a8a8a8]">
-              Permanently erase all chat conversations, prompt histories, and source attachments
-              from this browser.
+            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#A3A3A3]">
+              Permanently erase all chat conversations, prompt histories, and source attachments from this browser.
             </p>
           </div>
           <button
@@ -390,19 +197,18 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
           </button>
         </div>
 
-        {/* 5. Export data */}
-        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+        {/* Export data */}
+        <div className="p-3.5 sm:p-4.5 flex flex-row items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-[#111111] transition-colors">
           <div className="space-y-0.5 min-w-0">
-            <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Export data</h4>
-            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#a8a8a8]">
-              Download an export of your chats, library document manifests, and custom configuration
-              settings.
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-[#FFFFFF]">Export data</h4>
+            <p className="hidden sm:block text-xs text-slate-500 dark:text-[#A3A3A3]">
+              Download an export of your chats, library document manifests, and custom configuration settings.
             </p>
           </div>
           <button
             type="button"
             onClick={() => setIsExportOpen(true)}
-            className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-white dark:bg-[#282a2c] hover:bg-slate-100 dark:hover:bg-[#34373a] text-slate-800 dark:text-slate-100 border border-slate-200/90 dark:border-white/10 transition-all shadow-2xs active:scale-98 cursor-pointer shrink-0"
+            className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-white dark:bg-[#171717] hover:bg-slate-100 dark:hover:bg-[#292929] text-slate-800 dark:text-[#FFFFFF] border border-slate-200/90 dark:border-[#292929] transition-all shadow-2xs active:scale-98 cursor-pointer shrink-0"
           >
             Export
           </button>
@@ -410,295 +216,7 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          POPUP 1: SHARED LINKS MANAGE POPUP
-         ───────────────────────────────────────────────────────────── */}
-      {isSharedLinksOpen && (
-        <div
-          id="sharedLinksModalBackdrop"
-          className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsSharedLinksOpen(false);
-          }}
-        >
-          <div
-            id="sharedLinksModalDialog"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-white dark:bg-[#181b26] border border-slate-200 dark:border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150 select-none"
-          >
-            {/* Header */}
-            <div className="p-4 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between bg-slate-50/80 dark:bg-white/[0.02]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                  Shared Links
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-[#a8a8a8]">
-                  Anyone with these links can view the shared conversation thread.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSharedLinksOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Content List */}
-            <div className="p-4 overflow-y-auto space-y-3 flex-1">
-              {sharedLinks.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-xs">
-                  No active shared links found.
-                </div>
-              ) : (
-                sharedLinks.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.03] flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <h5 className="text-xs font-semibold text-slate-900 dark:text-white truncate">
-                        {item.title}
-                      </h5>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-[#a8a8a8]">
-                        <span className="font-mono truncate">{item.url}</span>
-                        <span>•</span>
-                        <span>{item.views} views</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleCopyLink(item)}
-                        className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-white dark:bg-[#282a2c] hover:bg-slate-100 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-                      >
-                        {copiedLinkId === item.id ? 'Copied!' : 'Copy'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRevokeLink(item.id)}
-                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Revoke link"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.01] flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsSharedLinksOpen(false)}
-                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-white dark:bg-white dark:text-slate-900 cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          POPUP 2: ARCHIVE CHATS MANAGE POPUP
-         ───────────────────────────────────────────────────────────── */}
-      {isArchiveChatsOpen && (
-        <div
-          id="archiveChatsModalBackdrop"
-          className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsArchiveChatsOpen(false);
-          }}
-        >
-          <div
-            id="archiveChatsModalDialog"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-white dark:bg-[#181b26] border border-slate-200 dark:border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150 select-none"
-          >
-            {/* Header */}
-            <div className="p-4 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between bg-slate-50/80 dark:bg-white/[0.02]">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                  Archived Chats
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-[#a8a8a8]">
-                  View or restore conversations that were moved to your archive.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsArchiveChatsOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Content List */}
-            <div className="p-4 overflow-y-auto space-y-3 flex-1">
-              {archivedSessions.length === 0 ? (
-                <div className="text-center py-10 space-y-2">
-                  <div className="w-10 h-10 mx-auto rounded-xl bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-400">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="1.5"
-                        d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-                      />
-                    </svg>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    No archived chats
-                  </p>
-                  <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
-                    When you archive chats, they will safely appear here instead of cluttering your
-                    sidebar.
-                  </p>
-                </div>
-              ) : (
-                archivedSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="p-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.03] flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0 space-y-0.5">
-                      <h5 className="text-xs font-semibold text-slate-900 dark:text-white truncate">
-                        {session.title}
-                      </h5>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-[#a8a8a8]">
-                        <span>{session.messages?.length || 0} messages</span>
-                        <span>•</span>
-                        <span>{session.timestamp}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleRestoreSession(session)}
-                        className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors cursor-pointer"
-                      >
-                        Restore
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteArchivedPermanently(session.id)}
-                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Delete permanently"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.01] flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsArchiveChatsOpen(false)}
-                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-white dark:bg-white dark:text-slate-900 cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          POPUP 3: ARCHIVE ALL CHATS CONFIRMATION POPUP
-         ───────────────────────────────────────────────────────────── */}
-      {isArchiveAllOpen && (
-        <div
-          id="archiveAllModalBackdrop"
-          className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsArchiveAllOpen(false);
-          }}
-        >
-          <div
-            id="archiveAllModalDialog"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-white dark:bg-[#181b26] border border-slate-200 dark:border-white/15 rounded-2xl shadow-2xl p-5 select-none space-y-4 animate-in zoom-in-95 duration-150"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-[#a8c7fa] flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-                  />
-                </svg>
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                  Archive all chats?
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-[#a8a8a8] leading-relaxed">
-                  This will move all{' '}
-                  <strong className="text-slate-900 dark:text-white">{sessions.length}</strong>{' '}
-                  active conversations to your archive. You can access or restore them anytime under
-                  Data controls &gt; Archive chats.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-white/10">
-              <button
-                type="button"
-                onClick={() => setIsArchiveAllOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmArchiveAll}
-                className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors cursor-pointer"
-              >
-                Archive all chats
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          POPUP 4: DELETE ALL CHATS CONFIRMATION POPUP
+          POPUP: DELETE ALL CHATS CONFIRMATION POPUP
           (Clicking outside the popup closes the delete all popup)
          ───────────────────────────────────────────────────────────── */}
       {isDeleteAllOpen && (
@@ -706,7 +224,6 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
           id="deleteAllModalBackdrop"
           className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
           onClick={(e) => {
-            // User requested: "clicking outside the popup close the delete all popup"
             if (e.target === e.currentTarget) {
               setIsDeleteAllOpen(false);
             }
@@ -715,7 +232,7 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
           <div
             id="deleteAllModalDialog"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-white dark:bg-[#181b26] border border-rose-200 dark:border-rose-500/30 rounded-2xl shadow-2xl p-5 select-none space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-md bg-white dark:bg-[#0A0A0A] border border-rose-200 dark:border-rose-500/30 rounded-2xl shadow-2xl p-5 select-none space-y-4 animate-in zoom-in-95 duration-150"
           >
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
@@ -734,10 +251,10 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
                 </svg>
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-[#FFFFFF]">
                   Delete all chats?
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-[#a8a8a8] leading-relaxed">
+                <p className="text-xs text-slate-500 dark:text-[#A3A3A3] leading-relaxed">
                   Are you sure you want to permanently delete all{' '}
                   <strong className="text-rose-600 dark:text-rose-400">{sessions.length}</strong>{' '}
                   chat conversations? All message history, questions, and attached documents in this
@@ -746,11 +263,11 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-white/10">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-[#292929]">
               <button
                 type="button"
                 onClick={() => setIsDeleteAllOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-[#A3A3A3] hover:bg-slate-100 dark:hover:bg-[#171717] rounded-xl transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -767,7 +284,7 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          POPUP 5: EXPORT DATA POPUP
+          POPUP: EXPORT DATA POPUP
          ───────────────────────────────────────────────────────────── */}
       {isExportOpen && (
         <div
@@ -780,10 +297,10 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
           <div
             id="exportModalDialog"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-white dark:bg-[#181b26] border border-slate-200 dark:border-white/15 rounded-2xl shadow-2xl p-5 select-none space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-md bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-[#292929] rounded-2xl shadow-2xl p-5 select-none space-y-4 animate-in zoom-in-95 duration-150"
           >
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-[#a8c7fa] flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-900 dark:text-[#FFFFFF] border dark:border-[#292929] flex items-center justify-center shrink-0">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -794,36 +311,31 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
                 </svg>
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-[#FFFFFF]">
                   Export data
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-[#a8a8a8] leading-relaxed">
-                  Export all your conversations, shared links, and settings for backup or analysis.
+                <p className="text-xs text-slate-500 dark:text-[#A3A3A3] leading-relaxed">
+                  Export all your conversations and configuration settings for backup or analysis.
                 </p>
               </div>
             </div>
 
-            {/* Export Summary Cards */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/10">
-                <span className="text-slate-500 dark:text-[#a8a8a8] text-[11px]">Active Chats</span>
-                <p className="font-semibold text-slate-900 dark:text-white text-sm">
-                  {sessions.length}
+            {/* Export Summary Card */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#111111] border border-slate-200/80 dark:border-[#292929] flex items-center justify-between">
+              <div>
+                <span className="text-slate-500 dark:text-[#A3A3A3] text-xs">Total Conversations</span>
+                <p className="font-semibold text-slate-900 dark:text-[#FFFFFF] text-base mt-0.5">
+                  {sessions.length} {sessions.length === 1 ? 'chat' : 'chats'}
                 </p>
               </div>
-              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/10">
-                <span className="text-slate-500 dark:text-[#a8a8a8] text-[11px]">
-                  Archived Chats
-                </span>
-                <p className="font-semibold text-slate-900 dark:text-white text-sm">
-                  {archivedSessions.length}
-                </p>
-              </div>
+              <span className="text-[11px] font-mono text-slate-400 dark:text-[#A3A3A3]">
+                {exportFormat.toUpperCase()} format
+              </span>
             </div>
 
             {/* Format selection */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              <label className="text-xs font-semibold text-slate-800 dark:text-[#FFFFFF]">
                 Export Format
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -832,12 +344,12 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
                   onClick={() => setExportFormat('json')}
                   className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
                     exportFormat === 'json'
-                      ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-700 dark:text-[#a8c7fa]'
-                      : 'border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300'
+                      ? 'border-[#FFFFFF] bg-slate-100 dark:bg-[#171717] text-slate-900 dark:text-[#FFFFFF]'
+                      : 'border-slate-200 dark:border-[#292929] text-slate-700 dark:text-[#A3A3A3] hover:border-slate-300 dark:hover:border-[#383838]'
                   }`}
                 >
                   <span className="text-xs font-semibold block">JSON Data</span>
-                  <span className="text-[10px] text-slate-500 dark:text-[#a8a8a8]">
+                  <span className="text-[10px] text-slate-500 dark:text-[#A3A3A3]">
                     Complete structure
                   </span>
                 </button>
@@ -846,12 +358,12 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
                   onClick={() => setExportFormat('markdown')}
                   className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
                     exportFormat === 'markdown'
-                      ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-700 dark:text-[#a8c7fa]'
-                      : 'border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300'
+                      ? 'border-[#FFFFFF] bg-slate-100 dark:bg-[#171717] text-slate-900 dark:text-[#FFFFFF]'
+                      : 'border-slate-200 dark:border-[#292929] text-slate-700 dark:text-[#A3A3A3] hover:border-slate-300 dark:hover:border-[#383838]'
                   }`}
                 >
                   <span className="text-xs font-semibold block">Markdown</span>
-                  <span className="text-[10px] text-slate-500 dark:text-[#a8a8a8]">
+                  <span className="text-[10px] text-slate-500 dark:text-[#A3A3A3]">
                     Readable text
                   </span>
                 </button>
@@ -859,18 +371,18 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
             </div>
 
             {/* Footer buttons */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-white/10">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-[#292929]">
               <button
                 type="button"
                 onClick={() => setIsExportOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-[#A3A3A3] hover:bg-slate-100 dark:hover:bg-[#171717] rounded-xl transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handlePerformExport}
-                className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-1.5 text-xs font-semibold bg-[#FFFFFF] hover:bg-slate-200 text-[#000000] rounded-xl transition-colors cursor-pointer"
               >
                 Download Export
               </button>
