@@ -142,10 +142,10 @@ export const ChatSessionItem: React.FC<ChatSessionItemProps> = ({
           onClick={() => onTogglePin(session.id)}
           title={isPinned ? 'Unpin' : 'Pin'}
           aria-label={isPinned ? 'Unpin' : 'Pin'}
-          className={`p-1.5 rounded-md transition-all cursor-pointer ${
+          className={`p-1.5 rounded-lg transition-all cursor-pointer ${
             isPinned
-              ? 'opacity-100 text-indigo-600 dark:text-[#a8c7fa] bg-indigo-50 dark:bg-indigo-500/15'
-              : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:hover:text-slate-200 dark:hover:bg-white/10 opacity-0 group-hover:opacity-100'
+              ? 'opacity-100 text-[#FFFFFF] bg-[#171717] border border-[#292929]'
+              : 'text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] opacity-0 group-hover:opacity-100'
           }`}
         >
           <svg

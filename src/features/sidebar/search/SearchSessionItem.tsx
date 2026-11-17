@@ -3,8 +3,6 @@ import type React from 'react';
 import {
   Download,
   Edit2,
-  FileText,
-  MessageSquare,
   MoreVertical,
   Pin,
   Trash2,
@@ -106,11 +104,27 @@ export const SearchSessionItem: React.FC<SearchSessionItemProps> = ({
       }`}
     >
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-        {isPinned ? (
-          <Pin className="w-3.5 h-3.5 text-[#FFFFFF] shrink-0 fill-current" />
-        ) : (
-          <MessageSquare className="w-3.5 h-3.5 text-[#A3A3A3] shrink-0" />
-        )}
+        {/* Leftmost: Drawer documents indicator badge */}
+        <div
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#171717] border border-[#292929] text-[#A3A3A3] shrink-0"
+          title={`${dataCount} document${dataCount === 1 ? '' : 's'} in drawer`}
+        >
+          <svg
+            className="w-3 h-3 text-[#A3A3A3] shrink-0"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+          >
+            <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+          </svg>
+          <span className="text-[10px] font-mono font-medium text-[#FFFFFF]">
+            {dataCount}
+          </span>
+        </div>
+
         {isRenaming && setNewSessionTitle && handleSaveRename ? (
           <input
             type="text"
@@ -134,31 +148,51 @@ export const SearchSessionItem: React.FC<SearchSessionItemProps> = ({
             className="w-full text-xs font-medium px-2 py-0.5 rounded bg-[#111111] border border-[#292929] text-[#FFFFFF] focus:outline-none focus:border-[#FFFFFF]/50"
           />
         ) : (
-          <span
-            className={`text-xs truncate ${
-              isSelected ? 'font-semibold text-[#FFFFFF]' : 'font-medium'
-            }`}
-          >
-            {session.title}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0 truncate">
+            {isPinned && (
+              <span title="Pinned chat" className="inline-flex shrink-0">
+                <Pin className="w-3 h-3 text-[#FFFFFF] shrink-0 fill-current" />
+              </span>
+            )}
+            <span
+              className={`text-xs truncate ${
+                isSelected ? 'font-semibold text-[#FFFFFF]' : 'font-medium'
+              }`}
+            >
+              {session.title}
+            </span>
+          </div>
         )}
       </div>
 
-      {/* Right side: Drawer icon with count + Date + Three dots */}
-      <div className="flex items-center gap-2 shrink-0">
-        <div
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#171717] border border-[#292929] text-[#A3A3A3]"
-          title={`${dataCount} source data added`}
-        >
-          <FileText className="w-3 h-3 text-[#A3A3A3] shrink-0" />
-          <span className="text-[10px] font-mono font-medium text-[#FFFFFF]">
-            {dataCount}
-          </span>
-        </div>
-
+      {/* Right side: Date + Pin button + Three dots */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <span className="text-[11px] font-mono text-[#A3A3A3] whitespace-nowrap min-w-[65px] text-right">
           {formatSessionDate(session.updated_at || session.created_at, session.timestamp)}
         </span>
+
+        {/* Pin button / icon */}
+        {handleTogglePinSession && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleTogglePinSession(session.id);
+            }}
+            title={isPinned ? 'Unpin chat' : 'Pin chat to top'}
+            aria-label={isPinned ? 'Unpin chat' : 'Pin chat to top'}
+            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+              isPinned
+                ? 'opacity-100 text-[#FFFFFF] hover:text-[#FFFFFF]'
+                : 'opacity-0 sm:group-hover:opacity-100 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717]'
+            }`}
+          >
+            <Pin
+              className="w-3.5 h-3.5"
+              fill={isPinned ? 'currentColor' : 'none'}
+            />
+          </button>
+        )}
 
         {setActiveSessionMenuId && (
           <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>

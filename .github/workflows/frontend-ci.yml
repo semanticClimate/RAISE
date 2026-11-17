@@ -5,10 +5,12 @@ on:
     branches:
       - frontend
       - main
+      - Frontend
   pull_request:
     branches:
       - frontend
       - main
+      - Frontend
   workflow_dispatch:
 
 permissions:
@@ -60,14 +62,14 @@ jobs:
         run: npm run build
 
       - name: Upload Build Artifacts
-        if: github.ref == 'refs/heads/frontend' && github.event_name != 'pull_request'
+        if: (github.ref == 'refs/heads/frontend' || github.ref == 'refs/heads/Frontend' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: './dist'
 
   deploy:
     name: Deploy to GitHub Pages
-    if: github.ref == 'refs/heads/frontend' && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/frontend' || github.ref == 'refs/heads/Frontend' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
     needs: validate
     environment:
       name: github-pages

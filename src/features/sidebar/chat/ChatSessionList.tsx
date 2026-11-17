@@ -48,7 +48,14 @@ export const ChatSessionList: React.FC<ChatSessionListProps> = ({
           isSelected={s.id === currentSessionId}
           isMenuOpen={activeSessionMenuId === s.id}
           isRenaming={renamingSessionId === s.id}
-          isPinned={pinnedSessionIds.includes(s.id)}
+          isPinned={
+            pinnedSessionIds.includes(s.id) ||
+            (s.thread_id ? pinnedSessionIds.includes(s.thread_id) : false) ||
+            (s.session_id ? pinnedSessionIds.includes(s.session_id) : false) ||
+            Boolean((s as any).isPinned) ||
+            Boolean((s as any).is_pinned) ||
+            Boolean((s as any).pinned)
+          }
           hasBranches={branchedParentIds.has(s.id)}
           newSessionTitle={newSessionTitle}
           setNewSessionTitle={setNewSessionTitle}

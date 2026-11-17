@@ -7,7 +7,7 @@ import { formatBytes } from '../../../utils/formatters';
 export interface SourceDocItemProps {
   doc: SourceDocument;
   isReady: boolean;
-  onToggle: (id: string) => void;
+  onToggle?: (id: string) => void;
   onDelete: (id: string, name: string) => void;
   onViewPdf?: (filename: string, pageNumber?: number) => void;
   onOpenArtifactModal?: (documentName: string, type: 'markdown' | 'okf', url?: string) => void;
@@ -16,7 +16,6 @@ export interface SourceDocItemProps {
 export const SourceDocItem: React.FC<SourceDocItemProps> = ({
   doc,
   isReady,
-  onToggle,
   onDelete,
   onViewPdf,
 }) => {
@@ -27,36 +26,29 @@ export const SourceDocItem: React.FC<SourceDocItemProps> = ({
 
   return (
     <div
-      onClick={() => !isProcessing && onToggle(doc.id)}
-      className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 select-none ${
+      onClick={() => {
+        if (!isProcessing && isReady && doc.name.toLowerCase().endsWith('.pdf')) {
+          useDocumentViewerStore.getState().openDocument(doc.name, 1);
+          onViewPdf?.(doc.name, 1);
+        }
+      }}
+      className={`p-3 rounded-xl border border-[#292929] bg-[#111111] hover:bg-[#171717] transition-all flex items-center justify-between gap-3 select-none ${
         isProcessing
-          ? 'bg-[#111111] border-[#292929] cursor-wait'
-          : doc.selected
-            ? 'bg-[#171717] border-[#FFFFFF]/30 text-[#FFFFFF] shadow-sm cursor-pointer'
-            : 'bg-[#111111] hover:bg-[#171717] border-[#292929] hover:border-[#292929] text-[#A3A3A3] hover:text-[#FFFFFF] cursor-pointer'
+          ? 'cursor-wait'
+          : isReady && doc.name.toLowerCase().endsWith('.pdf')
+            ? 'cursor-pointer'
+            : ''
       }`}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        {isProcessing ? (
-          <div className="shrink-0 w-4 h-4 flex items-center justify-center">
-            <Loader2 className="w-3.5 h-3.5 text-[#FFFFFF] animate-spin" />
-          </div>
-        ) : (
-          <input
-            type="checkbox"
-            checked={doc.selected}
-            onChange={(e) => {
-              e.stopPropagation();
-              onToggle(doc.id);
-            }}
-            className="w-4 h-4 rounded border-[#292929] bg-[#0A0A0A] accent-[#FFFFFF] focus:ring-0 cursor-pointer shrink-0"
-          />
-        )}
-
-        {/* File icon */}
+        {/* File icon / processing spinner */}
         <div className="relative shrink-0">
           <div className="w-8 h-8 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center text-[#FFFFFF] shrink-0">
-            <FileText className="w-4 h-4 text-[#FFFFFF]" />
+            {isProcessing ? (
+              <Loader2 className="w-4 h-4 text-[#FFFFFF] animate-spin" />
+            ) : (
+              <FileText className="w-4 h-4 text-[#FFFFFF]" />
+            )}
           </div>
         </div>
 

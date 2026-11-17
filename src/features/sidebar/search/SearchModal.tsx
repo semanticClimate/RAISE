@@ -54,6 +54,16 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     s.title.toLowerCase().includes(searchFilter.toLowerCase())
   );
 
+  const isSessionPinned = (s: ChatSession) =>
+    pinnedSessionIds.includes(s.id) ||
+    (s.thread_id ? pinnedSessionIds.includes(s.thread_id) : false) ||
+    (s.session_id ? pinnedSessionIds.includes(s.session_id) : false) ||
+    Boolean((s as any).isPinned) ||
+    Boolean((s as any).is_pinned) ||
+    Boolean((s as any).pinned);
+
+  const pinnedCount = sessions.filter(isSessionPinned).length;
+
   return (
     <div
       id="searchModalBackdrop"
@@ -159,12 +169,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         >
           <div className="px-2.5 py-1.5 text-[10px] font-mono font-medium text-[#A3A3A3] uppercase tracking-wider flex items-center justify-between">
             <span>All Chats</span>
-            <span>{sessions.length} total</span>
+            <span>
+              {pinnedCount > 0 ? `${pinnedCount} pinned • ` : ''}
+              {sessions.length} total
+            </span>
           </div>
           {filteredSessions.map((s, sIdx) => {
             const isSelected = s.id === currentSessionId;
             const isHighlighted = activeSearchIndex === sIdx;
-            const isPinned = pinnedSessionIds.includes(s.id);
+            const isPinned = isSessionPinned(s);
             const isMenuOpen = activeSessionMenuId === s.id;
             const isRenaming = renamingSessionId === s.id;
             const dataCount = isSelected
