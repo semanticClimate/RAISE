@@ -1,5 +1,6 @@
 import { FolderSync } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { sourceService } from '../../services/SourceService';
 import { formatBytes } from '../../utils/formatters';
 import { getDocumentStageLabel } from '../../utils/documentStageUtils';
@@ -152,6 +153,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   onDocumentDeleted,
   onCloseSettings,
 }) => {
+  const queryClient = useQueryClient();
   const handleOpenInChat = (item: LibraryItem) => {
     if (onSelectDocument) {
       onSelectDocument(item);
@@ -272,10 +274,12 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
     try {
       await sourceService.scanDocuments();
       await fetchLibraryDocuments();
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       showToast('Disk scan completed & library reconciled with data/documents/', 3000);
     } catch (err: any) {
       console.warn('Folder scan request completed:', err);
       await fetchLibraryDocuments();
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       showToast('Folder scan completed', 2500);
     } finally {
       setIsScanning(false);
@@ -435,6 +439,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
       }
       const updated = items.filter((item) => item.id !== id);
       saveItems(updated);
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       showToast(`Deleted "${name}" & pruned from GraphRAG`);
       if (onDocumentDeleted) {
         onDocumentDeleted(id, name);

@@ -1,3 +1,4 @@
+import { Plus, Search, X } from 'lucide-react';
 import type React from 'react';
 import { useState } from 'react';
 import { useScrollLock } from '../../../hooks';
@@ -57,7 +58,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   return (
     <div
       id="searchModalBackdrop"
-      className="fixed inset-0 z-[110] flex items-start justify-center pt-[clamp(3.5rem,8vh,5rem)] p-[clamp(0.5rem,2vw,1rem)] bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-[110] flex items-start justify-center pt-[clamp(3.5rem,8vh,5rem)] p-3 sm:p-5 bg-[#000000]/80 backdrop-blur-sm animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -69,23 +70,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           e.stopPropagation();
           if (setActiveSessionMenuId) setActiveSessionMenuId(null);
         }}
-        className="w-[min(94vw,42rem)] max-h-[85dvh] bg-white dark:bg-[#181b26] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150 select-none"
+        className="w-[min(94vw,42rem)] max-h-[85dvh] bg-[#0A0A0A] text-[#FFFFFF] border border-[#292929] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150 select-none font-sans"
       >
         {/* Search Input Header */}
-        <div className="p-[clamp(0.625rem,2vw,0.875rem)] border-b border-slate-200 dark:border-white/10 flex items-center gap-2.5 bg-slate-50/80 dark:bg-white/[0.02]">
-          <svg
-            className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
+        <div className="h-14 px-4 sm:px-5 border-b border-[#292929] flex items-center gap-2.5 bg-[#0A0A0A] shrink-0">
+          <Search className="w-4 h-4 text-[#A3A3A3] shrink-0" />
           <input
             type="text"
             autoFocus
@@ -131,7 +120,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               }
             }}
             placeholder="Search all chats..."
-            className="flex-1 bg-transparent border-0 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-0 p-0"
+            className="flex-1 bg-transparent border-0 text-sm text-[#FFFFFF] placeholder-[#A3A3A3] focus:outline-none focus:ring-0 p-0"
           />
           {searchFilter && (
             <button
@@ -140,18 +129,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 setSearchFilter('');
                 setActiveSearchIndex(-1);
               }}
-              className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-md cursor-pointer"
+              className="p-1 text-[#A3A3A3] hover:text-[#FFFFFF] rounded-md cursor-pointer"
               title="Clear search"
               aria-label="Clear search query"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <X className="w-3.5 h-3.5 text-[#A3A3A3]" />
             </button>
           )}
           <button
@@ -161,17 +143,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               if (setActiveSessionMenuId) setActiveSessionMenuId(null);
               setActiveSearchIndex(-1);
             }}
-            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10 rounded-md transition-colors cursor-pointer ml-1"
+            className="p-1.5 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] rounded-lg transition-colors cursor-pointer ml-1"
             aria-label="Close popup"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <X className="w-4 h-4 text-[#FFFFFF]" />
           </button>
         </div>
 
@@ -180,10 +155,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           id="search-chats-listbox"
           role="listbox"
           aria-label="Chat Sessions"
-          className="flex-1 overflow-y-auto p-2 pb-8 space-y-1"
+          className="flex-1 overflow-y-auto p-2 pb-6 space-y-1 bg-[#0A0A0A]"
           style={{ scrollbarWidth: 'thin' }}
         >
-          <div className="px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center justify-between">
+          <div className="px-2.5 py-1.5 text-[10px] font-mono font-medium text-[#A3A3A3] uppercase tracking-wider flex items-center justify-between">
             <span>All Chats</span>
             <span>{sessions.length} total</span>
           </div>
@@ -223,33 +198,26 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             );
           })}
           {filteredSessions.length === 0 && (
-            <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
+            <div className="text-center py-8 text-xs text-[#A3A3A3]">
               No chats found matching &ldquo;{searchFilter}&rdquo;
             </div>
           )}
         </div>
 
         {/* Footer with New Chat Action */}
-        <div className="p-2.5 border-t border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.02] flex items-center justify-between">
+        <div className="h-14 px-4 sm:px-5 border-t border-[#292929] bg-[#0A0A0A] flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={() => {
               if (onNewChat) onNewChat();
               onClose();
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-white/10 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#FFFFFF] bg-[#171717] hover:bg-[#292929] border border-[#292929] transition-all cursor-pointer"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                d="M12 4v16m8-8H4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              />
-            </svg>
+            <Plus className="w-3.5 h-3.5 text-[#FFFFFF]" />
             <span>Create New Chat</span>
           </button>
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="text-[11px] font-mono text-[#A3A3A3]">
             Click any chat to open
           </span>
         </div>

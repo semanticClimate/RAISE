@@ -106,10 +106,6 @@ export function diagnoseBackendError(
   const isEmbedding =
     combined.includes('embedding model') ||
     combined.includes('dense_embedding') ||
-    combined.includes('embeddinggemma') ||
-    combined.includes('bge-large') ||
-    combined.includes('bge-small') ||
-    combined.includes('all-minilm') ||
     combined.includes('sentence-transformers') ||
     (combined.includes('embedding') &&
       (combined.includes('not available') ||
@@ -117,55 +113,54 @@ export function diagnoseBackendError(
         combined.includes('download') ||
         combined.includes('missing')));
 
+  const ccConfig = useControlCenterStore.getState().config;
+
   if (isEmbedding) {
     const modelMatch =
       rawMsg.match(/['"]([a-zA-Z0-9_\-./]+(?:embedding|gemma|bge|minilm|bert)[a-zA-Z0-9_\-./]*)['"]/i) ||
-      rawMsg.match(/model\s+['"]([^'"]+)['"]/i);
-    const modelName =
-      modelMatch?.[1] ||
-      (combined.includes('google/embeddinggemma-2')
-        ? 'google/embeddinggemma-2'
-        : combined.includes('bge-large-en-v1.5')
-        ? 'BAAI/bge-large-en-v1.5'
-        : 'google/embeddinggemma-2');
+      rawMsg.match(/(?:embedding model|model)\s+['"]([^'"]+)['"]/i);
+    const modelName = modelMatch?.[1] || ccConfig?.embeddingModel || '';
 
     return {
       category: 'neural_embedding',
       headline: 'Embedding Model Required',
-      cleanMessage: `The embedding model '${modelName}' is not installed or available on this system.`,
+      cleanMessage: modelName
+        ? `The embedding model '${modelName}' is not installed or available on this system.`
+        : 'The configured semantic embedding model is not installed or available on this system.',
       recommendedAction:
         'Download the embedding model in Control Center to enable semantic search and document retrieval.',
       targetTab: 'neural',
       primaryButtonLabel: 'Download in Control Center',
       badgeLabel: 'ASSET MISSING',
-      modelName,
-      isDownloadableModel: true,
+      modelName: modelName || undefined,
+      isDownloadableModel: Boolean(modelName),
     };
   }
 
   // 2. Reranker Model Missing / Unavailable
   const isReranker =
     combined.includes('reranker') ||
-    combined.includes('cross-encoder') ||
-    combined.includes('bge-reranker');
+    combined.includes('cross-encoder');
 
   if (isReranker) {
     const modelMatch =
       rawMsg.match(/['"]([a-zA-Z0-9_\-./]+(?:reranker|cross-encoder)[a-zA-Z0-9_\-./]*)['"]/i) ||
-      rawMsg.match(/model\s+['"]([^'"]+)['"]/i);
-    const modelName = modelMatch?.[1] || 'BAAI/bge-reranker-v2-m3';
+      rawMsg.match(/(?:reranker model|reranker)\s+['"]([^'"]+)['"]/i);
+    const modelName = modelMatch?.[1] || ccConfig?.rerankerModel || '';
 
     return {
       category: 'neural_reranker',
       headline: 'Neural Reranker Required',
-      cleanMessage: `The cross-encoder reranker '${modelName}' is not cached or available on this system.`,
+      cleanMessage: modelName
+        ? `The cross-encoder reranker '${modelName}' is not cached or available on this system.`
+        : 'The configured cross-encoder reranker is not cached or available on this system.',
       recommendedAction:
         'Open the Neural Assets tab in the Control Center to download or configure the reranker.',
       targetTab: 'neural',
       primaryButtonLabel: 'Configure in Control Center',
       badgeLabel: 'ASSET MISSING',
-      modelName,
-      isDownloadableModel: true,
+      modelName: modelName || undefined,
+      isDownloadableModel: Boolean(modelName),
     };
   }
 
@@ -176,20 +171,24 @@ export function diagnoseBackendError(
     combined.includes('finecat');
 
   if (isVerifier) {
-    const modelMatch = rawMsg.match(/['"]([a-zA-Z0-9_\-./]+(?:finecat|nli)[a-zA-Z0-9_\-./]*)['"]/i);
-    const modelName = modelMatch?.[1] || 'dleemiller/finecat-nli-ultra-l';
+    const modelMatch =
+      rawMsg.match(/['"]([a-zA-Z0-9_\-./]+(?:finecat|nli)[a-zA-Z0-9_\-./]*)['"]/i) ||
+      rawMsg.match(/(?:verifier model|verifier)\s+['"]([^'"]+)['"]/i);
+    const modelName = modelMatch?.[1] || ccConfig?.nliVerifierModel || '';
 
     return {
       category: 'neural_verifier',
       headline: 'Citation Verifier Required',
-      cleanMessage: `The citation verification model '${modelName}' is not cached on disk.`,
+      cleanMessage: modelName
+        ? `The citation verification model '${modelName}' is not cached on disk.`
+        : 'The configured citation verification model is not cached on disk.',
       recommendedAction:
         'Open the Neural Assets tab in the Control Center to download or configure the citation verifier.',
       targetTab: 'neural',
       primaryButtonLabel: 'Configure in Control Center',
       badgeLabel: 'ASSET MISSING',
-      modelName,
-      isDownloadableModel: true,
+      modelName: modelName || undefined,
+      isDownloadableModel: Boolean(modelName),
     };
   }
 
