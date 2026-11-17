@@ -140,8 +140,8 @@ export function useRaiseController() {
     setSessions: (action) => setSessionsProxyRef.current(action),
   });
 
-  const autoScrollLockProxyRef = useRef<(locked: boolean) => void>(() => {});
-  const autoScrollShowProxyRef = useRef<(show: boolean) => void>(() => {});
+  const isAutoScrollLockedRef = useRef<(locked: boolean) => void>(() => {});
+  const showScrollToBottomRef = useRef<(show: boolean) => void>(() => {});
 
   const chatSessions = useChatSessions({
     abortActiveStream: () => abortActiveStreamRef.current(),
@@ -151,8 +151,8 @@ export function useRaiseController() {
     setSourceDocs: sessionSources.setSourceDocs,
     apiReadyDocs: sessionSources.apiReadyDocs,
     setIsPipelineDrawerOpen,
-    setIsAutoScrollLocked: (locked) => autoScrollLockProxyRef.current(locked),
-    setShowScrollToBottom: (show) => autoScrollShowProxyRef.current(show),
+    setIsAutoScrollLocked: (val) => isAutoScrollLockedRef.current(val),
+    setShowScrollToBottom: (val) => showScrollToBottomRef.current(val),
     setEditingMessageIndex,
     setRegeneratingIndex,
     setCopiedKey,
@@ -174,19 +174,19 @@ export function useRaiseController() {
     isLlmConfigured,
     setIsControlCenterOpen: openControlCenter,
     updateSessionInMemory: chatSessions.updateSessionInMemory,
-    setIsAutoScrollLocked: (locked) => autoScrollLockProxyRef.current(locked),
-    setShowScrollToBottom: (show) => autoScrollShowProxyRef.current(show),
+    setIsAutoScrollLocked: (val) => isAutoScrollLockedRef.current(val),
+    setShowScrollToBottom: (val) => showScrollToBottomRef.current(val),
   });
   abortActiveStreamRef.current = chatStream.abortActiveQuery;
 
   const autoScroll = useSmartAutoScroll({
     conversation: chatSessions.conversation,
-    isLoading: chatStream.isLoading,
+    isLoading: chatStream?.isLoading ?? false,
     currentSessionId: chatSessions.currentSessionId,
   });
 
-  autoScrollLockProxyRef.current = autoScroll.setIsAutoScrollLocked;
-  autoScrollShowProxyRef.current = autoScroll.setShowScrollToBottom;
+  isAutoScrollLockedRef.current = autoScroll.setIsAutoScrollLocked;
+  showScrollToBottomRef.current = autoScroll.setShowScrollToBottom;
 
   const chatEditing = useChatEditing({
     conversation: chatSessions.conversation,

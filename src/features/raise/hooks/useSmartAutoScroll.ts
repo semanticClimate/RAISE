@@ -22,86 +22,82 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
   isAutoScrollLockedRef.current = isAutoScrollLocked;
 
   const isInitialMountRef = useRef(true);
-  const prevConversationLengthRef = useRef(conversation.length);
   const prevSessionIdRef = useRef<string | null>(currentSessionId);
-  const prevIsLoadingRef = useRef(isLoading);
   const touchStartYRef = useRef<number | null>(null);
 
-  // Auto-scroll on new user questions or active streaming response tokens
+  // Auto-scroll on new conversation tokens / state update ONLY IF not locked by user
   useEffect(() => {
     const container = contentContainerRef.current;
-
-    // 1. If conversation is empty (hero state), ensure container stays at top and never slides down
-    if (conversation.length === 0) {
-      if (container && container.scrollTop !== 0) {
-        container.scrollTop = 0;
-      }
-      prevConversationLengthRef.current = 0;
-      prevSessionIdRef.current = currentSessionId;
-      prevIsLoadingRef.current = false;
-      isAutoScrollLockedRef.current = false;
-      setIsAutoScrollLocked(false);
-      setShowScrollToBottom(false);
-      return;
-    }
-
-    // 2. Prevent auto-scroll on initial page load / session restore so user can read from where they started
-    if (isInitialMountRef.current) {
-      isInitialMountRef.current = false;
-      prevConversationLengthRef.current = conversation.length;
-      prevSessionIdRef.current = currentSessionId;
-      prevIsLoadingRef.current = isLoading;
-      if (container && container.scrollTop !== 0) {
-        container.scrollTop = 0;
-      }
-      return;
-    }
-
-    // 3. If session changed (switching between chats / opening an old chat):
-    // Reset to top cleanly without ANY smooth-scroll animation or sliding down.
-    if (currentSessionId !== prevSessionIdRef.current) {
-      prevSessionIdRef.current = currentSessionId;
-      prevConversationLengthRef.current = conversation.length;
-      prevIsLoadingRef.current = isLoading;
-      isAutoScrollLockedRef.current = false;
-      setIsAutoScrollLocked(false);
-      setShowScrollToBottom(false);
-      if (container) {
-        container.scrollTop = 0;
-      }
-      return;
-    }
-
     if (!container) return;
 
-    // 4. During active query execution / streaming tokens:
-    // Keep scroll pinned to bottom only if the user hasn't scrolled up
-    const isStreaming = isLoading && !isAutoScrollLockedRef.current;
-    if (isStreaming) {
-      container.scrollTop = container.scrollHeight;
+    // 1. If conversation is empty (hero state), ensure container stays at top
+    if (conversation.length === 0) {
+      if (container.scrollTop !== 0) {
+        container.scrollTop = 0;
+      }
+      prevSessionIdRef.current = currentSessionId;
+      isAutoScrollLockedRef.current = false;
+      setIsAutoScrollLocked(false);
+      setShowScrollToBottom(false);
+      return;
     }
 
-    prevConversationLengthRef.current = conversation.length;
-    prevIsLoadingRef.current = isLoading;
-  }, [conversation, isLoading, currentSessionId]);
+    // 2. Initial mount or session switch (opening an old chat):
+    // Instantly jump to the bottom without any slow, disorienting smooth-scroll sliding animation
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      prevSessionIdRef.current = currentSessionId;
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'auto',
+      });
+      return;
+    }
+
+    if (currentSessionId !== prevSessionIdRef.current) {
+      prevSessionIdRef.current = currentSessionId;
+      isAutoScrollLockedRef.current = false;
+      setIsAutoScrollLocked(false);
+      setShowScrollToBottom(false);
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'auto',
+      });
+      return;
+    }
+
+    // 3. Normal streaming / new message update: only auto-scroll if user has not scrolled up
+    if (!isAutoScrollLocked && conversation.length > 0) {
+      const scrollBehavior: ScrollBehavior = isLoading ? 'auto' : 'smooth';
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: scrollBehavior,
+        });
+      } else if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
+        messagesEndRef.current.scrollIntoView({ behavior: scrollBehavior, block: 'end' });
+      }
+    }
+  }, [conversation, isLoading, isAutoScrollLocked, currentSessionId]);
 
   const scrollToBottom = useCallback(() => {
     isAutoScrollLockedRef.current = false;
     setIsAutoScrollLocked(false);
     setShowScrollToBottom(false);
-    const container = contentContainerRef.current;
-    if (container) {
-      container.scrollTo({
-        top: container.scrollHeight,
+    if (typeof contentContainerRef.current?.scrollTo === 'function') {
+      contentContainerRef.current.scrollTo({
+        top: contentContainerRef.current.scrollHeight,
         behavior: 'smooth',
       });
+    } else if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   }, []);
 
-  // Smart scroll & wheel detection: instantly lock on any user upward scroll (wheel, touch, scrollbar)
+  // Smart scroll & wheel detection: ALWAYS register on containerEl on mount regardless of conversation.length
   useEffect(() => {
-    const container = contentContainerRef.current;
-    if (!container) return;
+    const containerEl = contentContainerRef.current;
+    if (!containerEl) return;
 
     let rafId: number | null = null;
 
@@ -109,6 +105,7 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
+        const container = contentContainerRef.current;
         if (!container) return;
 
         const scrollHeight = container.scrollHeight;
@@ -116,15 +113,15 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
         const scrollTop = container.scrollTop;
         const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
 
-        // If distance from bottom is > 35px, user scrolled up: lock auto-scroll and show down-arrow button
-        if (distanceFromBottom > 35) {
+        // If distance from bottom is > 80px, user scrolled up -> LOCK auto-scroll & show button
+        if (distanceFromBottom > 80) {
           if (!isAutoScrollLockedRef.current) {
             isAutoScrollLockedRef.current = true;
             setIsAutoScrollLocked(true);
             setShowScrollToBottom(true);
           }
-        } else if (distanceFromBottom <= 10) {
-          // User scrolled all the way back to the bottom: restore auto-scroll
+        } else if (distanceFromBottom <= 20) {
+          // User scrolled all the way back to the bottom -> restore auto-scroll & hide button
           if (isAutoScrollLockedRef.current) {
             isAutoScrollLockedRef.current = false;
             setIsAutoScrollLocked(false);
@@ -135,11 +132,13 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
     };
 
     const handleWheel = (e: WheelEvent) => {
-      // User wheeled up: immediately lock auto-scroll without waiting for scroll animation
-      if (e.deltaY < 0) {
+      // User wheeled up: immediately lock auto-scroll and show button
+      if (e.deltaY < -2) {
         isAutoScrollLockedRef.current = true;
         setIsAutoScrollLocked(true);
         setShowScrollToBottom(true);
+      } else if (e.deltaY > 2) {
+        checkScrollPosition();
       }
     };
 
@@ -165,20 +164,20 @@ export function useSmartAutoScroll(options?: UseSmartAutoScrollOptions) {
       touchStartYRef.current = null;
     };
 
-    container.addEventListener('scroll', checkScrollPosition, { passive: true });
-    container.addEventListener('wheel', handleWheel, { passive: true });
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleTouchMove, { passive: true });
-    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    containerEl.addEventListener('scroll', checkScrollPosition, { passive: true });
+    containerEl.addEventListener('wheel', handleWheel, { passive: true });
+    containerEl.addEventListener('touchstart', handleTouchStart, { passive: true });
+    containerEl.addEventListener('touchmove', handleTouchMove, { passive: true });
+    containerEl.addEventListener('touchend', handleTouchEnd, { passive: true });
     window.addEventListener('resize', checkScrollPosition, { passive: true });
 
     return () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
-      container.removeEventListener('scroll', checkScrollPosition);
-      container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('touchstart', handleTouchStart);
-      container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
+      containerEl.removeEventListener('scroll', checkScrollPosition);
+      containerEl.removeEventListener('wheel', handleWheel);
+      containerEl.removeEventListener('touchstart', handleTouchStart);
+      containerEl.removeEventListener('touchmove', handleTouchMove);
+      containerEl.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('resize', checkScrollPosition);
     };
   }, []);
