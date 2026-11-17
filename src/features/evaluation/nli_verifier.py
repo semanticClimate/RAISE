@@ -64,8 +64,17 @@ class FineCatNLIVerifier:
                 import torch
                 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-                target_device = device or os.getenv("NLI_DEVICE")
-                if not target_device:
+                raw_device = device or os.getenv("NLI_DEVICE") or os.getenv("NEURAL_DEVICE")
+                if raw_device:
+                    raw_str = str(raw_device).strip().lower()
+                    if raw_str in ("auto", "none", "", "default"):
+                        target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+                    elif "cuda" in raw_str and not torch.cuda.is_available():
+                        logger.warning("CUDA requested for NLI (%s) but torch.cuda.is_available() is False. Using CPU.", target_model)
+                        target_device = "cpu"
+                    else:
+                        target_device = raw_device
+                else:
                     target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
                 hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or None
