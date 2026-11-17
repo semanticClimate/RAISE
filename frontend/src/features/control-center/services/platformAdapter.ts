@@ -388,10 +388,18 @@ export const platformAdapter = {
     onProgress?: (percent: number, status: string) => void
   ): Promise<void> {
     try {
-      const res = await fetch(resolveApiUrl('/api/system/download-assets'), {
+      let res = await fetch(resolveApiUrl('/api/system/preflight-download'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       });
+      if (!res.ok) {
+        res = await fetch(resolveApiUrl('/api/system/download-assets'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+      }
       if (res.ok && res.body) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -692,16 +700,32 @@ export const platformAdapter = {
 
     // Standardized FastAPI endpoint with JSON body and proper SSE parsing
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    const provider = modelName.includes('/') ? 'huggingface' : 'ollama';
     try {
-      const res = await fetch(resolveApiUrl('/api/system/models/pull'), {
+      let res = await fetch(resolveApiUrl('/api/system/models/pull'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({
           model_name: modelName,
-          provider: modelName.includes('/') ? 'huggingface' : 'ollama',
+          provider,
           huggingface_token: huggingfaceToken || undefined,
         }),
       });
+
+      // Dual compatibility: if POST is rejected with 404/405, fallback to GET query parameters
+      if (!res.ok && (res.status === 405 || res.status === 404)) {
+        const queryParams = new URLSearchParams({
+          model_name: modelName,
+          provider,
+        });
+        if (huggingfaceToken) {
+          queryParams.set('huggingface_token', huggingfaceToken);
+        }
+        res = await fetch(resolveApiUrl(`/api/system/models/pull?${queryParams.toString()}`), {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream' },
+        });
+      }
       if (res.ok && res.body) {
         reader = res.body.getReader();
         const decoder = new TextDecoder();

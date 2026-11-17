@@ -121,10 +121,9 @@ html.dark {
   overscroll-behavior: contain;
 }
 
-/* Google PageSpeed / Core Web Vitals - Defer offscreen rendering */
+/* Google PageSpeed / Core Web Vitals - Keep visible to prevent scroll anchoring jumps in chat history */
 .content-visibility-auto {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 160px;
+  content-visibility: visible;
 }
 
 /* Custom Academic Scrollbar */

@@ -2441,7 +2441,7 @@ export function generateSessionPdfBlob(session: ChatSession): Blob {
         'fast';
       const isConversational = String(msgMode).toLowerCase().includes('conversational');
       const isExpert = String(msgMode).toLowerCase().includes('expert');
-      const modeLabel = isExpert ? 'Expert Mode' : 'Fast Mode';
+      const modeLabel = isExpert ? 'Expert Mode' : isConversational ? 'Conversational Mode' : 'Fast Mode';
       const modeBadge = `[${modeLabel}]`;
       const modeBadgeWidth = estimateHelveticaWidth(modeBadge, 7.5);
 
