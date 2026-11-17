@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type React from 'react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl } from '../../app/config';
 import { documentsQueryOptions } from '../../api/queryOptions';
 import { useEscapeKey, useScrollLock } from '../../hooks';
@@ -215,6 +215,43 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
     return backendItems.filter(isItemIndexed);
   }, [rawDocuments, isItemIndexed]);
 
+  // Identify document formats actually present in the library
+  const availableCategories = useMemo(() => {
+    const categories = new Set<'pdf' | 'csv' | 'docx' | 'other'>();
+    for (const item of items) {
+      if (item.type === 'pdf') categories.add('pdf');
+      else if (item.type === 'csv') categories.add('csv');
+      else if (item.type === 'docx') categories.add('docx');
+      else categories.add('other');
+    }
+    return categories;
+  }, [items]);
+
+  // Format filter options: only render pills if 2 or more distinct document types are present
+  const filterOptions = useMemo<('all' | 'pdf' | 'csv' | 'docx' | 'other')[]>(() => {
+    if (availableCategories.size < 2) return [];
+
+    const options: ('all' | 'pdf' | 'csv' | 'docx' | 'other')[] = ['all'];
+    const standardOrder: ('pdf' | 'csv' | 'docx' | 'other')[] = ['pdf', 'csv', 'docx', 'other'];
+    for (const cat of standardOrder) {
+      if (availableCategories.has(cat)) {
+        options.push(cat);
+      }
+    }
+    return options;
+  }, [availableCategories]);
+
+  // Automatically reset type filter if selected type is no longer present or if filters are hidden
+  useEffect(() => {
+    if (availableCategories.size < 2) {
+      if (typeFilter !== 'all') {
+        setTypeFilter('all');
+      }
+    } else if (typeFilter !== 'all' && !availableCategories.has(typeFilter)) {
+      setTypeFilter('all');
+    }
+  }, [availableCategories, typeFilter]);
+
   useEscapeKey(onClose, isOpen && !artifactModal.isOpen);
 
   const attachedSet = useMemo(() => {
@@ -318,7 +355,11 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
         </div>
 
         {/* Search & Actions Bar - Seamlessly merged without extra line */}
-        <div className="pt-3.5 px-4 sm:px-6 pb-2 bg-[#0A0A0A] space-y-2.5 shrink-0">
+        <div
+          className={`pt-3.5 px-4 sm:px-6 bg-[#0A0A0A] shrink-0 ${
+            filterOptions.length > 0 ? 'pb-2 space-y-2.5' : 'pb-3'
+          }`}
+        >
           <div className="flex items-center gap-2.5">
             <div className="relative flex-1 min-w-0">
               <Search className="w-3.5 h-3.5 text-[#A3A3A3] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -363,23 +404,25 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
             </div>
           </div>
 
-          {/* Type Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            {(['all', 'pdf', 'csv', 'docx', 'other'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTypeFilter(t)}
-                className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono transition-colors whitespace-nowrap cursor-pointer ${
-                  typeFilter === t
-                    ? 'bg-[#FFFFFF] text-[#000000] font-semibold'
-                    : 'bg-[#111111] text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-[#292929]'
-                }`}
-              >
-                {t === 'all' ? 'All' : t.toUpperCase()}
-              </button>
-            ))}
-          </div>
+          {/* Type Filter Pills - dynamically shown only when 2 or more distinct document types are present */}
+          {filterOptions.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              {filterOptions.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFilter(t)}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono transition-colors whitespace-nowrap cursor-pointer ${
+                    typeFilter === t
+                      ? 'bg-[#FFFFFF] text-[#000000] font-semibold'
+                      : 'bg-[#111111] text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] border border-[#292929]'
+                  }`}
+                >
+                  {t === 'all' ? 'All' : t.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Documents List */}
