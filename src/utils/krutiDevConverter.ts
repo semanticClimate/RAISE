@@ -218,7 +218,7 @@ export function krutiDevToUnicode(krutiText: string): string {
     .join('');
 
   // 5. Strip accidental Zero-Width Spaces (\u200B) that detach Hindi matras
-  str = str.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+  str = str.replace(/\u200B|\u200C|\u200D|\uFEFF/g, '');
 
   // 6. Canonical Unicode NFC normalization (merges decomposed accents/matras cleanly)
   return str.normalize('NFC');
@@ -231,7 +231,7 @@ export function sanitizeMultilingualText(rawText: string): string {
   if (!rawText) return '';
 
   // 1. Strip accidental Zero-Width Spaces (\u200B) that detach Hindi matras
-  let cleaned = rawText.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+  let cleaned = rawText.replace(/\u200B|\u200C|\u200D|\uFEFF/g, '');
 
   // 2. Convert legacy Kruti Dev segments if detected
   if (KRUTI_DEV_PATTERN.test(cleaned)) {
