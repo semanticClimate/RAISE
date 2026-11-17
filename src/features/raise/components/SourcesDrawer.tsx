@@ -37,7 +37,6 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
   onOpenLibraryPicker,
   isDocReady,
   onToggleSourceDoc,
-  onToggleAllSources,
   onDeleteSourceDoc,
   onViewPdf,
 }) => {
@@ -57,7 +56,6 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const allSelected = sourceDocs.length > 0 && sourceDocs.every((d) => d.selected);
   const filteredDocs = sourceDocs.filter((d) =>
     d.name.toLowerCase().includes(sourceFilter.toLowerCase())
   );
@@ -140,23 +138,11 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
 
         {/* Scrollable Document List */}
         <div className="px-4 sm:px-6 pb-4 overflow-y-auto max-h-[340px] space-y-2 bg-[#0A0A0A]">
-          {sourceDocs.length > 0 && (
+          {sourceDocs.length > 0 && sourceFilter && (
             <div className="flex items-center justify-between px-1 py-0.5 text-xs text-[#A3A3A3]">
               <span className="text-[11px] font-mono">
-                {sourceFilter
-                  ? `Showing ${filteredDocs.length} of ${sourceDocs.length}`
-                  : `${activeSourcesCount} of ${sourceDocs.length} active`}
+                Showing {filteredDocs.length} of {sourceDocs.length}
               </span>
-
-              {onToggleAllSources && sourceDocs.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onToggleAllSources(!allSelected)}
-                  className="text-[11px] font-medium text-[#A3A3A3] hover:text-[#FFFFFF] underline underline-offset-2 cursor-pointer shrink-0"
-                >
-                  {allSelected ? 'Deselect All' : 'Select All'}
-                </button>
-              )}
             </div>
           )}
 
