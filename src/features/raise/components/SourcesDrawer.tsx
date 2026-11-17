@@ -87,9 +87,8 @@ export const SourcesDrawer: React.FC<SourcesDrawerProps> = ({
                 <h2 className="text-sm sm:text-base font-semibold text-[#FFFFFF] truncate">
                   Drawer
                 </h2>
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#171717] text-[#A3A3A3] border border-[#292929]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#FFFFFF]" />
-                  <span>{isOnline ? `${activeSourcesCount} active` : 'Offline'}</span>
+                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#171717] text-[#A3A3A3] border border-[#292929]">
+                  {activeSourcesCount}
                 </span>
               </div>
             </div>
