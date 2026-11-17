@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title RAISE - Research Assessment Intelligence & Semantic Extraction
+title RAISE - Research Assessment Intelligence ^& Semantic Extraction
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 
