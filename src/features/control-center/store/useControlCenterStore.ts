@@ -25,7 +25,8 @@ interface ControlCenterState {
   isDirty: boolean;
   baselineConfig: ControlCenterConfig | null;
 
-  setOpen: (open: boolean) => void;
+  setOpen: (open: boolean, tab?: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch') => void;
+  openToTab: (tab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch') => void;
   resetToBaseline: () => void;
   saveBaseline: () => void;
   markDirty: () => void;
@@ -228,23 +229,29 @@ export const useControlCenterStore = create<ControlCenterState>()(
         redisMode: 'in_memory_fallback',
       },
 
-      setOpen: (open) =>
+      setOpen: (open, tab) =>
         set((s): Partial<ControlCenterState> => {
           if (open) {
             return {
               isOpen: true,
-              activeTab: 'platform',
+              activeTab: tab || s.activeTab || 'platform',
               baselineConfig: (s.baselineConfig ?? JSON.parse(JSON.stringify(s.config))) as ControlCenterConfig,
               isDirty: false,
             };
           }
           return {
             isOpen: false,
-            activeTab: 'platform',
             isDirty: false,
             baselineConfig: null,
           };
         }),
+      openToTab: (tab) =>
+        set((s): Partial<ControlCenterState> => ({
+          isOpen: true,
+          activeTab: tab,
+          baselineConfig: (s.baselineConfig ?? JSON.parse(JSON.stringify(s.config))) as ControlCenterConfig,
+          isDirty: false,
+        })),
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       markDirty: () => set({ isDirty: true }),

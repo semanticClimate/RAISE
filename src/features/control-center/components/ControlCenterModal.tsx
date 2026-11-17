@@ -48,7 +48,6 @@ export const ControlCenterModal: React.FC = () => {
   // Load live hardware telemetry and accurately synchronize host OS on mount/open
   useEffect(() => {
     if (isOpen) {
-      setActiveTab('platform');
       useModeStore.getState().runCapabilityProbe();
       const hostOS = detectHostOS();
       if (hostOS === 'macos' && config.targetPlatform !== 'macos') {
