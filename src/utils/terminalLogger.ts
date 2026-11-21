@@ -1,3 +1,5 @@
+import { telemetryBridge } from '../services/telemetryBridge';
+
 export interface TerminalLogEvent {
   type: 'REQ' | 'RES' | 'ERR' | 'MOCK' | 'SYSTEM';
   method?: string;
@@ -48,6 +50,20 @@ export function logToTerminal(event: TerminalLogEvent) {
           'color:#c084fc;font-weight:bold;'
         );
       }
+
+      // 2. DISPATCH TO BACKEND TELEMETRY BUS (Zero-Silence Developer Observability)
+      telemetryBridge.send({
+        subtype: 'network',
+        level: event.type === 'ERR' ? 'ERROR' : event.type === 'REQ' ? 'DEBUG' : 'INFO',
+        message: `${event.method || 'API'} ${event.endpoint} ${event.status ? `(HTTP ${event.status})` : ''} ${event.error ? `ERR: ${event.error}` : ''}`.trim(),
+        metadata: {
+          method: event.method,
+          endpoint: event.endpoint,
+          status: event.status,
+          duration_ms: event.durationMs,
+          details: event.details,
+        },
+      });
     }
   } catch {
     // ignore

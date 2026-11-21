@@ -207,11 +207,17 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
       {/* Thought Duration Header OUTSIDE response box */}
       {isCurrentlyActive ? (
         <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
-          <LiveThoughtDuration startTimeMs={msg.startedAtMs || Date.now()} />
+          <LiveThoughtDuration
+            startTimeMs={msg.startedAtMs || Date.now()}
+            requestId={msg.id || (msg as any).request_id}
+          />
         </div>
       ) : Boolean(resolvedContent) && !isUngroundedFallback && executionTimeSec > 0 ? (
         <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
-          <ThoughtDuration executionTimeSec={executionTimeSec} />
+          <ThoughtDuration
+            executionTimeSec={executionTimeSec}
+            requestId={msg.id || (msg as any).request_id}
+          />
         </div>
       ) : null}
 

@@ -43,6 +43,14 @@
       rgba(168, 85, 247, 0.45) 55%,
       transparent 90%
     );
+
+    /* Motion tokens: Corporate Archetype (motion-design-skill) */
+    --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --motion-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+    --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    --motion-duration-fast: 150ms;
+    --motion-duration-normal: 250ms;
+    --motion-duration-deliberate: 350ms;
   }
 
   .dark,
@@ -102,6 +110,16 @@
   [data-theme="dark"] body {
     background-color: #0e1017;
     color: #f1f5f9;
+  }
+
+  /* Native modal & backdrop scroll containment (modern-web-guidance) */
+  dialog:modal {
+    overscroll-behavior: contain;
+  }
+
+  dialog::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
   }
 }
 
@@ -589,3 +607,33 @@ html.dark .animated-ask-placeholder,
 .animate-tunnel-ray {
   animation: tunnelRaySweep 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   ACCESSIBILITY: PREFERS-REDUCED-MOTION (modern-web-guidance)
+   Dampens or disables infinite looping animations and spatial motion
+   while preserving natural color and opacity transitions.
+   ══════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-iteration-count: 1 !important;
+  }
+
+  .animate-spin,
+  .animate-pulse,
+  .animate-bounce,
+  .animate-thinking-dot-1,
+  .animate-thinking-dot-2,
+  .animate-thinking-dot-3,
+  .animate-thought-shimmer,
+  .animate-thought-pulse-glow,
+  .box-light {
+    animation: none !important;
+  }
+
+  .animate-tunnel-ray {
+    display: none !important;
+  }
+}
+

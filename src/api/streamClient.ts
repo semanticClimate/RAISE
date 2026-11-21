@@ -66,6 +66,12 @@ export async function executeStreamRequest(
     headers.set('Content-Type', 'application/json');
   }
 
+  // Correlation header for backend telemetry bus waterfall tracking
+  if (!headers.has('X-Request-Id') && !headers.has('X-Request-ID')) {
+    const generatedId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    headers.set('X-Request-Id', generatedId);
+  }
+
   const apiKey = getStoredApiKey();
   if (apiKey && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${apiKey}`);

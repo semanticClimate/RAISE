@@ -348,8 +348,22 @@ export function useBackendConnection(
           try {
             if (event.data === 'ping') {
               socket.send('pong');
+              return;
             }
-          } catch {}
+            const parsed = JSON.parse(event.data) as Record<string, any>;
+            if (parsed && typeof parsed === 'object') {
+              if (parsed.type === 'pipeline_stage') {
+                // Dispatch CustomEvent for any listening UI component (e.g. ChatPanel stage tracker, Waterfall)
+                window.dispatchEvent(new CustomEvent('raise:pipeline_stage', { detail: parsed.data || parsed }));
+              } else if (parsed.type === 'connection_ready') {
+                window.dispatchEvent(new CustomEvent('raise:connection_ready', { detail: parsed }));
+              } else if (parsed.type === 'backend_log') {
+                window.dispatchEvent(new CustomEvent('raise:backend_log', { detail: parsed.data }));
+              }
+            }
+          } catch {
+            // ignore non-json frames
+          }
         };
 
         socket.onclose = () => {

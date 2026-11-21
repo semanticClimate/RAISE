@@ -1,32 +1,13 @@
 import React from 'react';
+import { SpecialTooltip, type SpecialTooltipProps } from '../../../components/ui/SpecialTooltip';
 
-export interface ActionTooltipProps {
-  label: string;
-  children: React.ReactNode;
-  position?: 'top' | 'bottom';
-  className?: string;
-}
+export type ActionTooltipProps = SpecialTooltipProps;
 
 /**
  * ActionTooltip Component
- * Uses standard/default browser tooltips (title attribute) without floating translucent/blurry card popups.
+ * Unified standard tooltip primitive delegating to SpecialTooltip to avoid duplicate code.
  */
-export const ActionTooltip: React.FC<ActionTooltipProps> = ({
-  label,
-  children,
-  className = '',
-}) => {
-  if (React.isValidElement(children)) {
-    return React.cloneElement(children as React.ReactElement<any>, {
-      title: (children.props as any).title || label,
-      className: className
-        ? `${(children.props as any).className || ''} ${className}`.trim()
-        : (children.props as any).className,
-    });
-  }
-  return (
-    <span title={label} className={className}>
-      {children}
-    </span>
-  );
+export const ActionTooltip: React.FC<ActionTooltipProps> = (props) => {
+  return <SpecialTooltip {...props} />;
 };
+

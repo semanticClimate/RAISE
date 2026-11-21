@@ -1,4 +1,5 @@
 import {
+  Activity,
   Cpu,
   Database,
   Laptop,
@@ -19,6 +20,7 @@ import { EngineStep } from '../steps/EngineStep';
 import { NeuralStep } from '../steps/NeuralStep';
 import { OverviewStep } from '../steps/OverviewStep';
 import { PlatformStep } from '../steps/PlatformStep';
+import { TelemetryStep } from '../steps/TelemetryStep';
 import { useControlCenterStore } from '../store/useControlCenterStore';
 import { useControlCenterSave } from '../hooks/useControlCenterSave';
 
@@ -89,6 +91,11 @@ export const ControlCenterModal: React.FC = () => {
 
   const tabs = [
     {
+      id: 'overview' as const,
+      label: 'Overview',
+      icon: LayoutDashboard,
+    },
+    {
       id: 'platform' as const,
       label: 'Device',
       icon: Laptop,
@@ -109,13 +116,14 @@ export const ControlCenterModal: React.FC = () => {
       icon: Database,
     },
     {
-      id: 'overview' as const,
-      label: 'Overview',
-      icon: LayoutDashboard,
+      id: 'telemetry' as const,
+      label: 'Telemetry',
+      icon: Activity,
     },
   ];
 
   const currentTabIdx = tabs.findIndex((t) => t.id === activeTab);
+  const isLastTab = currentTabIdx === tabs.length - 1;
 
   const isCurrentStepReady = useMemo(() => {
     switch (activeTab) {
@@ -148,16 +156,8 @@ export const ControlCenterModal: React.FC = () => {
       return;
     }
 
-    if (activeTab === 'platform') {
-      setActiveTab('models');
-    } else if (activeTab === 'models') {
-      setActiveTab('neural');
-    } else if (activeTab === 'neural') {
-      setActiveTab('databases');
-    } else if (activeTab === 'databases') {
-      setActiveTab('overview');
-    } else {
-      handleFinalStart();
+    if (currentTabIdx < tabs.length - 1) {
+      setActiveTab(tabs[currentTabIdx + 1].id);
     }
   };
 
@@ -206,10 +206,10 @@ export const ControlCenterModal: React.FC = () => {
   }, [activeTab]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/40 backdrop-blur-md p-3 sm:p-5 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/40 backdrop-blur-md p-3 sm:p-5 animate-in fade-in duration-250 ease-[cubic-bezier(0,0,0.2,1)]">
       <div
         style={modalHeight ? { height: `${modalHeight}px` } : undefined}
-        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0A0A0A] border border-[#292929] shadow-2xl overflow-hidden text-[#FFFFFF] font-sans shrink-0 transition-[height] duration-300 ease-out"
+        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-[#0A0A0A] border border-[#292929] shadow-2xl overflow-hidden text-[#FFFFFF] font-sans shrink-0 transition-[height] duration-250 ease-[cubic-bezier(0.2,0,0,1)]"
       >
         {/* Top Header - Strict Monochrome */}
         <div className="h-14 px-5 sm:px-6 border-b border-[#292929] bg-[#0A0A0A] shrink-0 flex items-center justify-between">
@@ -288,6 +288,7 @@ export const ControlCenterModal: React.FC = () => {
             {activeTab === 'neural' && <NeuralStep />}
             {activeTab === 'databases' && <DatabaseStep />}
             {activeTab === 'platform' && <PlatformStep />}
+            {activeTab === 'telemetry' && <TelemetryStep />}
           </div>
         </div>
 
@@ -319,19 +320,8 @@ export const ControlCenterModal: React.FC = () => {
               </span>
             )}
 
-            {/* Navigation Buttons: Next &rarr; on prior steps, Start ONLY on overview */}
-            {activeTab !== 'overview' ? (
-              <button
-                type="button"
-                disabled={!isCurrentStepReady}
-                onClick={handleNext}
-                className={`px-4 py-2 rounded-lg text-xs font-medium border border-[#292929] bg-[#111111] hover:bg-[#171717] text-[#FFFFFF] transition-all cursor-pointer ${
-                  isCurrentStepReady ? '' : 'opacity-40 cursor-not-allowed'
-                }`}
-              >
-                <span>Next &rarr;</span>
-              </button>
-            ) : (
+            {/* Start Button: Rendered prominently on Overview */}
+            {activeTab === 'overview' && (
               <button
                 type="button"
                 disabled={isSaving || isWarmingUp || !hasConfiguredKey || !isConnected}
@@ -367,6 +357,20 @@ export const ControlCenterModal: React.FC = () => {
                     ? 'Start'
                     : 'Backend Offline'}
                 </span>
+              </button>
+            )}
+
+            {/* Next Button: Rendered on intermediate steps, NEVER on Telemetry (last tab) */}
+            {activeTab !== 'overview' && !isLastTab && (
+              <button
+                type="button"
+                disabled={!isCurrentStepReady}
+                onClick={handleNext}
+                className={`px-4 py-2 rounded-lg text-xs font-medium border border-[#292929] bg-[#111111] hover:bg-[#171717] text-[#FFFFFF] transition-all cursor-pointer ${
+                  isCurrentStepReady ? '' : 'opacity-40 cursor-not-allowed'
+                }`}
+              >
+                <span>Next &rarr;</span>
               </button>
             )}
           </div>

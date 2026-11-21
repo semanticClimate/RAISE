@@ -134,8 +134,14 @@ class ApiClient {
       options.signal.addEventListener('abort', () => controller.abort(), { once: true });
     }
 
+    const incomingReqId =
+      (options.headers as Record<string, string>)?.[`X-Request-Id`] ||
+      (options.headers as Record<string, string>)?.[`X-Request-ID`] ||
+      `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
     const headers: Record<string, string> = {
-      'X-Request-ID': `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      'X-Request-Id': incomingReqId,
+      'X-Request-ID': incomingReqId,
       ...(options.headers as Record<string, string>),
     };
 

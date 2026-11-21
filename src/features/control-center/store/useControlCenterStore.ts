@@ -13,7 +13,7 @@ import type {
 
 interface ControlCenterState {
   isOpen: boolean;
-  activeTab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch';
+  activeTab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch' | 'telemetry';
   hardware: SystemHardwareInfo | null;
   config: ControlCenterConfig;
   downloadProgress: number; // 0 - 100
@@ -25,12 +25,12 @@ interface ControlCenterState {
   isDirty: boolean;
   baselineConfig: ControlCenterConfig | null;
 
-  setOpen: (open: boolean, tab?: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch') => void;
-  openToTab: (tab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch') => void;
+  setOpen: (open: boolean, tab?: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch' | 'telemetry') => void;
+  openToTab: (tab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch' | 'telemetry') => void;
   resetToBaseline: () => void;
   saveBaseline: () => void;
   markDirty: () => void;
-  setActiveTab: (tab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch') => void;
+  setActiveTab: (tab: 'overview' | 'models' | 'neural' | 'databases' | 'platform' | 'launch' | 'telemetry') => void;
   updateConfig: (patch: Partial<ControlCenterConfig>) => void;
   setHardware: (info: SystemHardwareInfo) => void;
   setDownloadProgress: (percent: number, speed: string) => void;
@@ -207,7 +207,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
   persist(
     (set, get) => ({
       isOpen: false,
-      activeTab: 'platform',
+      activeTab: 'overview',
       hardware: {
         platform: defaultPlatform,
         osName: defaultPlatform === 'macos' ? 'macOS (Apple Silicon)' : defaultPlatform === 'windows' ? 'Windows' : 'Linux',

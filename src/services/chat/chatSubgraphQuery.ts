@@ -20,6 +20,8 @@ export async function executeSubgraphQuery(
   onAbort?: () => void
 ): Promise<ApiResponse<SubgraphQueryResponse>> {
   const effectiveMode = req.mode || (req.hops && req.hops > 1 ? 'expert' : 'fast');
+  const effectiveRequestId =
+    req.request_id || `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const startTime = Date.now();
   let accumulatedStreamText = '';
 
@@ -38,6 +40,9 @@ export async function executeSubgraphQuery(
       ENDPOINTS.CHAT,
       {
         method: 'POST',
+        headers: {
+          'X-Request-Id': effectiveRequestId,
+        },
         body: JSON.stringify({
           message: req.query,
           query: req.query,
@@ -46,7 +51,7 @@ export async function executeSubgraphQuery(
           chat_history: req.chat_history,
           session_id: req.thread_id,
           thread_id: req.thread_id,
-          request_id: req.request_id,
+          request_id: effectiveRequestId,
           active_docs:
             req.active_docs && req.active_docs.length > 0 ? req.active_docs : undefined,
           format: 'sse',
@@ -164,7 +169,7 @@ export async function executeSubgraphQuery(
     chat_history: req.chat_history,
     session_id: req.thread_id,
     thread_id: req.thread_id,
-    request_id: req.request_id,
+    request_id: effectiveRequestId,
     active_docs:
       req.active_docs && req.active_docs.length > 0 ? req.active_docs : undefined,
     document_filter: req.document_filter,
@@ -179,6 +184,9 @@ export async function executeSubgraphQuery(
     undefined,
     {
       method: 'POST',
+      headers: {
+        'X-Request-Id': effectiveRequestId,
+      },
       body: JSON.stringify(chatPayload),
       signal,
       timeoutMs: 45000,
