@@ -208,6 +208,48 @@ class LocalVLLMProvider(BaseLLMProvider):
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            logger.warning(f"Local vLLM endpoint ({self.base_url}) HTTP {e.code}: {err_body}")
+            if e.code == 400 and ("maximum context length" in err_body or "context length" in err_body):
+                import re
+                m = re.search(r"maximum context length is (\d+).*?\((\d+)\s+in the messages", err_body)
+                if m:
+                    max_len = int(m.group(1))
+                    msg_tokens = int(m.group(2))
+                    avail = max_len - msg_tokens - 32
+                    if avail >= 128:
+                        logger.info(f"Auto-adjusting vLLM max_tokens from {payload.get('max_tokens')} to {avail} for context length boundary.")
+                        payload["max_tokens"] = avail
+                        try:
+                            retry_req = urllib.request.Request(
+                                f"{self.base_url}/chat/completions",
+                                data=json.dumps(payload).encode("utf-8"),
+                                headers={"Content-Type": "application/json", "User-Agent": "RAISE-Provider"},
+                            )
+                            with urllib.request.urlopen(retry_req, timeout=timeout) as retry_resp:
+                                data = json.loads(retry_resp.read().decode("utf-8"))
+                                return data["choices"][0]["message"]["content"]
+                        except Exception as re_err:
+                            logger.warning(f"vLLM auto-retry with max_tokens={avail} failed: {re_err}")
+                    else:
+                        logger.info("Auto-compacting prompt messages to fit within vLLM max_model_len.")
+                        safe_char_limit = max(500, (max_len - 512) * 3)
+                        messages[-1]["content"] = messages[-1]["content"][:safe_char_limit] + "\n[Context condensed]"
+                        payload["messages"] = messages
+                        payload["max_tokens"] = 384
+                        try:
+                            retry_req = urllib.request.Request(
+                                f"{self.base_url}/chat/completions",
+                                data=json.dumps(payload).encode("utf-8"),
+                                headers={"Content-Type": "application/json", "User-Agent": "RAISE-Provider"},
+                            )
+                            with urllib.request.urlopen(retry_req, timeout=timeout) as retry_resp:
+                                data = json.loads(retry_resp.read().decode("utf-8"))
+                                return data["choices"][0]["message"]["content"]
+                        except Exception as re_err:
+                            logger.warning(f"vLLM auto-retry with compacted prompt failed: {re_err}")
+            raise RuntimeError(f"Local vLLM HTTP {e.code} at {self.base_url}: {err_body}")
         except Exception as e:
             err_str = str(e)
             is_refused = "10061" in err_str or "actively refused" in err_str.lower() or "connection refused" in err_str.lower()
@@ -276,6 +318,7 @@ class LocalTransformersProvider(BaseLLMProvider):
     _shared_model = None
     _shared_tokenizer = None
     _loaded_model_name = None
+    _failed_models: set[str] = set()
     _lock = threading.Lock()
 
     def __init__(self, model_name: Optional[str] = None):
@@ -284,8 +327,10 @@ class LocalTransformersProvider(BaseLLMProvider):
     def is_available(self) -> bool:
         """Check if local environment supports torch inference."""
         try:
+            if self.model_name in LocalTransformersProvider._failed_models:
+                return False
             m_lower = (self.model_name or "").lower()
-            if any(cloud in m_lower for cloud in ["gemini", "openai", "claude", "command-r"]):
+            if any(cloud in m_lower for cloud in ["gemini", "openai", "claude", "command-r", "gptq", "awq", "gguf"]):
                 return False
             import torch
             return bool(torch.cuda.is_available() or os.getenv("ALLOW_CPU_LOCAL_LLM", "true").lower() in ("true", "1"))
@@ -296,6 +341,8 @@ class LocalTransformersProvider(BaseLLMProvider):
         with self._lock:
             if LocalTransformersProvider._shared_model is not None and LocalTransformersProvider._loaded_model_name == self.model_name:
                 return
+            if self.model_name in LocalTransformersProvider._failed_models:
+                raise RuntimeError(f"In-process local LLM '{self.model_name}' previously failed to load and is disabled.")
 
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -324,11 +371,14 @@ class LocalTransformersProvider(BaseLLMProvider):
                 except Exception as _load_err:
                     err_msg = str(_load_err)
                     if "QuantizeConfig" in err_msg or "quant" in err_msg.lower():
+                        LocalTransformersProvider._failed_models.add(self.model_name)
                         logger.warning(
                             f"In-process local LLM '{self.model_name}' requires external quantization packages: {_load_err}. "
-                            "Please use running vLLM or Ollama instance for quantized models."
+                            "Permanently disabling in-process load; use vLLM or Ollama."
                         )
+                        raise RuntimeError(f"Could not load in-process local LLM '{self.model_name}': {_load_err}")
                     if not local_only:
+                        LocalTransformersProvider._failed_models.add(self.model_name)
                         raise RuntimeError(f"Could not load in-process local LLM '{self.model_name}': {_load_err}")
             if tok is None or mod is None:
                 raise RuntimeError(f"Could not load local LLM {self.model_name}")

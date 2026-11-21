@@ -33,7 +33,7 @@ def classify_http_status(status_code: int) -> str:
         return "AUTH_FAILED"
     elif status_code == 404:
         return "MODEL_UNAVAILABLE"
-    elif status_code == 429:
+    elif status_code in (413, 429):
         return "RATE_LIMITED"
     elif status_code in (402, 409):
         return "BILLING_RESTRICTED"

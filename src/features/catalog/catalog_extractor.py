@@ -91,8 +91,14 @@ def extract_okf_profile_from_pdf(
 
     # Also check filename for years
     fn_fy = re.search(r"\b(20\d{2}[-–/]\d{2})\b", doc_stem)
+    fn_short_fy = re.search(r"\b([12]\d[-–/]\d{2})\b", doc_stem)
     if fn_fy:
         rp = fn_fy.group(1).replace("–", "-").replace("/", "-")
+        if not extracted_period:
+            extracted_period = rp
+        fiscal_years.update([rp, rp[:4], "20" + rp[-2:]])
+    elif fn_short_fy:
+        rp = f"20{fn_short_fy.group(1).replace('–', '-').replace('/', '-')}"
         if not extracted_period:
             extracted_period = rp
         fiscal_years.update([rp, rp[:4], "20" + rp[-2:]])
@@ -114,16 +120,17 @@ def extract_okf_profile_from_pdf(
     short_name = ""
     aliases: List[str] = []
 
-    if not final_institution:
+    combined_search = header_text + " " + " ".join([(c.get("plain_text") or c.get("text") or "")[:300] for c in (chunks or [])[:25]])
+    if not final_institution or final_institution == doc_stem.replace("_", " ").replace("-", " "):
         inst_match = re.search(
             r"(National\s+Institute\s+of\s+[A-Za-z\s]+|Biotechnology\s+Research\s+and\s+Innovation\s+Council|"
             r"National\s+Brain\s+Research\s+Centre|Translational\s+Health\s+Science\s+and\s+Technology\s+Institute|"
             r"[A-Z][a-zA-Z\s]+University|[A-Z][a-zA-Z\s]+Institute\s+of\s+Technology)",
-            header_text,
+            combined_search,
         )
         if inst_match:
             final_institution = inst_match.group(1).strip()
-        else:
+        elif not final_institution:
             final_institution = doc_stem.replace("_", " ").replace("-", " ")
 
     # Short name / Acronym extraction
@@ -189,7 +196,20 @@ def extract_okf_profile_from_pdf(
             key_acronyms[acr] = exp.strip()
             key_entities.add(exp.strip())
 
-    sorted_entities = sorted(list(key_entities))[:35]
+    filtered_entities = []
+    for e in key_entities:
+        e_clean = str(e).strip()
+        if not e_clean or len(e_clean) < 3:
+            continue
+        if re.match(r"^\d+[\.\)]\s*", e_clean):
+            continue
+        if re.search(r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}", e_clean):
+            continue
+        if any(bad in e_clean.lower() for bad in ["http://", "https://", "isbn", "page ", "table ", "(part "]):
+            continue
+        filtered_entities.append(e_clean)
+
+    sorted_entities = sorted(list(set(filtered_entities)))[:35]
 
     # 5. Extract Domains
     domains = ["Life Sciences", "Biotechnology"]

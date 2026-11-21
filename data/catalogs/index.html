@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAISE — Open Knowledge Format (OKF v0.3) Interactive Visualizer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #app {
+      display: flex;
+      flex: 1;
+      height: 100%;
+      position: relative;
+    }
+    #cy-container {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+    }
+    #cy {
+      width: 100%;
+      height: 100%;
+    }
+    #toolbar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(30, 41, 59, 0.9);
+      backdrop-filter: blur(8px);
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      z-index: 10;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    #toolbar input {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      width: 200px;
+    }
+    #toolbar select, #toolbar button {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #toolbar button:hover, #toolbar select:hover {
+      border-color: var(--accent);
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-machine { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid #3b82f6; }
+    .badge-stable { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
+    #drawer {
+      width: 440px;
+      height: 100%;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -10px 0 25px rgba(0,0,0,0.4);
+      z-index: 20;
+    }
+    #drawer-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #drawer-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    #drawer-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #drawer-content pre {
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--border);
+    }
+    #drawer-content h1, #drawer-content h2, #drawer-content h3 {
+      margin: 16px 0 8px 0;
+      color: #e2e8f0;
+    }
+    #drawer-content ul {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+    .legend {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: rgba(30, 41, 59, 0.9);
+      backdrop-filter: blur(8px);
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      z-index: 10;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="cy-container">
+      <div id="toolbar">
+        <strong style="color: var(--accent); font-size: 14px;">RAISE OKF Graph</strong>
+        <input type="text" id="search-box" placeholder="Filter entities / docs...">
+        <select id="layout-select">
+          <option value="cose">Force-Directed (cose)</option>
+          <option value="concentric">Concentric</option>
+          <option value="circle">Circle</option>
+          <option value="grid">Grid</option>
+        </select>
+        <button id="btn-fit">Fit View</button>
+      </div>
+
+      <div id="cy"></div>
+
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div> Institution</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div> Domain</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div> Fiscal Year</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div> Entity / Gene</div>
+      </div>
+    </div>
+
+    <div id="drawer">
+      <div id="drawer-header">
+        <h2 id="drawer-title">OKF Inspector</h2>
+        <div>
+          <span class="badge badge-machine">OKF v0.3</span>
+          <span class="badge badge-stable">STABLE</span>
+        </div>
+      </div>
+      <div id="drawer-content">
+        <p style="color: var(--text-muted);">Click any node in the knowledge graph to inspect its Open Knowledge Format (OKF) metadata, provenance citations, and Markdown documentation.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const elementsData = {
+  "nodes": [
+    {
+      "data": {
+        "id": "dom_Bio-Manufacturing & Industrial Biotechnology",
+        "label": "Bio-Manufacturing & Industrial Biotechnology",
+        "type": "Domain",
+        "color": "#10b981",
+        "size": 35,
+        "details": "### Academic & Scientific Domain\n\n**Bio-Manufacturing & Industrial Biotechnology**"
+      }
+    },
+    {
+      "data": {
+        "id": "dom_Biotechnology",
+        "label": "Biotechnology",
+        "type": "Domain",
+        "color": "#10b981",
+        "size": 35,
+        "details": "### Academic & Scientific Domain\n\n**Biotechnology**"
+      }
+    },
+    {
+      "data": {
+        "id": "dom_Life Sciences",
+        "label": "Life Sciences",
+        "type": "Domain",
+        "color": "#10b981",
+        "size": 35,
+        "details": "### Academic & Scientific Domain\n\n**Life Sciences**"
+      }
+    },
+    {
+      "data": {
+        "id": "dom_Neuroscience & Cognitive Science",
+        "label": "Neuroscience & Cognitive Science",
+        "type": "Domain",
+        "color": "#10b981",
+        "size": 35,
+        "details": "### Academic & Scientific Domain\n\n**Neuroscience & Cognitive Science**"
+      }
+    },
+    {
+      "data": {
+        "id": "dom_Plant Genomics & Agriculture",
+        "label": "Plant Genomics & Agriculture",
+        "type": "Domain",
+        "color": "#10b981",
+        "size": 35,
+        "details": "### Academic & Scientific Domain\n\n**Plant Genomics & Agriculture**"
+      }
+    },
+    {
+      "data": {
+        "id": "dom_Translational Health & Immunology",
+        "label": "Translational Health & Immunology",
+        "type": "Domain",
+        "color": "#10b981",
+        "size": 35,
+        "details": "### Academic & Scientific Domain\n\n**Translational Health & Immunology**"
+      }
+    },
+    {
+      "data": {
+        "id": "yr_2022",
+        "label": "FY 2022",
+        "type": "FiscalYear",
+        "color": "#f59e0b",
+        "size": 30,
+        "details": "### Fiscal Reporting Period\n\nYear/Period: `2022`"
+      }
+    },
+    {
+      "data": {
+        "id": "yr_2022-23",
+        "label": "FY 2022-23",
+        "type": "FiscalYear",
+        "color": "#f59e0b",
+        "size": 30,
+        "details": "### Fiscal Reporting Period\n\nYear/Period: `2022-23`"
+      }
+    },
+    {
+      "data": {
+        "id": "yr_2023",
+        "label": "FY 2023",
+        "type": "FiscalYear",
+        "color": "#f59e0b",
+        "size": 30,
+        "details": "### Fiscal Reporting Period\n\nYear/Period: `2023`"
+      }
+    },
+    {
+      "data": {
+        "id": "yr_2024",
+        "label": "FY 2024",
+        "type": "FiscalYear",
+        "color": "#f59e0b",
+        "size": 30,
+        "details": "### Fiscal Reporting Period\n\nYear/Period: `2024`"
+      }
+    },
+    {
+      "data": {
+        "id": "yr_2024-25",
+        "label": "FY 2024-25",
+        "type": "FiscalYear",
+        "color": "#f59e0b",
+        "size": 30,
+        "details": "### Fiscal Reporting Period\n\nYear/Period: `2024-25`"
+      }
+    },
+    {
+      "data": {
+        "id": "yr_2025",
+        "label": "FY 2025",
+        "type": "FiscalYear",
+        "color": "#f59e0b",
+        "size": 30,
+        "details": "### Fiscal Reporting Period\n\nYear/Period: `2025`"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Agarwal Pinky",
+        "label": "Agarwal Pinky",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Agarwal Pinky\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Bhatia Sabhyata",
+        "label": "Bhatia Sabhyata",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Bhatia Sabhyata\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Bisht Naveen Chandra",
+        "label": "Bisht Naveen Chandra",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Bisht Naveen Chandra\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_CaMYB39",
+        "label": "CaMYB39",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** CaMYB39\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_CaPLC3",
+        "label": "CaPLC3",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** CaPLC3\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Cas9-",
+        "label": "Cas9-",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Cas9-\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Chakraborty Niranjan",
+        "label": "Chakraborty Niranjan",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Chakraborty Niranjan\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Chakraborty Subhra",
+        "label": "Chakraborty Subhra",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Chakraborty Subhra\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Chattopadhyay Debasis",
+        "label": "Chattopadhyay Debasis",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Chattopadhyay Debasis\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_CitMHS",
+        "label": "CitMHS",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** CitMHS\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Datta Asis",
+        "label": "Datta Asis",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Datta Asis\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Giri Jitender",
+        "label": "Giri Jitender",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Giri Jitender\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Institute of Plant Genome Research",
+        "label": "Institute of Plant Genome Research",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Institute of Plant Genome Research\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Jha Gopaljee",
+        "label": "Jha Gopaljee",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Jha Gopaljee\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Kumar Shailesh",
+        "label": "Kumar Shailesh",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Kumar Shailesh\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Laxmi Ashverya",
+        "label": "Laxmi Ashverya",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Laxmi Ashverya\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Majee Manoj",
+        "label": "Majee Manoj",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Majee Manoj\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Meena Mukesh Kumar",
+        "label": "Meena Mukesh Kumar",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Meena Mukesh Kumar\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Multidrug resistance",
+        "label": "Multidrug resistance",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Multidrug resistance\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_OsCT1",
+        "label": "OsCT1",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** OsCT1\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_OsDUF1",
+        "label": "OsDUF1",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** OsDUF1\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_OsGRF7",
+        "label": "OsGRF7",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** OsGRF7\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_OsJAZ11",
+        "label": "OsJAZ11",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** OsJAZ11\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_OsMSRB5",
+        "label": "OsMSRB5",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** OsMSRB5\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Parida Swarup",
+        "label": "Parida Swarup",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Parida Swarup\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Prasad Manoj",
+        "label": "Prasad Manoj",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Prasad Manoj\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Ram Hasthi",
+        "label": "Ram Hasthi",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Ram Hasthi\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_Ranjan Ashish",
+        "label": "Ranjan Ashish",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** Ranjan Ashish\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_SiHDA9",
+        "label": "SiHDA9",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** SiHDA9\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "ent_SiHDA9-",
+        "label": "SiHDA9-",
+        "type": "Entity",
+        "color": "#8b5cf6",
+        "size": 25,
+        "details": "### Key Scientific Entity\n\n- **Name:** SiHDA9-\n- **Document References:** 1"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23",
+        "label": "NIPGR\n(2022-23)",
+        "title": "National Institute of Plant Genome Research",
+        "filename": "NIPGR-22-23.pdf",
+        "type": "InstitutionalProfile",
+        "trust_tier": "machine-confirmed",
+        "status": "stable",
+        "color": "#3b82f6",
+        "size": 50,
+        "pages": 276,
+        "reporting_period": "2022-23",
+        "markdown": "# National Institute of Plant Genome Research (2022-23)\n\n## 1. Institutional Identity & Context\nThe **National Institute of Plant Genome Research** (NIPGR) is an autonomous scientific institution reported under document `NIPGR-22-23.pdf`.\nThis Open Knowledge Format (OKF) profile provides agent-ready metadata for zero-hardcoding dynamic routing, temporal disambiguation, and verified citation provenance.\n\n## 2. Research Domains & Academic Scope\n- **Primary Domains:** Life Sciences, Biotechnology, Plant Genomics & Agriculture, Translational Health & Immunology\n- **Total Monitored Pages:** 276\n- **Document Scope:** 2022-23 (Fiscal Years: 2022, 2022-23, 2023)\n\n## 3. Key Entities & Scientific Assets\n- `Agarwal Pinky`\n- `Bhatia Sabhyata`\n- `Bisht Naveen Chandra`\n- `CaMYB39`\n- `CaPLC3`\n- `Cas9-`\n- `Chakraborty Niranjan`\n- `Chakraborty Subhra`\n- `Chattopadhyay Debasis`\n- `CitMHS`\n- `Datta Asis`\n- `Giri Jitender`\n- `Institute of Plant Genome Research`\n- `Jha Gopaljee`\n- `Kumar Shailesh`\n- `Laxmi Ashverya`\n- `Majee Manoj`\n- `Meena Mukesh Kumar`\n- `Multidrug resistance`\n- `OsCT1`\n\n## 4. Key Acronyms & Expanded Nomenclature\n- **NIPGR:** Institute of Plant Genome Research\n- **MDR:** Multidrug resistance\n\n## 5. Major Report Sections & Page Index\n- `Table of Contents` (Page 7)\n- `Mandate` (Page 9)\n- `Preamble` (Page 11)\n- `research papers in the reporting period and filed 2 patents with 4 gra (Part 1)` (Page 12)\n- `research papers in the reporting period and filed 2 patents with 4 gra (Part 2)` (Page 12)\n- `has been shown that the Indian oil seed plant Brassica juncea possesse (Part 1)` (Page 13)\n- `has been shown that the Indian oil seed plant Brassica juncea possesse (Part 2)` (Page 13)\n- `platforms at NIPGR\u2019s Translational Centre at Bulandshahr. Development  (Part 1)` (Page 14)\n- `platforms at NIPGR\u2019s Translational Centre at Bulandshahr. Development  (Part 2)` (Page 14)\n- `Highlights of the` (Page 15)\n\n## 6. Financial & Tabular Schedules\n- `Table of Contents` (Page 7)\n- `Independence Day Celebrations` (Page 84)\n- `Seminar Series (2022-23)` (Page 98)\n\n## 7. Operational & Quantitative Indicators\n- Total Pages: 276",
+        "details": "### National Institute of Plant Genome Research\n- **Document ID:** `NIPGR_22_23`\n- **Source File:** `NIPGR-22-23.pdf`\n- **Reporting Period:** `2022-23`\n- **Trust Tier:** `machine-confirmed` (OKF v0.3)\n- **Monitored Pages:** 276\n- **Domains:** Life Sciences, Biotechnology, Plant Genomics & Agriculture, Translational Health & Immunology\n- **Fiscal Years:** 2022, 2022-23, 2023\n"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "label": "BRIC\n(2024-25)",
+        "title": "Biotechnology Research and Innovation \nCouncil",
+        "filename": "NIPGR_BRIC_Annual_Report_2025.pdf",
+        "type": "InstitutionalProfile",
+        "trust_tier": "machine-confirmed",
+        "status": "stable",
+        "color": "#3b82f6",
+        "size": 50,
+        "pages": 218,
+        "reporting_period": "2024-25",
+        "markdown": "# Biotechnology Research and Innovation \nCouncil (2024-25)\n\n## 1. Institutional Identity & Context\nThe **Biotechnology Research and Innovation \nCouncil** (BRIC) is an autonomous scientific institution reported under document `NIPGR_BRIC_Annual_Report_2025.pdf`.\nThis Open Knowledge Format (OKF) profile provides agent-ready metadata for zero-hardcoding dynamic routing, temporal disambiguation, and verified citation provenance.\n\n## 2. Research Domains & Academic Scope\n- **Primary Domains:** Life Sciences, Biotechnology, Plant Genomics & Agriculture, Neuroscience & Cognitive Science, Translational Health & Immunology, Bio-Manufacturing & Industrial Biotechnology\n- **Total Monitored Pages:** 218\n- **Document Scope:** 2024-25 (Fiscal Years: 2024, 2024-25, 2025)\n\n## 3. Key Entities & Scientific Assets\n- `BRIC-Institute of Life Sciences`\n- `BioE3`\n- `CoV-2`\n- `DNA Fingerprinting and Diagnostics`\n- `Department \nof \nBiotechnology`\n- `Department of Biotechnology`\n- `General`\n- `Institute of Biomedical Genomics`\n- `Research\n\nand Innovation Council`\n- `Research \nand \nInnovation \nCouncil`\n- `Research \nand Innovation Council`\n- `Research and Innovation \nCouncil`\n- `Research and Innovation Council`\n- `Sustainable Development`\n- `The Third Finance Committee`\n\n## 4. Key Acronyms & Expanded Nomenclature\n- **BRIC:** Research \nand \nInnovation \nCouncil\n- **DBT:** Department \nof \nBiotechnology\n- **CDFD:** DNA Fingerprinting and Diagnostics\n- **IBSD:** Sustainable Development\n- **ILS:** BRIC-Institute of Life Sciences\n- **NIBMG:** Institute of Biomedical Genomics\n- **FC:** The Third Finance Committee\n\n## 5. Major Report Sections & Page Index\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 1)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 2)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 3)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 4)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 5)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 6)` (Page 1)\n- `ACKNOWLEDGEMENTS` (Page 2)\n- `BIOTECHNOLOGY` (Page 3)\n- `Table of Contents` (Page 4)\n- `RAJESH SUDHIR GOKHALE` (Page 5)\n\n## 6. Financial & Tabular Schedules\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 1)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 2)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 3)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 4)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 5)` (Page 1)\n- `BIOTECHNOLOGY RESEARCH AND INNOVATION COUNCIL (Part 6)` (Page 1)\n- `Table of Contents` (Page 4)\n- `RAJESH SUDHIR GOKHALE` (Page 5)\n\n## 7. Operational & Quantitative Indicators\n- Total Pages: 218",
+        "details": "### Biotechnology Research and Innovation \nCouncil\n- **Document ID:** `NIPGR_BRIC_Annual_Report_2025`\n- **Source File:** `NIPGR_BRIC_Annual_Report_2025.pdf`\n- **Reporting Period:** `2024-25`\n- **Trust Tier:** `machine-confirmed` (OKF v0.3)\n- **Monitored Pages:** 218\n- **Domains:** Life Sciences, Biotechnology, Plant Genomics & Agriculture, Neuroscience & Cognitive Science, Translational Health & Immunology, Bio-Manufacturing & Industrial Biotechnology\n- **Fiscal Years:** 2024, 2024-25, 2025\n"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_test_sample",
+        "label": "test sample\n(2025)",
+        "title": "test sample",
+        "filename": "test_sample.pdf",
+        "type": "InstitutionalProfile",
+        "trust_tier": "machine-confirmed",
+        "status": "stable",
+        "color": "#3b82f6",
+        "size": 50,
+        "pages": 1,
+        "reporting_period": "2025",
+        "markdown": "# test sample (2025)\n\n## 1. Institutional Identity & Context\nThe **test sample** (N/A) is an autonomous scientific institution reported under document `test_sample.pdf`.\nThis Open Knowledge Format (OKF) profile provides agent-ready metadata for zero-hardcoding dynamic routing, temporal disambiguation, and verified citation provenance.\n\n## 2. Research Domains & Academic Scope\n- **Primary Domains:** Life Sciences, Biotechnology\n- **Total Monitored Pages:** 1\n- **Document Scope:** 2025 (Fiscal Years: 2025)\n\n## 3. Key Entities & Scientific Assets\n\n\n## 4. Key Acronyms & Expanded Nomenclature\n\n\n## 5. Major Report Sections & Page Index\n- `Renewable Energy Global Trends Report 2025` (Page 1)\n\n## 6. Financial & Tabular Schedules\n- Schedules and tabular data indexed in context chunks\n\n## 7. Operational & Quantitative Indicators\n- Total Pages: 1",
+        "details": "### test sample\n- **Document ID:** `test_sample`\n- **Source File:** `test_sample.pdf`\n- **Reporting Period:** `2025`\n- **Trust Tier:** `machine-confirmed` (OKF v0.3)\n- **Monitored Pages:** 1\n- **Domains:** Life Sciences, Biotechnology\n- **Fiscal Years:** 2025\n"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__dom_Life Sciences",
+        "source": "doc_NIPGR_22_23",
+        "target": "dom_Life Sciences",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__dom_Biotechnology",
+        "source": "doc_NIPGR_22_23",
+        "target": "dom_Biotechnology",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__dom_Plant Genomics & Agriculture",
+        "source": "doc_NIPGR_22_23",
+        "target": "dom_Plant Genomics & Agriculture",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__dom_Translational Health & Immunology",
+        "source": "doc_NIPGR_22_23",
+        "target": "dom_Translational Health & Immunology",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__yr_2022",
+        "source": "doc_NIPGR_22_23",
+        "target": "yr_2022",
+        "relation": "REPORTED_IN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__yr_2022-23",
+        "source": "doc_NIPGR_22_23",
+        "target": "yr_2022-23",
+        "relation": "REPORTED_IN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__yr_2023",
+        "source": "doc_NIPGR_22_23",
+        "target": "yr_2023",
+        "relation": "REPORTED_IN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Agarwal Pinky",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Agarwal Pinky",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Bhatia Sabhyata",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Bhatia Sabhyata",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Bisht Naveen Chandra",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Bisht Naveen Chandra",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_CaMYB39",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_CaMYB39",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_CaPLC3",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_CaPLC3",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Cas9-",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Cas9-",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Chakraborty Niranjan",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Chakraborty Niranjan",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Chakraborty Subhra",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Chakraborty Subhra",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Chattopadhyay Debasis",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Chattopadhyay Debasis",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_CitMHS",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_CitMHS",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Datta Asis",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Datta Asis",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Giri Jitender",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Giri Jitender",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Institute of Plant Genome Research",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Institute of Plant Genome Research",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Jha Gopaljee",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Jha Gopaljee",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Kumar Shailesh",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Kumar Shailesh",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Laxmi Ashverya",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Laxmi Ashverya",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Majee Manoj",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Majee Manoj",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Meena Mukesh Kumar",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Meena Mukesh Kumar",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Multidrug resistance",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Multidrug resistance",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_OsCT1",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_OsCT1",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_OsDUF1",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_OsDUF1",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_OsGRF7",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_OsGRF7",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_OsJAZ11",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_OsJAZ11",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_OsMSRB5",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_OsMSRB5",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Parida Swarup",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Parida Swarup",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Prasad Manoj",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Prasad Manoj",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Ram Hasthi",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Ram Hasthi",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_Ranjan Ashish",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_Ranjan Ashish",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_SiHDA9",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_SiHDA9",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_22_23__ent_SiHDA9-",
+        "source": "doc_NIPGR_22_23",
+        "target": "ent_SiHDA9-",
+        "relation": "MENTIONS"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__dom_Life Sciences",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "dom_Life Sciences",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__dom_Biotechnology",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "dom_Biotechnology",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__dom_Plant Genomics & Agriculture",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "dom_Plant Genomics & Agriculture",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__dom_Neuroscience & Cognitive Science",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "dom_Neuroscience & Cognitive Science",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__dom_Translational Health & Immunology",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "dom_Translational Health & Immunology",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__dom_Bio-Manufacturing & Industrial Biotechnology",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "dom_Bio-Manufacturing & Industrial Biotechnology",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__yr_2024",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "yr_2024",
+        "relation": "REPORTED_IN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__yr_2024-25",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "yr_2024-25",
+        "relation": "REPORTED_IN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_NIPGR_BRIC_Annual_Report_2025__yr_2025",
+        "source": "doc_NIPGR_BRIC_Annual_Report_2025",
+        "target": "yr_2025",
+        "relation": "REPORTED_IN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_test_sample__dom_Life Sciences",
+        "source": "doc_test_sample",
+        "target": "dom_Life Sciences",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_test_sample__dom_Biotechnology",
+        "source": "doc_test_sample",
+        "target": "dom_Biotechnology",
+        "relation": "IN_DOMAIN"
+      }
+    },
+    {
+      "data": {
+        "id": "doc_test_sample__yr_2025",
+        "source": "doc_test_sample",
+        "target": "yr_2025",
+        "relation": "REPORTED_IN"
+      }
+    }
+  ]
+};
+
+    const cy = cytoscape({
+      container: document.getElementById('cy'),
+      elements: elementsData,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': 'data(color)',
+            'label': 'data(label)',
+            'color': '#f8fafc',
+            'font-size': '11px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 'data(size)',
+            'height': 'data(size)',
+            'text-wrap': 'wrap',
+            'text-max-width': '90px',
+            'border-width': 2,
+            'border-color': '#ffffff',
+            'border-opacity': 0.3,
+            'transition-property': 'background-color, line-color, target-arrow-color',
+            'transition-duration': '0.2s'
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 4,
+            'border-color': '#38bdf8',
+            'border-opacity': 1.0,
+            'shadow-blur': 15,
+            'shadow-color': '#38bdf8',
+            'shadow-opacity': 0.8
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': 1.5,
+            'line-color': '#475569',
+            'curve-style': 'bezier',
+            'opacity': 0.6,
+            'label': 'data(relation)',
+            'font-size': '8px',
+            'color': '#64748b',
+            'text-rotation': 'autorotate'
+          }
+        }
+      ],
+      layout: {
+        name: 'cose',
+        animate: false,
+        padding: 50,
+        nodeRepulsion: 450000,
+        idealEdgeLength: 100
+      }
+    });
+
+    // Node selection inspector
+    cy.on('tap', 'node', function(evt) {
+      const node = evt.target;
+      const data = node.data();
+      document.getElementById('drawer-title').innerText = data.label.replace('\n', ' ');
+      
+      let html = '';
+      if (data.details) {
+        html += marked.parse(data.details);
+      }
+      if (data.markdown) {
+        html += '<hr style="margin: 16px 0; border: 0; border-top: 1px solid var(--border);">';
+        html += marked.parse(data.markdown);
+      }
+      document.getElementById('drawer-content').innerHTML = html;
+    });
+
+    // Search filter
+    document.getElementById('search-box').addEventListener('input', function(e) {
+      const q = e.target.value.toLowerCase().trim();
+      if (!q) {
+        cy.elements().style('opacity', 1.0);
+        return;
+      }
+      cy.elements().style('opacity', 0.15);
+      const matches = cy.nodes().filter(n => {
+        const label = (n.data('label') || '').toLowerCase();
+        const title = (n.data('title') || '').toLowerCase();
+        return label.includes(q) || title.includes(q);
+      });
+      matches.style('opacity', 1.0);
+      matches.neighborhood().style('opacity', 0.8);
+    });
+
+    // Layout switcher
+    document.getElementById('layout-select').addEventListener('change', function(e) {
+      cy.layout({ name: e.target.value, animate: true, animationDuration: 400 }).run();
+    });
+
+    // Fit button
+    document.getElementById('btn-fit').addEventListener('click', function() {
+      cy.fit(null, 40);
+    });
+  </script>
+</body>
+</html>

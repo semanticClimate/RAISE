@@ -1,0 +1,122 @@
+{
+  "entities": [
+    {
+      "entity_id": "test_sample_p001_rec_0001",
+      "label": "Chunk",
+      "name": "Passage (p.1)",
+      "properties": {
+        "text_preview": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and ",
+        "page": 1,
+        "pdf": "test_sample.pdf"
+      },
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "section_heading": "Renewable Energy Global Trends Report 2025",
+        "chunk_id": "test_sample_p001_rec_0001",
+        "source_text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ"
+      }
+    },
+    {
+      "entity_id": "inst_test_sample",
+      "label": "Institution",
+      "name": "Test Sample",
+      "properties": {},
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "section_heading": "Renewable Energy Global Trends Report 2025",
+        "chunk_id": "test_sample_p001_rec_0001",
+        "source_text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ"
+      }
+    },
+    {
+      "entity_id": "sec_renewable_energy_global_trends_repo",
+      "label": "Section",
+      "name": "Renewable Energy Global Trends Report 2025",
+      "properties": {
+        "page": 1,
+        "pdf": "test_sample.pdf"
+      },
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "section_heading": "Renewable Energy Global Trends Report 2025",
+        "chunk_id": "test_sample_p001_rec_0001",
+        "source_text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "rel_inst_test_sample_sec_renewable_energy_global_trends_repo_has_section",
+      "source_id": "inst_test_sample",
+      "source_label": "University",
+      "relation_type": "HAS_SECTION",
+      "target_id": "sec_renewable_energy_global_trends_repo",
+      "target_label": "Section",
+      "properties": {},
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "chunk_id": "test_sample_p001_rec_0001"
+      }
+    },
+    {
+      "relation_id": "rel_sec_renewable_energy_global_trends_repo_test_sample_p001_rec_0001_contains",
+      "source_id": "sec_renewable_energy_global_trends_repo",
+      "source_label": "Section",
+      "relation_type": "CONTAINS_CHUNK",
+      "target_id": "test_sample_p001_rec_0001",
+      "target_label": "Chunk",
+      "properties": {},
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "chunk_id": "test_sample_p001_rec_0001"
+      }
+    },
+    {
+      "relation_id": "rel_test_sample_p001_rec_0001_inst_test_sample_mentions",
+      "source_id": "test_sample_p001_rec_0001",
+      "source_label": "Chunk",
+      "relation_type": "MENTIONS",
+      "target_id": "inst_test_sample",
+      "target_label": "Institution",
+      "properties": {},
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "chunk_id": "test_sample_p001_rec_0001"
+      }
+    },
+    {
+      "relation_id": "rel_test_sample_p001_rec_0001_sec_renewable_energy_global_trends_repo_mentions",
+      "source_id": "test_sample_p001_rec_0001",
+      "source_label": "Chunk",
+      "relation_type": "MENTIONS",
+      "target_id": "sec_renewable_energy_global_trends_repo",
+      "target_label": "Section",
+      "properties": {},
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "chunk_id": "test_sample_p001_rec_0001"
+      }
+    },
+    {
+      "relation_id": "rel_test_sample_p001_rec_0001_test_sample_p001_rec_0001_mentions",
+      "source_id": "test_sample_p001_rec_0001",
+      "source_label": "Chunk",
+      "relation_type": "MENTIONS",
+      "target_id": "test_sample_p001_rec_0001",
+      "target_label": "Chunk",
+      "properties": {},
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "chunk_id": "test_sample_p001_rec_0001"
+      }
+    }
+  ]
+}

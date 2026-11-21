@@ -682,6 +682,43 @@ class DualProcessSupervisor:
             time.sleep(0.2)
         return False
 
+    def stop_frontend(self) -> None:
+        """Stops the Vite frontend service to conserve RAM and CPU."""
+        if self.frontend_proc and self.frontend_proc.poll() is None:
+            try:
+                subprocess.run(f"taskkill /PID {self.frontend_proc.pid} /T /F", shell=True, capture_output=True, timeout=5)
+            except Exception:
+                try:
+                    self.frontend_proc.kill()
+                except Exception:
+                    pass
+            self.frontend_proc = None
+        free_port(5173)
+
+    def restart_frontend(self) -> bool:
+        """Restarts the Vite dev server."""
+        self.stop_frontend()
+        time.sleep(0.5)
+        return self.start_frontend()
+
+    def restart_backend(self) -> bool:
+        """Restarts the FastAPI backend server."""
+        if self.backend_proc and self.backend_proc.poll() is None:
+            try:
+                subprocess.run(f"taskkill /PID {self.backend_proc.pid} /T /F", shell=True, capture_output=True, timeout=5)
+            except Exception:
+                try:
+                    self.backend_proc.kill()
+                except Exception:
+                    pass
+            self.backend_proc = None
+        free_port(8000)
+        time.sleep(0.5)
+        ok = self.start_backend()
+        if ok:
+            return self.wait_for_backend(timeout_sec=60)
+        return False
+
     def shutdown(self):
         """Terminates both services and ensures all child processes are killed."""
         self.is_shutting_down = True
@@ -834,34 +871,55 @@ def main():
     b_dur = round(time.perf_counter() - t_back, 1)
     print_supervisor_event(format_stream_row("SUPVR", f"Backend Gateway is LIVE on http://localhost:8000 ({b_dur}s)", "[OK]", C.SUCCESS, C.SUCCESS))
 
-    # 2. Launch Frontend
-    t_front = time.perf_counter()
-    print_supervisor_event(format_stream_row("SUPVR", "Launching Frontend UI on http://localhost:5173...", "*", C.CYAN, C.WHITE))
-    if not supervisor.start_frontend():
-        print_supervisor_event(format_stream_row("FATAL", "Could not launch frontend server.", "[ERR]", C.DANGER, C.DANGER))
-        supervisor.shutdown()
-        sys.exit(1)
+    # 2. Launch Frontend (Dual Mode: live by default, deferred if --no-browser)
+    no_browser = any(arg in sys.argv for arg in ("--no-browser", "-nb", "--nobrowser"))
+    use_cdp = "--cdp" in sys.argv
+    use_plain = any(arg in sys.argv for arg in ("--plain", "--no-tui", "--headless-cli"))
 
-    if not supervisor.wait_for_frontend(timeout_sec=35):
-        print_supervisor_event(format_stream_row("NOTICE", "Frontend still initializing in background...", "[!]", C.WARN, C.WARN))
+    if not no_browser:
+        t_front = time.perf_counter()
+        print_supervisor_event(format_stream_row("SUPVR", "Launching Frontend UI on http://localhost:5173...", "*", C.CYAN, C.WHITE))
+        if not supervisor.start_frontend():
+            print_supervisor_event(format_stream_row("FATAL", "Could not launch frontend server.", "[ERR]", C.DANGER, C.DANGER))
+            supervisor.shutdown()
+            sys.exit(1)
+
+        if not supervisor.wait_for_frontend(timeout_sec=35):
+            print_supervisor_event(format_stream_row("NOTICE", "Frontend still initializing in background...", "[!]", C.WARN, C.WARN))
+        else:
+            f_ms = int((time.perf_counter() - t_front) * 1000)
+            print_supervisor_event(format_stream_row("SUPVR", f"Frontend UI is LIVE on http://localhost:5173 ({f_ms}ms)", "[OK]", C.SUCCESS, C.SUCCESS))
+
+        if not use_cdp:
+            target_url = "http://localhost:5173"
+            try:
+                import webbrowser
+                webbrowser.open(target_url)
+            except Exception:
+                pass
     else:
-        f_ms = int((time.perf_counter() - t_front) * 1000)
-        print_supervisor_event(format_stream_row("SUPVR", f"Frontend UI is LIVE on http://localhost:5173 ({f_ms}ms)", "[OK]", C.SUCCESS, C.SUCCESS))
+        print_supervisor_event(format_stream_row("SUPVR", "Terminal-First Mode: Vite deferred until :open-browser", "[OK]", C.SUCCESS, C.WHITE))
 
     print(f"  {B_DIM}╰{'─' * W_WIDTH}╯{C.RESET}\n")
 
-    # Launch browser if not disabled
-    no_browser = any(arg in sys.argv for arg in ("--no-browser", "-nb", "--nobrowser"))
-    if not no_browser:
-        target_url = "http://localhost:5173"
+    focused_doc: Optional[str] = None
+
+    if not use_plain:
         try:
-            import webbrowser
-            webbrowser.open(target_url)
-        except Exception:
-            pass
+            from src.cli.tui.app import RaiseTuiApp
+            app = RaiseTuiApp(
+                supervisor=supervisor,
+                is_headless=no_browser,
+                use_cdp=use_cdp,
+                focused_doc=focused_doc,
+            )
+            app.run()
+            supervisor.shutdown()
+            return
+        except Exception as e:
+            logger.error(f"Textual TUI error: {e}. Falling back to plain interactive console.")
 
     # Print Live Status Dashboard
-    focused_doc: Optional[str] = None
     print_live_status_dashboard(focused_doc=focused_doc)
 
     global _active_repl_prompt, _active_prompt_header

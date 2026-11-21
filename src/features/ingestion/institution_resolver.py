@@ -22,7 +22,24 @@ logger = logging.getLogger("raise.ingestion.institution_resolver")
 
 def identify_institution(pdf_path: Path, first_page_text: str) -> Tuple[str, str]:
     """Dynamically determine canonical institution or organization name and academic/reporting year (zero hardcoded entities)."""
+    # Check filename first for explicit reporting period e.g. 22-23, 2022-23, 2024-25
+    year = ""
+    fn_year_match = re.search(r"\b(20[12][0-9][-–](?:20)?[0-9]{2})\b", pdf_path.name)
+    if fn_year_match:
+        year = fn_year_match.group(1)
+    else:
+        fn_short_match = re.search(r"\b([12][0-9][-–][0-9]{2})\b", pdf_path.name)
+        if fn_short_match:
+            year = f"20{fn_short_match.group(1)}"
+        else:
+            fn_single_year = re.search(r"\b(20[12][0-9])\b", pdf_path.name)
+            if fn_single_year:
+                year = fn_single_year.group(1)
+
     combined_text = (pdf_path.name + " " + first_page_text[:1000]).lower()
+    if not year:
+        year_match = re.search(r"(20[12][0-9](?:[-–][0-9]{2,4})?)", combined_text)
+        year = year_match.group(1) if year_match else "2024-25"
 
     # Dynamic extraction: identify capitalized organizational entities from cover page
     inst_match = re.search(
@@ -40,8 +57,5 @@ def identify_institution(pdf_path: Path, first_page_text: str) -> Tuple[str, str
             uni = f"{uni} ({acro_match.group(1).upper()})"
     else:
         uni = pdf_path.stem.replace("_", " ").replace("-", " ").title()
-
-    year_match = re.search(r"(20[12][0-9](?:[-–][0-9]{2,4})?)", combined_text)
-    year = year_match.group(1) if year_match else "2024-25"
 
     return uni, year

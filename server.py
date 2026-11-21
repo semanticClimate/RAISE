@@ -113,6 +113,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from starlette.websockets import WebSocketState
+import uuid
+from src.core.telemetry_bus import get_telemetry_bus, install_telemetry_hooks
 
 import redis.asyncio as aioredis
 
@@ -522,6 +524,27 @@ def _safe_print_live_edge_monitor(event_data: Dict[str, Any]):
 
 
 
+_forwarder_task: Optional[asyncio.Task] = None
+
+
+async def _forward_telemetry_bus_to_websockets():
+    bus = get_telemetry_bus()
+    queue = asyncio.Queue(maxsize=1000)
+    bus.subscribe_async(queue)
+    try:
+        while True:
+            event = await queue.get()
+            payload = {"type": event.event_type, "data": event.data, "ts": event.ts}
+            for ws in list(active_ws_subscribers):
+                if ws.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await ws.send_json(payload)
+                    except Exception:
+                        active_ws_subscribers.discard(ws)
+    except asyncio.CancelledError:
+        bus.unsubscribe_async(queue)
+
+
 @asynccontextmanager
 
 async def server_lifespan(app: FastAPI):
@@ -540,7 +563,9 @@ async def server_lifespan(app: FastAPI):
 
     """
 
-    global redis_client, handshake_mgr, tunnel_mgr, pubsub_listener_task
+    global redis_client, handshake_mgr, tunnel_mgr, pubsub_listener_task, _forwarder_task
+    install_telemetry_hooks()
+    _forwarder_task = asyncio.create_task(_forward_telemetry_bus_to_websockets())
 
 
 
@@ -714,6 +739,13 @@ async def server_lifespan(app: FastAPI):
 
 
 
+    if _forwarder_task and not _forwarder_task.done():
+        _forwarder_task.cancel()
+        try:
+            await _forwarder_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
     if hasattr(app.state, "asgi_shield"):
 
         await app.state.asgi_shield.stop_background_worker()
@@ -789,138 +821,160 @@ app.add_middleware(PureASGISecurityShieldMiddleware, fastapi_app=app)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
+@app.middleware("http")
+async def telemetry_http_middleware(request: Request, call_next):
+    req_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())[:8]
+    origin = "TUI" if "RAISE-TUI" in request.headers.get("User-Agent", "") else "BROWSER"
+    client_ip = resolve_client_ip(dict(request.scope))
 
+    bus = get_telemetry_bus()
+    t0 = time.perf_counter()
+    bus.emit_http_request(
+        method=request.method,
+        path=request.url.path,
+        origin=origin,
+        request_id=req_id,
+        client_ip=client_ip,
+        user_agent=request.headers.get("User-Agent", ""),
+    )
+
+    response = None
+    err_str = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as ex:
+        err_str = str(ex)
+        raise
+    finally:
+        duration_ms = (time.perf_counter() - t0) * 1000
+        status_code = response.status_code if response else 500
+        payload_bytes = 0
+        if response and "content-length" in response.headers:
+            try:
+                payload_bytes = int(response.headers["content-length"])
+            except Exception:
+                pass
+
+        bus.emit_http_response(
+            method=request.method,
+            path=request.url.path,
+            origin=origin,
+            request_id=req_id,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            payload_bytes=payload_bytes,
+            error=err_str,
+        )
+        if response:
+            response.headers["X-Request-Id"] = req_id
 
 
 # Handshake endpoints are mounted from core_rag_app (app.py) at the bottom of this file
-
 # to prevent duplicate route definitions and duplicate OpenAPI operation IDs.
 
-
-
-
-
 # ------------------------------------------------------------------------------
-
-# WebSocket Telemetry Stream (Two-Step Handshake Verification)
-
+# WebSocket Telemetry Stream (Two-Step Handshake Verification + Local Dev Fallback)
 # ------------------------------------------------------------------------------
 
 @app.websocket("/ws/traffic")
-
 @app.websocket("/ws/telemetry")
-
 async def websocket_traffic_endpoint(websocket: WebSocket):
-
-    """
-
-    Step 2 & 3: Authenticated connection upgrade.
-
-    Extracts token from query string (?token=...), verifies presence,
-
-    and ATOMICALLY EVICTS it from Redis to prevent replay attacks.
-
-    """
-
     query_params = websocket.query_params
-
     token = query_params.get("token")
+    client_ip = resolve_client_ip(dict(websocket.scope))
+    is_local = client_ip in ("127.0.0.1", "::1", "localhost", "testclient") or client_ip.startswith("127.")
 
-
-
-    if not token:
-
+    if not token and not is_local:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Missing authentication handshake token.")
-
         return
 
-
-
     mgr: Optional[HandshakeManager] = getattr(app.state, "handshake_mgr", None)
-
-    client_ip = resolve_client_ip(dict(websocket.scope))
-
-
-
-    # Verification & Single-Use Eviction
-
-    if mgr and mgr.redis:
-
-        # Check IP blacklist first
-
+    if token and mgr and mgr.redis:
         is_blocked = await mgr.is_ip_blocked(client_ip)
-
         if is_blocked:
-
             await websocket.close(code=4403, reason="ERR_BLOCKED_IP: Client IP is blacklisted.")
-
             return
 
-
-
-        session_data = await mgr.verify_and_consume_token(token, client_ip=client_ip)
-
-        if not session_data:
-
-            # Token already consumed, invalid, or expired
-
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or already consumed handshake token.")
-
-            return
-
-
+        if not is_local:
+            session_data = await mgr.verify_and_consume_token(token, client_ip=client_ip)
+            if not session_data:
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or already consumed handshake token.")
+                return
 
     await websocket.accept()
-
     active_ws_subscribers.add(websocket)
-
-    ws_session_tokens[websocket] = token
-
+    ws_session_tokens[websocket] = token or "local_dev"
     ws_session_ips[websocket] = client_ip
-
     logger.info(f"WebSocket client connected from {client_ip} (active subscribers: {len(active_ws_subscribers)})")
 
-
-
     # Send initial welcome frame
-
     await websocket.send_json({
-
         "type": "connection_ready",
-
         "client_ip": client_ip,
-
-        "session_token_prefix": token[:8] + "...",
-
-        "timestamp": time.time()
-
+        "session_token_prefix": ((token[:8] + "...") if token else "local_dev"),
+        "timestamp": time.time(),
+        "stats": get_telemetry_bus().get_snapshot(),
     })
 
-
-
     try:
-
         while True:
-
-            # Keepalive listener
-
             data = await websocket.receive_text()
-
             if data == "ping":
-
                 await websocket.send_text("pong")
-
+                continue
+            try:
+                msg = json.loads(data)
+                msg_type = msg.get("type") or msg.get("subtype") or "browser_event"
+                level = msg.get("level") or "INFO"
+                text = msg.get("message") or msg.get("details") or str(msg)
+                get_telemetry_bus().emit_browser_event(
+                    source="WS",
+                    event_subtype=str(msg_type),
+                    level=str(level),
+                    message=str(text),
+                    details=msg,
+                )
+            except Exception:
+                pass
     except WebSocketDisconnect:
-
         pass
-
     except Exception as err:
-
         logger.debug(f"WebSocket disconnect: {err}")
-
     finally:
-
         active_ws_subscribers.discard(websocket)
+        ws_session_tokens.pop(websocket, None)
+        ws_session_ips.pop(websocket, None)
+        logger.info(f"WebSocket disconnected (remaining: {len(active_ws_subscribers)})")
+
+
+@app.post("/api/telemetry/browser")
+async def browser_telemetry_beacon(request: Request):
+    """Fallback HTTP endpoint for navigator.sendBeacon and client error logging."""
+    try:
+        body = await request.json()
+        bus = get_telemetry_bus()
+        if isinstance(body, list):
+            for item in body:
+                if isinstance(item, dict):
+                    bus.emit_browser_event(
+                        source="HTTP_BEACON",
+                        event_subtype=item.get("type", "log"),
+                        level=item.get("level", "INFO"),
+                        message=item.get("message", str(item)),
+                        details=item,
+                    )
+        elif isinstance(body, dict):
+            bus.emit_browser_event(
+                source="HTTP_BEACON",
+                event_subtype=body.get("type", "log"),
+                level=body.get("level", "INFO"),
+                message=body.get("message", str(body)),
+                details=body,
+            )
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
         ws_session_tokens.pop(websocket, None)
 

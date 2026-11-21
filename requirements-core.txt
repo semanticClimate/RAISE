@@ -59,5 +59,7 @@ sse-starlette>=2.0.0
 # Multiplexed Terminal UI & Non-Blocking Streams
 rich>=13.8.0
 prompt_toolkit>=3.0.40
+textual>=0.80.0
+websockets>=12.0
 
 

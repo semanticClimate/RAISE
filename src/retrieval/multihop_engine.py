@@ -404,7 +404,7 @@ class MultiHopAdaptiveRetriever:
                 prompt=prompt,
                 task=InferenceTask.RAG_GENERATION,
                 temperature=0.0,
-                max_tokens=150,
+                max_tokens=1024,
             )
             if llm_ans:
                 ans_clean = llm_ans.strip()

@@ -224,6 +224,14 @@ AVAILABLE_RERANKER_MODELS: Dict[str, str] = {
     "jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
     "jinaai/jina-reranker-v3.5": "jinaai/jina-reranker-v3.5",
     "jina-reranker": "jinaai/jina-reranker-v3.5",
+    "jina-reranker-m0": "jinaai/jina-reranker-m0",
+    "jinaai/jina-reranker-m0": "jinaai/jina-reranker-m0",
+    "bge-visualized-m3": "BAAI/bge-visualized-m3",
+    "BAAI/bge-visualized-m3": "BAAI/bge-visualized-m3",
+    "nemotron-rerank-1b": "nvidia/llama-3.2-nv-rerankqa-1b-v2",
+    "nvidia/llama-3.2-nv-rerankqa-1b-v2": "nvidia/llama-3.2-nv-rerankqa-1b-v2",
+    "nemotron-rerank-4b": "nvidia/reranking-nemotron-4-4b",
+    "nvidia/reranking-nemotron-4-4b": "nvidia/reranking-nemotron-4-4b",
     "default": models.RERANKER_MODEL_NAME,
 }
 

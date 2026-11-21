@@ -45,9 +45,20 @@ class DocumentKnowledgeProfile:
     overview_text: str = ""
 
     def to_okf_markdown(self) -> str:
-        """Serializes profile to canonical OKF Markdown bundle with YAML frontmatter."""
+        """Serializes profile to canonical OKF v0.3 Markdown bundle with YAML frontmatter."""
         import yaml
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         metadata = {
+            "schema_version": "okf-v0.3",
+            "type": "InstitutionalProfile",
+            "status": "stable",
+            "trust_tier": "machine-confirmed",
+            "generated": {
+                "by": "process:raise-adaptive-ingestion",
+                "at": now_iso,
+            },
             "document_id": self.document_id,
             "filename": self.filename,
             "institution_name": self.institution_name,
@@ -60,6 +71,14 @@ class DocumentKnowledgeProfile:
             "primary_domains": self.primary_domains,
             "key_entities": self.key_entities,
             "key_acronyms": self.key_acronyms,
+            "sources": [
+                {
+                    "id": f"src:{self.document_id.lower()}",
+                    "resource": f"file:///backend/data/documents/{self.filename}",
+                    "title": f"{self.institution_name} Report ({self.reporting_period})",
+                    "pages": self.total_pages,
+                }
+            ],
         }
         yaml_str = yaml.dump(metadata, sort_keys=False, allow_unicode=True).strip()
         body = self.overview_text.strip() if self.overview_text else f"# {self.institution_name} ({self.reporting_period})\n\nOperational knowledge catalog for {self.filename}."

@@ -1,0 +1,50 @@
+[
+  {
+    "chunk_id": "test_sample_p001_parent_001",
+    "document_id": "test_sample",
+    "parent_chunk_id": null,
+    "section_id": "sec_0",
+    "chunk_level": "parent",
+    "plain_text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ",
+    "contextualized_content": "[Test Sample - test_sample.pdf] Renewable Energy Global Trends Report 2025\n\nRenewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ",
+    "summary": null,
+    "heading": "Renewable Energy Global Trends Report 2025",
+    "heading_level": 3,
+    "primary_page": 1,
+    "printed_page": null,
+    "source_pages": [
+      1
+    ],
+    "propositions": [],
+    "entities": [],
+    "relationships": [],
+    "community_ids": [],
+    "source_block_ids": [],
+    "previous_chunk_id": null,
+    "next_chunk_id": null,
+    "token_estimate": 21,
+    "boundary_score_before": 0.0,
+    "boundary_score_after": 0.0,
+    "boundary_reasons": [],
+    "chunking_strategy": "recursive",
+    "embedding_model": null,
+    "embedding_id": null,
+    "is_table": false,
+    "is_figure": false,
+    "tables_count": 0,
+    "metadata": {
+      "document_id": "test_sample",
+      "university": "Test Sample",
+      "pdf_filename": "test_sample.pdf",
+      "page": 1,
+      "heading": "Renewable Energy Global Trends Report 2025",
+      "section_index": 1
+    },
+    "text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ",
+    "enriched_text": "[Test Sample - test_sample.pdf] Renewable Energy Global Trends Report 2025\n\nRenewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ",
+    "chunk_type": "prose",
+    "recommended_task": "academic_research",
+    "university": "Test Sample",
+    "pdf_filename": "test_sample.pdf"
+  }
+]

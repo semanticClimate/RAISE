@@ -147,7 +147,9 @@ def process_recursive_baseline(
     tabular pages.
     """
     child_chunks: List[AdaptiveChunk] = []
+    parent_chunks: List[AdaptiveChunk] = []
     c_idx = 0
+    p_idx = 0
 
     for s_idx, sec in enumerate(parsed_sections, start=1):
         raw_text = (sec.get("text") or sec.get("plain_text") or "").strip()
@@ -172,14 +174,45 @@ def process_recursive_baseline(
         is_tbl = bool(sec.get("has_table") or sec.get("is_table") or "| --- |" in raw_text)
         tbl_cnt = int(sec.get("tables_count", 1 if is_tbl else 0))
 
+        # Construct cohesive macro parent chunk for this section
+        p_idx += 1
+        pid = f"{document_id}_p{pno:03d}_parent_{p_idx:03d}"
+        parent_chunks.append(
+            AdaptiveChunk(
+                chunk_id=pid,
+                document_id=document_id,
+                parent_chunk_id=None,
+                chunk_level=ChunkLevel.PARENT.value,
+                plain_text=raw_text,
+                contextualized_content=f"[{university} - {filename}] {base_heading}\n\n{raw_text}",
+                heading=base_heading,
+                primary_page=pno,
+                printed_page=doc_pno,
+                source_pages=[pno],
+                token_estimate=len(words),
+                chunking_strategy="recursive",
+                is_table=is_tbl,
+                tables_count=tbl_cnt,
+                metadata={
+                    "document_id": document_id,
+                    "university": university,
+                    "pdf_filename": filename,
+                    "page": pno,
+                    "heading": base_heading,
+                    "section_index": s_idx,
+                },
+            )
+        )
+
         # Case 1: Entire section fits within max_words (e.g. Page 4 Board of Governors / Council Nominees, 238 words)
         if len(words) <= max_words:
             c_idx += 1
-            cid = f"{document_id}_rec_{c_idx:04d}"
+            cid = f"{document_id}_p{pno:03d}_rec_{c_idx:04d}"
             child_chunks.append(
                 AdaptiveChunk(
                     chunk_id=cid,
                     document_id=document_id,
+                    parent_chunk_id=pid,
                     chunk_level=ChunkLevel.CHILD.value,
                     plain_text=raw_text,
                     contextualized_content=raw_text,
@@ -197,6 +230,7 @@ def process_recursive_baseline(
                         "pdf_filename": filename,
                         "page": pno,
                         "heading": base_heading,
+                        "parent_chunk_id": pid,
                     },
                 )
             )
@@ -216,12 +250,13 @@ def process_recursive_baseline(
                     part_counter += 1
                     c_idx += 1
                     c_text = "\n\n".join(curr_paras)
-                    cid = f"{document_id}_rec_{c_idx:04d}"
+                    cid = f"{document_id}_p{pno:03d}_rec_{c_idx:04d}"
                     sub_h = f"{base_heading} (Part {part_counter})"
                     child_chunks.append(
                         AdaptiveChunk(
                             chunk_id=cid,
                             document_id=document_id,
+                            parent_chunk_id=pid,
                             chunk_level=ChunkLevel.CHILD.value,
                             plain_text=c_text,
                             contextualized_content=c_text,
@@ -239,6 +274,7 @@ def process_recursive_baseline(
                                 "pdf_filename": filename,
                                 "page": pno,
                                 "heading": sub_h,
+                                "parent_chunk_id": pid,
                             },
                         )
                     )
@@ -247,6 +283,11 @@ def process_recursive_baseline(
 
                 # Split oversized paragraph by single line breaks
                 lines = [l.strip() for l in p.split("\n") if l.strip()]
+                # If table, identify table header line to preserve across chunks
+                table_hdr = ""
+                if is_tbl and lines:
+                    table_hdr = lines[0] if (lines[0].startswith("|") or "sl." in lines[0].lower() or "name" in lines[0].lower()) else ""
+
                 sub_lines: List[str] = []
                 sub_l_words = 0
                 for l in lines:
@@ -255,12 +296,13 @@ def process_recursive_baseline(
                         part_counter += 1
                         c_idx += 1
                         c_text = "\n".join(sub_lines)
-                        cid = f"{document_id}_rec_{c_idx:04d}"
+                        cid = f"{document_id}_p{pno:03d}_rec_{c_idx:04d}"
                         sub_h = f"{base_heading} (Part {part_counter})"
                         child_chunks.append(
                             AdaptiveChunk(
                                 chunk_id=cid,
                                 document_id=document_id,
+                                parent_chunk_id=pid,
                                 chunk_level=ChunkLevel.CHILD.value,
                                 plain_text=c_text,
                                 contextualized_content=c_text,
@@ -278,11 +320,17 @@ def process_recursive_baseline(
                                     "pdf_filename": filename,
                                     "page": pno,
                                     "heading": sub_h,
+                                    "parent_chunk_id": pid,
                                 },
                             )
                         )
-                        sub_lines = [l]
-                        sub_l_words = l_len
+                        # Prepend table header to subsequent slices if available
+                        if table_hdr and l != table_hdr:
+                            sub_lines = [table_hdr, l]
+                            sub_l_words = len(table_hdr.split()) + l_len
+                        else:
+                            sub_lines = [l]
+                            sub_l_words = l_len
                     else:
                         sub_lines.append(l)
                         sub_l_words += l_len
@@ -296,12 +344,13 @@ def process_recursive_baseline(
                 part_counter += 1
                 c_idx += 1
                 c_text = "\n\n".join(curr_paras)
-                cid = f"{document_id}_rec_{c_idx:04d}"
+                cid = f"{document_id}_p{pno:03d}_rec_{c_idx:04d}"
                 sub_h = f"{base_heading} (Part {part_counter})"
                 child_chunks.append(
                     AdaptiveChunk(
                         chunk_id=cid,
                         document_id=document_id,
+                        parent_chunk_id=pid,
                         chunk_level=ChunkLevel.CHILD.value,
                         plain_text=c_text,
                         contextualized_content=c_text,
@@ -319,6 +368,7 @@ def process_recursive_baseline(
                             "pdf_filename": filename,
                             "page": pno,
                             "heading": sub_h,
+                            "parent_chunk_id": pid,
                         },
                     )
                 )
@@ -346,12 +396,13 @@ def process_recursive_baseline(
             elif w_count >= 3:
                 part_counter += 1
                 c_idx += 1
-                cid = f"{document_id}_rec_{c_idx:04d}"
+                cid = f"{document_id}_p{pno:03d}_rec_{c_idx:04d}"
                 sub_h = f"{base_heading} (Part {part_counter})" if part_counter > 1 else base_heading
                 child_chunks.append(
                     AdaptiveChunk(
                         chunk_id=cid,
                         document_id=document_id,
+                        parent_chunk_id=pid,
                         chunk_level=ChunkLevel.CHILD.value,
                         plain_text=c_text,
                         contextualized_content=c_text,
@@ -369,6 +420,7 @@ def process_recursive_baseline(
                             "pdf_filename": filename,
                             "page": pno,
                             "heading": sub_h,
+                            "parent_chunk_id": pid,
                         },
                     )
                 )
@@ -380,16 +432,16 @@ def process_recursive_baseline(
         pages=pages,
         structural_units_count=len(parsed_sections),
         candidate_semantic_units_count=len(child_chunks),
-        final_parent_chunks_count=0,
+        final_parent_chunks_count=len(parent_chunks),
         final_child_chunks_count=len(child_chunks),
         average_child_tokens=round(sum(c.token_estimate for c in child_chunks) / max(1, len(child_chunks)), 1),
     )
 
     return {
         "child_chunks": child_chunks,
-        "parent_chunks": [],
+        "parent_chunks": parent_chunks,
         "propositions": [],
         "diagnostic_report": report,
-        "ascii_trace": f"Recursive chunking: {len(child_chunks)} chunks across {pages} pages",
+        "ascii_trace": f"Recursive chunking: {len(child_chunks)} child chunks and {len(parent_chunks)} parent chunks across {pages} pages",
         "legacy_chunks": [c.to_dict() for c in child_chunks],
     }

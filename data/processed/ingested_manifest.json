@@ -2,9 +2,9 @@
   "ready_documents": [
     {
       "filename": "NIPGR_BRIC_Annual_Report_2025.pdf",
-      "pages": 218,
+      "pages": 326,
       "size_mb": 32.87,
-      "chunks_count": 278,
+      "chunks_count": 331,
       "status": "ready"
     },
     {
@@ -12,6 +12,13 @@
       "pages": 1,
       "size_mb": 0.0,
       "chunks_count": 1,
+      "status": "ready"
+    },
+    {
+      "filename": "NIPGR-22-23.pdf",
+      "pages": 314,
+      "size_mb": 15.63,
+      "chunks_count": 159,
       "status": "ready"
     }
   ],

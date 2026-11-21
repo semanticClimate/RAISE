@@ -7,9 +7,11 @@ health monitoring for Neo4j, vLLM, and Docker daemon infrastructure.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import logging
 import os
+from pathlib import Path
 import shutil
 import socket
 import subprocess
@@ -27,7 +29,27 @@ __all__ = [
     "auto_start_containers",
     "check_vllm_health",
     "get_synthesizer_status",
+    "log_boot_diag",
 ]
+
+
+def log_boot_diag(stage: str, message: str, level: str = "INFO", stderr: str = "", duration_ms: int = 0) -> None:
+    """Appends a structured diagnostic entry into backend/logs/boot_diagnostics.jsonl."""
+    try:
+        log_path = Path(__file__).resolve().parents[2] / "logs" / "boot_diagnostics.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+            "stage": stage,
+            "level": level.upper(),
+            "message": message,
+            "stderr": stderr,
+            "duration_ms": duration_ms,
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception as e:
+        logger.debug(f"Failed to append to boot_diagnostics.jsonl: {e}")
 
 
 def auto_start_containers() -> None:
@@ -36,21 +58,29 @@ def auto_start_containers() -> None:
     to start them automatically via the Docker CLI and polls Bolt port 7687
     until the database is fully responsive.
     """
+    t0 = time.time()
     # Fast path: check if Neo4j port 7687 is already open and responding
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.3)
-            if s.connect_ex(("127.0.0.1", 7687)) == 0 or s.connect_ex(("localhost", 7687)) == 0:
+            code1 = s.connect_ex(("127.0.0.1", 7687))
+            code2 = s.connect_ex(("localhost", 7687)) if code1 != 0 else 0
+            if code1 == 0 or code2 == 0:
+                elapsed_ms = int((time.time() - t0) * 1000)
+                log_boot_diag("NEO4J", "Neo4j Bolt port 7687 verified active and responsive", "INFO", duration_ms=elapsed_ms)
                 return
-    except Exception:
-        pass
+            else:
+                logger.info(f"Neo4j port 7687 probe code: 127.0.0.1={code1}, localhost={code2}")
+    except Exception as err:
+        logger.info(f"Neo4j socket pre-check error: {err}")
 
     # Ensure docker executable is available on PATH
     if not shutil.which("docker"):
+        log_boot_diag("DOCKER", "Docker CLI not detected on system PATH; continuing with in-memory graph fallback", "WARN")
         return
 
     try:
-        print(f"{C.ACCENT}🐳 [Auto-Starter]{C.RESET} Checking container infrastructure...")
+        print(f"{C.ACCENT}● [Auto-Starter]{C.RESET} Checking container infrastructure...")
         proc = subprocess.run(
             ["docker", "start", "raise-neo4j-prod", "raise-vllm-prod"],
             stdout=subprocess.PIPE,
@@ -62,7 +92,7 @@ def auto_start_containers() -> None:
             "daemon is running" in proc.stderr or "dockerDesktopLinuxEngine" in proc.stderr
         ):
             print(
-                f"  {C.WARN}⚠️  [Auto-Starter] Docker Desktop engine is booting up. Waiting for daemon...{C.RESET}"
+                f"  {C.WARN}▲ [Auto-Starter] Docker Desktop engine is booting up. Waiting for daemon...{C.RESET}"
             )
             for _ in range(3):
                 time.sleep(1.5)
@@ -75,18 +105,23 @@ def auto_start_containers() -> None:
                 )
                 if retry_proc.returncode == 0:
                     break
+        elif proc.returncode != 0 and proc.stderr:
+            logger.info(f"Docker start notice: {proc.stderr.strip()}")
+            log_boot_diag("DOCKER", f"Docker start non-zero exit ({proc.returncode})", "WARN", stderr=proc.stderr.strip())
     except Exception as e:
         logger.warning(f"Auto-starter docker error: {e}")
+        log_boot_diag("DOCKER", f"Auto-starter Docker exception: {e}", "WARN", stderr=str(e))
         return
 
     # Poll for Neo4j Bolt port 7687 readiness
     print(
-        f"  {C.INFO}⏳ [Auto-Starter]{C.RESET} Waiting for Neo4j database to open Bolt port 7687...",
+        f"  {C.INFO}→ [Auto-Starter]{C.RESET} Waiting for Neo4j database to open Bolt port 7687...",
         end="",
         flush=True,
     )
     start_time = time.time()
     neo4j_ready = False
+    last_socket_err = ""
     while time.time() - start_time < 8:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -94,15 +129,18 @@ def auto_start_containers() -> None:
                 if s.connect_ex(("127.0.0.1", 7687)) == 0:
                     neo4j_ready = True
                     break
-        except Exception:
-            pass
+        except Exception as se:
+            last_socket_err = str(se)
         print(f"{C.INFO}.{C.RESET}", end="", flush=True)
         time.sleep(0.6)
 
+    poll_elapsed = int((time.time() - start_time) * 1000)
     if neo4j_ready:
         print(f" {C.SUCCESS}[READY]{C.RESET}")
+        log_boot_diag("NEO4J", "Neo4j container online and Bolt port 7687 connected", "INFO", duration_ms=poll_elapsed)
     else:
         print(f" {C.WARN}[TIMEOUT: Continuing with in-memory graph fallback]{C.RESET}")
+        log_boot_diag("NEO4J", "Neo4j connection timed out; in-memory graph fallback engaged", "WARN", stderr=last_socket_err, duration_ms=poll_elapsed)
 
 
 def check_vllm_health() -> Dict[str, Any]:
@@ -117,23 +155,28 @@ def check_vllm_health() -> Dict[str, Any]:
         with urllib.request.urlopen(req, timeout=1.5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             elapsed = round((time.time() - t0) * 1000, 1)
-            models = data.get("data", [])
-            model_id = models[0].get("id", "Unknown") if models else "None"
-            max_len = models[0].get("max_model_len", 8192) if models else 8192
-            return {
+            vllm_models = data.get("data", [])
+            model_id = vllm_models[0].get("id", "Unknown") if vllm_models else "None"
+            max_len = vllm_models[0].get("max_model_len", 8192) if vllm_models else 8192
+            res = {
                 "connected": True,
                 "model_id": model_id,
                 "max_model_len": max_len,
                 "latency_ms": elapsed,
             }
+            log_boot_diag("VLLM", f"vLLM endpoint active on :8002 (model: {model_id}, max_len: {max_len})", "INFO", duration_ms=int(elapsed))
+            return res
     except Exception as e:
-        return {
+        elapsed = round((time.time() - t0) * 1000, 1)
+        res = {
             "connected": False,
             "model_id": "Offline",
             "max_model_len": 0,
-            "latency_ms": round((time.time() - t0) * 1000, 1),
+            "latency_ms": elapsed,
             "error": str(e),
         }
+        log_boot_diag("VLLM", f"vLLM endpoint offline at {vllm_url}: {e}", "WARN", stderr=str(e), duration_ms=int(elapsed))
+        return res
 
 
 def get_synthesizer_status() -> Dict[str, Any]:
@@ -242,6 +285,12 @@ def get_synthesizer_status() -> Dict[str, Any]:
         disp = f"{C.SUCCESS}ACTIVE{C.RESET} {C.MUTED}(Cloud: {display_name} - {model_name}){C.RESET}"
     else:
         disp = f"{C.WARN}STANDBY{C.RESET} {C.MUTED}(Rule-based synthesis active — no LLM configured){C.RESET}"
+
+    log_boot_diag(
+        "SYNTHESIZER",
+        f"Active synthesizer: {active_provider or 'none'} ({model_name or 'none'}) - {active_type or 'standby'}",
+        "INFO" if active_provider else "WARN",
+    )
 
     return {
         "active": active_provider is not None,

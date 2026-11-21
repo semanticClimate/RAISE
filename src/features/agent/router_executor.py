@@ -251,7 +251,32 @@ class PlanExecutorMixin:
                     )
                     evidence_blocks.append(math_block)
 
-                prompt_evidence = "\n\n".join(evidence_blocks)
+                # Budget evidence blocks to under ~1500 words (approx 2500-3000 tokens) to guarantee zero context overflows on local vLLM and zero HTTP 413 on cloud
+                budgeted_evidence: List[str] = []
+                accum_evidence_words = 0
+                max_evidence_words = 1500
+
+                # Essential boundary & math blocks take priority
+                for eb in evidence_blocks:
+                    if eb.startswith("[STRICT DRAWER") or eb.startswith("[DETERMINISTIC"):
+                        budgeted_evidence.append(eb)
+                        accum_evidence_words += len(eb.split())
+
+                for eb in evidence_blocks:
+                    if eb.startswith("[STRICT DRAWER") or eb.startswith("[DETERMINISTIC"):
+                        continue
+                    b_words = len(eb.split())
+                    if accum_evidence_words + b_words <= max_evidence_words:
+                        budgeted_evidence.append(eb)
+                        accum_evidence_words += b_words
+                    else:
+                        remaining_budget = max_evidence_words - accum_evidence_words
+                        if remaining_budget >= 100:
+                            truncated_eb = " ".join(eb.split()[:remaining_budget]) + " ... [Excerpt truncated for context budget]"
+                            budgeted_evidence.append(truncated_eb)
+                        break
+
+                prompt_evidence = "\n\n".join(budgeted_evidence if budgeted_evidence else evidence_blocks[:4])
                 try:
                     from prompts.system_synthesis import get_synthesis_system_prompt
                     base_sys_prompt = get_synthesis_system_prompt()
@@ -260,17 +285,35 @@ class PlanExecutorMixin:
                     base_sys_prompt = sys_prompt_path.read_text(encoding="utf-8").strip() if sys_prompt_path.exists() else "You are an audited institutional intelligence system. Answer strictly using only provided document excerpts with [1], [2] citations."
                 user_prompt = f"User Query: {plan.query}\n\nDocument Evidence:\n{prompt_evidence}\n\nIMPORTANT: Cite every factual point with bracketed citation markers like [1], [2] referencing the document excerpts above.\n\nGrounded Answer:"
 
-                est_prompt_tokens = (len(base_sys_prompt.split()) + len(user_prompt.split())) * 4 // 3
-                safe_max_tokens = min(1024, max(256, 7900 - est_prompt_tokens))
+                est_prompt_tokens = (len(base_sys_prompt) + len(user_prompt)) // 3
+                is_listing_query = any(w in plan.query.lower() for w in ["list", "names", "who are", "achievements", "all", "students", "activities", "workshop", "members", "roster", "describe", "explain", "detail", "details"])
+                target_cap = 2560 if is_listing_query else 1280
+                safe_max_tokens = min(target_cap, max(384, 7600 - est_prompt_tokens))
 
                 prov = router.get_provider_for_task(InferenceTask.RAG_GENERATION)
-                llm_response = router.complete(
-                    prompt=user_prompt,
-                    task=InferenceTask.RAG_GENERATION,
-                    system_prompt=base_sys_prompt,
-                    max_tokens=safe_max_tokens,
-                    temperature=0.1,
-                )
+                try:
+                    llm_response = router.complete(
+                        prompt=user_prompt,
+                        task=InferenceTask.RAG_GENERATION,
+                        system_prompt=base_sys_prompt,
+                        max_tokens=safe_max_tokens,
+                        temperature=0.1,
+                    )
+                except Exception as call_err:
+                    err_s = str(call_err).lower()
+                    if "413" in err_s or "too large" in err_s or "payload" in err_s or "rate_limit" in err_s:
+                        # Compact prompt evidence by half and retry immediately
+                        compact_evidence = "\n\n".join(budgeted_evidence[:max(2, len(budgeted_evidence)//2)])
+                        compact_user_prompt = f"User Query: {plan.query}\n\nDocument Evidence:\n{compact_evidence}\n\nIMPORTANT: Cite every factual point with bracketed citation markers like [1], [2].\n\nGrounded Answer:"
+                        llm_response = router.complete(
+                            prompt=compact_user_prompt,
+                            task=InferenceTask.RAG_GENERATION,
+                            system_prompt=base_sys_prompt,
+                            max_tokens=min(1536, safe_max_tokens),
+                            temperature=0.1,
+                        )
+                    else:
+                        raise
 
                 if llm_response and not any(llm_response.startswith(pfx) for pfx in ("Inference execution error", "Error executing inference", "Cloud LLM error", "Ollama error")):
                     compl_info = getattr(router, "get_last_completion_info", lambda: {})()

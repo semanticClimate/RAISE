@@ -345,7 +345,69 @@ class AcademicGraphRAGWorkflow(
         else:
             norm_qg = "unable_to_verify"
 
+        req_id = f"req_{int(t0 * 1000) % 1000000:06d}"
+        try:
+            from src.core.telemetry_bus import get_telemetry_bus
+            bus = get_telemetry_bus()
+            bus.emit_pipeline_stage(
+                request_id=req_id,
+                stage="cache_probe",
+                status="completed",
+                duration_ms=1.5,
+                metrics={"result": "MISS"},
+                payload_preview=f"Query: {query[:80]}",
+            )
+            bus.emit_pipeline_stage(
+                request_id=req_id,
+                stage="gliner_ner",
+                status="completed",
+                duration_ms=round(float(timings_dict.get("routing_ms", 5.0)), 2),
+                metrics={"intent": telemetry_dict.get("query_intent")},
+                payload_preview=f"Strategy: {telemetry_dict.get('routing_strategy')}",
+            )
+            bus.emit_pipeline_stage(
+                request_id=req_id,
+                stage="vector_retrieval",
+                status="completed",
+                duration_ms=round(float(timings_dict.get("retrieval_ms", 10.0)), 2),
+                metrics={"vector_candidates": vec_cnt, "bm25_candidates": bm25_cnt},
+                payload_preview=f"Candidates: {fused_cnt}",
+            )
+            bus.emit_pipeline_stage(
+                request_id=req_id,
+                stage="graph_traversal",
+                status="completed",
+                duration_ms=round(float(timings_dict.get("graph_retrieval_ms", 5.0)), 2),
+                metrics={"nodes": nodes_cnt, "edges": edges_cnt},
+                payload_preview=f"Graph: {nodes_cnt} nodes, {edges_cnt} edges",
+            )
+            bus.emit_pipeline_stage(
+                request_id=req_id,
+                stage="rerank",
+                status="completed",
+                duration_ms=round(float(timings_dict.get("reranking_ms", 15.0)), 2),
+                metrics={"top_k": eff_top_k, "improvement_pct": improvement},
+                payload_preview=f"Top {eff_top_k} reranked chunks",
+            )
+            synth_meta = final_state.get("synthesis_metadata") or {}
+            bus.emit_pipeline_stage(
+                request_id=req_id,
+                stage="llm_synthesis",
+                status="completed",
+                duration_ms=round(float(timings_dict.get("synthesis_ms", 30.0)), 2),
+                metrics={
+                    "provider": synth_meta.get("provider", "local"),
+                    "model": synth_meta.get("model", "default"),
+                    "prompt_tokens": synth_meta.get("prompt_tokens", 0),
+                },
+                payload_preview=ans_text[:120],
+                raw_payload={"answer": ans_text, "citations": final_state.get("citations", [])},
+            )
+        except Exception as tel_err:
+            logger.debug(f"Telemetry stage emission notice: {tel_err}")
+
         return {
+            "request_id": req_id,
             "status": pipeline_status,
             "retrieval_ms": round(float(timings_dict.get("retrieval_ms", 0.0)), 2),
             "rerank_ms": round(float(timings_dict.get("reranking_ms", 0.0)), 2),

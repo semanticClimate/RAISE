@@ -1,0 +1,106 @@
+{
+  "nodes": [
+    {
+      "id": "test_sample_p001_rec_0001",
+      "label": "Passage (p.1)",
+      "type": "Chunk",
+      "document_id": "test_sample",
+      "properties": {
+        "text_preview": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and ",
+        "page": 1,
+        "pdf": "test_sample.pdf",
+        "document_id": "test_sample"
+      },
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "section_heading": "Renewable Energy Global Trends Report 2025",
+        "chunk_id": "test_sample_p001_rec_0001",
+        "source_text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ"
+      }
+    },
+    {
+      "id": "inst_test_sample",
+      "label": "Test Sample",
+      "type": "Institution",
+      "document_id": "test_sample",
+      "properties": {
+        "document_id": "test_sample"
+      },
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "section_heading": "Renewable Energy Global Trends Report 2025",
+        "chunk_id": "test_sample_p001_rec_0001",
+        "source_text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ"
+      }
+    },
+    {
+      "id": "sec_renewable_energy_global_trends_repo",
+      "label": "Renewable Energy Global Trends Report 2025",
+      "type": "Section",
+      "document_id": "test_sample",
+      "properties": {
+        "page": 1,
+        "pdf": "test_sample.pdf",
+        "document_id": "test_sample"
+      },
+      "provenance": {
+        "pdf_filename": "test_sample.pdf",
+        "page_number": 1,
+        "section_heading": "Renewable Energy Global Trends Report 2025",
+        "chunk_id": "test_sample_p001_rec_0001",
+        "source_text": "Renewable Energy Global Trends Report 2025\n\nExecutive Summary:\nIn 2025, global renewable energy capacity underwent unprecedented expansion. Solar and wind energ"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "inst_test_sample",
+      "target": "sec_renewable_energy_global_trends_repo",
+      "type": "HAS_SECTION",
+      "document_id": "test_sample",
+      "properties": {
+        "document_id": "test_sample"
+      }
+    },
+    {
+      "source": "sec_renewable_energy_global_trends_repo",
+      "target": "test_sample_p001_rec_0001",
+      "type": "CONTAINS_CHUNK",
+      "document_id": "test_sample",
+      "properties": {
+        "document_id": "test_sample"
+      }
+    },
+    {
+      "source": "test_sample_p001_rec_0001",
+      "target": "inst_test_sample",
+      "type": "MENTIONS",
+      "document_id": "test_sample",
+      "properties": {
+        "document_id": "test_sample"
+      }
+    },
+    {
+      "source": "test_sample_p001_rec_0001",
+      "target": "sec_renewable_energy_global_trends_repo",
+      "type": "MENTIONS",
+      "document_id": "test_sample",
+      "properties": {
+        "document_id": "test_sample"
+      }
+    },
+    {
+      "source": "test_sample_p001_rec_0001",
+      "target": "test_sample_p001_rec_0001",
+      "type": "MENTIONS",
+      "document_id": "test_sample",
+      "properties": {
+        "document_id": "test_sample"
+      }
+    }
+  ],
+  "node_count": 3,
+  "edge_count": 5
+}
