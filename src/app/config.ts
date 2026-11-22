@@ -33,7 +33,8 @@ export const resolveDefaultBaseUrl = (): string => {
   if (typeof window !== 'undefined' && window.location && window.location.origin) {
     const port = window.location.port;
     if (port === '5173' || port === '3000') {
-      return 'http://127.0.0.1:8000';
+      const hostname = window.location.hostname || '127.0.0.1';
+      return `http://${hostname}:8000`;
     }
     const origin = window.location.origin;
     if (origin && origin !== 'null' && !origin.startsWith('file:')) {

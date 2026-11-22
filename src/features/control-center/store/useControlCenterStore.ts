@@ -103,7 +103,7 @@ export const isConfigDirty = (
   // 4. API Keys: Compare configured keys
   const getKeysSummary = (keys?: CloudApiKeyEntry[]) =>
     (keys || [])
-      .filter((k) => k?.provider && k.provider !== 'unknown')
+      .filter((k) => k?.provider && k.provider !== 'unknown' && k?.key && k.key.trim().length > 0)
       .map((k) => `${k.provider}:${k.key.trim()}`)
       .sort()
       .join(';');
@@ -154,10 +154,14 @@ export const isConfigDirty = (
   if ((current.knowledgeGraph?.password || '') !== (baseline.knowledgeGraph?.password || '')) {
     return true;
   }
-  if ((current.knowledgeGraph?.user || '') !== (baseline.knowledgeGraph?.user || '')) {
+  const curKgUser = current.knowledgeGraph?.user || 'neo4j';
+  const baseKgUser = baseline.knowledgeGraph?.user || 'neo4j';
+  if (curKgUser !== baseKgUser) {
     return true;
   }
-  if ((current.knowledgeGraph?.database || '') !== (baseline.knowledgeGraph?.database || '')) {
+  const curKgDb = current.knowledgeGraph?.database || 'neo4j';
+  const baseKgDb = baseline.knowledgeGraph?.database || 'neo4j';
+  if (curKgDb !== baseKgDb) {
     return true;
   }
   if (
@@ -273,10 +277,11 @@ export const useControlCenterStore = create<ControlCenterState>()(
       setOpen: (open, tab) =>
         set((s): Partial<ControlCenterState> => {
           if (open) {
+            const base = JSON.parse(JSON.stringify(s.config)) as ControlCenterConfig;
             return {
               isOpen: true,
               activeTab: tab || s.activeTab || 'platform',
-              baselineConfig: (s.baselineConfig ?? JSON.parse(JSON.stringify(s.config))) as ControlCenterConfig,
+              baselineConfig: base,
               isDirty: false,
             };
           }
@@ -287,12 +292,15 @@ export const useControlCenterStore = create<ControlCenterState>()(
           };
         }),
       openToTab: (tab) =>
-        set((s): Partial<ControlCenterState> => ({
-          isOpen: true,
-          activeTab: tab,
-          baselineConfig: (s.baselineConfig ?? JSON.parse(JSON.stringify(s.config))) as ControlCenterConfig,
-          isDirty: false,
-        })),
+        set((s): Partial<ControlCenterState> => {
+          const base = JSON.parse(JSON.stringify(s.config)) as ControlCenterConfig;
+          return {
+            isOpen: true,
+            activeTab: tab,
+            baselineConfig: base,
+            isDirty: false,
+          };
+        }),
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       markDirty: () => set({ isDirty: true }),
@@ -470,9 +478,16 @@ export const useControlCenterStore = create<ControlCenterState>()(
           if (type === 'cacheAndSignals' && patch.mode) {
             updatedConfig.redisMode = patch.mode;
           }
+          const isConfigChange = Boolean(
+            patch.mode ||
+            patch.uri !== undefined ||
+            patch.password !== undefined ||
+            patch.user !== undefined ||
+            patch.database !== undefined
+          );
           return {
             config: updatedConfig,
-            isDirty: isConfigDirty(updatedConfig, s.baselineConfig),
+            isDirty: isConfigChange ? isConfigDirty(updatedConfig, s.baselineConfig) : s.isDirty,
           };
         });
       },
@@ -553,6 +568,11 @@ export const useControlCenterStore = create<ControlCenterState>()(
               ...s.config,
               apiKeys: updatedApiKeys,
             },
+            baselineConfig: s.isDirty
+              ? s.baselineConfig
+              : s.baselineConfig
+              ? { ...s.baselineConfig, apiKeys: updatedApiKeys }
+              : null,
           };
         });
       },

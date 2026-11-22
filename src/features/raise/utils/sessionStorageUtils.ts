@@ -126,6 +126,12 @@ export function getInitialSessionId(): string | null {
       if (stored && stored !== 'new') {
         return stored;
       }
+
+      // 3. Fallback: Automatically restore the user's most recent session
+      const recent = loadSessionsLocally();
+      if (Array.isArray(recent) && recent.length > 0 && recent[0]?.id) {
+        return recent[0].id;
+      }
     }
   } catch {}
   return null;
@@ -134,9 +140,7 @@ export function getInitialSessionId(): string | null {
 export function getInitialConversation(): ChatMessage[] {
   try {
     if (typeof window !== 'undefined') {
-      const searchParams = new URLSearchParams(window.location.search);
-      const urlSession = searchParams.get('session') || searchParams.get('session_id');
-      const targetId = (urlSession && urlSession.trim()) || localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
+      const targetId = getInitialSessionId();
 
       if (!targetId || targetId === 'new') {
         return [];
@@ -173,18 +177,10 @@ export function getInitialConversation(): ChatMessage[] {
 export function getInitialSourceDocs(): SourceDocument[] {
   try {
     if (typeof window !== 'undefined') {
-      const searchParams = new URLSearchParams(window.location.search);
-      const urlSession = searchParams.get('session') || searchParams.get('session_id');
-      const targetId =
-        (urlSession && urlSession.trim()) ||
-        localStorage.getItem(CURRENT_SESSION_KEY)?.trim();
+      const targetId = getInitialSessionId();
 
+      // If opening a new session, NEVER load preloaded draft documents:
       if (!targetId || targetId === 'new') {
-        const draft = localStorage.getItem(DRAFT_SOURCES_STORAGE_KEY);
-        if (draft) {
-          const parsed = JSON.parse(draft) as SourceDocument[];
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
         return [];
       }
 

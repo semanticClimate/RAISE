@@ -7,6 +7,7 @@ import {
   getStoredLastConnectedAt,
   getStoredTunnelUrl,
   getStoredUsername,
+  resolveDefaultBaseUrl,
   setApiBaseUrl,
   setApiMode,
   setStoredApiKey,
@@ -76,6 +77,27 @@ const resolveInitialTunnel = (): string => {
 
 const initialTunnel = resolveInitialTunnel();
 
+let offlineRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+const scheduleOfflineRetry = () => {
+  if (typeof window === 'undefined') return;
+  if (offlineRetryTimer) clearTimeout(offlineRetryTimer);
+  offlineRetryTimer = setTimeout(() => {
+    offlineRetryTimer = null;
+    const state = useModeStore.getState();
+    if (state.appMode === 'offline' && !state.isProbing && state.configMode !== 'mock') {
+      state.runCapabilityProbe();
+    }
+  }, 3000);
+};
+
+const clearOfflineRetry = () => {
+  if (offlineRetryTimer) {
+    clearTimeout(offlineRetryTimer);
+    offlineRetryTimer = null;
+  }
+};
+
 export const useModeStore = create<ModeState>((set, get) => ({
   appMode: getApiMode() === 'mock' ? 'mock' : 'offline',
   configMode: getApiMode(),
@@ -131,9 +153,10 @@ export const useModeStore = create<ModeState>((set, get) => ({
 
   clearTunnelUrl: () => {
     setStoredTunnelUrl('');
-    setApiBaseUrl('http://127.0.0.1:8000', false);
+    const defaultUrl = resolveDefaultBaseUrl();
+    setApiBaseUrl(defaultUrl, false);
     set({
-      apiBaseUrl: 'http://127.0.0.1:8000',
+      apiBaseUrl: defaultUrl,
       isTunnelConfigured: true,
       appMode: 'offline',
       capabilities: null,
@@ -142,9 +165,15 @@ export const useModeStore = create<ModeState>((set, get) => ({
       consecutiveFailures: 0,
       isDegraded: false,
     });
+    scheduleOfflineRetry();
   },
 
   setAppMode: (appMode: AppMode) => {
+    if (appMode === 'connected' || appMode === 'degraded') {
+      clearOfflineRetry();
+    } else if (appMode === 'offline') {
+      scheduleOfflineRetry();
+    }
     set({ appMode });
   },
 
@@ -187,6 +216,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
 
     if (isSuccess) {
       computedMode = 'connected';
+      clearOfflineRetry();
       setStoredLastConnectedAt();
     } else if (consecutiveFailures < 3 && (get().appMode === 'connected' || get().appMode === 'degraded')) {
       // Keep workstation operational during transient Docling/RAG compute congestion
@@ -195,6 +225,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
     } else {
       computedMode = 'offline';
       isDegraded = false;
+      scheduleOfflineRetry();
     }
 
     set({
@@ -258,6 +289,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
       let computedMode: AppMode = 'offline';
       if (caps.apiReachable) {
         computedMode = 'connected';
+        clearOfflineRetry();
         setStoredLastConnectedAt();
         get().checkReadiness();
       } else {
@@ -274,6 +306,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
               get().clearTunnelUrl();
               const localCaps = await systemService.probeCapabilities();
               if (localCaps.apiReachable) {
+                clearOfflineRetry();
                 set({
                   capabilities: localCaps,
                   appMode: 'connected',
@@ -288,6 +321,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
           } catch {}
         }
         computedMode = 'offline';
+        scheduleOfflineRetry();
       }
 
       set({
@@ -311,6 +345,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
             get().clearTunnelUrl();
             const localCaps = await systemService.probeCapabilities();
             if (localCaps.apiReachable) {
+              clearOfflineRetry();
               set({
                 capabilities: localCaps,
                 appMode: 'connected',
@@ -331,6 +366,7 @@ export const useModeStore = create<ModeState>((set, get) => ({
         isProbing: false,
         probeError: err instanceof Error ? err.message : String(err ?? 'Capability probe failed'),
       });
+      scheduleOfflineRetry();
     }
   },
 

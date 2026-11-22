@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { copyMarkdownToClipboard } from '../../../utils/exportFormats';
 import { formatTableAsMarkdown } from '../../../utils/tableFormatter';
 import { ComparabilityBadge, isComparabilityStatus } from '../ComparabilityBadge';
+import { ComparativeDiffGrid, isComparativeTable } from './ComparativeDiffGrid';
 
 export interface TableBlockProps {
   headers: string[];
@@ -29,6 +30,19 @@ export const TableBlock: React.FC<TableBlockProps> = ({
       }
     };
   }, []);
+
+  // Dedicated Comparative Diff Grid view for comparative institutional reports & /compare outputs
+  if (isComparativeTable(headers, rows)) {
+    return (
+      <ComparativeDiffGrid
+        headers={headers}
+        alignments={alignments}
+        rows={rows}
+        tableIdx={tableIdx}
+        renderInline={renderInline}
+      />
+    );
+  }
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();

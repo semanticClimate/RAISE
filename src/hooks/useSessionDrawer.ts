@@ -19,14 +19,32 @@ export interface UseSessionDrawerResult {
 /**
  * useSessionDrawer:
  * Hook to manage active attached document state for the session drawer,
- * synchronizing with the backend REST endpoints.
+ * synchronizing with the backend REST endpoints and local thread cache.
  */
+const getDrawerStorageKey = (id: string | null) =>
+  id && id !== 'new' ? `raise_session_drawer_${id}` : 'raise_session_drawer_draft';
+
 export function useSessionDrawer({
   sessionId,
   initialDocs = [],
   onDrawerChange,
 }: UseSessionDrawerOptions): UseSessionDrawerResult {
-  const [attachedDocs, setAttachedDocs] = useState<string[]>(initialDocs);
+  const storageKey = getDrawerStorageKey(sessionId);
+
+  const [attachedDocs, setAttachedDocs] = useState<string[]>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem(storageKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.filter((d: unknown): d is string => typeof d === 'string');
+          }
+        }
+      }
+    } catch {}
+    return initialDocs;
+  });
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
@@ -34,6 +52,14 @@ export function useSessionDrawer({
       setAttachedDocs(initialDocs);
     }
   }, [initialDocs]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(storageKey, JSON.stringify(attachedDocs));
+      }
+    } catch {}
+  }, [storageKey, attachedDocs]);
 
   const attachDocument = useCallback(
     async (documentName: string) => {

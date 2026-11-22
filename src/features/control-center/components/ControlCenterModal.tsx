@@ -32,7 +32,6 @@ export const ControlCenterModal: React.FC = () => {
     setActiveTab,
     setHardware,
     config,
-    updateConfig,
     completeFirstRun,
     isDirty,
     resetToBaseline,
@@ -52,9 +51,6 @@ export const ControlCenterModal: React.FC = () => {
     if (isOpen) {
       useModeStore.getState().runCapabilityProbe();
       const hostOS = detectHostOS();
-      if (hostOS && config.targetPlatform !== hostOS && !useControlCenterStore.getState().isDirty) {
-        updateConfig({ targetPlatform: hostOS });
-      }
 
       useControlCenterStore.getState().syncBackendConfig();
       useControlCenterStore.getState().syncEnvCredentials();
@@ -70,9 +66,6 @@ export const ControlCenterModal: React.FC = () => {
           gpuName: hw.gpu?.details || (hw as any).gpu_name || (detected === 'macos' ? 'Apple MPS' : detected === 'windows' ? 'DirectML / NVIDIA' : 'ROCm / NVIDIA / CPU'),
           hasMetalOrCuda: Boolean(hw.has_metal_or_cuda ?? (detected === 'macos' || detected === 'windows')),
         });
-        if (!useControlCenterStore.getState().isDirty) {
-          updateConfig({ targetPlatform: detected });
-        }
       });
     }
   }, [isOpen]);
@@ -225,32 +218,34 @@ export const ControlCenterModal: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {isDirty ? (
+            {isDirty && (
               <button
                 type="button"
                 onClick={resetToBaseline}
-                className="w-8 h-8 rounded-lg text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] transition-colors cursor-pointer flex items-center justify-center border border-[#292929] group"
-                aria-label="Reset Changes"
-                title="Reset all changes to server baseline"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-all cursor-pointer shadow-xs animate-in fade-in duration-150"
+                title="Discard uncommitted edits and revert to server settings"
+                aria-label="Discard Changes"
               >
-                <RotateCcw className="w-4 h-4 transition-transform group-hover:-rotate-45 text-[#FFFFFF]" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    localStorage.setItem('raise_onboarding_completed', 'true');
-                  } catch {}
-                  setOpen(false);
-                }}
-                className="w-8 h-8 rounded-lg text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-[#292929]"
-                aria-label="Close Control Center"
-                title="Close Control Center"
-              >
-                <X className="w-4 h-4" />
+                <RotateCcw className="w-3 h-3 text-amber-400" />
+                <span>Discard Edits</span>
               </button>
             )}
+
+            {/* Close button is ALWAYS available */}
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.setItem('raise_onboarding_completed', 'true');
+                } catch {}
+                setOpen(false);
+              }}
+              className="w-8 h-8 rounded-lg text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] transition-colors cursor-pointer flex items-center justify-center border border-white/10"
+              aria-label="Close Control Center"
+              title="Close Control Center"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
 

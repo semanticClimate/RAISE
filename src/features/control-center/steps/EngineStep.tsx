@@ -53,9 +53,6 @@ export const EngineStep: React.FC = () => {
             };
           });
           setDynamicModels(formatted);
-          if (!config.selectedLocalModel && formatted.length > 0) {
-            updateConfig({ selectedLocalModel: formatted[0].model });
-          }
         } else {
           return platformAdapter.getDynamicLLMs().then((models) => {
             const formatted: DynamicLLMModel[] = models.map((m) => ({
@@ -71,9 +68,6 @@ export const EngineStep: React.FC = () => {
               source: m.provider,
             }));
             setDynamicModels(formatted);
-            if (!config.selectedLocalModel && formatted.length > 0) {
-              updateConfig({ selectedLocalModel: formatted[0].model });
-            }
           });
         }
       })

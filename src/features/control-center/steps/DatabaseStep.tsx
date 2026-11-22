@@ -1,4 +1,4 @@
-import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, RotateCcw, X, Zap } from 'lucide-react';
+import { Check, Cloud, Cpu, Database, Eye, EyeOff, Layers, RefreshCw, X, Zap } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { Tooltip } from '../components/Tooltip';
@@ -550,7 +550,7 @@ export const DatabaseStep: React.FC = () => {
                         </>
                       ) : isCloud ? (
                         <>
-                          <RotateCcw className="w-3 h-3 text-white stroke-[2.5] transition-transform duration-300 group-hover:-rotate-45" />
+                          <Cloud className="w-3.5 h-3.5 text-white stroke-[2]" />
                           <span className="sr-only">Click to configure and connect</span>
                         </>
                       ) : (
