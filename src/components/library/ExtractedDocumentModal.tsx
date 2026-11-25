@@ -3,6 +3,7 @@ import type React from 'react';
 import { useEffect, useState } from 'react';
 import { useEscapeKey, useScrollLock } from '../../hooks';
 import { sourceService } from '../../services/SourceService';
+import { copyMarkdownToClipboard } from '../../utils/exportFormats';
 import { AnswerMarkdown } from '../chat/AnswerMarkdown';
 
 export interface ExtractedDocumentModalProps {
@@ -77,11 +78,12 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!content) return;
-    navigator.clipboard.writeText(content);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    if (await copyMarkdownToClipboard(content)) {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
   };
 
   const handleDownload = () => {
@@ -99,7 +101,7 @@ export const ExtractedDocumentModal: React.FC<ExtractedDocumentModalProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(blobUrl);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   };
 
   const modalTitle = type === 'markdown' ? 'Parsed Extracted Markdown' : 'OKF Catalog Overview';

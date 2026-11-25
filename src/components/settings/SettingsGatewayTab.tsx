@@ -98,14 +98,10 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
 
   const handleScanLocalBackend = async () => {
     setIsScanningLocal(true);
-    setStatusNotice('Scanning local ports (8000, 8001, 8080)...');
+    setStatusNotice('Scanning local gateway port (8000)...');
     const localCandidates = [
       'http://127.0.0.1:8000',
       'http://localhost:8000',
-      'http://127.0.0.1:8001',
-      'http://localhost:8001',
-      'http://127.0.0.1:8080',
-      'http://localhost:8080',
     ];
 
     let foundUrl: string | null = null;
@@ -127,7 +123,7 @@ export const SettingsGatewayTab: React.FC<SettingsGatewayTabProps> = () => {
       setBaseUrl(foundUrl);
       setStatusNotice(`Connected to local backend at ${foundUrl}`);
     } else {
-      setStatusNotice('No local backend detected on ports 8000/8080.');
+      setStatusNotice('No local backend detected on port 8000.');
     }
     setTimeout(() => setStatusNotice(null), 4000);
   };

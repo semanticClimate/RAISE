@@ -88,7 +88,11 @@ export async function executeStreamRequest(
 
   const forwardAbort = () => controller.abort();
   if (options.signal) {
-    options.signal.addEventListener('abort', forwardAbort, { once: true });
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener('abort', forwardAbort, { once: true });
+    }
   }
 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -335,8 +339,11 @@ export async function executeStreamRequest(
     }
     clearTimeout(timer);
     if (watchdogTimer) clearTimeout(watchdogTimer);
-    if (options.signal && onAbort) {
-      options.signal.removeEventListener('abort', onAbort);
+    if (options.signal) {
+      options.signal.removeEventListener('abort', forwardAbort);
+      if (onAbort) {
+        options.signal.removeEventListener('abort', onAbort);
+      }
     }
   }
 }

@@ -4,6 +4,7 @@ import { useDocumentViewerStore } from '../../../stores/useDocumentViewerStore';
 import { detectEnvCredentials } from '../../control-center/services/envDetector';
 import { useControlCenterStore } from '../../control-center/store/useControlCenterStore';
 import { settingsJunction, useSettingsJunction } from '../../settings/junction';
+import { copyMarkdownToClipboard } from '../../../utils/exportFormats';
 import type { ChatSession, SourceDocument } from '../types';
 import { getInitialSessionId } from '../utils/sessionStorageUtils';
 import { useChatEditing } from './useChatEditing';
@@ -219,12 +220,21 @@ export function useRaiseController() {
     };
   }, []);
 
-  const handleCopyText = useCallback((text: string, key: string) => {
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+    };
+  }, []);
+
+  const handleCopyText = useCallback(async (text: string, key: string) => {
     if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey(null), 1800);
-    });
+    const copied = await copyMarkdownToClipboard(text);
+    if (!copied) return;
+    setCopiedKey(key);
+    if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+    copyResetTimerRef.current = setTimeout(() => setCopiedKey(null), 1800);
   }, []);
 
   const handleTogglePinSession = useCallback((sessionId: string) => {

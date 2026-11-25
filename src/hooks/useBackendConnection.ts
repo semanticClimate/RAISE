@@ -176,16 +176,13 @@ export function useBackendConnection(
   }, [apiBaseUrl, testConnection]);
 
   /**
-   * Scan common local ports (8000, 8001, 8080) for a running RAISE FastAPI instance
+   * Scan sole local gateway port (8000) for a running RAISE FastAPI instance
    */
   const scanLocalPorts = useCallback(async (): Promise<string | null> => {
     setIsScanning(true);
     const candidatePorts = [
       'http://127.0.0.1:8000',
       'http://localhost:8000',
-      'http://127.0.0.1:8001',
-      'http://localhost:8001',
-      'http://localhost:8080',
     ];
 
     let found: string | null = null;

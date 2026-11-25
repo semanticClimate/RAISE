@@ -80,9 +80,14 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
         theme: localStorage.getItem('raise_theme_mode') || 'dark',
         gatewayUrl: localStorage.getItem('raise_gateway_url') || '',
         voice: localStorage.getItem('raise_preferred_voice') || '',
-        gridConfig: localStorage.getItem('raise_grid_config')
-          ? JSON.parse(localStorage.getItem('raise_grid_config')!)
-          : null,
+        gridConfig: (() => {
+          try {
+            const rawGrid = localStorage.getItem('raise_grid_config');
+            return rawGrid ? JSON.parse(rawGrid) : null;
+          } catch {
+            return null;
+          }
+        })(),
       },
     };
 
@@ -112,7 +117,7 @@ export const SettingsDataControlTab: React.FC<SettingsDataControlTabProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 
     setIsExportOpen(false);
     showToast(`Exported ${sessions.length} conversations (${exportFormat.toUpperCase()})`);

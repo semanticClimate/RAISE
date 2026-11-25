@@ -129,9 +129,14 @@ class ApiClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Merge external signal if provided
+    // Merge external signal if provided (cleaned up in finally to prevent listener retention)
+    const onExternalAbort = () => controller.abort();
     if (options.signal) {
-      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', onExternalAbort, { once: true });
+      }
     }
 
     const incomingReqId =
@@ -267,6 +272,11 @@ class ApiClient {
         error: `Network Fetch Exception: ${normErr.message} (Target: ${url})`,
       });
       return { data: null, error: normErr, isMock: false, status: 0 };
+    } finally {
+      clearTimeout(timer);
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onExternalAbort);
+      }
     }
   }
 
