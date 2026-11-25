@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import type { Citation } from '../../types';
 import { sourceService } from '../../services/SourceService';
 import { cleanRagResponseText } from '../../utils/citationParser';
+import { extractReasoningAndAnswer } from '../../utils/reasoningParser';
 import { sanitizeStreamText } from '../../utils/sanitizeStreamText';
 import { resolveCitationDetail } from '../citations/CitationBadge';
 import { MemoizedMarkdownBlock } from './markdown/MemoizedMarkdownBlock';
@@ -13,6 +14,7 @@ export interface AnswerMarkdownProps {
   content: string;
   citations?: Citation[];
   showCitations?: boolean;
+  isStreaming?: boolean;
   className?: string;
   onViewPdf?: (fileName: string, page: number, mode?: 'page' | 'full' | 'view') => void;
 }
@@ -21,18 +23,26 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
   content,
   citations = [],
   showCitations = false,
+  isStreaming = false,
   className = '',
   onViewPdf,
 }) => {
-  if (!content) return null;
+  // 1. Sanitize any raw JSON token fragments or leaked stream tokens (all hooks stay unconditional)
+  const sanitized = useMemo(() => (content ? sanitizeStreamText(content) : ''), [content]);
 
-  // 1. Sanitize any raw JSON token fragments or leaked stream tokens
-  const sanitized = useMemo(() => sanitizeStreamText(content), [content]);
+  // 2. Extract <think>...</think> reasoning and rescue conclusions BEFORE citation formatting runs
+  const { thoughtText, answerText, isStreamingThought, rescuedFromThought } = useMemo(
+    () => extractReasoningAndAnswer(sanitized, { isStreaming }),
+    [sanitized, isStreaming]
+  );
 
-  // 2. Clean RAG artifacts, unpack verbose in-text citations, and normalize layout
+  // While streaming an unclosed reasoning trace, surface live tokens immediately instead of a closed box
+  const activeMarkdownSource = isStreamingThought ? thoughtText || '' : answerText;
+
+  // 3. Clean RAG artifacts, unpack verbose in-text citations, and normalize layout on the answer body
   const { cleanText: preparedText, citations: enrichedCitations } = useMemo(
-    () => cleanRagResponseText(sanitized, citations),
-    [sanitized, citations]
+    () => cleanRagResponseText(activeMarkdownSource, citations, { preserveReasoningTags: true }),
+    [activeMarkdownSource, citations]
   );
 
   const displayCitations = useMemo(
@@ -40,14 +50,14 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
     [enrichedCitations, citations]
   );
 
-  // 3. If showCitations is false, strip bracketed markers like [1], [2], [1, 2] from the content
+  // 4. If showCitations is false, strip bracketed markers like [1], [2], [1, 2] from the content
   const cleanContent = useMemo(
     () =>
       showCitations ? preparedText : preparedText.replace(/\s*\[\d+(?:\s*,\s*\d+)*\]/g, ''),
     [showCitations, preparedText]
   );
 
-  // 4. Citation lookup map by citation_index
+  // 5. Citation lookup map by citation_index
   const citationMap = useMemo(() => {
     const map = new Map<number, Citation>();
     if (showCitations && displayCitations) {
@@ -58,20 +68,8 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
     return map;
   }, [showCitations, displayCitations]);
 
-  // 5. Extract and format reasoning tokens inside <think>...</think>
-  const { thoughtText, parsedContent } = useMemo(() => {
-    let thought: string | null = null;
-    let parsed = cleanContent;
-    const thinkMatch = cleanContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/i);
-    if (thinkMatch) {
-      thought = thinkMatch[1].trim();
-      parsed = cleanContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/i, '').trim();
-    }
-    return { thoughtText: thought, parsedContent: parsed };
-  }, [cleanContent]);
-
   // 6. Parse structured markdown blocks (memoized to prevent re-tokenization)
-  const blocks = useMemo(() => parseMarkdownBlocks(parsedContent), [parsedContent]);
+  const blocks = useMemo(() => parseMarkdownBlocks(cleanContent), [cleanContent]);
 
   // 7. Stable inline options reference for MemoizedMarkdownBlock children
   const inlineOptions = useMemo<RenderInlineOptions>(
@@ -84,14 +82,16 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
     [showCitations, citationMap, displayCitations, onViewPdf]
   );
 
+  if (!content || (!cleanContent && !thoughtText)) return null;
+
   return (
     <div
       className={`space-y-3 leading-relaxed text-slate-800 dark:text-slate-200 font-sans text-[15px] ${className}`}
     >
-      {thoughtText && (
+      {thoughtText && !isStreamingThought && (
         <details className="mb-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02] p-3 text-xs group">
           <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-400 select-none flex items-center gap-2 hover:text-slate-900 dark:hover:text-slate-200">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" aria-hidden="true" />
             <span>Reasoning Chain</span>
             <span className="text-[10px] text-slate-400 group-open:hidden font-mono">
               (click to expand)
@@ -103,20 +103,36 @@ const AnswerMarkdownBase: React.FC<AnswerMarkdownProps> = ({
         </details>
       )}
 
-      {blocks.map((block, idx) => (
-        <MemoizedMarkdownBlock
-          key={idx}
-          block={block}
-          blockIdx={idx}
-          inlineOptions={inlineOptions}
-        />
-      ))}
+      {(isStreamingThought || rescuedFromThought) && (
+        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-indigo-600/90 dark:text-indigo-400/90 select-none">
+          <Sparkles
+            className={`w-3.5 h-3.5 text-indigo-500${isStreamingThought ? ' animate-pulse' : ''}`}
+            aria-hidden="true"
+          />
+          <span>Synthesized from model reasoning chain:</span>
+        </div>
+      )}
+
+      {blocks.length > 0 ? (
+        blocks.map((block, idx) => (
+          <MemoizedMarkdownBlock
+            key={idx}
+            block={block}
+            blockIdx={idx}
+            inlineOptions={inlineOptions}
+          />
+        ))
+      ) : isStreamingThought && thoughtText ? (
+        <div className="text-sm leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+          {thoughtText}
+        </div>
+      ) : null}
 
       {/* Vertical Sources list */}
       {showCitations && displayCitations && displayCitations.length > 0 && (
         <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400 select-text">
           <div className="flex items-center gap-1.5 font-medium text-slate-400 dark:text-slate-500 text-[11px] tracking-wide uppercase shrink-0">
-            <BookOpen className="w-3.5 h-3.5 text-blue-500" />
+            <BookOpen className="w-3.5 h-3.5 text-blue-500" aria-hidden="true" />
             <span>Sources:</span>
           </div>
 
@@ -180,6 +196,7 @@ function areAnswerMarkdownPropsEqual(
 ): boolean {
   if (prev.content !== next.content) return false;
   if (prev.showCitations !== next.showCitations) return false;
+  if (prev.isStreaming !== next.isStreaming) return false;
   if (prev.className !== next.className) return false;
   if (prev.onViewPdf !== next.onViewPdf) return false;
   if ((prev.citations?.length || 0) !== (next.citations?.length || 0)) return false;

@@ -1,5 +1,33 @@
 import { sanitizeMultilingualText } from './krutiDevConverter';
 
+const MD_TABLE_BLOCK_RE = /(?:^|\n)(\|[^\n]+\|\s*\n\|[ \t:|-]+\|(?:[ \t]*\n\|[^\n]+\|)*)/g;
+
+/**
+ * Protects pipe-delimited Markdown table blocks while running prose formatting transforms
+ * (such as bullet expansion or blank-line normalization) so multi-column tables stay intact.
+ */
+export function preserveMarkdownTables(
+  text: string,
+  transform: (prose: string) => string
+): string {
+  if (!text) return text;
+  const tables: string[] = [];
+  const masked = text.replace(MD_TABLE_BLOCK_RE, (fullMatch, tableBlock: string) => {
+    const leadingNewline = fullMatch.startsWith('\n') ? '\n' : '';
+    const token = `__MD_TABLE_BLOCK_${tables.length}__`;
+    tables.push(tableBlock);
+    return `${leadingNewline}${token}`;
+  });
+
+  const transformed = transform(masked);
+  if (tables.length === 0) return transformed;
+
+  return transformed.replace(/__MD_TABLE_BLOCK_(\d+)__/g, (placeholder, idx) => {
+    const index = Number.parseInt(idx, 10);
+    return tables[index] !== undefined ? tables[index] : placeholder;
+  });
+}
+
 /**
  * Sanitizes stream output by stripping SSE artifacts and unpacking any leaked JSON token fragments.
  * Handles cases where network chunk boundary anomalies or legacy strings contain raw JSON blocks:
@@ -57,11 +85,10 @@ export function sanitizeStreamText(text: string): string {
     ''
   );
 
-  // 6. Ensure double newlines before bullets so glued list items (e.g. "...text• **Title**") are properly spaced
-  cleaned = cleaned.replace(/([^\n])\s*•\s*/g, '$1\n\n• ');
-
-  // 7. Normalize excess blank lines
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  // 6-7. Expand glued bullets onto distinct lines and normalize blank lines without splitting Markdown tables
+  cleaned = preserveMarkdownTables(cleaned, (prose) =>
+    prose.replace(/([^\n])\s*•\s*/g, '$1\n\n• ').replace(/\n{3,}/g, '\n\n')
+  );
 
   // 8. Strip robotic introductory meta-filler in scientific RAG responses
   cleaned = cleaned.replace(

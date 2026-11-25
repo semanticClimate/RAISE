@@ -32,26 +32,25 @@ interface ProviderMeta {
   id: DetectedProvider;
   name: string;
   placeholder: string;
-  defaultModel: string;
 }
 
 const CLOUD_PROVIDERS: ProviderMeta[] = [
-  { id: 'gemini', name: 'Google Gemini', placeholder: 'Enter Gemini API key (AIzaSy...)...', defaultModel: 'gemini-2.5-flash' },
-  { id: 'groq', name: 'Groq LPU', placeholder: 'Enter Groq API key (gsk_...)...', defaultModel: 'openai/gpt-oss-120b' },
-  { id: 'openai', name: 'OpenAI API', placeholder: 'Enter OpenAI API key (sk-...)...', defaultModel: 'gpt-4o-mini' },
-  { id: 'anthropic', name: 'Anthropic Claude', placeholder: 'Enter Anthropic API key (sk-ant-...)...', defaultModel: 'claude-3-5-sonnet' },
-  { id: 'mistral', name: 'Mistral AI', placeholder: 'Enter Mistral API key...', defaultModel: 'open-mistral-nemo' },
-  { id: 'deepseek', name: 'DeepSeek API', placeholder: 'Enter DeepSeek API key...', defaultModel: 'deepseek-chat' },
-  { id: 'openrouter', name: 'OpenRouter Gateway', placeholder: 'Enter OpenRouter key (sk-or-...)...', defaultModel: 'anthropic/claude-3-haiku' },
-  { id: 'nvidia', name: 'NVIDIA NIM', placeholder: 'Enter NVIDIA NIM key (nvapi-...)...', defaultModel: 'meta/llama-3.2-11b-vision-instruct' },
-  { id: 'cohere', name: 'Cohere Command', placeholder: 'Enter Cohere API key...', defaultModel: 'command-r-plus-08-2024' },
-  { id: 'universal', name: 'Universal / Custom Cloud API', placeholder: 'Enter OpenAI-compatible key...', defaultModel: 'Universal Custom LLM' },
+  { id: 'gemini', name: 'Google Gemini', placeholder: 'Enter Gemini API key (AIzaSy...)...' },
+  { id: 'groq', name: 'Groq LPU', placeholder: 'Enter Groq API key (gsk_...)...' },
+  { id: 'openai', name: 'OpenAI API', placeholder: 'Enter OpenAI API key (sk-...)...' },
+  { id: 'anthropic', name: 'Anthropic Claude', placeholder: 'Enter Anthropic API key (sk-ant-...)...' },
+  { id: 'mistral', name: 'Mistral AI', placeholder: 'Enter Mistral API key...' },
+  { id: 'deepseek', name: 'DeepSeek API', placeholder: 'Enter DeepSeek API key...' },
+  { id: 'openrouter', name: 'OpenRouter Gateway', placeholder: 'Enter OpenRouter key (sk-or-...)...' },
+  { id: 'nvidia', name: 'NVIDIA NIM', placeholder: 'Enter NVIDIA NIM key (nvapi-...)...' },
+  { id: 'cohere', name: 'Cohere Command', placeholder: 'Enter Cohere API key...' },
+  { id: 'universal', name: 'Universal / Custom Cloud API', placeholder: 'Enter OpenAI-compatible key...' },
 ];
 
 export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
   refetchLiveModels,
 }) => {
-  const { config, addApiKey, updateApiKey, removeApiKey, setKeyVerification } =
+  const { config, addApiKey, removeApiKey, setKeyVerification } =
     useControlCenterStore();
 
   const [selectedProvider, setSelectedProvider] = useState<DetectedProvider>('gemini');
@@ -135,11 +134,8 @@ export const CloudKeysSection: React.FC<CloudKeysSectionProps> = ({
     const key = newKeyInput.trim();
     if (!key) return;
 
-    const keyId = `key-${Date.now()}`;
-
-    // Add to store
-    addApiKey(key);
-    updateApiKey(keyId, key);
+    // Add to store using the store-generated ID so verification status updates cleanly
+    const keyId = addApiKey(key, selectedProvider);
 
     // Persist directly to backend .env
     try {

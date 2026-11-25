@@ -117,14 +117,11 @@ export function resolveAuditedProvenance(response?: Partial<SubgraphQueryRespons
       : 'ChromaDB (Vector) + SQLite (Local)';
 
   const rawModel = pInfo?.llm_model || response?.llm_model || '';
-  const llmModel =
-    rawModel && !rawModel.toLowerCase().includes('gemini-3.5')
-      ? rawModel
-      : 'gemini-2.5-flash';
-  const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'gemini';
-  const encoderModel = pInfo?.encoder_model || response?.encoder_model || 'google/embeddinggemma-2';
-  const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'BAAI/bge-reranker-v2-m3';
-  const nliVerifierModel = pInfo?.nli_verifier_model || response?.nli_verifier_model || 'dleemiller/finecat-nli-ultra-l';
+  const llmModel = rawModel || 'Auto (Backend Default)';
+  const llmProvider = pInfo?.llm_provider || response?.llm_provider || 'Backend Gateway';
+  const encoderModel = pInfo?.encoder_model || response?.encoder_model || 'Backend Configured';
+  const rerankerModel = pInfo?.reranker_model || response?.reranker_model || 'Backend Configured';
+  const nliVerifierModel = pInfo?.nli_verifier_model || response?.nli_verifier_model || 'Backend Configured';
 
   const rawMode =
     (response as any)?.mode_used ||

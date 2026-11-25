@@ -125,7 +125,7 @@ export function synthesizeSubgraphResponse(
       ? rawPipelineInfo.llm_provider
       : typeof meta.llm_provider === 'string' && meta.llm_provider
         ? meta.llm_provider
-        : 'gemini';
+        : 'Backend Gateway';
 
   const llmModel: string =
     typeof rawPipelineInfo.llm_model === 'string' && rawPipelineInfo.llm_model
@@ -134,14 +134,14 @@ export function synthesizeSubgraphResponse(
         ? meta.llm_model
         : typeof meta.llm_backend === 'string' && meta.llm_backend
           ? meta.llm_backend
-          : 'gemini-2.5-flash';
+          : 'Auto (Backend Default)';
 
   const encoderModel =
     typeof rawPipelineInfo.encoder_model === 'string' && rawPipelineInfo.encoder_model
       ? rawPipelineInfo.encoder_model
       : typeof meta.encoder_model === 'string' && meta.encoder_model
         ? meta.encoder_model
-        : 'google/embeddinggemma-2';
+        : 'Backend Configured';
 
   const rerankerModel =
     typeof rawPipelineInfo.reranker_model === 'string' && rawPipelineInfo.reranker_model

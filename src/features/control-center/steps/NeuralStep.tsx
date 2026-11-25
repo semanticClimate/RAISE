@@ -838,13 +838,7 @@ export const NeuralStep: React.FC = () => {
                           handleApplyCustomModel();
                         }
                       }}
-                      placeholder={`e.g. ${
-                        customModelCategory === 'embedding'
-                          ? 'BAAI/bge-m3 or sentence-transformers/all-MiniLM-L6-v2'
-                          : customModelCategory === 'reranker'
-                            ? 'BAAI/bge-reranker-v2-m3'
-                            : 'MoritzLaurer/DeBERTa-v3-base-mnli'
-                      }`}
+                      placeholder="e.g. organization/model-name"
                       className="w-full px-3 py-1.5 pr-8 rounded-lg bg-black/60 border border-white/15 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-white transition-colors"
                     />
                     {/* Paste from clipboard button with exact requested SVG */}
@@ -956,10 +950,6 @@ export const NeuralStep: React.FC = () => {
                     m.status?.toLowerCase().includes('installed') ||
                     m.status?.includes('Built-in')
                   );
-                  const isRerankerMatch =
-                    activeCategoryModal === 'reranker' &&
-                    m.id.includes('v2-m3') &&
-                    configuredEmbedding.includes('embeddinggemma-2');
 
                   return (
                     <button
@@ -994,12 +984,6 @@ export const NeuralStep: React.FC = () => {
                         {m.specifications && (
                           <div className="text-[10px] font-mono text-zinc-300">
                             {m.specifications}
-                          </div>
-                        )}
-
-                        {isRerankerMatch && (
-                          <div className="text-[9.5px] font-mono text-zinc-300 leading-tight">
-                            Context (8,192 tokens) matches google/embeddinggemma-2 for zero-truncation cross-attention
                           </div>
                         )}
                       </div>

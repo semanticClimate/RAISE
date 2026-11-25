@@ -88,6 +88,7 @@ elif command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
         echo "      [WARNING] Detected outdated Node.js ($(node -v)). Node 22.14+ LTS is required."
         echo "      Proceeding to download portable Node.js LTS (${NODE_VER})..."
     fi
+fi
 if [ -z "$NODE_CMD" ]; then
     echo ""
     echo "============================================================================"

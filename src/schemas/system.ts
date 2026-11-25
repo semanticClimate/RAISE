@@ -9,7 +9,7 @@ export const HardwareTelemetrySchema = z.preprocess(
         ram_total_gb: val.ram_total_gb ?? val.total_ram_gb ?? 0,
         ram_available_gb: val.ram_available_gb ?? val.free_ram_gb ?? 0,
         ram_percent: val.ram_percent ?? val.cpu_usage_pct ?? 0,
-        embedding_model: val.embedding_model || 'BAAI/bge-large-en-v1.5',
+        embedding_model: val.embedding_model || '',
         neo4j_endpoint: val.neo4j_endpoint || 'bolt://localhost:7687',
       };
     }
@@ -20,7 +20,7 @@ export const HardwareTelemetrySchema = z.preprocess(
     ram_total_gb: z.number().default(0),
     ram_available_gb: z.number().default(0),
     ram_percent: z.number().default(0),
-    embedding_model: z.string().default('BAAI/bge-large-en-v1.5'),
+    embedding_model: z.string().default(''),
     neo4j_endpoint: z.string().default('bolt://localhost:7687'),
   })
 );

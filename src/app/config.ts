@@ -11,12 +11,16 @@ export interface AppConfig {
 }
 
 const envBaseUrl =
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  (import.meta.env.VITE_API_BASE_URL as string | undefined);
-const envMode = import.meta.env.VITE_API_MODE as ConfigMode | undefined;
+  (typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_API_URL as string | undefined) : undefined) ||
+  (typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_API_BASE_URL as string | undefined) : undefined);
+const envMode =
+  typeof import.meta !== 'undefined'
+    ? (import.meta.env?.VITE_API_MODE as ConfigMode | undefined)
+    : undefined;
 
 export const EXPECTED_BACKEND_VERSION =
-  (import.meta.env.VITE_BACKEND_VERSION as string | undefined) || '1.0.0';
+  (typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_BACKEND_VERSION as string | undefined) : undefined) ||
+  '1.0.0';
 
 /**
  * Resolves the default backend API base URL:

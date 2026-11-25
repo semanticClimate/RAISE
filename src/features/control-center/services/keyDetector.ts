@@ -34,7 +34,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'groq',
       displayName: 'Groq',
-      defaultModel: 'llama-3.3-70b-versatile',
+      defaultModel: '',
     };
   }
 
@@ -43,7 +43,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'gemini',
       displayName: 'Gemini',
-      defaultModel: 'gemini-2.0-flash',
+      defaultModel: '',
     };
   }
 
@@ -52,7 +52,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'nvidia',
       displayName: 'NVIDIA',
-      defaultModel: 'meta/llama-3.2-11b-vision-instruct',
+      defaultModel: '',
     };
   }
 
@@ -61,7 +61,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'anthropic',
       displayName: 'Anthropic',
-      defaultModel: 'claude-3-5-sonnet',
+      defaultModel: '',
     };
   }
 
@@ -70,7 +70,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'cohere',
       displayName: 'Cohere',
-      defaultModel: 'command-r-plus-08-2024',
+      defaultModel: '',
     };
   }
 
@@ -79,7 +79,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'openrouter',
       displayName: 'OpenRouter',
-      defaultModel: 'anthropic/claude-3-haiku',
+      defaultModel: '',
     };
   }
 
@@ -87,7 +87,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'openai',
       displayName: 'OpenAI',
-      defaultModel: 'gpt-4o-mini',
+      defaultModel: '',
     };
   }
 
@@ -96,7 +96,7 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'mistral',
       displayName: 'Mistral',
-      defaultModel: 'open-mistral-nemo',
+      defaultModel: '',
     };
   }
 
@@ -105,13 +105,13 @@ export function detectProviderFromKey(key: string): ProviderDetectionResult {
     return {
       provider: 'huggingface',
       displayName: 'Hugging Face',
-      defaultModel: 'sentence-transformers/all-MiniLM-L6-v2',
+      defaultModel: '',
     };
   }
 
   return {
     provider: 'custom',
     displayName: 'Custom API',
-    defaultModel: 'default',
+    defaultModel: '',
   };
 }

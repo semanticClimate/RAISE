@@ -27,6 +27,7 @@ const CLEAN_PROVIDER_NAMES: Record<string, string> = {
   gemini: 'Google Gemini',
   groq: 'Groq LPU',
   openai: 'OpenAI',
+  anthropic: 'Anthropic Claude',
   vllm: 'vLLM Local Engine',
   ollama: 'Ollama Daemon',
   local: 'Local PyTorch Transformers',
@@ -167,7 +168,7 @@ export const LLMRoutingOrchestrator: React.FC<{ className?: string }> = ({ class
               isOffline: false,
               isConfigured: true,
               tier: isVerified ? `Connected (${k.latencyMs}ms)` : 'Configured (Active)',
-              model: (k as any).model || (pid === 'gemini' ? 'gemini-2.5-flash' : 'Universal Custom LLM'),
+              model: (k as any).model || 'Auto (Backend Discovered)',
             };
           } else {
             merged[pid].isConfigured = true;

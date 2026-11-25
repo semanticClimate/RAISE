@@ -44,6 +44,7 @@ export const RaiseMainView: React.FC<RaiseMainViewProps> = ({ c }) => {
             setEditingQuestionText={c.setEditingQuestionText}
             handleSaveEditedQuestion={c.chatEditing.handleSaveEditedQuestion}
             isLoading={c.chatStream.isLoading}
+            activeStreamingStage={c.chatStream.activeStreamingStage}
             regeneratingIndex={c.regeneratingIndex}
             speakingMessageId={c.speech.speakingMessageId}
             apiBaseUrl={c.apiBaseUrl}

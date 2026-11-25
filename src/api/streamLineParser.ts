@@ -16,6 +16,7 @@ export interface StreamLineParserState {
   streamMetadata?: Record<string, unknown>;
   streamError: ApiError | null;
   isStreamComplete: boolean;
+  inReasoningStream?: boolean;
 }
 
 export function createStreamLineParser(
@@ -71,6 +72,11 @@ export function createStreamLineParser(
     if (!payload) return;
 
     if (payload.trim() === '[DONE]') {
+      if (state.inReasoningStream) {
+        state.inReasoningStream = false;
+        state.fullText += '</think>\n\n';
+        ctx.onChunk?.('</think>\n\n', state.fullText);
+      }
       state.currentEvent = '';
       state.isStreamComplete = true;
       return;
@@ -94,12 +100,17 @@ export function createStreamLineParser(
           return;
         }
 
-        if (p?.error !== undefined) {
+        if (p && (p.error !== undefined || state.currentEvent === 'error')) {
           state.currentEvent = '';
-          const errObj = asRecord(p.error) || { message: String(p.error) };
-          const code = getStringField(errObj, 'code') || 'STREAM_ERROR';
+          const errObj = asRecord(p.error) || p;
+          const code =
+            getStringField(errObj, 'code') ||
+            (typeof p.error === 'string' ? p.error : undefined) ||
+            'STREAM_ERROR';
           const message =
-            getStringField(errObj, 'message') || 'An error occurred during streaming';
+            getStringField(errObj, 'message') ||
+            getStringField(errObj, 'detail') ||
+            'An error occurred during streaming';
           state.streamError = {
             code,
             message,
@@ -158,13 +169,22 @@ export function createStreamLineParser(
             getStringField(p, 'result') ??
             candText;
           if (answerInMeta && (!state.fullText.trim() || answerInMeta.length > state.fullText.length)) {
+            state.inReasoningStream = false;
             state.fullText = sanitizeStreamText(answerInMeta);
             ctx.onChunk?.(state.fullText, state.fullText);
+          } else if (state.inReasoningStream) {
+            state.inReasoningStream = false;
+            state.fullText += '</think>\n\n';
+            ctx.onChunk?.('</think>\n\n', state.fullText);
           }
           return;
         }
 
         const deltaObj = asRecord(p?.delta);
+        const choicesArr = Array.isArray(p?.choices) ? (p.choices as unknown[]) : [];
+        const firstChoice = asRecord(choicesArr[0]);
+        const choiceDelta = asRecord(firstChoice?.delta);
+        const choiceMessage = asRecord(firstChoice?.message);
         const candArr = Array.isArray(p?.candidates) ? (p.candidates as any[]) : [];
         const candText =
           candArr[0]?.content?.parts?.[0]?.text ||
@@ -176,6 +196,8 @@ export function createStreamLineParser(
           getStringField(p, 'text') ??
           getStringField(p, 'content') ??
           getStringField(deltaObj, 'content') ??
+          getStringField(choiceDelta, 'content') ??
+          getStringField(choiceMessage, 'content') ??
           (typeof candText === 'string' ? candText : undefined) ??
           (typeof p?.delta === 'string' ? p.delta : undefined) ??
           (!state.fullText.trim()
@@ -187,9 +209,36 @@ export function createStreamLineParser(
               getStringField(p, 'result'))
             : undefined) ??
           null;
+
+        const reasoningToken =
+          getStringField(deltaObj, 'reasoning_content') ??
+          getStringField(choiceDelta, 'reasoning_content') ??
+          getStringField(choiceDelta, 'reasoning') ??
+          getStringField(p, 'reasoning_content') ??
+          getStringField(p, 'reasoning') ??
+          getStringField(choiceMessage, 'reasoning_content') ??
+          null;
+
+        if (typeof reasoningToken === 'string' && reasoningToken.length > 0 && !token) {
+          state.currentEvent = '';
+          if (!state.inReasoningStream) {
+            state.inReasoningStream = true;
+            state.fullText += '<think>';
+            ctx.onChunk?.('<think>', state.fullText);
+          }
+          state.fullText += reasoningToken;
+          ctx.onChunk?.(reasoningToken, state.fullText);
+          return;
+        }
+
         if (typeof token === 'string') {
           state.currentEvent = '';
           if (token.length > 0) {
+            if (state.inReasoningStream) {
+              state.inReasoningStream = false;
+              state.fullText += '</think>\n\n';
+              ctx.onChunk?.('</think>\n\n', state.fullText);
+            }
             state.fullText += token;
             ctx.onChunk?.(token, state.fullText);
           }

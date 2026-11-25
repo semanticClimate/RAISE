@@ -59,7 +59,7 @@ export function useControlCenterSave(
       const primaryCloudProvider =
         (config.apiKeys || []).find(
           (k) => k?.key && k.key.trim() && k.provider !== 'unknown'
-        )?.provider || 'gemini';
+        )?.provider || '';
 
       // Query active system routing so user's pinned primary is preserved
       const activeRouting = await platformAdapter.getRouting().catch(() => null);
@@ -70,7 +70,7 @@ export function useControlCenterSave(
         activeRouting?.data?.primary_provider;
 
       const activeBackend = pinnedPrimary || (isCloud ? primaryCloudProvider : (config.selectedLocalModel ? 'ollama' : 'vllm'));
-      const activeLlmMode = isCloud ? `cloud_${primaryCloudProvider}` : `local_${activeBackend}`;
+      const activeLlmMode = isCloud ? (primaryCloudProvider ? `cloud_${primaryCloudProvider}` : undefined) : `local_${activeBackend}`;
 
       const sanitizeSecret = (val?: string): string | undefined => {
         if (!val) return undefined;
@@ -103,17 +103,17 @@ export function useControlCenterSave(
         openrouter_api_key: sanitizeSecret(keyMap['openrouter']),
         custom_api_key: sanitizeSecret(keyMap['universal'] || keyMap['custom']),
         universal_api_key: sanitizeSecret(keyMap['universal'] || keyMap['custom']),
-        selected_local_model: config.selectedLocalModel,
-        ollama_model: config.selectedLocalModel,
+        selected_local_model: config.selectedLocalModel || undefined,
+        ollama_model: config.selectedLocalModel || undefined,
         tunnel_url: config.tunnelUrl,
         huggingface_token: sanitizeSecret(config.huggingfaceToken),
         hf_token: sanitizeSecret(config.huggingfaceToken),
-        embedding_model: config.embeddingModel,
-        embedder_id: config.embeddingModel,
-        reranker_model: config.rerankerModel,
-        reranker_id: config.rerankerModel,
-        nli_verifier_model: config.nliVerifierModel,
-        verifier_id: config.nliVerifierModel,
+        embedding_model: config.embeddingModel || undefined,
+        embedder_id: config.embeddingModel || undefined,
+        reranker_model: config.rerankerModel || undefined,
+        reranker_id: config.rerankerModel || undefined,
+        nli_verifier_model: config.nliVerifierModel || undefined,
+        verifier_id: config.nliVerifierModel || undefined,
         neo4j_mode:
           targetStorageMode === 'fast'
             ? 'in_memory_fallback'

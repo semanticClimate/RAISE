@@ -132,7 +132,7 @@ export const LocalModelSection: React.FC<LocalModelSectionProps> = ({
                 <span>Quick Setup (Terminal):</span>
               </div>
               <div className="font-mono text-[11px] text-white bg-black/40 p-2 rounded border border-white/10 select-all">
-                ollama run qwen2.5:7b
+                ollama run &lt;model-name&gt;
               </div>
               <p className="text-[10.5px] text-slate-400">
                 After pulling or starting your container, click &ldquo;Rescan&rdquo; above. Or switch to Cloud LLM to start immediately without downloading.

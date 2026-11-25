@@ -43,7 +43,7 @@ interface ControlCenterState {
   completeFirstRun: () => void;
 
   // Granular actions for API keys and substrates
-  addApiKey: (initialKey?: string) => void;
+  addApiKey: (initialKey?: string, providerOverride?: string) => string;
   updateApiKey: (id: string, key: string) => void;
   removeApiKey: (id: string) => void;
   setKeyVerification: (id: string, verified: boolean, latencyMs?: number, error?: string) => void;
@@ -232,9 +232,9 @@ export const useControlCenterStore = create<ControlCenterState>()(
         targetPlatform: defaultPlatform,
         llmDeployment: 'cloud',
         storageMode: 'fast',
-        embeddingModel: 'google/embeddinggemma-2',
-        rerankerModel: 'BAAI/bge-reranker-v2-m3',
-        nliVerifierModel: 'dleemiller/finecat-nli-ultra-l',
+        embeddingModel: '',
+        rerankerModel: '',
+        nliVerifierModel: '',
         neuralDevice: 'auto',
         huggingfaceToken: '',
         huggingfaceConfigured: false,
@@ -248,7 +248,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
             verified: null,
           },
         ],
-        selectedLocalModel: 'llama3.2:3b',
+        selectedLocalModel: '',
         tunnelUrl: '',
 
         knowledgeGraph: {
@@ -359,14 +359,18 @@ export const useControlCenterStore = create<ControlCenterState>()(
           isOpen: false,
         })),
 
-      addApiKey: (initialKey = '') => {
+      addApiKey: (initialKey = '', providerOverride) => {
         const id = `key-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         const detection = detectProviderFromKey(initialKey);
+        const provider = (providerOverride || detection.provider) as CloudApiKeyEntry['provider'];
+        const providerName = providerOverride
+          ? providerOverride.charAt(0).toUpperCase() + providerOverride.slice(1)
+          : detection.displayName;
         const newEntry: CloudApiKeyEntry = {
           id,
           key: initialKey,
-          provider: detection.provider,
-          providerName: detection.displayName,
+          provider,
+          providerName,
           verified: null,
         };
         set((s) => {
@@ -374,12 +378,15 @@ export const useControlCenterStore = create<ControlCenterState>()(
           const updatedConfig: ControlCenterConfig = {
             ...s.config,
             apiKeys: [...currentKeys, newEntry],
+            ...(provider === 'groq' && initialKey ? { groqApiKey: initialKey } : {}),
+            ...(provider === 'gemini' && initialKey ? { geminiApiKey: initialKey } : {}),
           };
           return {
             isDirty: isConfigDirty(updatedConfig, s.baselineConfig),
             config: updatedConfig,
           };
         });
+        return id;
       },
 
       updateApiKey: (id, key) => {
@@ -593,7 +600,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
           const rawRouting = (routingRes?.data || routingRes) as any;
           const rawOrder = (rawRouting?.fallback_order || rawRouting?.fallback_chain || []).map((x: string) => (x || '').toLowerCase().trim());
           const disabled = (rawRouting?.disabled_providers || []).map((x: string) => (x || '').toLowerCase().trim());
-          const primary = ((rawRouting?.pinned_primary_provider || rawRouting?.primary_provider || rawOrder[0] || 'gemini') as string).toLowerCase().trim();
+          const primary = ((rawRouting?.pinned_primary_provider || rawRouting?.primary_provider || rawOrder[0] || cfg.llm_backend || '') as string).toLowerCase().trim();
           const routingPolicy = rawRouting?.routing_policy || (primary === 'vllm' || primary === 'ollama' ? 'LOCAL_FIRST' : 'CLOUD_FIRST');
 
           const llmMode = String(cfg.llm_mode || '');
@@ -689,15 +696,21 @@ export const useControlCenterStore = create<ControlCenterState>()(
               disabledProviders: disabled,
               primaryProvider: primary,
               routingPolicy: routingPolicy,
+              selectedLocalModel:
+                (cfg.ollama_model as string) ||
+                (cfg.selected_local_model as string) ||
+                (isLocal ? (cfg.llm_model_name as string) : '') ||
+                s.config.selectedLocalModel ||
+                '',
               embeddingModel:
-                (cfg.embedding_model as string) || s.config.embeddingModel || 'google/embeddinggemma-2',
+                (cfg.embedding_model as string) || s.config.embeddingModel || '',
               rerankerModel:
-                (cfg.reranker_model as string) || s.config.rerankerModel || 'BAAI/bge-reranker-v2-m3',
+                (cfg.reranker_model as string) || s.config.rerankerModel || '',
               nliVerifierModel:
                 (cfg.nli_verifier_model as string) ||
                 (cfg.nli_model as string) ||
                 s.config.nliVerifierModel ||
-                'dleemiller/finecat-nli-ultra-l',
+                '',
               neuralDevice:
                 (cfg.neural_device as any) ||
                 (cfg.embedding_device as any) ||
@@ -857,18 +870,14 @@ export const useControlCenterStore = create<ControlCenterState>()(
         ) {
           mergedConfig.targetPlatform = defaultPlatform;
         }
-        if (!mergedConfig.embeddingModel || mergedConfig.embeddingModel === 'BAAI/bge-large-en-v1.5') {
-          mergedConfig.embeddingModel = 'google/embeddinggemma-2';
+        if (!mergedConfig.embeddingModel) {
+          mergedConfig.embeddingModel = '';
         }
-        if (!mergedConfig.rerankerModel || mergedConfig.rerankerModel === 'BAAI/bge-reranker-large' || mergedConfig.rerankerModel === 'jinaai/jina-reranker-v3.5') {
-          mergedConfig.rerankerModel = 'BAAI/bge-reranker-v2-m3';
+        if (!mergedConfig.rerankerModel) {
+          mergedConfig.rerankerModel = '';
         }
-        if (
-          !mergedConfig.nliVerifierModel ||
-          mergedConfig.nliVerifierModel === 'FineCat-NLI-DeBERTa' ||
-          mergedConfig.nliVerifierModel === 'dleemiller/finecat-nli-l'
-        ) {
-          mergedConfig.nliVerifierModel = 'dleemiller/finecat-nli-ultra-l';
+        if (!mergedConfig.nliVerifierModel) {
+          mergedConfig.nliVerifierModel = '';
         }
         if (!mergedConfig.neuralDevice) mergedConfig.neuralDevice = 'auto';
         if (!Array.isArray(mergedConfig.apiKeys) || mergedConfig.apiKeys.length === 0) {

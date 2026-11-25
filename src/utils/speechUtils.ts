@@ -1,3 +1,5 @@
+import { getCopyableAnswerText } from './reasoningParser';
+
 export function computeVoiceWaveScale(
   level: number,
   isVoiceSpeaking: boolean,
@@ -10,7 +12,7 @@ export function computeVoiceWaveScale(
 }
 
 export const cleanTextForSpeech = (text: string): string => {
-  return text
+  return getCopyableAnswerText(text)
     .replace(/```[\s\S]*?```/g, 'Code block omitted.')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[\^?\d+\]/g, '')

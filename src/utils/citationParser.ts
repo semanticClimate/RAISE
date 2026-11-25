@@ -4,6 +4,8 @@ import {
   normalizeCitation,
   stripCitationsForCopy,
 } from './citationNormalizer';
+import { getCopyableAnswerText } from './reasoningParser';
+import { preserveMarkdownTables } from './sanitizeStreamText';
 
 export { extractVerifiedPageNumber, normalizeCitation, stripCitationsForCopy };
 
@@ -213,13 +215,19 @@ function getCacheKey(rawText: string, citationsLength: number): string {
  */
 export function cleanRagResponseText(
   rawText: string,
-  initialCitations: Citation[] = []
+  initialCitations: Citation[] = [],
+  options: { preserveReasoningTags?: boolean } = {}
 ): CleanRagResponseResult {
   if (!rawText) return { cleanText: '', citations: [] };
 
-  const cacheKey = getCacheKey(rawText, initialCitations.length);
+  const effectiveRawText =
+    !options.preserveReasoningTags && /<(?:think|thought|reasoning)\b|<\/(?:think|thought|reasoning)>/i.test(rawText)
+      ? getCopyableAnswerText(rawText)
+      : rawText;
+
+  const cacheKey = getCacheKey(effectiveRawText, initialCitations.length);
   const cached = cleanRagCache.get(cacheKey);
-  if (cached && cached.rawText === rawText) {
+  if (cached && cached.rawText === effectiveRawText) {
     // Refresh LRU order
     cleanRagCache.delete(cacheKey);
     cleanRagCache.set(cacheKey, cached);
@@ -227,7 +235,7 @@ export function cleanRagResponseText(
   }
 
   // Normalize unicode (e.g. mathematical bold digits [𝟏] -> [1])
-  let text = rawText.normalize('NFKC');
+  let text = effectiveRawText.normalize('NFKC');
 
   // 1. Strip non-printable control characters with zero-allocation regex
   text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
@@ -313,52 +321,57 @@ export function cleanRagResponseText(
   // Merge adjacent / repeated citations early
   text = deduplicateAndMergeCitations(text);
 
-  // Clean headings and structure
-  text = text.replace(/^[ \t]*[•*-]\s*(#{1,4})/gm, '$1');
-  text = text.replace(
-    /^[ \t]*[•*-]\s*(?:\*\*)?\s*(#{1,4})\s*([^#\n]+?)(?:\*\*)?\s*$/gm,
-    '\n\n$1 $2\n\n'
-  );
-  text = text.replace(
-    /^[ \t]*(?:[•*-]\s*)?(#{1,4})\s*(?:\*\*)?([^*\n]+?)\*\*\s*([A-Za-z0-9])/gm,
-    '\n\n$1 $2\n\n$3'
-  );
-  text = text.replace(/^(#{1,4})\s*(?:\*\*)?\s*([^*\n]+?)\s*(?:\*\*)?\s*$/gm, '$1 $2');
-  text = text.replace(
-    /^[ \t]*(?:\*\*)?\s*(Key Strategic Conclusions|Institutional Strategic Outcomes|Overarching Institutional Conclusions|Strategic Framework and Economic Targets)(?:\*\*)?[ \t]*$/gm,
-    '\n\n### $1\n\n'
-  );
-  text = text.replace(/^[ \t]*\*\*([A-Z][^*\n]{3,80}?)\*\*\s*([A-Z][a-z]+)/gm, '\n\n### $1\n\n$2');
-  text = text.replace(
-    /^(#{1,4}\s+[A-Za-z0-9\s:—–-]{5,80}?[a-z0-9])([A-Z][a-z]+\s+(?:report|study|paper|findings?|data|analysis|investigates|demonstrates|presents|highlights|reveals|shows|concludes|from|in|is|are|was|were|aims|focuses|describes|utilizes|developed|designed)\b)/gm,
-    '$1\n\n$2'
-  );
+  // Protect Markdown tables while repairing inline headings and glued bullet spacing
+  text = preserveMarkdownTables(text, (prose) => {
+    let formatted = prose;
 
-  // Separate bullets onto distinct lines
-  text = text.replace(/([^\n])\s*•\s*/g, '$1\n\n• ');
-  text = text.replace(/\s*•\s*/g, '\n\n• ').trim();
+    // Clean headings and structure
+    formatted = formatted.replace(/^[ \t]*[•*-]\s*(#{1,4})/gm, '$1');
+    formatted = formatted.replace(
+      /^[ \t]*[•*-]\s*(?:\*\*)?\s*(#{1,4})\s*([^#\n]+?)(?:\*\*)?\s*$/gm,
+      '\n\n$1 $2\n\n'
+    );
+    formatted = formatted.replace(
+      /^[ \t]*(?:[•*-]\s*)?(#{1,4})\s*(?:\*\*)?([^*\n]+?)\*\*\s*([A-Za-z0-9])/gm,
+      '\n\n$1 $2\n\n$3'
+    );
+    formatted = formatted.replace(/^(#{1,4})\s*(?:\*\*)?\s*([^*\n]+?)\s*(?:\*\*)?\s*$/gm, '$1 $2');
+    formatted = formatted.replace(
+      /^[ \t]*(?:\*\*)?\s*(Key Strategic Conclusions|Institutional Strategic Outcomes|Overarching Institutional Conclusions|Strategic Framework and Economic Targets)(?:\*\*)?[ \t]*$/gm,
+      '\n\n### $1\n\n'
+    );
+    formatted = formatted.replace(/^[ \t]*\*\*([A-Z][^*\n]{3,80}?)\*\*\s*([A-Z][a-z]+)/gm, '\n\n### $1\n\n$2');
+    formatted = formatted.replace(
+      /^(#{1,4}\s+[A-Za-z0-9\s:—–-]{5,80}?[a-z0-9])([A-Z][a-z]+\s+(?:report|study|paper|findings?|data|analysis|investigates|demonstrates|presents|highlights|reveals|shows|concludes|from|in|is|are|was|were|aims|focuses|describes|utilizes|developed|designed)\b)/gm,
+      '$1\n\n$2'
+    );
 
-  // Support standard Markdown hyphens (- ) and asterisks (* )
-  text = text.replace(/([^\n])\n(- \*\*)/g, '$1\n\n$2');
-  text = text.replace(/([^\n])\n(-\s+)/g, '$1\n\n$2');
-  text = text.replace(/([^\n])\n(\*\s+)/g, '$1\n\n$2');
-  text = text.replace(/([^\n])\s*-\s+\*\*/g, '$1\n\n- **');
+    // Separate bullets onto distinct lines
+    formatted = formatted.replace(/([^\n])\s*•\s*/g, '$1\n\n• ');
+    formatted = formatted.replace(/\s*•\s*/g, '\n\n• ').trim();
 
-  // Clean title + citation + colon
-  text = text.replace(
-    /([•-])\s*(\*\*[^*]+\*\*)\s*(\[\d+\])?\s*[:—–-]?\s+/g,
-    (_, bullet, title, cit) => {
-      return `${bullet} ${title}${cit ? ` ${cit}` : ''}\n  `;
-    }
-  );
+    // Support standard Markdown hyphens (- ) and asterisks (* )
+    formatted = formatted.replace(/([^\n])\n(- \*\*)/g, '$1\n\n$2');
+    formatted = formatted.replace(/([^\n])\n(-\s+)/g, '$1\n\n$2');
+    formatted = formatted.replace(/([^\n])\n(\*\s+)/g, '$1\n\n$2');
+    formatted = formatted.replace(/([^\n])\s*-\s+\*\*/g, '$1\n\n- **');
 
-  // Separate numbered lists that were inline
-  text = text.replace(/([.:;!?])\s+(\d+\.)\s+\*\*/g, '$1\n\n$2 **');
-  text = text.replace(/([^\n])\n(\d+\.\s+\*\*)/g, '$1\n\n$2');
+    // Clean title + citation + colon
+    formatted = formatted.replace(
+      /([•-])\s*(\*\*[^*]+\*\*)\s*(\[\d+\])?\s*[:—–-]?\s+/g,
+      (_, bullet, title, cit) => {
+        return `${bullet} ${title}${cit ? ` ${cit}` : ''}\n  `;
+      }
+    );
 
-  // Strip trailing whitespace per line and collapse 3+ consecutive linebreaks to 2
-  text = text.replace(/[ \t]+$/gm, '');
-  text = text.replace(/\n{3,}/g, '\n\n');
+    // Separate numbered lists that were inline
+    formatted = formatted.replace(/([.:;!?])\s+(\d+\.)\s+\*\*/g, '$1\n\n$2 **');
+    formatted = formatted.replace(/([^\n])\n(\d+\.\s+\*\*)/g, '$1\n\n$2');
+
+    // Strip trailing whitespace per line and collapse 3+ consecutive linebreaks to 2
+    formatted = formatted.replace(/[ \t]+$/gm, '');
+    return formatted.replace(/\n{3,}/g, '\n\n');
+  });
 
   // If the text does not contain any inline citation markers but citations exist,
   // append citations at the end of the text
@@ -392,7 +405,7 @@ export function cleanRagResponseText(
     const oldestKey = cleanRagCache.keys().next().value;
     if (oldestKey) cleanRagCache.delete(oldestKey);
   }
-  cleanRagCache.set(cacheKey, { rawText, result });
+  cleanRagCache.set(cacheKey, { rawText: effectiveRawText, result });
 
   return result;
 }

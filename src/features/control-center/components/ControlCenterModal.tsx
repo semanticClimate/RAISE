@@ -71,7 +71,6 @@ export const ControlCenterModal: React.FC = () => {
   }, [isOpen]);
 
   useScrollLock(isOpen);
-  if (!isOpen) return null;
 
   // Track completion state of each step
   const hasConfiguredKey =
@@ -123,22 +122,17 @@ export const ControlCenterModal: React.FC = () => {
       case 'platform':
         return Boolean(config.targetPlatform);
       case 'models':
-        return true;
       case 'neural':
-        return Boolean(config.embeddingModel && config.rerankerModel);
       case 'databases':
       case 'overview':
       default:
         return true;
     }
-  }, [activeTab, config.targetPlatform, config.embeddingModel, config.rerankerModel]);
+  }, [activeTab, config.targetPlatform]);
 
   const stepBlockReason = useMemo(() => {
-    if (activeTab === 'neural' && (!config.embeddingModel || !config.rerankerModel)) {
-      return 'Select embedding & reranker models';
-    }
     return null;
-  }, [activeTab, config.embeddingModel, config.rerankerModel]);
+  }, []);
 
   const handleNext = () => {
     if (!isCurrentStepReady) {
@@ -197,6 +191,8 @@ export const ControlCenterModal: React.FC = () => {
       window.removeEventListener('resize', updateHeight);
     };
   }, [activeTab]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/40 backdrop-blur-md p-3 sm:p-5 animate-in fade-in duration-250 ease-[cubic-bezier(0,0,0.2,1)]">

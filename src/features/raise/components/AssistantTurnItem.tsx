@@ -8,11 +8,9 @@ import {
   LiveThoughtDuration,
   ThoughtDuration,
 } from '../../../components/chat/QueryLifecycleTracker';
-import {
-  computeHistoricalDuration,
-  resolveTurnExecutionTime,
-} from '../../../components/chat/thoughtDurationUtils';
+import { computeHistoricalDuration, resolveTurnExecutionTime } from '../../../components/chat/thoughtDurationUtils';
 import type { Citation } from '../../../types';
+import { getCopyableAnswerText } from '../../../utils/reasoningParser';
 import type { ChatMessage, ChatSession, ResponseVersion } from '../types';
 import { getTurnQuestionVersions } from '../utils/speechUtils';
 import { AssistantActionToolbar } from './AssistantActionToolbar';
@@ -24,6 +22,7 @@ export interface AssistantTurnItemProps {
   prevUserMsg?: ChatMessage;
   totalConversationTurns: number;
   isLoading: boolean;
+  activeStreamingStage?: Record<string, unknown> | null;
   regeneratingIndex: number | null;
   speakingMessageId: string | null;
   apiBaseUrl: string;
@@ -54,6 +53,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
   prevUserMsg,
   totalConversationTurns,
   isLoading,
+  activeStreamingStage,
   regeneratingIndex,
   speakingMessageId,
   apiBaseUrl,
@@ -167,6 +167,10 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
       '';
 
   const resolvedContent = rawTurnContent;
+  const copyableContent = useMemo(
+    () => getCopyableAnswerText(resolvedContent),
+    [resolvedContent]
+  );
 
   const isUngroundedFallback = Boolean(
     !resolvedContent ||
@@ -209,6 +213,16 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
         <div className="flex items-center justify-between w-full mb-1.5 px-0.5">
           <LiveThoughtDuration
             startTimeMs={msg.startedAtMs || Date.now()}
+            stage={
+              (typeof activeStreamingStage?.stage === 'string' && activeStreamingStage.stage) ||
+              (typeof activeStreamingStage?.node === 'string' && activeStreamingStage.node) ||
+              undefined
+            }
+            stageLabel={
+              (typeof activeStreamingStage?.label === 'string' && activeStreamingStage.label) ||
+              (typeof activeStreamingStage?.message === 'string' && activeStreamingStage.message) ||
+              undefined
+            }
             requestId={msg.id || (msg as any).request_id}
           />
         </div>
@@ -227,6 +241,7 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
             content={resolvedContent}
             citations={stableCitations}
             showCitations={true}
+            isStreaming={isCurrentlyActive}
             onViewPdf={onOpenPdfViewer}
           />
         </div>
@@ -244,7 +259,9 @@ export const AssistantTurnItemBase: React.FC<AssistantTurnItemProps> = ({
           <AssistantActionToolbar
             turnIndex={turnIndex}
             msg={msg}
-            resolvedContent={resolvedContent || 'No grounded answer could be synthesized from the active documents.'}
+            resolvedContent={
+              copyableContent || 'No grounded answer could be synthesized from the active documents.'
+            }
             userQuery={resolvedUserQuery}
             isSpeaking={isSpeaking}
             isRegenerating={isRegenerating}

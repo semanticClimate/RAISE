@@ -99,13 +99,13 @@ export const OverviewStep: React.FC = () => {
     primaryProviderObj?.display_name ||
     (backendConfig?.llm_backend ? String(backendConfig.llm_backend).toUpperCase() : '') ||
     validKeys[0]?.providerName ||
-    'Google Gemini';
+    'Not Configured';
 
   const activeModelName =
     backendConfig?.llm_model_name ||
     primaryProviderObj?.model ||
     config.selectedLocalModel ||
-    'gemini-2.5-flash';
+    'Auto (Backend Default)';
 
   const providerTier =
     primaryProviderObj?.tier ||
@@ -285,7 +285,7 @@ export const OverviewStep: React.FC = () => {
             <div className="min-w-0">
               <span className="text-xs font-medium text-[#A3A3A3] block">Neural Pipeline</span>
               <span className="text-sm sm:text-base font-semibold text-[#FFFFFF] mt-0.5 block truncate max-w-[220px]">
-                {config.embeddingModel || 'google/embeddinggemma-2'}
+                {config.embeddingModel || 'Backend Managed'}
               </span>
             </div>
             <button

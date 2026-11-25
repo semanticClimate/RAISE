@@ -284,7 +284,7 @@ export const LaunchStep: React.FC = () => {
             </button>
           </div>
           <div className="text-xs font-bold text-white truncate">
-            {isCloud ? providers : config.selectedLocalModel || 'Local Ollama'}
+            {isCloud ? providers : config.selectedLocalModel || 'Local Auto (Backend)'}
           </div>
           <div className="text-[10px] font-mono text-slate-400">
             Mode: {isCloud ? 'Cloud API' : 'Local Neural Acceleration'}
@@ -307,10 +307,10 @@ export const LaunchStep: React.FC = () => {
             </button>
           </div>
           <div className="text-xs font-bold text-white truncate">
-            {config.embeddingModel?.split('/').pop() || 'Embedding Gemma 2'} &bull; {config.rerankerModel?.split('/').pop() || 'Jina Reranker v3.5'}
+            {config.embeddingModel?.split('/').pop() || 'Backend Default'} &bull; {config.rerankerModel?.split('/').pop() || 'Backend Default'}
           </div>
           <div className="text-[10px] font-mono text-slate-400 truncate">
-            Quality Gate: {config.nliVerifierModel?.split('/').pop() || 'FineCat NLI Ultra-L'}
+            Quality Gate: {config.nliVerifierModel?.split('/').pop() || 'Backend Default'}
           </div>
           <div className="text-[10px] font-mono text-zinc-300 flex items-center justify-between pt-1 border-t border-white/5 truncate">
             <span>

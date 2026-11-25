@@ -13,6 +13,7 @@ export interface ConversationStreamProps {
   setEditingQuestionText: (text: string) => void;
   handleSaveEditedQuestion: (idx: number, text: string) => void;
   isLoading: boolean;
+  activeStreamingStage?: Record<string, unknown> | null;
   regeneratingIndex: number | null;
   speakingMessageId: string | null;
   apiBaseUrl: string;
@@ -49,6 +50,7 @@ export const ConversationStreamBase: React.FC<ConversationStreamProps> = ({
   setEditingQuestionText,
   handleSaveEditedQuestion,
   isLoading,
+  activeStreamingStage,
   regeneratingIndex,
   speakingMessageId,
   apiBaseUrl,
@@ -130,6 +132,7 @@ export const ConversationStreamBase: React.FC<ConversationStreamProps> = ({
             prevUserMsg={prevUser}
             totalConversationTurns={conversation.length}
             isLoading={isLoading}
+            activeStreamingStage={activeStreamingStage}
             regeneratingIndex={regeneratingIndex}
             speakingMessageId={speakingMessageId}
             apiBaseUrl={apiBaseUrl}
