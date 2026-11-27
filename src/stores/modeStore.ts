@@ -78,20 +78,26 @@ const resolveInitialTunnel = (): string => {
 const initialTunnel = resolveInitialTunnel();
 
 let offlineRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let offlineRetryAttempt = 0;
+const OFFLINE_RETRY_DELAYS_MS = [800, 1200, 2000, 3000];
 
 const scheduleOfflineRetry = () => {
   if (typeof window === 'undefined') return;
   if (offlineRetryTimer) clearTimeout(offlineRetryTimer);
+  const delayMs =
+    OFFLINE_RETRY_DELAYS_MS[Math.min(offlineRetryAttempt, OFFLINE_RETRY_DELAYS_MS.length - 1)];
+  offlineRetryAttempt += 1;
   offlineRetryTimer = setTimeout(() => {
     offlineRetryTimer = null;
     const state = useModeStore.getState();
     if (state.appMode === 'offline' && !state.isProbing && state.configMode !== 'mock') {
       state.runCapabilityProbe();
     }
-  }, 3000);
+  }, delayMs);
 };
 
 const clearOfflineRetry = () => {
+  offlineRetryAttempt = 0;
   if (offlineRetryTimer) {
     clearTimeout(offlineRetryTimer);
     offlineRetryTimer = null;
@@ -284,14 +290,29 @@ export const useModeStore = create<ModeState>((set, get) => ({
     set({ isProbing: true, probeError: null });
 
     try {
-      const caps = await systemService.probeCapabilities();
+      let earlyConnected = false;
+      const caps = await systemService.probeCapabilities((earlyCaps) => {
+        earlyConnected = true;
+        clearOfflineRetry();
+        setStoredLastConnectedAt();
+        set({
+          capabilities: earlyCaps,
+          appMode: 'connected',
+          latencyMs: earlyCaps.latencyMs,
+          isProbing: false,
+          lastConnectedAt: Date.now(),
+        });
+        get().checkReadiness();
+      });
 
       let computedMode: AppMode = 'offline';
       if (caps.apiReachable) {
         computedMode = 'connected';
         clearOfflineRetry();
         setStoredLastConnectedAt();
-        get().checkReadiness();
+        if (!earlyConnected) {
+          get().checkReadiness();
+        }
       } else {
         // Fast fallback probe to local gateway if a remote/tunnel URL failed
         const currentTarget = get().apiBaseUrl || config.apiBaseUrl;
@@ -304,7 +325,17 @@ export const useModeStore = create<ModeState>((set, get) => ({
             const fallbackRes = await systemService.testConnection('http://127.0.0.1:8000');
             if (fallbackRes.success) {
               get().clearTunnelUrl();
-              const localCaps = await systemService.probeCapabilities();
+              const localCaps = await systemService.probeCapabilities((earlyLocalCaps) => {
+                clearOfflineRetry();
+                set({
+                  capabilities: earlyLocalCaps,
+                  appMode: 'connected',
+                  latencyMs: earlyLocalCaps.latencyMs,
+                  isProbing: false,
+                  lastConnectedAt: Date.now(),
+                });
+                get().checkReadiness();
+              });
               if (localCaps.apiReachable) {
                 clearOfflineRetry();
                 set({
@@ -314,7 +345,6 @@ export const useModeStore = create<ModeState>((set, get) => ({
                   isProbing: false,
                   lastConnectedAt: Date.now(),
                 });
-                get().checkReadiness();
                 return;
               }
             }

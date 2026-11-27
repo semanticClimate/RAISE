@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { documentsQueryOptions } from '../../../api/queryOptions';
 import type { LibraryItem } from '../../../components/settings/SettingsLibraryTab';
 import { chatService } from '../../../services/ChatService';
 import { sourceService } from '../../../services/SourceService';
+import { useModeStore } from '../../../stores/modeStore';
+import { extractProcessingReportKeys } from '../../../utils/documentStageUtils';
 import { formatBytes } from '../../../utils/formatters';
 import type { ChatSession, SourceDocument } from '../types';
 import { DRAFT_SOURCES_STORAGE_KEY, getInitialSourceDocs } from '../utils/sessionStorageUtils';
@@ -19,49 +22,47 @@ export function useSessionSources({
   setSessions,
 }: UseSessionSourcesOptions) {
   const queryClient = useQueryClient();
+  const isConnected = useModeStore((s) => s.appMode === 'connected' || s.appMode === 'degraded');
   const [sourceDocs, setSourceDocs] = useState<SourceDocument[]>(getInitialSourceDocs);
   const [isSourcesDrawerOpen, setIsSourcesDrawerOpen] = useState(false);
   const [isLibraryPickerOpen, setIsLibraryPickerOpen] = useState(false);
   const [apiReadyFilenames, setApiReadyFilenames] = useState<Set<string>>(new Set());
   const [apiReadyDocs, setApiReadyDocs] = useState<any[]>([]);
+  const activeTrackersRef = useRef<Map<string, () => void>>(new Map());
+
+  const { data: queryDocs } = useQuery({
+    ...documentsQueryOptions(),
+    enabled: isConnected,
+  });
 
   useEffect(() => {
-    let isMounted = true;
-    // Check if queryClient already has cached documents to avoid waiting on initial render
-    const cached = queryClient.getQueryData<any[]>(['documents']);
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      setApiReadyDocs(cached);
-      const readyNames = new Set<string>();
-      cached.forEach((d: any) => {
-        const name = d.filename || d.name;
-        if (name && (d.status === 'ready' || d.status === 'indexed')) {
-          readyNames.add(name.toLowerCase());
-        }
-      });
-      setApiReadyFilenames(readyNames);
-    }
+    const docs = Array.isArray(queryDocs)
+      ? queryDocs
+      : queryClient.getQueryData<any[]>(['documents']) || [];
+    if (docs.length === 0 && !isConnected) return;
 
-    sourceService
-      .getDocuments()
-      .then((res) => {
-        if (!isMounted || !res.data) return;
-        const docs = Array.isArray(res.data) ? res.data : (res.data as any).documents || [];
-        setApiReadyDocs(docs);
-        queryClient.setQueryData(['documents'], docs);
-        const readyNames = new Set<string>();
-        docs.forEach((d: any) => {
-          const name = d.filename || d.name;
-          if (name && (d.status === 'ready' || d.status === 'indexed')) {
-            readyNames.add(name.toLowerCase());
-          }
-        });
-        setApiReadyFilenames(readyNames);
-      })
-      .catch(() => {});
+    setApiReadyDocs(docs);
+    const readyNames = new Set<string>();
+    docs.forEach((d: any) => {
+      const name = d.filename || d.name;
+      if (name && (d.status === 'ready' || d.status === 'indexed')) {
+        readyNames.add(name.toLowerCase());
+      }
+    });
+    setApiReadyFilenames(readyNames);
+  }, [queryDocs, queryClient, isConnected]);
+
+  useEffect(() => {
+    const trackers = activeTrackersRef.current;
     return () => {
-      isMounted = false;
+      trackers.forEach((unsub) => {
+        try {
+          unsub();
+        } catch {}
+      });
+      trackers.clear();
     };
-  }, [queryClient]);
+  }, []);
 
   const getEffectiveSessionId = useCallback(() => {
     return activeSessionIdRef?.current ?? currentSessionId ?? null;
@@ -222,9 +223,13 @@ export function useSessionSources({
         // Smooth ingestion phase progress simulation while backend parses, chunks, and creates graph
         let currentPct = 18;
         const progressTimer = setInterval(() => {
-          currentPct = Math.min(94, currentPct + Math.floor(Math.random() * 8) + 4);
+          currentPct = Math.min(88, currentPct + Math.floor(Math.random() * 6) + 3);
           setSourceDocs((prev) =>
-            prev.map((d) => (newDocIds.has(d.id) ? { ...d, uploadProgress: currentPct } : d))
+            prev.map((d) =>
+              newDocIds.has(d.id) && d.status === 'processing' && (d.uploadProgress ?? 0) < currentPct
+                ? { ...d, uploadProgress: currentPct }
+                : d
+            )
           );
         }, 500);
 
@@ -232,12 +237,72 @@ export function useSessionSources({
           const effId = getEffectiveSessionId();
           const res = await sourceService.uploadPdfs(files, undefined, {
             sessionId: effId || undefined,
+            background: true,
           });
 
           clearInterval(progressTimer);
 
           if (res.error || !res.data || res.data.status === 'error') {
             throw new Error(res.error?.message || (res.data as any)?.message || 'Ingestion failed');
+          }
+
+          const processingKeys = extractProcessingReportKeys(res.data);
+          if (processingKeys.length > 0) {
+            queryClient.invalidateQueries({ queryKey: ['documents'] });
+            for (const { key, filename } of processingKeys) {
+              if (activeTrackersRef.current.has(key)) continue;
+              const unsub = sourceService.trackIngestionToCompletion(key, {
+                onProgress: (st) => {
+                  setSourceDocs((prev) =>
+                    prev.map((d) =>
+                      newDocIds.has(d.id) && d.name.toLowerCase() === filename.toLowerCase()
+                        ? {
+                            ...d,
+                            uploadProgress:
+                              typeof st.percent === 'number' ? st.percent : d.uploadProgress,
+                          }
+                        : d
+                    )
+                  );
+                },
+                onComplete: () => {
+                  activeTrackersRef.current.delete(key);
+                  setSourceDocs((prev) => {
+                    const updated = prev.map((d): SourceDocument =>
+                      newDocIds.has(d.id) && d.name.toLowerCase() === filename.toLowerCase()
+                        ? { ...d, uploadProgress: 100, status: 'ready' as const, selected: true }
+                        : d
+                    );
+                    syncSourcesWithSession(updated);
+                    return updated;
+                  });
+                  if (effId && effId !== 'new') {
+                    chatService.attachToSessionDrawer?.(effId, filename).catch(() => {});
+                  }
+                  setApiReadyFilenames((prev) => {
+                    const next = new Set(prev);
+                    next.add(filename.toLowerCase());
+                    return next;
+                  });
+                  queryClient.invalidateQueries({ queryKey: ['documents'] });
+                },
+                onError: () => {
+                  activeTrackersRef.current.delete(key);
+                  setSourceDocs((prev) => {
+                    const updated = prev.map((d): SourceDocument =>
+                      newDocIds.has(d.id) && d.name.toLowerCase() === filename.toLowerCase()
+                        ? { ...d, status: 'failed' as const, uploadProgress: 0 }
+                        : d
+                    );
+                    syncSourcesWithSession(updated);
+                    return updated;
+                  });
+                  queryClient.invalidateQueries({ queryKey: ['documents'] });
+                },
+              });
+              activeTrackersRef.current.set(key, unsub);
+            }
+            return;
           }
 
           setSourceDocs((prev) => {
@@ -262,6 +327,7 @@ export function useSessionSources({
             });
             return next;
           });
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
         } catch {
           clearInterval(progressTimer);
           setSourceDocs((prev) => {
@@ -271,10 +337,11 @@ export function useSessionSources({
             syncSourcesWithSession(updated);
             return updated;
           });
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
         }
       }
     },
-    [getEffectiveSessionId, syncSourcesWithSession]
+    [getEffectiveSessionId, queryClient, syncSourcesWithSession]
   );
 
   return {

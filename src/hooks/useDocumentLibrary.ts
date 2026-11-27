@@ -255,7 +255,11 @@ export function useDocumentLibrary(options: UseDocumentLibraryOptions = {}) {
     const rawDocs = (documentsQuery.data ?? []) as DocumentItem[];
     rawDocs.forEach((doc) => {
       const isProcessing =
-        doc.status && doc.status !== 'ready' && doc.status !== 'completed' && doc.status !== 'error';
+        doc.status &&
+        doc.status !== 'ready' &&
+        doc.status !== 'completed' &&
+        doc.status !== 'error' &&
+        doc.status !== 'failed';
       const key = doc.id || doc.doc_id || doc.filename;
 
       if (isProcessing && key) {

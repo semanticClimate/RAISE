@@ -81,6 +81,8 @@ export type UploadReportItem = z.infer<typeof UploadReportItemSchema>;
 export const UploadResponseSchema = z
   .object({
     status: z.string().catch('success'),
+    accepted: z.boolean().optional(),
+    background: z.boolean().optional(),
     uploaded_count: z.number().int().default(0),
     reports: z.array(UploadReportItemSchema).catch([]),
     total_nodes: z.number().int().default(0),

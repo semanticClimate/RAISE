@@ -52,7 +52,7 @@ export const config: AppConfig = {
   apiBaseUrl: resolveDefaultBaseUrl(),
   apiMode: envMode === 'mock' || envMode === 'remote' || envMode === 'auto' ? envMode : 'remote',
   defaultTimeoutMs: 30000,
-  uploadTimeoutMs: 120000, // Large PDFs require 120s for synchronous IBM Docling parsing
+  uploadTimeoutMs: 300000, // Allow up to 300s when backend falls back to synchronous IBM Docling parsing
   maxGraphHops: 3,
   defaultTopK: 4,
 };

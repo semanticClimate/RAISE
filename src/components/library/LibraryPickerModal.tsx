@@ -17,6 +17,12 @@ import { getApiBaseUrl } from '../../app/config';
 import { documentsQueryOptions } from '../../api/queryOptions';
 import { useEscapeKey, useScrollLock } from '../../hooks';
 import { sourceService } from '../../services/SourceService';
+import { useModeStore } from '../../stores/modeStore';
+import {
+  extractProcessingReportKeys,
+  getDocumentStageLabel,
+  isDocumentErrorStatus,
+} from '../../utils/documentStageUtils';
 import { documentItemToLibraryItem, type LibraryItem } from '../settings/SettingsLibraryTab';
 import { ExtractedDocumentModal } from './ExtractedDocumentModal';
 
@@ -27,6 +33,8 @@ export interface OptimisticUploadItem {
   bytes: number;
   previewHash: string;
   progress: number;
+  phase?: string;
+  detail?: string;
   status: 'processing' | 'ready' | 'error';
   timestamp: number;
 }
@@ -71,12 +79,26 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
     type: 'markdown',
   });
   const localFileInputRef = useRef<HTMLInputElement>(null);
+  const activeTrackersRef = useRef<Map<string, () => void>>(new Map());
   const queryClient = useQueryClient();
+  const isConnected = useModeStore((s) => s.appMode === 'connected' || s.appMode === 'degraded');
 
-  // TanStack Query v5 data fetching
+  useEffect(() => {
+    const trackers = activeTrackersRef.current;
+    return () => {
+      trackers.forEach((unsub) => {
+        try {
+          unsub();
+        } catch {}
+      });
+      trackers.clear();
+    };
+  }, []);
+
+  // TanStack Query v5 data fetching (auto-triggers when backend connects while modal is open)
   const { data: rawDocuments = [], isLoading } = useQuery({
     ...documentsQueryOptions(),
-    enabled: isOpen,
+    enabled: isOpen && isConnected,
     refetchOnMount: 'always',
     placeholderData: (prev) => prev,
   });
@@ -133,16 +155,65 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
       setOptimisticUploads((prev) => [...prev, ...newOptimistic]);
 
       try {
-        const res = await sourceService.uploadPdfs(files);
-        if (res.data) {
+        const res = await sourceService.uploadPdfs(files, undefined, { background: true });
+        if (res.error || !res.data || res.data.status === 'error') {
+          setOptimisticUploads((prev) =>
+            prev.filter((item) => !files.some((f) => f.name === item.name))
+          );
           queryClient.invalidateQueries({ queryKey: ['documents'] });
+          return;
         }
-      } catch (err) {
-        console.error('Upload error in LibraryPickerModal:', err);
-      } finally {
+
+        const processingKeys = extractProcessingReportKeys(res.data);
+        if (processingKeys.length > 0) {
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+          for (const { key, filename } of processingKeys) {
+            if (activeTrackersRef.current.has(key)) continue;
+            const unsub = sourceService.trackIngestionToCompletion(key, {
+              onProgress: (st) => {
+                setOptimisticUploads((prev) =>
+                  prev.map((item) =>
+                    item.name.toLowerCase() === filename.toLowerCase()
+                      ? {
+                          ...item,
+                          progress: typeof st.percent === 'number' ? st.percent : item.progress,
+                          phase: st.phase,
+                          detail: st.detail,
+                        }
+                      : item
+                  )
+                );
+              },
+              onComplete: () => {
+                activeTrackersRef.current.delete(key);
+                setOptimisticUploads((prev) =>
+                  prev.filter((item) => item.name.toLowerCase() !== filename.toLowerCase())
+                );
+                queryClient.invalidateQueries({ queryKey: ['documents'] });
+              },
+              onError: () => {
+                activeTrackersRef.current.delete(key);
+                setOptimisticUploads((prev) =>
+                  prev.filter((item) => item.name.toLowerCase() !== filename.toLowerCase())
+                );
+                queryClient.invalidateQueries({ queryKey: ['documents'] });
+              },
+            });
+            activeTrackersRef.current.set(key, unsub);
+          }
+          return;
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ['documents'] });
         setOptimisticUploads((prev) =>
           prev.filter((item) => !files.some((f) => f.name === item.name))
         );
+      } catch (err) {
+        console.error('Upload error in LibraryPickerModal:', err);
+        setOptimisticUploads((prev) =>
+          prev.filter((item) => !files.some((f) => f.name === item.name))
+        );
+        queryClient.invalidateQueries({ queryKey: ['documents'] });
       }
     },
     [computePreviewHash, queryClient]
@@ -203,7 +274,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
   const isItemIndexed = useCallback(
     (item: LibraryItem): boolean => {
-      if (item.status === 'processing') return false;
+      if (item.status === 'processing' || item.status === 'error') return false;
       if (item.uploadProgress !== undefined && item.uploadProgress < 100) return false;
       if (apiReadyFilenames.size > 0 && apiReadyFilenames.has(item.name.toLowerCase())) {
         return true;
@@ -213,11 +284,23 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
     [apiReadyFilenames]
   );
 
-  // Authoritative list: ONLY show documents that are successfully parsed & ready
+  // Include both ready and actively processing documents so new uploads appear immediately;
+  // processing items remain non-attachable until indexing completes.
   const items = useMemo(() => {
-    const backendItems = rawDocuments.map(documentItemToLibraryItem);
-    return backendItems.filter(isItemIndexed);
-  }, [rawDocuments, isItemIndexed]);
+    const backendItems = rawDocuments
+      .filter((d) => !isDocumentErrorStatus(d.status))
+      .map(documentItemToLibraryItem);
+    return backendItems.sort((a, b) => {
+      const aProc = a.status === 'processing' ? 0 : 1;
+      const bProc = b.status === 'processing' ? 0 : 1;
+      return aProc - bProc;
+    });
+  }, [rawDocuments]);
+
+  const visibleOptimisticUploads = useMemo(() => {
+    const backendNames = new Set(items.map((item) => item.name.toLowerCase()));
+    return optimisticUploads.filter((opt) => !backendNames.has(opt.name.toLowerCase()));
+  }, [items, optimisticUploads]);
 
   // Identify document formats actually present in the library
   const availableCategories = useMemo(() => {
@@ -283,13 +366,17 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
   }, [items, searchQuery, typeFilter]);
 
   const unattachedReadyItems = useMemo(() => {
-    return filteredItems.filter((item) => !attachedSet.has(item.name.toLowerCase().trim()));
-  }, [filteredItems, attachedSet]);
+    return filteredItems.filter(
+      (item) => isItemIndexed(item) && !attachedSet.has(item.name.toLowerCase().trim())
+    );
+  }, [filteredItems, attachedSet, isItemIndexed]);
+
+  const readyItems = useMemo(() => items.filter(isItemIndexed), [items, isItemIndexed]);
 
   const areAllAttached = useMemo(() => {
-    if (items.length === 0) return false;
-    return items.every((item) => attachedSet.has(item.name.toLowerCase().trim()));
-  }, [items, attachedSet]);
+    if (readyItems.length === 0) return false;
+    return readyItems.every((item) => attachedSet.has(item.name.toLowerCase().trim()));
+  }, [readyItems, attachedSet]);
 
   useScrollLock(isOpen);
 
@@ -399,14 +486,14 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                 <span className="sm:hidden font-medium">Add</span>
               </button>
 
-              {items.length > 0 && (
+              {readyItems.length > 0 && (
                 <button
                   type="button"
                   onClick={() => {
                     if (areAllAttached) {
                       onDetachAll?.();
                     } else if (onAttachAll) {
-                      onAttachAll(unattachedReadyItems.length > 0 ? unattachedReadyItems : items);
+                      onAttachAll(unattachedReadyItems.length > 0 ? unattachedReadyItems : readyItems);
                     }
                   }}
                   className={`text-xs font-medium px-3 py-1.5 rounded-xl bg-[#171717] hover:bg-[#292929] border transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95 text-[#FFFFFF] ${
@@ -462,7 +549,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
         {/* Documents List */}
         <div
-          className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2.5 max-h-[50vh] bg-[#0A0A0A]"
+          className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-2.5 max-h-[50vh] bg-[#0A0A0A]"
           style={{ scrollbarWidth: 'thin' }}
         >
           {isLoading ? (
@@ -470,7 +557,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
               <Loader2 className="w-5 h-5 text-[#FFFFFF] animate-spin" />
               <span>Loading Knowledge Base Library...</span>
             </div>
-          ) : filteredItems.length === 0 && optimisticUploads.length === 0 ? (
+          ) : filteredItems.length === 0 && visibleOptimisticUploads.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
               <div className="w-10 h-10 rounded-xl bg-[#171717] border border-[#292929] flex items-center justify-center text-[#A3A3A3] mb-3">
                 <BookOpen className="w-5 h-5 text-[#A3A3A3]" />
@@ -503,7 +590,7 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
             </div>
           ) : (
             <>
-              {optimisticUploads.map((opt) => (
+              {visibleOptimisticUploads.map((opt) => (
                 <div
                   key={opt.id}
                   className="p-3 rounded-xl border border-[#292929] bg-[#111111] flex items-center justify-between gap-3 text-[#A3A3A3]"
@@ -514,15 +601,28 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-semibold text-[#FFFFFF] truncate">{opt.name}</p>
-                      <p className="text-[11px] text-[#A3A3A3] font-mono mt-0.5">Uploading & parsing document...</p>
+                      <p className="text-[11px] text-[#A3A3A3] font-mono mt-0.5 truncate">
+                        {opt.detail || getDocumentStageLabel(opt.progress, opt.phase)}
+                      </p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono text-[#A3A3A3] shrink-0">Processing</span>
+                  <span
+                    role="progressbar"
+                    aria-label={`Ingestion progress for ${opt.name}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(opt.progress)}
+                    className="text-[10px] font-mono text-[#A3A3A3] shrink-0"
+                  >
+                    {Math.round(opt.progress)}%
+                  </span>
                 </div>
               ))}
               {filteredItems.map((item) => {
               const isAttached = attachedSet.has(item.name.toLowerCase());
               const isDeleting = deletingName === item.name;
+              const indexed = isItemIndexed(item);
+              const processingPct = Math.round(item.uploadProgress ?? 25);
 
               return (
                 <div
@@ -530,7 +630,9 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                   className={`relative p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
                     isAttached
                       ? 'bg-[#171717] border-[#FFFFFF]/30 text-[#FFFFFF]'
-                      : 'bg-[#111111] hover:bg-[#171717] border-[#292929] hover:border-[#292929] text-[#A3A3A3] hover:text-[#FFFFFF]'
+                      : !indexed
+                        ? 'bg-[#111111] border-amber-500/30 text-[#A3A3A3]'
+                        : 'bg-[#111111] hover:bg-[#171717] border-[#292929] hover:border-[#292929] text-[#A3A3A3] hover:text-[#FFFFFF]'
                   }`}
                   title={item.name}
                 >
@@ -538,7 +640,11 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="relative shrink-0">
                       <div className="w-8 h-8 rounded-lg bg-[#171717] border border-[#292929] flex items-center justify-center text-[#FFFFFF]">
-                        <FileText className="w-4 h-4 text-[#FFFFFF]" />
+                        {!indexed ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                        ) : (
+                          <FileText className="w-4 h-4 text-[#FFFFFF]" />
+                        )}
                       </div>
                     </div>
 
@@ -550,11 +656,27 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2 text-[11px] text-[#A3A3A3] mt-0.5">
                         <span className="font-mono">{item.size}</span>
-                        {item.pages && (
+                        {!indexed ? (
                           <>
                             <span>•</span>
-                            <span>{item.pages} pp.</span>
+                            <span
+                              role="progressbar"
+                              aria-label={`Indexing progress for ${item.name}`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={processingPct}
+                              className="text-amber-400 font-mono truncate"
+                            >
+                              {getDocumentStageLabel(processingPct, item.phase)} ({processingPct}%)
+                            </span>
                           </>
+                        ) : (
+                          item.pages && (
+                            <>
+                              <span>•</span>
+                              <span>{item.pages} pp.</span>
+                            </>
+                          )
                         )}
                       </div>
                     </div>
@@ -562,36 +684,51 @@ export const LibraryPickerModal: React.FC<LibraryPickerModalProps> = ({
 
                   {/* Right Actions */}
                   <div className="shrink-0 flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenDocumentInNewTab(item);
-                      }}
-                      className="p-1.5 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] rounded-lg border border-transparent hover:border-[#292929] transition-all cursor-pointer flex items-center justify-center shrink-0"
-                      title={`Open "${item.name}" in new tab`}
-                      aria-label={`Open ${item.name} in new tab`}
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-[#A3A3A3]" />
-                    </button>
+                    {indexed && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDocumentInNewTab(item);
+                        }}
+                        className="p-1.5 text-[#A3A3A3] hover:text-[#FFFFFF] hover:bg-[#171717] rounded-lg border border-transparent hover:border-[#292929] transition-all cursor-pointer flex items-center justify-center shrink-0"
+                        title={`Open "${item.name}" in new tab`}
+                        aria-label={`Open ${item.name} in new tab`}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-[#A3A3A3]" />
+                      </button>
+                    )}
 
                     <button
                       type="button"
+                      disabled={!indexed}
+                      aria-disabled={!indexed}
                       onClick={() => {
+                        if (!indexed) return;
                         if (isAttached && onToggleDocument) {
                           onToggleDocument(item);
                         } else {
                           onSelectDocument(item);
                         }
                       }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        isAttached
-                          ? 'bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF]'
-                          : 'bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000]'
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                        !indexed
+                          ? 'bg-[#171717] border border-[#292929] text-[#A3A3A3] cursor-not-allowed opacity-70'
+                          : isAttached
+                            ? 'bg-[#171717] hover:bg-[#292929] border border-[#292929] text-[#FFFFFF] cursor-pointer'
+                            : 'bg-[#FFFFFF] hover:bg-[#FFFFFF]/90 text-[#000000] cursor-pointer'
                       }`}
-                      title={isAttached ? `Click to unselect "${item.name}"` : `Attach "${item.name}"`}
+                      title={
+                        !indexed
+                          ? `Wait for "${item.name}" to finish indexing`
+                          : isAttached
+                            ? `Click to unselect "${item.name}"`
+                            : `Attach "${item.name}"`
+                      }
                     >
-                      {isAttached ? (
+                      {!indexed ? (
+                        <span>Indexing...</span>
+                      ) : isAttached ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-[#FFFFFF]" />
                           <span>Attached</span>

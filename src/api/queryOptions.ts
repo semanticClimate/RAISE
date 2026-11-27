@@ -20,6 +20,15 @@ export const documentsQueryOptions = () =>
     },
     staleTime: 5_000,
     gcTime: 10 * 60_000,
+    refetchInterval: (query) => {
+      const docs = query.state.data;
+      if (!Array.isArray(docs)) return false;
+      const hasProcessing = docs.some((d) => {
+        const status = (d?.status || '').toLowerCase();
+        return status === 'processing' || d?.is_ingesting === true;
+      });
+      return hasProcessing ? 2500 : false;
+    },
   });
 
 /**

@@ -149,12 +149,16 @@ export class SystemService {
   /**
    * Centralized capability and health detection probe.
    * Deduplicates concurrent in-flight calls and caches openapi.json inspection.
+   * Invokes `onReachable` immediately after /api/health returns 200 so document queries
+   * do not stall behind secondary capability probes.
    */
-  public async probeCapabilities(): Promise<BackendCapabilities> {
+  public async probeCapabilities(
+    onReachable?: (partialCapabilities: BackendCapabilities) => void
+  ): Promise<BackendCapabilities> {
     if (SystemService.activeProbePromise) {
       return SystemService.activeProbePromise;
     }
-    SystemService.activeProbePromise = this._executeProbeCapabilities().finally(() => {
+    SystemService.activeProbePromise = this._executeProbeCapabilities(onReachable).finally(() => {
       // Clear coalescing gate after 1.5s
       setTimeout(() => {
         SystemService.activeProbePromise = null;
@@ -191,7 +195,9 @@ export class SystemService {
     }
   }
 
-  private async _executeProbeCapabilities(): Promise<BackendCapabilities> {
+  private async _executeProbeCapabilities(
+    onReachable?: (partialCapabilities: BackendCapabilities) => void
+  ): Promise<BackendCapabilities> {
     const startTime = performance.now();
     const timestamp = new Date().toISOString();
 
@@ -253,6 +259,9 @@ export class SystemService {
         if (typeof resData?.version === 'string' || typeof resData?.api_version === 'string') {
           capabilities.backendVersion = String(resData.version || resData.api_version);
         }
+
+        // Notify caller immediately before secondary capability probes so document listing starts right away
+        onReachable?.({ ...capabilities });
 
         // 2. High-speed concurrent inspection of remaining subsystems
         // Notice: performHandshake() is intentionally omitted here to prevent token churn

@@ -1,6 +1,7 @@
 import { type ApiResponse, apiClient } from '../api/client';
 import { ENDPOINTS } from '../api/endpoints';
-import { getApiBaseUrl } from '../app/config';
+import { config, getApiBaseUrl } from '../app/config';
+import { telemetryBridge } from './telemetryBridge';
 import {
   type DeleteDocumentResponse,
   DeleteDocumentResponseSchema,
@@ -28,15 +29,19 @@ export class SourceService {
   }
 
   /**
-   * Synchronous Document upload (PDF, TXT, DOCX, MD, CSV)
-   * Enforces IBM Docling parser at 100% potential for layout & table fidelity
-   * Tries POST /api/upload first; falls back to /api/upload-academic-pdfs
-   * 120s timeout configured for large files
+   * Document upload (PDF, TXT, DOCX, MD, CSV)
+   * Requests optional background ingestion (`background=true`) when supported by backend,
+   * while remaining 100% compatible with synchronous backends.
    */
   public async uploadPdfs(
     files: File[],
     signal?: AbortSignal,
-    options?: { parseMode?: 'fast' | 'expert'; parser?: string; sessionId?: string }
+    options?: {
+      parseMode?: 'fast' | 'expert';
+      parser?: string;
+      sessionId?: string;
+      background?: boolean;
+    }
   ): Promise<ApiResponse<UploadResponse>> {
     if (typeof window !== 'undefined') {
       (window as any).__RAISE_ACTIVE_OPS__ = ((window as any).__RAISE_ACTIVE_OPS__ || 0) + 1;
@@ -50,32 +55,44 @@ export class SourceService {
         formData.append('session_id', options.sessionId);
       }
 
-      // Pass parser and mode parameters based on selected mode
+      // Pass parser, mode, and background parameters
       const mode = options?.parseMode || 'fast';
       const isExpert = mode === 'expert' || options?.parser === 'docling';
       const parser = options?.parser || (isExpert ? 'docling' : 'fast');
+      const useBackground = options?.background ?? true;
       formData.append('parser', parser);
       formData.append('engine', parser);
       formData.append('parse_mode', mode);
       formData.append('mode', mode);
+      if (useBackground) {
+        formData.append('background', 'true');
+      }
       if (isExpert) {
         formData.append('extract_tables', 'true');
         formData.append('full_potential', 'true');
       }
 
+      const params = new URLSearchParams();
+      if (isExpert) {
+        params.set('parser', 'docling');
+        params.set('mode', 'expert');
+      }
+      if (useBackground) {
+        params.set('background', 'true');
+      }
+      const qs = params.toString();
+
       // 1. Try standard POST /api/upload with query parameters
-      const uploadUrl = isExpert
-        ? `${ENDPOINTS.UPLOAD}?parser=docling&mode=expert`
-        : ENDPOINTS.UPLOAD;
+      const uploadUrl = qs ? `${ENDPOINTS.UPLOAD}?${qs}` : ENDPOINTS.UPLOAD;
 
       const uploadRes = await apiClient.request<any>(uploadUrl, undefined, {
         method: 'POST',
         body: formData,
         signal,
-        timeoutMs: 120000,
+        timeoutMs: config.uploadTimeoutMs,
       });
 
-      if (uploadRes.status === 200 && uploadRes.data) {
+      if (uploadRes.status >= 200 && uploadRes.status < 300 && uploadRes.data) {
         const data = uploadRes.data;
         const parsedDirect = UploadResponseSchema.safeParse(data);
         if (parsedDirect.success) {
@@ -83,19 +100,22 @@ export class SourceService {
             data: parsedDirect.data,
             error: null,
             isMock: uploadRes.isMock,
-            status: 200,
+            status: uploadRes.status,
           };
         }
 
         const synthesized: UploadResponse = {
           status: data.status || 'success',
+          accepted: Boolean(data.accepted),
+          background: Boolean(data.background),
           uploaded_count: data.uploaded_count ?? files.length,
           reports: Array.isArray(data.reports)
             ? data.reports
             : files.map((f) => ({
                 filename: f.name,
+                status: data.status === 'processing' ? 'processing' : 'ready',
                 pages_processed: 1,
-                chunks_extracted: data.total_chunks ?? 1,
+                chunks_extracted: data.total_chunks ?? 0,
                 facts_extracted: data.total_entities ?? 0,
                 triples_extracted: 0,
               })),
@@ -107,20 +127,20 @@ export class SourceService {
           data: parsedSynth.success ? parsedSynth.data : synthesized,
           error: null,
           isMock: uploadRes.isMock,
-          status: 200,
+          status: uploadRes.status,
         };
       }
 
-      // 2. Fallback to /api/upload-academic-pdfs with Docling query parameters
-      const fallbackUrl = isExpert
-        ? `${ENDPOINTS.UPLOAD_ACADEMIC_PDFS}?parser=docling&mode=expert`
+      // 2. Fallback to /api/upload-academic-pdfs with query parameters
+      const fallbackUrl = qs
+        ? `${ENDPOINTS.UPLOAD_ACADEMIC_PDFS}?${qs}`
         : ENDPOINTS.UPLOAD_ACADEMIC_PDFS;
 
       return await apiClient.request<UploadResponse>(fallbackUrl, UploadResponseSchema, {
         method: 'POST',
         body: formData,
         signal,
-        timeoutMs: 120000,
+        timeoutMs: config.uploadTimeoutMs,
       });
     } finally {
       if (typeof window !== 'undefined') {
@@ -274,6 +294,7 @@ export class SourceService {
     const base = getApiBaseUrl();
     const sseUrl = `${base}${ENDPOINTS.DOCUMENT_EVENTS(docId)}`;
     let closed = false;
+    let sawTerminalError = false;
 
     if (typeof window !== 'undefined' && 'EventSource' in window) {
       try {
@@ -284,48 +305,79 @@ export class SourceService {
           if (event.data === '[DONE]') {
             es.close();
             closed = true;
-            onProgress({
-              phase: 'ready',
-              percent: 100,
-              status: 'ready',
-              detail: 'Document ingestion complete and graph synchronized',
-            });
-            onComplete?.();
+            if (!sawTerminalError) {
+              onProgress({
+                phase: 'ready',
+                percent: 100,
+                status: 'ready',
+                detail: 'Document ingestion complete and graph synchronized',
+              });
+              telemetryBridge.send({
+                subtype: 'system',
+                level: 'INFO',
+                message: `Document ingestion completed: ${docId}`,
+                metadata: { doc_id: docId, status: 'ready' },
+              });
+              onComplete?.();
+            }
             return;
           }
 
           try {
             const rawJson = JSON.parse(event.data);
             const parsed = DocumentStatusResponseSchema.safeParse(rawJson);
-            if (parsed.success) {
-              const statusData = parsed.data;
-              onProgress(statusData);
-              if (
-                statusData.status === 'ready' ||
-                statusData.percent >= 100 ||
-                statusData.phase === 'ready'
-              ) {
-                es.close();
-                closed = true;
-                onComplete?.();
-              }
-            } else {
-              const data =
-                rawJson && typeof rawJson === 'object' ? (rawJson as Record<string, any>) : {};
-              onProgress({
-                phase: (data.phase as any) || 'processing',
-                percent: typeof data.percent === 'number' ? data.percent : 50,
-                status: data.status || (data.percent >= 100 ? 'ready' : 'processing'),
-                detail: data.detail || '',
+            const statusData: DocumentStatusResponse = parsed.success
+              ? parsed.data
+              : (() => {
+                  const data =
+                    rawJson && typeof rawJson === 'object' ? (rawJson as Record<string, any>) : {};
+                  return {
+                    phase: (data.phase as any) || 'parsing',
+                    percent: typeof data.percent === 'number' ? data.percent : 50,
+                    status: data.status || (data.percent >= 100 ? 'ready' : 'processing'),
+                    detail: data.detail || '',
+                  };
+                })();
+
+            onProgress(statusData);
+            const normStatus = (statusData.status || '').toLowerCase();
+            const normPhase = (statusData.phase || '').toLowerCase();
+
+            if (
+              normStatus === 'failed' ||
+              normStatus === 'error' ||
+              normPhase === 'failed' ||
+              normPhase === 'error'
+            ) {
+              sawTerminalError = true;
+              es.close();
+              closed = true;
+              const errMsg = statusData.detail || 'Document ingestion failed';
+              telemetryBridge.send({
+                subtype: 'system',
+                level: 'ERROR',
+                message: `Document ingestion failed: ${docId} (${errMsg})`,
+                metadata: { doc_id: docId, status: 'failed' },
               });
-              if (
-                data.status === 'ready' ||
-                (typeof data.percent === 'number' && data.percent >= 100)
-              ) {
-                es.close();
-                closed = true;
-                onComplete?.();
-              }
+              onError?.(new Error(errMsg));
+              return;
+            }
+
+            if (
+              normStatus === 'ready' ||
+              statusData.percent >= 100 ||
+              normPhase === 'ready' ||
+              normPhase === 'completed'
+            ) {
+              es.close();
+              closed = true;
+              telemetryBridge.send({
+                subtype: 'system',
+                level: 'INFO',
+                message: `Document ingestion completed: ${docId}`,
+                metadata: { doc_id: docId, status: 'ready' },
+              });
+              onComplete?.();
             }
           } catch {}
         };
@@ -333,6 +385,7 @@ export class SourceService {
         es.onerror = (err) => {
           es.close();
           if (!closed) {
+            closed = true;
             onError?.(err);
           }
         };
@@ -349,6 +402,88 @@ export class SourceService {
     return () => {
       closed = true;
     };
+  }
+
+  /**
+   * Watches a background upload via SSE with automatic status-polling fallback.
+   */
+  public trackIngestionToCompletion(
+    docId: string,
+    callbacks: {
+      onProgress: (status: DocumentStatusResponse) => void;
+      onComplete: () => void;
+      onError: (err: unknown) => void;
+    }
+  ): () => void {
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let unsubSse: (() => void) | null = null;
+
+    const cleanup = () => {
+      cancelled = true;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      if (unsubSse) {
+        try {
+          unsubSse();
+        } catch {}
+        unsubSse = null;
+      }
+    };
+
+    const startPolling = () => {
+      if (cancelled || pollTimer) return;
+      const poll = async () => {
+        if (cancelled) return;
+        try {
+          const res = await this.getDocumentStatus(docId);
+          if (cancelled) return;
+          if (res.data) {
+            callbacks.onProgress(res.data);
+            const normStatus = (res.data.status || '').toLowerCase();
+            const normPhase = (res.data.phase || '').toLowerCase();
+            if (normStatus === 'failed' || normStatus === 'error' || normPhase === 'failed' || normPhase === 'error') {
+              cleanup();
+              callbacks.onError(new Error(res.data.detail || 'Document ingestion failed'));
+              return;
+            }
+            if (normStatus === 'ready' || normPhase === 'ready' || normPhase === 'completed' || res.data.percent >= 100) {
+              cleanup();
+              callbacks.onComplete();
+              return;
+            }
+          }
+        } catch {}
+        if (!cancelled) {
+          pollTimer = setTimeout(poll, 2500);
+        }
+      };
+      pollTimer = setTimeout(poll, 2000);
+    };
+
+    unsubSse = this.watchDocumentIngestionEvents(
+      docId,
+      callbacks.onProgress,
+      () => {
+        if (!cancelled) {
+          cleanup();
+          callbacks.onComplete();
+        }
+      },
+      (err) => {
+        if (cancelled) return;
+        if (err instanceof Error && err.message) {
+          cleanup();
+          callbacks.onError(err);
+          return;
+        }
+        startPolling();
+      }
+    );
+
+    return cleanup;
   }
 
   /**

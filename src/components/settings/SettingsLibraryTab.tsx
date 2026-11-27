@@ -1,9 +1,14 @@
 import { FolderSync } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { documentsQueryOptions } from '../../api/queryOptions';
 import { sourceService } from '../../services/SourceService';
+import { useModeStore } from '../../stores/modeStore';
 import { formatBytes } from '../../utils/formatters';
-import { getDocumentStageLabel } from '../../utils/documentStageUtils';
+import {
+  extractProcessingReportKeys,
+  getDocumentStageLabel,
+} from '../../utils/documentStageUtils';
 import { CircularUploadProgress } from '../ui/CircularUploadProgress';
 import { ExtractedDocumentModal } from '../library/ExtractedDocumentModal';
 
@@ -84,8 +89,10 @@ export function documentItemToLibraryItem(doc: {
         ? `${(sizeMb * 1024).toFixed(0)} KB`
         : '1.0 MB';
 
-  const isReady = doc.status === 'ready' || doc.status === 'indexed';
-  const isProcessing = doc.status === 'processing';
+  const rawStatus = (doc.status || '').toLowerCase();
+  const isError = rawStatus === 'error' || rawStatus === 'failed';
+  const isReady = rawStatus === 'ready' || rawStatus === 'indexed';
+  const isProcessing = rawStatus === 'processing';
   const isProtected =
     doc.is_protected !== undefined
       ? Boolean(doc.is_protected)
@@ -106,12 +113,12 @@ export function documentItemToLibraryItem(doc: {
     name: fname,
     size: sizeStr,
     bytes: bytes > 0 ? bytes : 1048576,
-    uploadedAt: 'Ready in Library',
+    uploadedAt: isError ? 'Ingestion Failed' : isProcessing ? 'Indexing...' : 'Ready in Library',
     timestamp: Date.now(),
     type: fileType,
     pages: resolvedPages,
     chunks: resolvedChunks,
-    status: isReady ? 'indexed' : isProcessing ? 'processing' : 'ready',
+    status: isError ? 'error' : isReady ? 'indexed' : isProcessing ? 'processing' : 'ready',
     uploadProgress: typeof (doc as any).percent === 'number'
       ? (doc as any).percent
       : typeof (doc as any).progress_percent === 'number'
@@ -154,6 +161,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
   onCloseSettings,
 }) => {
   const queryClient = useQueryClient();
+  const isConnected = useModeStore((s) => s.appMode === 'connected' || s.appMode === 'degraded');
   const handleOpenInChat = (item: LibraryItem) => {
     if (onSelectDocument) {
       onSelectDocument(item);
@@ -163,62 +171,105 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
     }
   };
 
-  const [apiReadyFilenames, setApiReadyFilenames] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Track active optimistic/background uploads separately and merge with live React Query cache
+  const [localUploads, setLocalUploads] = useState<LibraryItem[]>([]);
+  const activeTrackersRef = useRef<Map<string, () => void>>(new Map());
 
-  // Library items strictly managed from backend GET /api/documents
-  const [items, setItems] = useState<LibraryItem[]>([]);
-
-  const saveItems = (newItems: LibraryItem[]) => {
-    setItems(newItems);
-  };
+  const {
+    data: rawDocuments = [],
+    isLoading: isQueryLoading,
+    refetch: refetchDocuments,
+  } = useQuery({
+    ...documentsQueryOptions(),
+    enabled: isConnected,
+    refetchOnMount: 'always',
+    placeholderData: (prev) => prev,
+  });
 
   const isMountedRef = React.useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
+    const trackers = activeTrackersRef.current;
     return () => {
       isMountedRef.current = false;
+      trackers.forEach((unsub) => {
+        try {
+          unsub();
+        } catch {}
+      });
+      trackers.clear();
     };
   }, []);
 
-  // Authoritative sync with GraphRAG backend: fetch live documents from GET /api/documents
-  const fetchLibraryDocuments = React.useCallback(async () => {
-    if (!isMountedRef.current) return;
-    if (items.length === 0) {
-      setIsLoading(true);
-    }
-    try {
-      const resp = await sourceService.getDocuments();
-      if (!isMountedRef.current) return;
-      if (resp.data && Array.isArray(resp.data.documents)) {
-        const backendDocs = resp.data.documents.map(documentItemToLibraryItem);
-        setItems(backendDocs);
-        const readyNames = new Set(
-          resp.data.documents
-            .filter((d) => d.status === 'ready' || d.status === 'indexed')
-            .map((d) => d.filename.toLowerCase())
-        );
-        setApiReadyFilenames(readyNames);
-      } else {
-        setItems([]);
-      }
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      console.warn('Backend documents query failed, keeping empty library:', err);
-      setItems([]);
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
+  const backendItems = useMemo(
+    () => rawDocuments.map(documentItemToLibraryItem),
+    [rawDocuments]
+  );
 
+  // Drop finished local upload overlays once backend confirms ready/indexed
   useEffect(() => {
-    fetchLibraryDocuments();
-  }, [fetchLibraryDocuments]);
+    if (backendItems.length === 0) return;
+    const readyBackendNames = new Set(
+      backendItems
+        .filter((b) => b.status === 'indexed' || b.status === 'ready')
+        .map((b) => b.name.toLowerCase())
+    );
+    setLocalUploads((prev) => {
+      const next = prev.filter(
+        (loc) => loc.status === 'error' || !readyBackendNames.has(loc.name.toLowerCase())
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [backendItems]);
+
+  const items = useMemo(() => {
+    if (localUploads.length === 0) return backendItems;
+    const localByName = new Map(localUploads.map((loc) => [loc.name.toLowerCase(), loc]));
+    const merged: LibraryItem[] = [...localUploads];
+    for (const bItem of backendItems) {
+      const key = bItem.name.toLowerCase();
+      if (!localByName.has(key)) {
+        merged.push(bItem);
+      } else {
+        const local = localByName.get(key)!;
+        if (bItem.status === 'indexed' || bItem.status === 'ready') {
+          const idx = merged.findIndex((m) => m.name.toLowerCase() === key);
+          if (idx >= 0) merged[idx] = bItem;
+        } else if (
+          typeof bItem.uploadProgress === 'number' &&
+          bItem.uploadProgress > (local.uploadProgress ?? 0)
+        ) {
+          const idx = merged.findIndex((m) => m.name.toLowerCase() === key);
+          if (idx >= 0) merged[idx] = bItem;
+        }
+      }
+    }
+    return merged;
+  }, [backendItems, localUploads]);
+
+  const apiReadyFilenames = useMemo(
+    () =>
+      new Set(
+        rawDocuments
+          .filter((d) => d.status === 'ready' || d.status === 'indexed')
+          .map((d) => (d.filename || d.name || '').toLowerCase())
+          .filter(Boolean)
+      ),
+    [rawDocuments]
+  );
+
+  const isLoading = isConnected && isQueryLoading && items.length === 0;
+
+  // Authoritative sync with GraphRAG backend via React Query cache
+  const fetchLibraryDocuments = React.useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['documents'] });
+    if (isConnected) {
+      await refetchDocuments();
+    }
+  }, [isConnected, queryClient, refetchDocuments]);
 
   const isItemIndexed = (item: LibraryItem): boolean => {
-    if (item.status === 'processing') return false;
+    if (item.status === 'processing' || item.status === 'error') return false;
     if (item.uploadProgress !== undefined && item.uploadProgress < 100) return false;
     if (apiReadyFilenames.size > 0 && apiReadyFilenames.has(item.name.toLowerCase())) {
       return true;
@@ -372,21 +423,27 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
       };
     });
 
-    const updated = [...newUploaded, ...items];
-    saveItems(updated);
+    setLocalUploads((prev) => [
+      ...newUploaded,
+      ...prev.filter((p) => !newUploaded.some((n) => n.name.toLowerCase() === p.name.toLowerCase())),
+    ]);
     showToast(`Uploading ${newUploaded.length} file(s) to Library...`);
     e.target.value = '';
 
     const newIds = new Set(newUploaded.map((i) => i.id));
 
-    // Smoothly animate circular progress
+    // Smoothly animate initial upload progress until backend reports live phase progress
     let prog = 14;
     const progressTimer = setInterval(() => {
-      prog = Math.min(94, prog + Math.floor(Math.random() * 16) + 12);
-      setItems((prev) =>
-        prev.map((it) => (newIds.has(it.id) ? { ...it, uploadProgress: prog } : it))
+      prog = Math.min(88, prog + Math.floor(Math.random() * 10) + 6);
+      setLocalUploads((prev) =>
+        prev.map((it) =>
+          newIds.has(it.id) && it.status === 'processing' && (it.uploadProgress ?? 0) < prog
+            ? { ...it, uploadProgress: prog }
+            : it
+        )
       );
-    }, 300);
+    }, 450);
 
     try {
       const validFiles = files.filter((f) => {
@@ -394,28 +451,89 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
         return ['pdf', 'txt', 'docx', 'csv', 'md', 'json', 'xlsx'].includes(ext);
       });
       if (validFiles.length > 0) {
-        const uploadRes = await sourceService.uploadPdfs(validFiles);
+        const uploadRes = await sourceService.uploadPdfs(validFiles, undefined, {
+          background: true,
+        });
         if (uploadRes.error || uploadRes.status >= 400) {
           throw new Error(uploadRes.error?.message || 'Upload failed');
         }
+        clearInterval(progressTimer);
+
+        const processingKeys = extractProcessingReportKeys(uploadRes.data);
+        if (processingKeys.length > 0) {
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+          showToast(`Indexing ${processingKeys.length} file(s) in background...`);
+          for (const { key, filename } of processingKeys) {
+            if (activeTrackersRef.current.has(key)) continue;
+            const unsub = sourceService.trackIngestionToCompletion(key, {
+              onProgress: (st) => {
+                if (!isMountedRef.current) return;
+                setLocalUploads((prev) =>
+                  prev.map((it) =>
+                    it.name.toLowerCase() === filename.toLowerCase()
+                      ? {
+                          ...it,
+                          uploadProgress:
+                            typeof st.percent === 'number' ? st.percent : it.uploadProgress,
+                          phase: st.phase,
+                        }
+                      : it
+                  )
+                );
+              },
+              onComplete: () => {
+                activeTrackersRef.current.delete(key);
+                if (!isMountedRef.current) return;
+                setLocalUploads((prev) =>
+                  prev.map((it) =>
+                    it.name.toLowerCase() === filename.toLowerCase()
+                      ? { ...it, uploadProgress: 100, status: 'indexed' as const }
+                      : it
+                  )
+                );
+                queryClient.invalidateQueries({ queryKey: ['documents'] });
+                showToast(`Parsed & indexed "${filename}" in GraphRAG!`);
+              },
+              onError: (err) => {
+                activeTrackersRef.current.delete(key);
+                if (!isMountedRef.current) return;
+                setLocalUploads((prev) =>
+                  prev.map((it) =>
+                    it.name.toLowerCase() === filename.toLowerCase()
+                      ? { ...it, status: 'error' as const, uploadProgress: 0 }
+                      : it
+                  )
+                );
+                queryClient.invalidateQueries({ queryKey: ['documents'] });
+                showToast(
+                  err instanceof Error ? err.message : `Ingestion failed for "${filename}"`
+                );
+              },
+            });
+            activeTrackersRef.current.set(key, unsub);
+          }
+          return;
+        }
       } else {
         await new Promise((resolve) => setTimeout(resolve, 800));
+        clearInterval(progressTimer);
       }
-      clearInterval(progressTimer);
-      setItems((prev) =>
+      setLocalUploads((prev) =>
         prev.map((it) =>
           newIds.has(it.id) ? { ...it, uploadProgress: 100, status: 'indexed' as const } : it
         )
       );
+      await fetchLibraryDocuments();
       showToast(`Parsed & indexed ${newUploaded.length} file(s) in GraphRAG!`);
     } catch (err: any) {
       clearInterval(progressTimer);
       console.error('Library upload error:', err);
-      setItems((prev) =>
+      setLocalUploads((prev) =>
         prev.map((it) =>
           newIds.has(it.id) ? { ...it, status: 'error' as const, uploadProgress: 0 } : it
         )
       );
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       showToast(err?.message || 'Failed to upload document to backend');
     }
   };
@@ -437,8 +555,7 @@ export const SettingsLibraryTab: React.FC<SettingsLibraryTabProps> = ({
         );
         return;
       }
-      const updated = items.filter((item) => item.id !== id);
-      saveItems(updated);
+      setLocalUploads((prev) => prev.filter((item) => item.id !== id && item.name !== name));
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       showToast(`Deleted "${name}" & pruned from GraphRAG`);
       if (onDocumentDeleted) {

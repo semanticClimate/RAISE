@@ -31,3 +31,48 @@ export function getDocumentStageLabel(progress: number, phase?: string): string 
   }
   return 'Uploading document...';
 }
+
+export function isDocumentProcessingStatus(status?: string): boolean {
+  const norm = (status || '').toLowerCase().trim();
+  return (
+    norm !== '' &&
+    norm !== 'ready' &&
+    norm !== 'indexed' &&
+    norm !== 'completed' &&
+    norm !== 'error' &&
+    norm !== 'failed'
+  );
+}
+
+export function isDocumentErrorStatus(status?: string): boolean {
+  const norm = (status || '').toLowerCase().trim();
+  return norm === 'error' || norm === 'failed';
+}
+
+export function extractProcessingReportKeys(data: unknown): Array<{ key: string; filename: string }> {
+  if (!data || typeof data !== 'object') return [];
+  const obj = data as Record<string, unknown>;
+  const reports = Array.isArray(obj.reports) ? obj.reports : [];
+  const keys: Array<{ key: string; filename: string }> = [];
+  for (const rep of reports) {
+    if (!rep || typeof rep !== 'object') continue;
+    const r = rep as Record<string, unknown>;
+    const status = typeof r.status === 'string' ? r.status : undefined;
+    const isProcessing =
+      isDocumentProcessingStatus(status) ||
+      (status === undefined && obj.status === 'processing');
+    if (!isProcessing) continue;
+    const filename =
+      (typeof r.filename === 'string' && r.filename) ||
+      (typeof r.document === 'string' && r.document) ||
+      '';
+    const key =
+      (typeof r.doc_id === 'string' && r.doc_id) ||
+      (typeof r.document_id === 'string' && r.document_id) ||
+      filename;
+    if (key) {
+      keys.push({ key, filename: filename || key });
+    }
+  }
+  return keys;
+}
